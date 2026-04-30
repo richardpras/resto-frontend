@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Megaphone,
   Users,
+  Clock3,
   BarChart3,
   Settings,
   Store,
@@ -49,6 +50,7 @@ const managementItems = [
 
 const adminItems = [
   { title: "Payroll", url: "/payroll", icon: Users },
+  { title: "Attendance", url: "/attendance", icon: Clock3 },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

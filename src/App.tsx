@@ -15,6 +15,8 @@ import Tables from "./pages/Tables";
 import Purchases from "./pages/Purchases";
 import Promotions from "./pages/Promotions";
 import Cashier from "./pages/Cashier";
+import Payroll from "./pages/Payroll";
+import Attendance from "./pages/Attendance";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 
@@ -39,7 +41,8 @@ const App = () => (
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/promotions" element={<Promotions />} />
-            <Route path="/payroll" element={<PlaceholderPage title="Payroll" description="Employee list, salary structure, and payroll summaries." />} />
+            <Route path="/payroll" element={<Payroll />} />
+            <Route path="/attendance" element={<Attendance />} />
             <Route path="/reports" element={<PlaceholderPage title="Reports" description="Sales, purchases, P&L, and employee performance reports." />} />
             <Route path="/settings" element={<PlaceholderPage title="Settings" description="Merchant, outlets, tax, printer mapping, roles & permissions." />} />
             <Route path="*" element={<NotFound />} />

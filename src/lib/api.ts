@@ -227,3 +227,142 @@ export async function addOrderPayments(
   });
   return response.data;
 }
+
+export type ShiftApi = {
+  id: string;
+  code: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  late_tolerance_minutes: number;
+  overtime_after_minutes: number;
+  active: boolean;
+};
+
+export type ShiftPayload = {
+  code: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  late_tolerance_minutes: number;
+  overtime_after_minutes: number;
+  active?: boolean;
+};
+
+export async function listShifts(): Promise<ShiftApi[]> {
+  const response = await request<ApiListResponse<ShiftApi>>("/shifts");
+  return response.data;
+}
+
+export async function createShift(payload: ShiftPayload): Promise<ShiftApi> {
+  const response = await request<{ data: ShiftApi }>("/shifts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateShift(id: string, payload: Partial<ShiftPayload>): Promise<ShiftApi> {
+  const response = await request<{ data: ShiftApi }>(`/shifts/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export type AttendanceApi = {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  shift_id?: string | null;
+  attendance_date: string;
+  check_in?: string | null;
+  check_out?: string | null;
+  source: "fingerprint" | "manual";
+  status: "present" | "late" | "absent";
+  notes?: string | null;
+};
+
+export type AttendanceSyncPayload = {
+  employee_id: string;
+  attendance_date: string;
+  check_in?: string | null;
+  check_out?: string | null;
+  shift_id?: string | null;
+  sync_key?: string;
+  external_ref?: string;
+  notes?: string;
+};
+
+export type AttendanceManualCorrectionPayload = {
+  check_in?: string | null;
+  check_out?: string | null;
+  status?: AttendanceApi["status"];
+  reason: string;
+  notes?: string;
+};
+
+export async function listAttendances(): Promise<AttendanceApi[]> {
+  const response = await request<ApiListResponse<AttendanceApi>>("/attendances");
+  return response.data;
+}
+
+export async function syncAttendance(payload: AttendanceSyncPayload): Promise<AttendanceApi> {
+  const response = await request<{ data: AttendanceApi }>("/attendances/sync", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function manualCorrectAttendance(
+  attendanceId: string,
+  payload: AttendanceManualCorrectionPayload
+): Promise<AttendanceApi> {
+  const response = await request<{ data: AttendanceApi }>(`/attendances/${attendanceId}/manual-correction`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export type PayrollAttendanceSummary = {
+  lateCount?: number;
+  absentCount?: number;
+  overtimeMinutes?: number;
+};
+
+export type PayrollApi = {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  period_start: string;
+  period_end: string;
+  basic_salary: number;
+  allowances?: number;
+  deductions?: number;
+  net_salary?: number;
+  attendance_summary?: PayrollAttendanceSummary;
+};
+
+export type PayrollPayload = {
+  employee_id: string;
+  period_start: string;
+  period_end: string;
+  basic_salary: number;
+  allowances?: number;
+  deductions?: number;
+};
+
+export async function listPayrolls(): Promise<PayrollApi[]> {
+  const response = await request<ApiListResponse<PayrollApi>>("/payrolls");
+  return response.data;
+}
+
+export async function createPayroll(payload: PayrollPayload): Promise<PayrollApi> {
+  const response = await request<{ data: PayrollApi }>("/payrolls", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
