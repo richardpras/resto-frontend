@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 140 8% 96%;
+    --foreground: 147 16% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 147 16% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 147 16% 12%;
+
+    --primary: 147 16% 19%;
+    --primary-foreground: 140 8% 96%;
+
+    --secondary: 145 20% 92%;
+    --secondary-foreground: 147 16% 19%;
+
+    --muted: 140 10% 94%;
+    --muted-foreground: 147 8% 46%;
+
+    --accent: 165 30% 88%;
+    --accent-foreground: 147 16% 15%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 140 12% 90%;
+    --input: 140 12% 90%;
+    --ring: 147 16% 19%;
+
+    --radius: 1rem;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    --sidebar-background: 147 16% 19%;
+    --sidebar-foreground: 140 15% 85%;
+    --sidebar-primary: 145 40% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 147 20% 25%;
+    --sidebar-accent-foreground: 140 15% 90%;
+    --sidebar-border: 147 15% 25%;
+    --sidebar-ring: 145 40% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-sm;
+  }
+  
+  .pos-shadow {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  }
+
+  .pos-shadow-md {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.03);
+  }
+}
