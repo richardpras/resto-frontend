@@ -1,162 +1,56 @@
-import { FormEvent, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/use-toast";
-import { createPayroll, listPayrolls, type PayrollApi } from "@/lib/api";
-
-type PayrollForm = {
-  employee_id: string;
-  period_start: string;
-  period_end: string;
-  basic_salary: string;
-  allowances: string;
-  deductions: string;
-};
-
-const defaultForm: PayrollForm = {
-  employee_id: "",
-  period_start: "",
-  period_end: "",
-  basic_salary: "",
-  allowances: "0",
-  deductions: "0",
-};
+import { useEffect } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Users, Clock, Timer, Wallet, CalendarDays, Banknote, Calculator } from "lucide-react";
+import { toast } from "sonner";
+import { usePayrollStore } from "@/stores/payrollStore";
+import Employees from "./payroll/Employees";
+import Attendance from "./payroll/Attendance";
+import Overtime from "./payroll/Overtime";
+import Adjustments from "./payroll/Adjustments";
+import Shifts from "./payroll/Shifts";
+import Loans from "./payroll/Loans";
+import PayrollRunPage from "./payroll/PayrollRun";
 
 export default function Payroll() {
-  const [items, setItems] = useState<PayrollApi[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState<PayrollForm>(defaultForm);
+  const refreshEmployeesFromApi = usePayrollStore((s) => s.refreshEmployeesFromApi);
+  const refreshAttendanceFromApi = usePayrollStore((s) => s.refreshAttendanceFromApi);
+  const refreshPayrollsFromApi = usePayrollStore((s) => s.refreshPayrollsFromApi);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        setItems(await listPayrolls());
-      } catch (error) {
-        toast({
-          title: "Failed to load payrolls",
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void load();
-  }, []);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      setSubmitting(true);
-      const created = await createPayroll({
-        employee_id: form.employee_id.trim(),
-        period_start: form.period_start,
-        period_end: form.period_end,
-        basic_salary: Number(form.basic_salary),
-        allowances: Number(form.allowances || 0),
-        deductions: Number(form.deductions || 0),
-      });
-      setItems((prev) => [created, ...prev]);
-      setForm(defaultForm);
-      toast({ title: "Payroll created", description: "Payroll entry added successfully." });
-    } catch (error) {
-      toast({
-        title: "Create payroll failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    void Promise.all([
+      refreshEmployeesFromApi(),
+      refreshAttendanceFromApi(),
+      refreshPayrollsFromApi(),
+    ]).catch((e) => {
+      toast.error(e instanceof Error ? e.message : "Failed to refresh payroll data from API");
+    });
+  }, [refreshEmployeesFromApi, refreshAttendanceFromApi, refreshPayrollsFromApi]);
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Payroll</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Create payroll and review attendance summary data.</p>
+        <h1 className="text-2xl font-bold">Payroll Management</h1>
+        <p className="text-sm text-muted-foreground">Employees, attendance, overtime, allowances, payroll processing & payslips</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-card p-4 rounded-2xl border border-border/50">
-        <input
-          placeholder="Employee ID"
-          value={form.employee_id}
-          onChange={(e) => setForm((prev) => ({ ...prev, employee_id: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-          required
-        />
-        <input
-          type="date"
-          aria-label="Period Start"
-          value={form.period_start}
-          onChange={(e) => setForm((prev) => ({ ...prev, period_start: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-          required
-        />
-        <input
-          type="date"
-          aria-label="Period End"
-          value={form.period_end}
-          onChange={(e) => setForm((prev) => ({ ...prev, period_end: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-          required
-        />
-        <input
-          type="number"
-          min="0"
-          placeholder="Basic Salary"
-          value={form.basic_salary}
-          onChange={(e) => setForm((prev) => ({ ...prev, basic_salary: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-          required
-        />
-        <input
-          type="number"
-          min="0"
-          placeholder="Allowances"
-          value={form.allowances}
-          onChange={(e) => setForm((prev) => ({ ...prev, allowances: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-        />
-        <input
-          type="number"
-          min="0"
-          placeholder="Deductions"
-          value={form.deductions}
-          onChange={(e) => setForm((prev) => ({ ...prev, deductions: e.target.value }))}
-          className="px-3 py-2.5 rounded-xl bg-background border border-border text-sm"
-        />
-        <div className="md:col-span-3">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Saving..." : "Create Payroll"}
-          </Button>
-        </div>
-      </form>
-
-      <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/50">
-        {loading ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading payroll data...</p>
-        ) : items.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">No payroll records yet.</p>
-        ) : (
-          items.map((payroll) => (
-            <div key={payroll.id} className="p-4 space-y-1" data-testid={`payroll-row-${payroll.id}`}>
-              <p className="text-sm font-medium text-foreground">
-                {payroll.employee_name ?? payroll.employee_id} - {payroll.period_start} to {payroll.period_end}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Basic: {payroll.basic_salary} | Allowances: {payroll.allowances ?? 0} | Deductions: {payroll.deductions ?? 0}
-              </p>
-              {payroll.attendance_summary && (
-                <p className="text-xs text-muted-foreground">
-                  Late: {payroll.attendance_summary.lateCount ?? 0}, Absent: {payroll.attendance_summary.absentCount ?? 0},
-                  OT: {payroll.attendance_summary.overtimeMinutes ?? 0} mins
-                </p>
-              )}
-            </div>
-          ))
-        )}
-      </div>
+      <Tabs defaultValue="payroll">
+        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7 h-auto">
+          <TabsTrigger value="payroll" className="gap-1.5 text-xs"><Calculator className="h-3.5 w-3.5" />Payroll</TabsTrigger>
+          <TabsTrigger value="employees" className="gap-1.5 text-xs"><Users className="h-3.5 w-3.5" />Employees</TabsTrigger>
+          <TabsTrigger value="attendance" className="gap-1.5 text-xs"><Clock className="h-3.5 w-3.5" />Attendance</TabsTrigger>
+          <TabsTrigger value="overtime" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Overtime</TabsTrigger>
+          <TabsTrigger value="adjustments" className="gap-1.5 text-xs"><Wallet className="h-3.5 w-3.5" />Adjustments</TabsTrigger>
+          <TabsTrigger value="shifts" className="gap-1.5 text-xs"><CalendarDays className="h-3.5 w-3.5" />Shifts</TabsTrigger>
+          <TabsTrigger value="loans" className="gap-1.5 text-xs"><Banknote className="h-3.5 w-3.5" />Loans</TabsTrigger>
+        </TabsList>
+        <TabsContent value="payroll" className="mt-6"><PayrollRunPage /></TabsContent>
+        <TabsContent value="employees" className="mt-6"><Employees /></TabsContent>
+        <TabsContent value="attendance" className="mt-6"><Attendance /></TabsContent>
+        <TabsContent value="overtime" className="mt-6"><Overtime /></TabsContent>
+        <TabsContent value="adjustments" className="mt-6"><Adjustments /></TabsContent>
+        <TabsContent value="shifts" className="mt-6"><Shifts /></TabsContent>
+        <TabsContent value="loans" className="mt-6"><Loans /></TabsContent>
+      </Tabs>
     </div>
   );
 }

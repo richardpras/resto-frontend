@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   ShoppingCart,
-  HandCoins,
   ChefHat,
   QrCode,
   Armchair,
@@ -10,14 +9,18 @@ import {
   ClipboardList,
   Megaphone,
   Users,
-  Clock3,
+  UserCog,
   BarChart3,
+  BookOpen,
   Settings,
   Store,
-  LogOut,
+  LogIn,
+  UserRound,
+  HandCoins,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { getApiAccessToken } from "@/lib/api-integration/client";
 import {
   Sidebar,
   SidebarContent,
@@ -50,7 +53,8 @@ const managementItems = [
 
 const adminItems = [
   { title: "Payroll", url: "/payroll", icon: Users },
-  { title: "Attendance", url: "/attendance", icon: Clock3 },
+  { title: "Accounting", url: "/accounting", icon: BookOpen },
+  { title: "Users & Roles", url: "/users", icon: UserCog },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -109,15 +113,32 @@ export function AppSidebar() {
         {renderGroup("Administration", adminItems)}
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent cursor-pointer transition-colors">
+      <SidebarFooter className="p-3 space-y-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="text-sidebar-foreground/80 hover:text-sidebar-foreground">
+              <Link
+                to={getApiAccessToken() ? "/users" : "/login"}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+              >
+                {getApiAccessToken() ? (
+                  <UserRound className="h-[18px] w-[18px] shrink-0" />
+                ) : (
+                  <LogIn className="h-[18px] w-[18px] shrink-0" />
+                )}
+                {!collapsed && <span>{getApiAccessToken() ? "Account" : "Sign in"}</span>}
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/30 border border-sidebar-border/40">
           <div className="h-8 w-8 rounded-full bg-sidebar-primary/20 flex items-center justify-center shrink-0">
-            <span className="text-xs font-semibold text-sidebar-primary">JD</span>
+            <span className="text-xs font-semibold text-sidebar-primary">RH</span>
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">John Doe</p>
-              <p className="text-[11px] text-sidebar-foreground/50">Owner</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">RestoHub</p>
+              <p className="text-[11px] text-sidebar-foreground/50">Main Outlet</p>
             </div>
           )}
         </div>

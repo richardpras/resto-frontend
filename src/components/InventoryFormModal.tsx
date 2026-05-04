@@ -5,10 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { InventoryItemType } from "@/stores/inventoryStore";
+import { useInventoryStore, type InventoryItem, type InventoryItemType } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
 import { Package, Paperclip, Armchair } from "lucide-react";
-import type { InventoryItemApi, InventoryPayload } from "@/lib/api";
 
 const typeConfig: Record<InventoryItemType, { label: string; icon: React.ReactNode; units: string[]; color: string }> = {
   ingredient: { label: "Ingredient", icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },
@@ -31,11 +30,11 @@ const emptyForm: FormData = { name: "", type: "ingredient", unit: "kg", stock: "
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  editItem?: InventoryItemApi | null;
-  onSave: (payload: InventoryPayload, id?: string) => Promise<void>;
+  editItem?: InventoryItem | null;
 };
 
-export default function InventoryFormModal({ open, onOpenChange, editItem, onSave }: Props) {
+export default function InventoryFormModal({ open, onOpenChange, editItem }: Props) {
+  const { addItem, updateItem } = useInventoryStore();
   const [form, setForm] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [saving, setSaving] = useState(false);
@@ -82,7 +81,7 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
     // simulate async
     await new Promise((r) => setTimeout(r, 400));
 
-    const payload: InventoryPayload = {
+    const payload: Omit<InventoryItem, "id"> = {
       name: form.name.trim(),
       type: form.type,
       unit: form.unit,
@@ -92,11 +91,11 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
       ...(form.notes ? { notes: form.notes.trim() } : {}),
     };
 
-    if (editItem?.id) {
-      await onSave(payload, editItem.id);
+    if (editItem) {
+      updateItem(editItem.id, payload);
       toast({ title: "Item updated", description: `${payload.name} has been updated.` });
     } else {
-      await onSave(payload);
+      addItem(payload);
       toast({ title: "Item created", description: `${payload.name} has been added to inventory.` });
     }
 
