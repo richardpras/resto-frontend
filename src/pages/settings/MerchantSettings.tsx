@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,18 +6,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { Store, Upload } from "lucide-react";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { Store, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function MerchantSettings() {
-  const { merchant, updateMerchant } = useSettingsStore();
+  const { merchant, updateMerchant, persistToApi } = useSettingsStore();
   const [form, setForm] = useState(merchant);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  useEffect(() => {
+    setForm(merchant);
+  }, [merchant]);
+
+  const save = async () => {
     if (!form.name.trim()) return toast.error("Merchant name required");
     if (!form.email.includes("@")) return toast.error("Valid email required");
     updateMerchant(form);
-    toast.success("Merchant settings saved");
+    if (!getApiAccessToken()) {
+      toast.success("Saved locally (sign in to sync with server)");
+      return;
+    }
+    setSaving(true);
+    try {
+      await persistToApi();
+      toast.success("Merchant saved to server");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Could not save to server");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -83,8 +101,13 @@ export default function MerchantSettings() {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setForm(merchant)}>Reset</Button>
-            <Button onClick={save}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setForm(merchant)} disabled={saving}>
+              Reset
+            </Button>
+            <Button onClick={() => void save()} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {saving ? "Saving…" : "Save Changes"}
+            </Button>
           </div>
         </CardContent>
       </Card>
