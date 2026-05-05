@@ -6,12 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus } from "lucide-react";
-import { usePayrollStore } from "@/stores/payrollStore";
-import { syncAttendance as syncAttendanceApi } from "@/lib/api";
-import { buildCheckInOutIso } from "@/lib/payrollMappers";
+import { Plus, Trash2 } from "lucide-react";
+import { usePayrollStore, type AttendanceStatus } from "@/stores/payrollStore";
+import { DataTable, type Column } from "@/components/DataTable";
 import { toast } from "sonner";
+
+function calcStatus(checkIn?: string): AttendanceStatus {
+  if (!checkIn) return "absent";
+  const [h, m] = checkIn.split(":").map(Number);
+  if (h > 9 || (h === 9 && m > 0)) return "late";
+  return "present";
+}
 
 function workHours(ci?: string, co?: string): string {
   if (!ci || !co) return "-";
@@ -23,7 +28,7 @@ function workHours(ci?: string, co?: string): string {
 }
 
 export default function Attendance() {
-  const { employees, attendance, refreshAttendanceFromApi } = usePayrollStore();
+  const { employees, attendance, addAttendance, removeAttendance } = usePayrollStore();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     employeeId: "",
@@ -33,43 +38,19 @@ export default function Attendance() {
     notes: "",
   });
 
-  const submit = async () => {
+  const submit = () => {
     if (!form.employeeId) {
       toast.error("Select an employee");
       return;
     }
-    const employeeId = Number(form.employeeId);
-    if (!Number.isFinite(employeeId)) {
-      toast.error("Invalid employee");
-      return;
-    }
-    const externalRef =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      const { duplicate, data } = await syncAttendanceApi({
-        source: "web",
-        externalRef,
-        employeeId,
-        attendanceDate: form.date,
-        checkIn: buildCheckInOutIso(form.date, form.checkIn),
-        checkOut: buildCheckInOutIso(form.date, form.checkOut),
-        notes: form.notes.trim() || undefined,
-        syncKey: externalRef,
+    void addAttendance({ ...form, status: calcStatus(form.checkIn) })
+      .then(() => {
+        toast.success("Attendance logged");
+        setOpen(false);
+      })
+      .catch((e: unknown) => {
+        toast.error(e instanceof Error ? e.message : "Failed to log attendance");
       });
-      if (duplicate) {
-        toast.message("Duplicate sync", { description: "This punch was already recorded." });
-      } else {
-        toast.success("Attendance synced");
-      }
-      if (data) {
-        await refreshAttendanceFromApi();
-      }
-      setOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sync failed");
-    }
   };
 
   const empName = (id: string) => employees.find((e) => e.id === id)?.name || "Unknown";
@@ -81,38 +62,43 @@ export default function Attendance() {
         <Button onClick={() => setOpen(true)} size="sm"><Plus className="h-4 w-4" />Log Attendance</Button>
       </div>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Check In</TableHead>
-              <TableHead>Check Out</TableHead>
-              <TableHead>Hours</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {attendance.map((a) => (
-              <TableRow key={a.id}>
-                <TableCell>{empName(a.employeeId)}</TableCell>
-                <TableCell>{a.date}</TableCell>
-                <TableCell>{a.checkIn || "-"}</TableCell>
-                <TableCell>{a.checkOut || "-"}</TableCell>
-                <TableCell>{workHours(a.checkIn, a.checkOut)}</TableCell>
-                <TableCell>
-                  <Badge variant={a.status === "present" ? "default" : a.status === "late" ? "secondary" : "destructive"}>
-                    {a.status}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-            {attendance.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No attendance records</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <Card className="p-0 border-0 shadow-none">
+        <DataTable
+          data={attendance}
+          rowKey={(a) => a.id}
+          searchPlaceholder="Search attendance..."
+          searchKeys={["date", "status", "notes"]}
+          emptyMessage="No attendance records"
+          defaultPageSize={10}
+          pageSizeOptions={[10, 25, 50]}
+          columns={[
+            { key: "employee", header: "Employee", sortable: true, render: (a) => empName(a.employeeId) },
+            { key: "date", header: "Date", sortable: true },
+            { key: "checkIn", header: "Check In", render: (a) => a.checkIn || "-" },
+            { key: "checkOut", header: "Check Out", render: (a) => a.checkOut || "-" },
+            { key: "hours", header: "Hours", render: (a) => workHours(a.checkIn, a.checkOut) },
+            {
+              key: "status",
+              header: "Status",
+              sortable: true,
+              render: (a) => (
+                <Badge variant={a.status === "present" ? "default" : a.status === "late" ? "secondary" : "destructive"}>
+                  {a.status}
+                </Badge>
+              ),
+            },
+            {
+              key: "actions",
+              header: "Actions",
+              className: "text-right",
+              render: (a) => (
+                <div className="flex justify-end">
+                  <Button variant="ghost" size="icon" onClick={() => void removeAttendance(a.id)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              ),
+            },
+          ] as Column<(typeof attendance)[number]>[]}
+        />
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -149,7 +135,7 @@ export default function Attendance() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => void submit()}>Save</Button>
+            <Button onClick={submit}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

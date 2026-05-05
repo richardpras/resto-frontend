@@ -1,8 +1,7 @@
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Trash2, ChefHat, Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { type RecipeItem } from "@/stores/inventoryStore";
 import { motion, AnimatePresence } from "framer-motion";
-import { listIngredients, listMenuItems, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
+import { createMenuItem, listIngredients, listMenuItems, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
 
 function formatRp(n: number) {
@@ -12,7 +11,14 @@ function formatRp(n: number) {
 type EditingRecipe = {
   menuItemId: string;
   menuName: string;
-  ingredients: RecipeItem[];
+  ingredients: { inventoryItemId: string; quantity: number }[];
+};
+
+type EditMenuForm = {
+  name: string;
+  category: string;
+  price: string;
+  emoji: string;
 };
 
 export default function MenuManagement() {
@@ -20,6 +26,14 @@ export default function MenuManagement() {
   const [items, setItems] = useState<MenuItemApi[]>([]);
   const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
   const [editingRecipe, setEditingRecipe] = useState<EditingRecipe | null>(null);
+  const [editingItem, setEditingItem] = useState<MenuItemApi | null>(null);
+  const [creatingItem, setCreatingItem] = useState(false);
+  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "" });
+  const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "" });
+  const [createErrors, setCreateErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
+  const [savingCreate, setSavingCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [blockOnInsufficient, setBlockOnInsufficient] = useState(false);
@@ -54,13 +68,14 @@ export default function MenuManagement() {
   };
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()));
+  const ingredientOptions = ingredients.filter((item) => item.type === "ingredient");
 
   const openRecipeEditor = (menuItem: MenuItemApi) => {
     const existing = menuItem.recipes ?? [];
     setEditingRecipe({
       menuItemId: menuItem.id,
       menuName: menuItem.name,
-      ingredients: existing.map((i) => ({ ingredientId: i.ingredientId, qty: i.qty })),
+      ingredients: existing.map((i) => ({ inventoryItemId: i.inventoryItemId, quantity: i.quantity })),
     });
   };
 
@@ -68,11 +83,11 @@ export default function MenuManagement() {
     if (!editingRecipe) return;
     setEditingRecipe({
       ...editingRecipe,
-      ingredients: [...editingRecipe.ingredients, { ingredientId: "", qty: 0 }],
+      ingredients: [...editingRecipe.ingredients, { inventoryItemId: "", quantity: 0 }],
     });
   };
 
-  const updateIngredientRow = (index: number, field: "ingredientId" | "qty", value: string | number) => {
+  const updateIngredientRow = (index: number, field: "inventoryItemId" | "quantity", value: string | number) => {
     if (!editingRecipe) return;
     const updated = editingRecipe.ingredients.map((item, i) =>
       i === index ? { ...item, [field]: value } : item
@@ -90,7 +105,7 @@ export default function MenuManagement() {
 
   const saveRecipe = async () => {
     if (!editingRecipe) return;
-    const valid = editingRecipe.ingredients.filter((i) => i.ingredientId && i.qty > 0);
+    const valid = editingRecipe.ingredients.filter((i) => i.inventoryItemId && i.quantity > 0);
 
     try {
       const updated = await updateMenuItem(editingRecipe.menuItemId, {
@@ -107,6 +122,98 @@ export default function MenuManagement() {
   const getRecipeCount = (menuItemId: string) => {
     const menu = items.find((item) => item.id === menuItemId);
     return menu?.recipes?.length ?? 0;
+  };
+
+  const openItemEditor = (item: MenuItemApi) => {
+    setEditingItem(item);
+    setEditForm({
+      name: item.name,
+      category: item.category,
+      price: String(item.price),
+      emoji: item.emoji,
+    });
+    setEditErrors({});
+  };
+
+  const openCreateModal = () => {
+    setCreateForm({ name: "", category: "", price: "", emoji: "" });
+    setCreateErrors({});
+    setCreatingItem(true);
+  };
+
+  const validateEditForm = () => {
+    const errors: Partial<Record<keyof EditMenuForm, string>> = {};
+    if (!editForm.name.trim()) errors.name = "Name is required";
+    if (!editForm.category.trim()) errors.category = "Category is required";
+    if (editForm.price.trim() === "") {
+      errors.price = "Price is required";
+    } else if (isNaN(Number(editForm.price)) || Number(editForm.price) < 0) {
+      errors.price = "Price must be a valid positive number";
+    }
+    if (!editForm.emoji.trim()) errors.emoji = "Emoji is required";
+
+    setEditErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateCreateForm = () => {
+    const errors: Partial<Record<keyof EditMenuForm, string>> = {};
+    if (!createForm.name.trim()) errors.name = "Name is required";
+    if (!createForm.category.trim()) errors.category = "Category is required";
+    if (createForm.price.trim() === "") {
+      errors.price = "Price is required";
+    } else if (isNaN(Number(createForm.price)) || Number(createForm.price) < 0) {
+      errors.price = "Price must be a valid positive number";
+    }
+    if (!createForm.emoji.trim()) errors.emoji = "Emoji is required";
+
+    setCreateErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const saveItemEdit = async () => {
+    if (!editingItem) return;
+    if (!validateEditForm()) return;
+
+    try {
+      setSavingEdit(true);
+      const updated = await updateMenuItem(editingItem.id, {
+        name: editForm.name.trim(),
+        category: editForm.category.trim(),
+        price: Number(editForm.price),
+        emoji: editForm.emoji.trim(),
+      });
+      setItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
+      toast.success("Menu item updated");
+      setEditingItem(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update menu item");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const saveNewItem = async () => {
+    if (!validateCreateForm()) return;
+
+    try {
+      setSavingCreate(true);
+      const created = await createMenuItem({
+        name: createForm.name.trim(),
+        category: createForm.category.trim(),
+        price: Number(createForm.price),
+        emoji: createForm.emoji.trim(),
+        available: true,
+        recipes: [],
+      });
+      setItems((prev) => [created, ...prev]);
+      toast.success("Menu item created");
+      setCreatingItem(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create menu item");
+    } finally {
+      setSavingCreate(false);
+    }
   };
 
   return (
@@ -128,7 +235,10 @@ export default function MenuManagement() {
               )}
             </button>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity">
+          <button
+            onClick={openCreateModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
             <Plus className="h-4 w-4" /> Add Item
           </button>
         </div>
@@ -202,7 +312,12 @@ export default function MenuManagement() {
                     </button>
                   </td>
                   <td className="p-4">
-                    <button className="p-2 rounded-lg hover:bg-muted transition-colors">
+                    <button
+                      onClick={() => openItemEditor(item)}
+                      className="p-2 rounded-lg hover:bg-muted transition-colors"
+                      aria-label={`Edit ${item.name}`}
+                      title={`Edit ${item.name}`}
+                    >
                       <Edit2 className="h-4 w-4 text-muted-foreground" />
                     </button>
                   </td>
@@ -253,17 +368,17 @@ export default function MenuManagement() {
                 )}
 
                 {editingRecipe.ingredients.map((ri, index) => {
-                  const selectedIng = ingredients.find((i) => i.id === ri.ingredientId);
+                  const selectedIng = ingredients.find((i) => i.id === ri.inventoryItemId);
                   return (
                     <div key={index} className="flex items-center gap-2 p-3 rounded-xl bg-muted/30 border border-border/30">
                       <div className="flex-1">
                         <select
-                          value={ri.ingredientId}
-                          onChange={(e) => updateIngredientRow(index, "ingredientId", e.target.value)}
+                          value={ri.inventoryItemId}
+                          onChange={(e) => updateIngredientRow(index, "inventoryItemId", e.target.value)}
                           className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                         >
                           <option value="">Select ingredient...</option>
-                          {ingredients.map((ing) => (
+                          {ingredientOptions.map((ing) => (
                             <option key={ing.id} value={ing.id}>
                               {ing.name} ({ing.stock} {ing.unit} left)
                             </option>
@@ -275,8 +390,8 @@ export default function MenuManagement() {
                           type="number"
                           step="0.01"
                           min="0"
-                          value={ri.qty || ""}
-                          onChange={(e) => updateIngredientRow(index, "qty", parseFloat(e.target.value) || 0)}
+                          value={ri.quantity || ""}
+                          onChange={(e) => updateIngredientRow(index, "quantity", parseFloat(e.target.value) || 0)}
                           placeholder="Qty"
                           className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/20"
                         />
@@ -314,6 +429,218 @@ export default function MenuManagement() {
                   className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
                 >
                   Save Recipe
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Item Modal */}
+      <AnimatePresence>
+        {editingItem && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setEditingItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">Edit Menu Item</h2>
+                  <p className="text-sm text-muted-foreground">Update item details</p>
+                </div>
+                <button onClick={() => setEditingItem(null)} className="p-2 rounded-lg hover:bg-muted">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Item Name</label>
+                  <input
+                    value={editForm.name}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                      editErrors.name ? "border-destructive" : "border-border"
+                    }`}
+                    placeholder="e.g. Nasi Goreng Special"
+                  />
+                  {editErrors.name && <p className="text-xs text-destructive">{editErrors.name}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Category</label>
+                  <input
+                    value={editForm.category}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                      editErrors.category ? "border-destructive" : "border-border"
+                    }`}
+                    placeholder="e.g. Main Course"
+                  />
+                  {editErrors.category && <p className="text-xs text-destructive">{editErrors.category}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Price</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.price}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, price: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                        editErrors.price ? "border-destructive" : "border-border"
+                      }`}
+                      placeholder="0"
+                    />
+                    {editErrors.price && <p className="text-xs text-destructive">{editErrors.price}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Emoji</label>
+                    <input
+                      value={editForm.emoji}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, emoji: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                        editErrors.emoji ? "border-destructive" : "border-border"
+                      }`}
+                      placeholder="🍛"
+                    />
+                    {editErrors.emoji && <p className="text-xs text-destructive">{editErrors.emoji}</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-border/50 flex gap-2">
+                <button
+                  onClick={() => setEditingItem(null)}
+                  disabled={savingEdit}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveItemEdit}
+                  disabled={savingEdit}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {savingEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Create Item Modal */}
+      <AnimatePresence>
+        {creatingItem && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setCreatingItem(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-border/50">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">Add Menu Item</h2>
+                  <p className="text-sm text-muted-foreground">Create a new item</p>
+                </div>
+                <button onClick={() => setCreatingItem(false)} className="p-2 rounded-lg hover:bg-muted">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Item Name</label>
+                  <input
+                    value={createForm.name}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                      createErrors.name ? "border-destructive" : "border-border"
+                    }`}
+                    placeholder="e.g. Nasi Goreng Special"
+                  />
+                  {createErrors.name && <p className="text-xs text-destructive">{createErrors.name}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Category</label>
+                  <input
+                    value={createForm.category}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, category: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                      createErrors.category ? "border-destructive" : "border-border"
+                    }`}
+                    placeholder="e.g. Main Course"
+                  />
+                  {createErrors.category && <p className="text-xs text-destructive">{createErrors.category}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Price</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={createForm.price}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, price: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                        createErrors.price ? "border-destructive" : "border-border"
+                      }`}
+                      placeholder="0"
+                    />
+                    {createErrors.price && <p className="text-xs text-destructive">{createErrors.price}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Emoji</label>
+                    <input
+                      value={createForm.emoji}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, emoji: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                        createErrors.emoji ? "border-destructive" : "border-border"
+                      }`}
+                      placeholder="🍛"
+                    />
+                    {createErrors.emoji && <p className="text-xs text-destructive">{createErrors.emoji}</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-border/50 flex gap-2">
+                <button
+                  onClick={() => setCreatingItem(false)}
+                  disabled={savingCreate}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveNewItem}
+                  disabled={savingCreate}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {savingCreate ? "Saving..." : "Create"}
                 </button>
               </div>
             </motion.div>

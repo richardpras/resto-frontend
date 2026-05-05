@@ -1,18 +1,43 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { useSettingsStore } from "@/stores/settingsStore";
+import { useSettingsStore, persistOutletPrefixesFromStore } from "@/stores/settingsStore";
 import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchNumberingSettings } from "@/lib/api-integration/settingsDomainEndpoints";
 
 export default function NumberingSettings() {
-  const { numbering, updateNumbering, outlets, upsertOutlet } = useSettingsStore();
+  const numbering = useSettingsStore((s) => s.numbering);
+  const updateNumbering = useSettingsStore((s) => s.updateNumbering);
+  const outlets = useSettingsStore((s) => s.outlets);
+  const upsertOutlet = useSettingsStore((s) => s.upsertOutlet);
   const [form, setForm] = useState(numbering);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  useEffect(() => {
+    setForm(numbering);
+  }, [numbering]);
+
+  const save = async () => {
     updateNumbering(form);
-    toast.success("Numbering format saved");
+    if (!getApiAccessToken()) {
+      toast.success("Numbering format saved locally");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await patchNumberingSettings(form);
+      updateNumbering(saved);
+      setForm(saved);
+      await persistOutletPrefixesFromStore();
+      toast.success("Numbering format saved");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -29,7 +54,7 @@ export default function NumberingSettings() {
             <Input value={form.orderFormat} onChange={(e) => setForm({ ...form, orderFormat: e.target.value })} />
           </div>
           <p className="text-xs text-muted-foreground">Tokens: <code>{"{YYYY}"}</code>, <code>{"{MM}"}</code>, <code>{"{DD}"}</code>, <code>{"{0000}"}</code> running counter.</p>
-          <Button onClick={save}>Save</Button>
+          <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </CardContent>
       </Card>
 

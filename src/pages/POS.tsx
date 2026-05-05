@@ -1,57 +1,157 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X, CreditCard, Banknote, QrCode, Smartphone,
   SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useOrderStore, type Order, type PaymentEntry } from "@/stores/orderStore";
+import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
+import { useMemberStore, type Member } from "@/stores/memberStore";
+import { Star } from "lucide-react";
 import { toast } from "sonner";
+import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   addOrderPayments,
-  createOrder as createOrderApi,
+  createOrder,
+  getOrder,
+  listMenuItems,
   type CreateOrderPayload,
   type OrderApi,
   type OrderPaymentPayload,
-} from "@/lib/api";
-import type { SplitOrderItem, SplitPerson as SplitPaymentPerson } from "@/features/pos/splitPaymentTypes";
-import {
-  buildSplitOrderItems,
-  clampPaymentAmount,
-  calculatePaidTotal,
-  calculateRemaining,
-  clampAllocationQty,
-  createPaymentAllocations,
-  createSplitPersons,
-  getTotalAllocatedQty,
-  sumAllocationAmount,
-  upsertPersonAllocation,
-} from "@/features/pos/splitPaymentUtils";
+} from "@/lib/api-integration/endpoints";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
 };
 type CartItem = MenuItem & { qty: number; notes: string };
 
-const categories = ["All", "Main Course", "Appetizers", "Drinks", "Desserts", "Sides"];
-const menuItems: MenuItem[] = [
-  { id: "1", name: "Nasi Goreng Special", price: 30000, category: "Main Course", emoji: "🍛" },
-  { id: "2", name: "Ayam Bakar", price: 40000, category: "Main Course", emoji: "🍗" },
-  { id: "3", name: "Mie Goreng", price: 25000, category: "Main Course", emoji: "🍝" },
-  { id: "4", name: "Sate Ayam 10pcs", price: 35000, category: "Main Course", emoji: "🥘" },
-  { id: "5", name: "Gado-Gado", price: 22000, category: "Appetizers", emoji: "🥗" },
-  { id: "6", name: "Lumpia Goreng", price: 15000, category: "Appetizers", emoji: "🌯" },
-  { id: "7", name: "Tahu Goreng", price: 12000, category: "Appetizers", emoji: "🧈" },
-  { id: "8", name: "Es Teh Manis", price: 10000, category: "Drinks", emoji: "🧊" },
-  { id: "9", name: "Jus Alpukat", price: 18000, category: "Drinks", emoji: "🥑" },
-  { id: "10", name: "Kopi Susu", price: 20000, category: "Drinks", emoji: "☕" },
-  { id: "11", name: "Es Jeruk", price: 12000, category: "Drinks", emoji: "🍊" },
-  { id: "12", name: "Pisang Goreng", price: 15000, category: "Desserts", emoji: "🍌" },
-  { id: "13", name: "Es Campur", price: 18000, category: "Desserts", emoji: "🍧" },
-  { id: "14", name: "Kerupuk Udang", price: 8000, category: "Sides", emoji: "🦐" },
-  { id: "15", name: "Sambal Extra", price: 5000, category: "Sides", emoji: "🌶️" },
-  { id: "16", name: "Nasi Putih", price: 7000, category: "Sides", emoji: "🍚" },
-];
+/** Matches template/dev setup; override with `VITE_API_TENANT_ID` in web/.env */
+const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
+
+const PAYMENT_LABEL_TO_API: Record<string, string> = {
+  Cash: "cash",
+  QRIS: "qris",
+  "E-Wallet": "ewallet",
+  Card: "card",
+};
+
+function toApiPaymentMethod(label: string): string {
+  return PAYMENT_LABEL_TO_API[label] ?? label.toLowerCase().replace(/\s+/g, "-");
+}
+
+function orderApiToStoreOrder(o: OrderApi): Order {
+  return {
+    id: String(o.id),
+    code: o.code,
+    source: o.source,
+    orderType: o.orderType,
+    items: o.items.map((it) => ({
+      orderItemId: it.orderItemId,
+      id: String(it.id),
+      name: it.name,
+      price: it.price,
+      qty: it.qty,
+      emoji: it.emoji ?? "",
+      notes: typeof it.notes === "string" ? it.notes : "",
+    })),
+    subtotal: o.subtotal,
+    tax: o.tax,
+    total: o.total,
+    status: o.status,
+    paymentStatus: o.paymentStatus,
+    payments: o.payments.map((p) => ({
+      method: p.method,
+      amount: p.amount,
+      paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+      allocations: p.allocations?.map((a) => ({
+        orderItemId: String(a.orderItemId),
+        qty: a.qty,
+        amount: a.amount,
+      })),
+    })),
+    customerName: o.customerName ?? "",
+    customerPhone: o.customerPhone ?? "",
+    tableNumber: o.tableNumber ?? "",
+    createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
+    confirmedAt: o.confirmedAt ? new Date(o.confirmedAt) : undefined,
+    splitBill: o.splitBill as Order["splitBill"],
+  };
+}
+
+function buildCartPayload(
+  cart: CartItem[],
+  subtotal: number,
+  tax: number,
+  total: number,
+  discount: number,
+  customerName: string,
+  customerPhone: string,
+  selectedTable: string,
+): Pick<
+  CreateOrderPayload,
+  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableNumber" | "discountAmount"
+> {
+  return {
+    items: cart.map((c) => ({
+      id: c.id,
+      name: c.name,
+      price: c.price,
+      qty: c.qty,
+      emoji: c.emoji,
+      notes: c.notes || undefined,
+    })),
+    subtotal,
+    tax,
+    total,
+    ...(discount > 0 ? { discountAmount: discount } : {}),
+    ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
+    ...(customerPhone.trim() ? { customerPhone: customerPhone.trim() } : {}),
+    ...(selectedTable ? { tableNumber: selectedTable } : {}),
+  };
+}
+
+function buildSplitPaymentsPayload(
+  order: OrderApi,
+  splitPersons: SplitPerson[],
+  splitMethod: "equal" | "by-item",
+  cart: CartItem[],
+): OrderPaymentPayload[] {
+  const out: OrderPaymentPayload[] = [];
+  for (const person of splitPersons) {
+    for (const p of person.payments) {
+      const base: OrderPaymentPayload = {
+        method: toApiPaymentMethod(p.method),
+        amount: p.amount,
+        paidAt: p.paidAt.toISOString(),
+      };
+      if (splitMethod === "by-item" && person.items.length > 0) {
+        const allocations: { orderItemId: number; qty: number; amount: number }[] = [];
+        for (const it of person.items) {
+          const line = order.items.find((oi) => String(oi.id) === it.itemId);
+          const ci = cart.find((c) => c.id === it.itemId);
+          if (!line?.orderItemId || !ci) continue;
+          const amount = ci.price * it.qty;
+          allocations.push({
+            orderItemId: Number(line.orderItemId),
+            qty: it.qty,
+            amount,
+          });
+        }
+        const sumAlloc = allocations.reduce((s, a) => s + a.amount, 0);
+        if (allocations.length > 0 && Math.abs(sumAlloc - p.amount) <= 0.02) {
+          out.push({ ...base, allocations });
+        } else {
+          out.push(base);
+        }
+      } else {
+        out.push(base);
+      }
+    }
+  }
+  return out;
+}
+
 const orderTypes = ["Dine-in", "Takeaway", "Online"];
 const paymentMethods = [
   { label: "Cash", icon: Banknote },
@@ -62,44 +162,9 @@ const paymentMethods = [
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
-function mapApiOrderToStoreOrder(order: OrderApi): Order {
-  return {
-    id: order.id,
-    code: order.code,
-    source: order.source,
-    orderType: order.orderType,
-    items: order.items.map((item) => ({
-      id: item.id,
-      orderItemId: item.orderItemId,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      emoji: item.emoji ?? "",
-      notes: item.notes ?? "",
-    })),
-    subtotal: order.subtotal,
-    tax: order.tax,
-    total: order.total,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    payments: order.payments.map((payment) => ({
-      method: payment.method,
-      amount: payment.amount,
-      paidAt: payment.paidAt ? new Date(payment.paidAt) : new Date(),
-      allocations: payment.allocations,
-    })),
-    customerName: order.customerName,
-    customerPhone: order.customerPhone,
-    tableNumber: order.tableNumber,
-    createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
-    confirmedAt: order.confirmedAt ? new Date(order.confirmedAt) : undefined,
-    splitBill: order.splitBill as Order["splitBill"],
-  };
-}
-
 export default function POS() {
-  const { addOrder, confirmOrder, tables, updateTableStatus } = useOrderStore();
-  const { getBestPromo, getApplicablePromos, incrementUsage } = usePromotionStore();
+  const { addOrder, tables, updateTableStatus } = useOrderStore();
+  const { getBestPromo, getApplicablePromos } = usePromotionStore();
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -108,6 +173,10 @@ export default function POS() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
+  const { members, fetchMembers } = useMemberStore();
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
 
   // Modal states
   const [showPayment, setShowPayment] = useState(false);
@@ -119,14 +188,40 @@ export default function POS() {
   const [manualPromo, setManualPromo] = useState<AppliedPromo | null>(null);
 
   // Split bill state
-  const [splitPersons, setSplitPersons] = useState<SplitPaymentPerson[]>([]);
-  const [splitOrderItems, setSplitOrderItems] = useState<SplitOrderItem[]>([]);
-  const [splitPersonPayments, setSplitPersonPayments] = useState<Record<number, PaymentEntry[]>>({});
+  const [splitPersons, setSplitPersons] = useState<SplitPerson[]>([]);
   const [splitMethod, setSplitMethod] = useState<"equal" | "by-item">("equal");
   const [splitCount, setSplitCount] = useState(2);
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
-  const [splitPayAmount, setSplitPayAmount] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    void fetchMembers().catch((e) => {
+      if (e instanceof ApiHttpError) toast.error(e.message);
+    });
+  }, [fetchMembers]);
+
+  const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
+    queryKey: ["menu-items", POS_TENANT_ID],
+    queryFn: () => listMenuItems({ tenantId: POS_TENANT_ID, perPage: 200 }),
+  });
+
+  const menuItems: MenuItem[] = useMemo(() => {
+    return menuApiItems
+      .filter((m) => m.available !== false)
+      .map((m) => ({
+        id: String(m.id),
+        name: m.name,
+        price: m.price,
+        category: m.category?.trim() ? m.category : "Uncategorized",
+        emoji: m.emoji ?? "🍽️",
+      }));
+  }, [menuApiItems]);
+
+  const categories = useMemo(() => {
+    const set = new Set(menuItems.map((m) => m.category));
+    return ["All", ...Array.from(set).sort()];
+  }, [menuItems]);
 
   const filtered = menuItems.filter(
     (m) => (activeCat === "All" || m.category === activeCat) &&
@@ -160,77 +255,44 @@ export default function POS() {
 
   const availableTables = tables.filter((t) => t.status === "available");
 
-  const createOrder = (): Order => ({
-    id: crypto.randomUUID(),
-    code: "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase(),
-    source: "pos",
-    orderType,
-    items: cart.map((c) => ({ id: c.id, name: c.name, price: c.price, qty: c.qty, emoji: c.emoji, notes: c.notes })),
-    subtotal, tax, total,
-    status: "pending",
-    paymentStatus: "unpaid",
-    payments: [],
-    customerName,
-    customerPhone,
-    tableNumber: selectedTable,
-    createdAt: new Date(),
-  });
+  function toastApiError(e: unknown): void {
+    if (e instanceof ApiHttpError) {
+      toast.error(e.message);
+      return;
+    }
+    toast.error("Something went wrong. Try again.");
+  }
 
-  const submitOrder = async (order: Order): Promise<Order> => {
-    const payload: CreateOrderPayload = {
-      code: order.code,
-      source: order.source,
-      orderType: order.orderType,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      items: order.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        qty: item.qty,
-        emoji: item.emoji,
-        notes: item.notes,
-      })),
-      subtotal: order.subtotal,
-      tax: order.tax,
-      total: order.total,
-      payments: order.payments.map((payment) => ({
-        method: payment.method,
-        amount: payment.amount,
-        paidAt: payment.paidAt.toISOString(),
-        allocations: payment.allocations,
-      })),
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      tableNumber: order.tableNumber,
-      createdAt: order.createdAt.toISOString(),
-      confirmedAt: order.confirmedAt?.toISOString(),
-      splitBill: order.splitBill,
-    };
-
-    const saved = await createOrderApi(payload);
-    return mapApiOrderToStoreOrder(saved);
-  };
-
-  // FLOW 1: Confirm Order → Send to Kitchen (Dine-in)
+  // FLOW 1: Confirm Order → Send to Kitchen (single POST: confirmed + unpaid → kitchen ticket)
   const handleConfirmOrder = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || submitting) return;
+    setSubmitting(true);
     try {
-      const localOrder = createOrder();
-      localOrder.status = "confirmed";
-      localOrder.confirmedAt = new Date();
-      const order = await submitOrder(localOrder);
-      addOrder(order);
-      confirmOrder(order.id);
+      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const payload: CreateOrderPayload = {
+        tenantId: POS_TENANT_ID,
+        code,
+        source: "pos",
+        orderType,
+        status: "confirmed",
+        paymentStatus: "unpaid",
+        payments: [],
+        confirmedAt: new Date().toISOString(),
+        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+      };
+      const apiOrder = await createOrder(payload);
+      addOrder(orderApiToStoreOrder(apiOrder));
       if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", order.id);
+        updateTableStatus(selectedTable, "occupied", String(apiOrder.id));
       }
-      setCurrentOrderId(order.id);
+      setCurrentOrderId(String(apiOrder.id));
       resetCart();
       setShowConfirmSent(true);
-      toast.success(`Order ${order.code} sent to kitchen!`, { icon: "🍳" });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit order");
+      toast.success(`Order ${apiOrder.code} sent to kitchen!`, { icon: "🍳" });
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -241,24 +303,40 @@ export default function POS() {
   };
 
   const completeDirectPayment = async () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || submitting) return;
+    setSubmitting(true);
     try {
-      const localOrder = createOrder();
-      localOrder.status = "confirmed";
-      localOrder.confirmedAt = new Date();
-      localOrder.payments = [{ method: selectedPayment, amount: total, paidAt: new Date() }];
-      localOrder.paymentStatus = "paid";
-      const order = await submitOrder(localOrder);
-      addOrder(order);
+      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const payload: CreateOrderPayload = {
+        tenantId: POS_TENANT_ID,
+        code,
+        source: "pos",
+        orderType,
+        status: "confirmed",
+        paymentStatus: "paid",
+        payments: [
+          {
+            method: toApiPaymentMethod(selectedPayment),
+            amount: total,
+            paidAt: new Date().toISOString(),
+          },
+        ],
+        confirmedAt: new Date().toISOString(),
+        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+      };
+      const apiOrder = await createOrder(payload);
+      addOrder(orderApiToStoreOrder(apiOrder));
       if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", order.id);
+        updateTableStatus(selectedTable, "occupied", String(apiOrder.id));
       }
       resetCart();
       setShowPayment(false);
       setSelectedPayment(null);
-      toast.success(`Order ${order.code} paid & sent to kitchen!`, { icon: "✅" });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit payment");
+      toast.success(`Order ${apiOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -276,180 +354,112 @@ export default function POS() {
     setShowSplit(true);
     setSplitMethod("equal");
     setSplitCount(2);
-    setSplitOrderItems(buildSplitOrderItems(cart.map((item) => ({ id: item.id, name: item.name, qty: item.qty, price: item.price }))));
-    setSplitPersonPayments({});
     buildEqualSplit(2);
   };
 
   const buildEqualSplit = (count: number) => {
     const perPerson = Math.ceil(total / count);
-    setSplitPersons(Array.from({ length: count }, (_, i) => ({
+    setSplitPersons(
+      Array.from({ length: count }, (_, i) => ({
         label: `Person ${i + 1}`,
-        allocations: [],
-        paidTotal: 0,
+        items: [],
+        payments: [],
         totalDue: i === count - 1 ? total - perPerson * (count - 1) : perPerson,
-      })));
+      }))
+    );
   };
 
   const buildItemSplit = (count: number) => {
-    setSplitPersons(createSplitPersons(count));
+    setSplitPersons(
+      Array.from({ length: count }, (_, i) => ({
+        label: `Person ${i + 1}`,
+        items: [],
+        payments: [],
+        totalDue: 0,
+      }))
+    );
   };
 
-  const updateItemAllocation = (personIdx: number, orderItemId: string, nextQty: number) => {
+  const toggleItemAssign = (personIdx: number, itemId: string) => {
     setSplitPersons((prev) => {
-      const orderItem = splitOrderItems.find((item) => item.orderItemId === orderItemId);
-      if (!orderItem) return prev;
-      return prev.map((person, index) => {
-        if (index !== personIdx) return person;
-        const allocatedByOthers = getTotalAllocatedQty(
-          prev.filter((_, idx) => idx !== personIdx),
-          orderItemId
-        );
-        const maxForPerson = Math.max(0, orderItem.qty - allocatedByOthers);
-        return upsertPersonAllocation(person, orderItem, clampAllocationQty(nextQty, maxForPerson));
+      const updated = prev.map((p, i) => {
+        if (i !== personIdx) return p;
+        const existing = p.items.find((it) => it.itemId === itemId);
+        if (existing) {
+          return { ...p, items: p.items.filter((it) => it.itemId !== itemId) };
+        }
+        const cartItem = cart.find((c) => c.id === itemId);
+        return { ...p, items: [...p.items, { itemId, qty: cartItem?.qty || 1 }] };
       });
-    });
-  };
-
-  const getPersonPayments = (personIdx: number): PaymentEntry[] => splitPersonPayments[personIdx] ?? [];
-
-  const syncSplitTotalsWithPayments = (persons: SplitPaymentPerson[]) => {
-    return persons.map((person, personIdx) => ({
-      ...person,
-      paidTotal: calculatePaidTotal(getPersonPayments(personIdx)),
-    }));
-  };
-
-  const setSplitCountAndRebuild = (count: number) => {
-    const capped = Math.max(2, Math.min(10, count));
-    setSplitCount(capped);
-    if (splitMethod === "equal") {
-      buildEqualSplit(capped);
-    } else {
-      buildItemSplit(capped);
-    }
-    setSplitPersonPayments((prev) => {
-      const next: Record<number, PaymentEntry[]> = {};
-      for (let idx = 0; idx < capped; idx += 1) {
-        next[idx] = prev[idx] ?? [];
-      }
-      return next;
+      // Recalculate totals for by-item
+      return updated.map((p) => ({
+        ...p,
+        totalDue: p.items.reduce((s, it) => {
+          const ci = cart.find((c) => c.id === it.itemId);
+          return s + (ci ? ci.price * it.qty : 0);
+        }, 0),
+      }));
     });
   };
 
   const completeSplitOrder = async () => {
+    if (submitting || splitPersons.length === 0) return;
+    setSubmitting(true);
     try {
-      const personsWithPaid = syncSplitTotalsWithPayments(splitPersons);
-      const orderDraft = createOrder();
-      orderDraft.status = "confirmed";
-      orderDraft.confirmedAt = new Date();
-      orderDraft.payments = [];
-      orderDraft.paymentStatus = "unpaid";
-      orderDraft.splitBill = {
-        method: splitMethod === "equal" ? "equal" : "by-item",
-        persons: personsWithPaid.map((person, personIdx) => ({
-          label: person.label,
-          items: person.allocations.map((allocation) => ({
-            itemId: allocation.orderItemId,
-            qty: allocation.qty,
-          })),
-          payments: getPersonPayments(personIdx),
-          totalDue: person.totalDue,
-        })),
-      };
-      const order = await submitOrder(orderDraft);
-
-      const orderItemIdByMenuId = new Map<string, number>();
-      for (const item of order.items) {
-        const rawOrderItemId = Number(item.orderItemId);
-        if (Number.isFinite(rawOrderItemId)) {
-          orderItemIdByMenuId.set(item.id, rawOrderItemId);
-        }
-      }
-
-      const paymentPayloads: OrderPaymentPayload[] = Object.values(splitPersonPayments).flat().map((payment) => {
-        const allocations = (payment.allocations ?? [])
-          .map((allocation) => {
-            const orderItemId = orderItemIdByMenuId.get(allocation.orderItemId);
-            if (!orderItemId) return null;
-            return {
-              orderItemId,
-              qty: allocation.qty,
-              amount: allocation.amount,
-            };
-          })
-          .filter((allocation): allocation is { orderItemId: number; qty: number; amount: number } => allocation !== null);
-
-        return {
-          method: payment.method,
-          amount: payment.amount,
-          paidAt: payment.paidAt.toISOString(),
-          allocations: allocations.length > 0 ? allocations : undefined,
-        };
+      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const created = await createOrder({
+        tenantId: POS_TENANT_ID,
+        code,
+        source: "pos",
+        orderType,
+        status: "confirmed",
+        paymentStatus: "unpaid",
+        payments: [],
+        confirmedAt: new Date().toISOString(),
+        splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
+        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       });
-
-      let syncedOrder = order;
-      if (paymentPayloads.length > 0) {
-        const paid = await addOrderPayments(order.id, { payments: paymentPayloads });
-        syncedOrder = mapApiOrderToStoreOrder(paid);
+      const fresh = await getOrder(created.id);
+      const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
+      const paidOrder =
+        batch.length > 0 ? await addOrderPayments(String(created.id), { payments: batch }) : fresh;
+      addOrder(orderApiToStoreOrder(paidOrder));
+      const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
+      if (selectedTable) {
+        updateTableStatus(selectedTable, totalPaid >= total ? "available" : "waiting-payment", String(created.id));
       }
-
-      addOrder(syncedOrder);
-      const totalPaid = syncedOrder.payments.reduce((s, p) => s + p.amount, 0);
-      if (selectedTable) updateTableStatus(selectedTable, totalPaid >= total ? "available" : "waiting-payment", syncedOrder.id);
       resetCart();
       setShowSplit(false);
-      toast.success(`Split bill order created!`, { icon: "💰" });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit split order");
+      toast.success("Split bill order saved!", { icon: "💰" });
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleSplitPersonPay = () => {
     if (payingPersonIdx === null || !splitPayMethod) return;
     const person = splitPersons[payingPersonIdx];
-    if (!person) return;
-    const paid = calculatePaidTotal(getPersonPayments(payingPersonIdx));
-    const remaining = calculateRemaining(person.totalDue, paid);
-    const amount = clampPaymentAmount(splitPayAmount, remaining);
-    if (amount <= 0) return;
-
-    const allocations = splitMethod === "by-item"
-      ? createPaymentAllocations(person.allocations, amount)
-      : [];
-    const allocationAmount = splitMethod === "by-item" ? sumAllocationAmount(allocations) : amount;
-    if (allocationAmount <= 0) return;
-
-    setSplitPersonPayments((prev) => ({
-      ...prev,
-      [payingPersonIdx]: [
-        ...(prev[payingPersonIdx] ?? []),
-        {
-          method: splitPayMethod,
-          amount: allocationAmount,
-          paidAt: new Date(),
-          allocations,
-        } as PaymentEntry,
-      ],
-    }));
-    setSplitPayAmount(0);
+    const alreadyPaid = person.payments.reduce((s, p) => s + p.amount, 0);
+    const remaining = person.totalDue - alreadyPaid;
+    if (remaining <= 0) return;
+    setSplitPersons((prev) =>
+      prev.map((p, i) =>
+        i === payingPersonIdx
+          ? { ...p, payments: [...p.payments, { method: splitPayMethod!, amount: remaining, paidAt: new Date() }] }
+          : p
+      )
+    );
     setPayingPersonIdx(null);
     setSplitPayMethod(null);
-    toast.success(`${person.label} paid ${formatRp(amount)} via ${splitPayMethod}`);
+    toast.success(`${person.label} paid ${formatRp(remaining)} via ${splitPayMethod}`);
   };
 
-  const removeSplitPaymentLine = (personIdx: number, paymentIdx: number) => {
-    setSplitPersonPayments((prev) => ({
-      ...prev,
-      [personIdx]: (prev[personIdx] ?? []).filter((_, idx) => idx !== paymentIdx),
-    }));
-  };
-
-  const allSplitAllocated = splitMethod === "equal" || splitOrderItems.every((item) => (
-    getTotalAllocatedQty(splitPersons, item.orderItemId) === item.qty
-  ));
-
-  const splitPersonsWithPaid = syncSplitTotalsWithPayments(splitPersons);
+  const allSplitPaid = splitPersons.every((p) => {
+    const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
+    return paid >= p.totalDue;
+  });
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -482,6 +492,27 @@ export default function POS() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {menuLoading && (
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">Loading menu…</div>
+          )}
+          {menuError && !menuLoading && (
+            <div className="flex flex-col items-center justify-center h-48 gap-2 text-center px-4">
+              <p className="text-sm text-destructive">Could not load menu from the server.</p>
+              <button
+                type="button"
+                onClick={() => void refetchMenu()}
+                className="text-sm font-medium text-primary underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!menuLoading && !menuError && menuItems.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">
+              No menu items available for this tenant.
+            </div>
+          )}
+          {!menuLoading && !menuError && menuItems.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {filtered.map((item) => {
               const inCart = cart.find((c) => c.id === item.id);
@@ -499,6 +530,7 @@ export default function POS() {
               );
             })}
           </div>
+          )}
         </div>
       </div>
 
@@ -523,6 +555,21 @@ export default function POS() {
                   className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
               </div>
             </div>
+            {/* Member selector */}
+            {selectedMember ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
+                <Star className="h-3.5 w-3.5 text-primary fill-primary" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground truncate">{selectedMember.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{selectedMember.points} pts</p>
+                </div>
+                <button onClick={() => setSelectedMember(null)} className="text-xs text-muted-foreground hover:text-destructive">×</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowMemberPicker(true)} className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left">
+                + Select member (optional)
+              </button>
+            )}
             {orderType === "Dine-in" && (
               <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
@@ -627,17 +674,17 @@ export default function POS() {
           <div className="flex gap-2">
             {orderType === "Dine-in" ? (
               <>
-                <button onClick={handleConfirmOrder} disabled={cart.length === 0}
+                <button onClick={() => void handleConfirmOrder()} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
                   className="flex-1 py-3 rounded-xl bg-accent text-accent-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-                  <ChefHat className="h-4 w-4" /> Confirm Order
+                  <ChefHat className="h-4 w-4" /> {submitting ? "…" : "Confirm Order"}
                 </button>
-                <button onClick={handlePayNow} disabled={cart.length === 0}
+                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <CreditCard className="h-4 w-4" /> Pay Now
                 </button>
               </>
             ) : (
-              <button onClick={handlePayNow} disabled={cart.length === 0}
+              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
                 Pay {formatRp(total)}
               </button>
@@ -696,9 +743,9 @@ export default function POS() {
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
                 <SplitSquareHorizontal className="h-4 w-4" /> Split Bill
               </button>
-              <button onClick={completeDirectPayment} disabled={!selectedPayment}
+              <button onClick={() => void completeDirectPayment()} disabled={!selectedPayment || submitting}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3">
-                <span className="flex items-center justify-center gap-2"><CheckCircle2 className="h-4 w-4" /> Complete Payment</span>
+                <span className="flex items-center justify-center gap-2"><CheckCircle2 className="h-4 w-4" /> {submitting ? "Processing…" : "Complete Payment"}</span>
               </button>
               <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 text-success text-sm">
                 <Printer className="h-4 w-4" /><span className="font-medium">Print: Ready</span>
@@ -742,7 +789,10 @@ export default function POS() {
               {/* Person count */}
               <div className="flex items-center justify-center gap-4 mb-5">
                 <button onClick={() => {
-                  setSplitCountAndRebuild(splitCount - 1);
+                  const c = Math.max(2, splitCount - 1);
+                  setSplitCount(c);
+                  if (splitMethod === "equal") buildEqualSplit(c);
+                  else buildItemSplit(c);
                 }}
                   className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80">
                   <Minus className="h-4 w-4 text-muted-foreground" />
@@ -752,7 +802,10 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground">people</p>
                 </div>
                 <button onClick={() => {
-                  setSplitCountAndRebuild(splitCount + 1);
+                  const c = Math.min(10, splitCount + 1);
+                  setSplitCount(c);
+                  if (splitMethod === "equal") buildEqualSplit(c);
+                  else buildItemSplit(c);
                 }}
                   className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center hover:bg-muted/80">
                   <Plus className="h-4 w-4 text-muted-foreground" />
@@ -762,43 +815,21 @@ export default function POS() {
               {/* By-item assignment */}
               {splitMethod === "by-item" && (
                 <div className="mb-5 space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Allocate item quantity per person:</p>
-                  {splitOrderItems.map((item) => {
-                    const allocated = getTotalAllocatedQty(splitPersons, item.orderItemId);
-                    return (
-                      <div key={item.orderItemId} className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-                        {item.name} allocated {allocated}/{item.qty}
-                      </div>
-                    );
-                  })}
+                  <p className="text-xs font-medium text-muted-foreground">Assign items to each person:</p>
                   {splitPersons.map((person, pIdx) => (
                     <div key={pIdx} className="bg-background rounded-xl p-3 border border-border/50">
                       <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
                         <Users className="h-3.5 w-3.5" /> {person.label}
                         <span className="ml-auto text-xs font-bold text-primary">{formatRp(person.totalDue)}</span>
                       </p>
-                      <div className="space-y-2">
-                        {splitOrderItems.map((item) => {
-                          const currentQty = person.allocations.find((line) => line.orderItemId === item.orderItemId)?.qty ?? 0;
-                          const allocatedByOthers = getTotalAllocatedQty(
-                            splitPersons.filter((_, idx) => idx !== pIdx),
-                            item.orderItemId
-                          );
-                          const maxQty = Math.max(0, item.qty - allocatedByOthers);
+                      <div className="flex flex-wrap gap-1.5">
+                        {cart.map((item) => {
+                          const assigned = person.items.some((it) => it.itemId === item.id);
                           return (
-                            <div key={`${pIdx}-${item.orderItemId}`} className="grid grid-cols-[1fr_88px] gap-2 items-center">
-                              <span className="text-xs text-foreground">{item.name} (max {maxQty})</span>
-                              <input
-                                aria-label={`${person.label}-${item.name}-qty`}
-                                data-testid={`split-qty-${pIdx}-${item.orderItemId}`}
-                                type="number"
-                                min={0}
-                                max={maxQty}
-                                value={currentQty}
-                                onChange={(event) => updateItemAllocation(pIdx, item.orderItemId, Number(event.target.value) || 0)}
-                                className="w-full px-2 py-1.5 rounded-lg border border-border bg-card text-xs"
-                              />
-                            </div>
+                            <button key={item.id} onClick={() => toggleItemAssign(pIdx, item.id)}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${assigned ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+                              {item.emoji} {item.name} ×{item.qty}
+                            </button>
                           );
                         })}
                       </div>
@@ -809,15 +840,15 @@ export default function POS() {
 
               {/* Split persons with payment */}
               <div className="space-y-2 mb-5">
-                {splitPersonsWithPaid.map((person, i) => {
-                  const paid = person.paidTotal;
+                {splitPersons.map((person, i) => {
+                  const paid = person.payments.reduce((s, p) => s + p.amount, 0);
                   const isPaid = paid >= person.totalDue && person.totalDue > 0;
                   return (
                     <div key={i} className={`flex items-center gap-3 rounded-xl p-3 border transition-all ${isPaid ? "bg-success/5 border-success/20" : "bg-background border-border/50"}`}>
                       <span className="text-sm font-medium text-foreground flex-1">{person.label}</span>
-                      <span className="text-xs text-muted-foreground">{formatRp(paid)} / {formatRp(person.totalDue)}</span>
+                      <span className="text-sm font-bold text-foreground">{formatRp(person.totalDue)}</span>
                       {isPaid ? (
-                        <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success">Paid</span>
+                        <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success">✓ Paid ({person.payments[0]?.method})</span>
                       ) : (
                         <button onClick={() => { setPayingPersonIdx(i); setSplitPayMethod(null); }}
                           className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90">
@@ -837,14 +868,6 @@ export default function POS() {
                       <p className="text-sm font-semibold text-foreground mb-3">
                         Pay for {splitPersons[payingPersonIdx]?.label}: {formatRp(splitPersons[payingPersonIdx]?.totalDue || 0)}
                       </p>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Remaining: {formatRp(
-                          calculateRemaining(
-                            splitPersons[payingPersonIdx]?.totalDue ?? 0,
-                            calculatePaidTotal(getPersonPayments(payingPersonIdx))
-                          )
-                        )}
-                      </p>
                       <div className="grid grid-cols-4 gap-2 mb-3">
                         {paymentMethods.map((pm) => (
                           <button key={pm.label} onClick={() => setSplitPayMethod(pm.label)}
@@ -854,31 +877,9 @@ export default function POS() {
                           </button>
                         ))}
                       </div>
-                      <input
-                        aria-label="split-payment-amount"
-                        data-testid="split-payment-amount"
-                        type="number"
-                        min={1}
-                        value={splitPayAmount}
-                        onChange={(event) => setSplitPayAmount(Number(event.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm mb-3"
-                        placeholder="Enter payment amount"
-                      />
-                      {(getPersonPayments(payingPersonIdx) ?? []).length > 0 && (
-                        <div className="space-y-1.5 mb-3">
-                          {(getPersonPayments(payingPersonIdx) ?? []).map((line, lineIdx) => (
-                            <div key={`split-payment-line-${lineIdx}`} className="flex items-center justify-between text-xs bg-background rounded-lg border border-border px-2 py-1.5">
-                              <span>{line.method} • {formatRp(line.amount)}</span>
-                              <button onClick={() => removeSplitPaymentLine(payingPersonIdx, lineIdx)} className="text-muted-foreground hover:text-foreground">
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                       <div className="flex gap-2">
                         <button onClick={() => setPayingPersonIdx(null)} className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium">Cancel</button>
-                        <button onClick={handleSplitPersonPay} disabled={!splitPayMethod || splitPayAmount <= 0}
+                        <button onClick={handleSplitPersonPay} disabled={!splitPayMethod}
                           className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40">Confirm Payment</button>
                       </div>
                     </div>
@@ -886,11 +887,59 @@ export default function POS() {
                 )}
               </AnimatePresence>
 
-              <button onClick={completeSplitOrder} disabled={!allSplitAllocated || splitPersons.length === 0}
+              <button onClick={() => void completeSplitOrder()} disabled={!allSplitPaid || splitPersons.length === 0 || submitting}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
-                {!allSplitAllocated && splitMethod === "by-item"
-                  ? "Finish Item Allocation"
-                  : "Create Split Order"}
+                {submitting ? "Saving…" : allSplitPaid ? "Complete Split Order" : `${splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length}/${splitPersons.length} Paid`}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Member picker */}
+      <AnimatePresence>
+        {showMemberPicker && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+            onClick={() => setShowMemberPicker(false)}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
+              className="bg-card rounded-2xl w-full max-w-md p-5 pos-shadow-md"
+              onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-semibold mb-3">Select member</h3>
+              <input
+                autoFocus value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
+                placeholder="Search by name or phone..."
+                className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm mb-3"
+              />
+              <div className="max-h-72 overflow-y-auto space-y-1">
+                {members
+                  .filter((m) => m.status === "active" &&
+                    (m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                     m.phone.includes(memberSearch)))
+                  .map((m) => (
+                    <button key={m.id}
+                      onClick={() => {
+                        setSelectedMember(m);
+                        setCustomerName(m.name);
+                        setCustomerPhone(m.phone);
+                        setShowMemberPicker(false);
+                        setMemberSearch("");
+                      }}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted text-left">
+                      <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{m.phone}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-primary">{m.points} pts</span>
+                    </button>
+                  ))}
+              </div>
+              <button onClick={() => { setShowMemberPicker(false); setMemberSearch(""); }}
+                className="mt-3 w-full py-2 rounded-xl bg-muted text-sm font-medium hover:bg-accent">
+                Cancel
               </button>
             </motion.div>
           </motion.div>

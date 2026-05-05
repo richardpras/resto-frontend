@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { listAccounts as listAccountsApi, listJournals as listJournalsApi } from "@/lib/api";
+import { listAccounts as listAccountsApi, listJournals as listJournalsApi, listOutlets as listOutletsApi } from "@/lib/api";
 import { accountFromApi, journalFromApi } from "@/lib/accountingMappers";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
@@ -52,12 +52,13 @@ interface AccountingState {
 export const useAccountingStore = create<AccountingState>((set) => ({
   accounts: [],
   journals: [],
-  outlets: ["Main Outlet", "Branch 1"],
+  outlets: [],
   refreshFromApi: async () => {
-    const [accRows, jourRows] = await Promise.all([listAccountsApi(), listJournalsApi()]);
+    const [accRows, jourRows, outletRows] = await Promise.all([listAccountsApi(), listJournalsApi(), listOutletsApi()]);
     set({
       accounts: accRows.map(accountFromApi),
       journals: jourRows.map(journalFromApi),
+      outlets: outletRows.map((outlet) => outlet.name),
     });
   },
 }));

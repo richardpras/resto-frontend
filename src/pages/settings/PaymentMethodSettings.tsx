@@ -8,21 +8,42 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useSettingsStore, PaymentMethod, newId } from "@/stores/settingsStore";
+import { useSettingsStore, PaymentMethod, newId, removePaymentCascade } from "@/stores/settingsStore";
 import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchPaymentMethod, postPaymentMethod } from "@/lib/api-integration/settingsDomainEndpoints";
 
 const empty: PaymentMethod = { id: "", name: "", type: "cash", status: "active" };
 
 export default function PaymentMethodSettings() {
-  const { paymentMethods, upsertPayment, deletePayment } = useSettingsStore();
+  const paymentMethods = useSettingsStore((s) => s.paymentMethods);
+  const upsertPayment = useSettingsStore((s) => s.upsertPayment);
+  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PaymentMethod>(empty);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return toast.error("Method name required");
-    upsertPayment(form);
-    setOpen(false);
-    toast.success("Payment method saved");
+    const wasInList = useSettingsStore.getState().paymentMethods.some((x) => x.id === form.id);
+    setSaving(true);
+    try {
+      if (!getApiAccessToken()) {
+        upsertPayment(form);
+        toast.success("Payment method saved locally");
+        setOpen(false);
+        return;
+      }
+      const saved = wasInList ? await patchPaymentMethod(form.id, form) : await postPaymentMethod(form);
+      upsertPayment(saved);
+      await refreshFromApi();
+      toast.success("Payment method saved");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -50,7 +71,22 @@ export default function PaymentMethodSettings() {
                 <TableCell>
                   <div className="flex gap-1">
                     <Button size="icon" variant="ghost" onClick={() => { setForm(p); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete?")) deletePayment(p.id); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!confirm("Delete?")) return;
+                        void (async () => {
+                          try {
+                            await removePaymentCascade(p.id);
+                            if (getApiAccessToken()) await refreshFromApi();
+                          } catch (e) {
+                            toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+                          }
+                        })();
+                      }}
+                    ><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -87,8 +123,8 @@ export default function PaymentMethodSettings() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={save}>Save</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

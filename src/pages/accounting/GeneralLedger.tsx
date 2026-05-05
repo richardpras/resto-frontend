@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { useAccountingStore, formatIDR, buildLedger } from "@/stores/accountingStore";
+import { useEffect, useState } from "react";
+import { getLedgerReport, type LedgerReportData } from "@/lib/api";
+import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,20 +8,41 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
+import { toast } from "sonner";
 
 export default function GeneralLedger() {
-  const { accounts, journals, outlets } = useAccountingStore();
+  const { accounts, outlets } = useAccountingStore();
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
   const [from, setFrom] = useState(monthAgo.toISOString().slice(0, 10));
   const [to, setTo] = useState(today);
   const [outlet, setOutlet] = useState("all");
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [ledger, setLedger] = useState<LedgerReportData>({ account: null, rows: [], opening: 0, closing: 0 });
 
-  const ledger = useMemo(
-    () => buildLedger(accountId, accounts, journals, { from, to, outlet }),
-    [accountId, accounts, journals, from, to, outlet],
-  );
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accountId, accounts]);
+
+  useEffect(() => {
+    if (!accountId) {
+      setLedger({ account: null, rows: [], opening: 0, closing: 0 });
+      return;
+    }
+    let active = true;
+    void getLedgerReport({ accountId, from, to, outlet })
+      .then((res) => {
+        if (active) setLedger(res);
+      })
+      .catch((e) => {
+        if (active) toast.error(e instanceof Error ? e.message : "Failed to load ledger report");
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, from, to, outlet]);
 
   const exportCSV = () => {
     const rows = [["Date", "Reference", "Description", "Debit", "Credit", "Balance"]];

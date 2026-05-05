@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Trash2 } from "lucide-react";
 import { usePayrollStore, formatIDR, type AdjustmentType } from "@/stores/payrollStore";
+import { DataTable, type Column } from "@/components/DataTable";
 import { toast } from "sonner";
 
 const allowanceCategories = ["Bonus", "Transport", "Meal", "Performance"];
@@ -28,15 +27,47 @@ export default function Adjustments() {
 
   const empName = (id: string) => employees.find((e) => e.id === id)?.name || "Unknown";
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.employeeId || form.amount <= 0) {
       toast.error("Fill all fields");
       return;
     }
-    addAdjustment(form);
-    toast.success("Adjustment added");
-    setOpen(false);
+    try {
+      await addAdjustment(form);
+      toast.success("Adjustment added");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save adjustment");
+    }
   };
+
+  const columns: Column<(typeof adjustments)[number]>[] = [
+    { key: "employee", header: "Employee", sortable: true, render: (a) => empName(a.employeeId) },
+    {
+      key: "type",
+      header: "Type",
+      sortable: true,
+      render: (a) => <Badge variant={a.type === "allowance" ? "default" : "destructive"}>{a.type}</Badge>,
+    },
+    { key: "category", header: "Category", sortable: true },
+    {
+      key: "amount",
+      header: "Amount",
+      sortable: true,
+      render: (a) => <span className={a.type === "allowance" ? "text-green-600" : "text-destructive"}>{a.type === "allowance" ? "+" : "-"}{formatIDR(a.amount)}</span>,
+    },
+    { key: "date", header: "Date", sortable: true },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      render: (a) => (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="icon" onClick={() => void removeAdjustment(a.id)}><Trash2 className="h-4 w-4" /></Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -45,41 +76,14 @@ export default function Adjustments() {
         <Button onClick={() => setOpen(true)} size="sm"><Plus className="h-4 w-4" />Add Entry</Button>
       </div>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {adjustments.map((a) => (
-              <TableRow key={a.id}>
-                <TableCell>{empName(a.employeeId)}</TableCell>
-                <TableCell>
-                  <Badge variant={a.type === "allowance" ? "default" : "destructive"}>{a.type}</Badge>
-                </TableCell>
-                <TableCell>{a.category}</TableCell>
-                <TableCell className={a.type === "allowance" ? "text-green-600" : "text-destructive"}>
-                  {a.type === "allowance" ? "+" : "-"}{formatIDR(a.amount)}
-                </TableCell>
-                <TableCell>{a.date}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => removeAdjustment(a.id)}><Trash2 className="h-4 w-4" /></Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {adjustments.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No adjustments</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataTable
+        data={adjustments}
+        columns={columns}
+        rowKey={(a) => a.id}
+        searchKeys={["category", "type", "date", "notes"]}
+        emptyMessage="No adjustments"
+        defaultPageSize={10}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -132,7 +136,7 @@ export default function Adjustments() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit}>Save</Button>
+            <Button onClick={() => void submit()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

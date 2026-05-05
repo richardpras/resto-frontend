@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchMerchantSettings } from "@/lib/api-integration/settingsDomainEndpoints";
 import { Store, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function MerchantSettings() {
-  const { merchant, updateMerchant, persistToApi } = useSettingsStore();
+  const { merchant, updateMerchant } = useSettingsStore();
   const [form, setForm] = useState(merchant);
   const [saving, setSaving] = useState(false);
 
@@ -29,7 +30,8 @@ export default function MerchantSettings() {
     }
     setSaving(true);
     try {
-      await persistToApi();
+      const saved = await patchMerchantSettings(form);
+      updateMerchant(saved);
       toast.success("Merchant saved to server");
     } catch (e) {
       toast.error(e instanceof ApiHttpError ? e.message : "Could not save to server");

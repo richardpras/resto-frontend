@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Order, Table } from "@/stores/orderStore";
+import { useOrderStore } from "@/stores/orderStore";
 import { motion } from "framer-motion";
-import { Users, CheckCircle2 } from "lucide-react";
-import { listOrders, type OrderApi } from "@/lib/api";
-import { toast } from "sonner";
+import { Users, Clock, CreditCard, CheckCircle2 } from "lucide-react";
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
@@ -13,86 +10,8 @@ const statusConfig = {
   "waiting-payment": { label: "Waiting Payment", color: "bg-warning/10 text-warning border-warning/20", dot: "bg-warning" },
 };
 
-const defaultTables: Table[] = Array.from({ length: 12 }, (_, i) => ({
-  id: `table-${i + 1}`,
-  name: `Table ${i + 1}`,
-  seats: i < 4 ? 2 : i < 8 ? 4 : 6,
-  status: "available",
-}));
-
-function mapApiOrder(order: OrderApi): Order {
-  return {
-    id: order.id,
-    code: order.code,
-    source: order.source,
-    orderType: order.orderType,
-    items: order.items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      emoji: item.emoji ?? "",
-      notes: item.notes ?? "",
-    })),
-    subtotal: order.subtotal,
-    tax: order.tax,
-    total: order.total,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    payments: order.payments.map((payment) => ({
-      method: payment.method,
-      amount: payment.amount,
-      paidAt: payment.paidAt ? new Date(payment.paidAt) : new Date(),
-    })),
-    customerName: order.customerName ?? "",
-    customerPhone: order.customerPhone ?? "",
-    tableNumber: order.tableNumber ?? "",
-    createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
-    confirmedAt: order.confirmedAt ? new Date(order.confirmedAt) : undefined,
-    splitBill: order.splitBill as Order["splitBill"],
-  };
-}
-
 export default function Tables() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [manualTableOverride, setManualTableOverride] = useState<Record<string, Table["status"]>>({});
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await listOrders();
-        setOrders(data.map(mapApiOrder));
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load table orders");
-      }
-    };
-    void load();
-  }, []);
-
-  const tables = useMemo(() => {
-    const activeOrders = orders.filter((order) => order.status !== "completed" && order.status !== "cancelled");
-    return defaultTables.map((table) => {
-      const linkedOrder = activeOrders.find((order) => order.tableNumber === table.id || order.tableNumber === table.name);
-      if (!linkedOrder) {
-        return {
-          ...table,
-          status: manualTableOverride[table.id] ?? "available",
-          orderId: undefined,
-        };
-      }
-
-      const status: Table["status"] = linkedOrder.paymentStatus === "paid" ? "available" : "occupied";
-      return {
-        ...table,
-        status: manualTableOverride[table.id] ?? status,
-        orderId: linkedOrder.id,
-      };
-    });
-  }, [orders, manualTableOverride]);
-
-  const updateTableStatus = (tableId: string, status: Table["status"]) => {
-    setManualTableOverride((prev) => ({ ...prev, [tableId]: status }));
-  };
+  const { tables, orders, updateTableStatus } = useOrderStore();
 
   return (
     <div className="p-4 md:p-6">
@@ -160,7 +79,7 @@ export default function Tables() {
                 )}
 
                 {table.status !== "available" && (
-                  <button onClick={() => updateTableStatus(table.id, "available")}
+                  <button onClick={() => updateTableStatus(table.id, "available", undefined)}
                     className="mt-3 w-full py-2 rounded-xl text-xs font-medium border border-border hover:bg-muted transition-colors flex items-center justify-center gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Clear Table
                   </button>

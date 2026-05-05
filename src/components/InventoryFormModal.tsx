@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useInventoryStore, type InventoryItem, type InventoryItemType } from "@/stores/inventoryStore";
+import { type InventoryItemType } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
 import { Package, Paperclip, Armchair } from "lucide-react";
+import { type InventoryItemApi, type InventoryPayload } from "@/lib/api";
 
 const typeConfig: Record<InventoryItemType, { label: string; icon: React.ReactNode; units: string[]; color: string }> = {
   ingredient: { label: "Ingredient", icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },
@@ -30,11 +31,11 @@ const emptyForm: FormData = { name: "", type: "ingredient", unit: "kg", stock: "
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  editItem?: InventoryItem | null;
+  editItem?: InventoryItemApi | null;
+  onSave: (payload: InventoryPayload, id?: string) => Promise<void>;
 };
 
-export default function InventoryFormModal({ open, onOpenChange, editItem }: Props) {
-  const { addItem, updateItem } = useInventoryStore();
+export default function InventoryFormModal({ open, onOpenChange, editItem, onSave }: Props) {
   const [form, setForm] = useState<FormData>(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [saving, setSaving] = useState(false);
@@ -81,7 +82,7 @@ export default function InventoryFormModal({ open, onOpenChange, editItem }: Pro
     // simulate async
     await new Promise((r) => setTimeout(r, 400));
 
-    const payload: Omit<InventoryItem, "id"> = {
+    const payload: InventoryPayload = {
       name: form.name.trim(),
       type: form.type,
       unit: form.unit,
@@ -91,16 +92,23 @@ export default function InventoryFormModal({ open, onOpenChange, editItem }: Pro
       ...(form.notes ? { notes: form.notes.trim() } : {}),
     };
 
-    if (editItem) {
-      updateItem(editItem.id, payload);
-      toast({ title: "Item updated", description: `${payload.name} has been updated.` });
-    } else {
-      addItem(payload);
-      toast({ title: "Item created", description: `${payload.name} has been added to inventory.` });
+    try {
+      await onSave(payload, editItem?.id);
+      toast({
+        title: editItem ? "Item updated" : "Item created",
+        description: editItem
+          ? `${payload.name} has been updated.`
+          : `${payload.name} has been added to inventory.`,
+      });
+      onOpenChange(false);
+    } catch (error) {
+      toast({
+        title: "Save failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    onOpenChange(false);
   };
 
   const cfg = typeConfig[form.type];

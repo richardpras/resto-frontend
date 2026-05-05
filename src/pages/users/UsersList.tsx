@@ -1,58 +1,60 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Pencil, Power } from "lucide-react";
-import { useUserStore, AppUser } from "@/stores/userStore";
+import { Plus, Search, Pencil, Loader2 } from "lucide-react";
+import { listUsers, listRoles } from "@/lib/api-integration/userManagementEndpoints";
+import type { UserApiRow } from "@/lib/api-integration/userManagementEndpoints";
 import { UserFormModal } from "@/components/UserFormModal";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function UsersList() {
-  const { users, roles, outlets } = useUserStore();
+  const qc = useQuery({ queryKey: ["users"], queryFn: listUsers });
+  const qr = useQuery({ queryKey: ["roles"], queryFn: listRoles });
+
+  const users = qc.data ?? [];
+  const roles = qr.data ?? [];
+
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [outletFilter, setOutletFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<AppUser | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<AppUser | null>(null);
+  const [editing, setEditing] = useState<UserApiRow | null>(null);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
       if (q && !`${u.name} ${u.email}`.toLowerCase().includes(q.toLowerCase())) return false;
-      if (roleFilter !== "all" && !u.roleIds.includes(roleFilter)) return false;
-      if (outletFilter !== "all" && !u.outletIds.includes(outletFilter)) return false;
-      if (statusFilter !== "all" && u.status !== statusFilter) return false;
+      if (roleFilter !== "all") {
+        const rid = Number(roleFilter);
+        const has = (u.roles ?? []).some((r) => r.id === rid);
+        if (!has) return false;
+      }
       return true;
     });
-  }, [users, q, roleFilter, outletFilter, statusFilter]);
+  }, [users, q, roleFilter]);
 
-  const roleBadges = (ids: string[]) =>
-    ids.length === 0 ? (
-      <span className="text-muted-foreground text-sm">—</span>
-    ) : (
+  const loading = qc.isLoading || qr.isLoading;
+  const fetchErr = qc.error ?? qr.error;
+
+  useEffect(() => {
+    if (fetchErr instanceof ApiHttpError) toast.error(fetchErr.message);
+  }, [fetchErr]);
+
+  const roleBadges = (u: UserApiRow) => {
+    const rs = u.roles ?? [];
+    if (rs.length === 0) return <span className="text-muted-foreground text-sm">—</span>;
+    return (
       <div className="flex flex-wrap gap-1">
-        {ids.map((id) => (
-          <Badge key={id} variant="secondary">
-            {roles.find((r) => r.id === id)?.name ?? id}
-          </Badge>
+        {rs.map((r) => (
+          <Badge key={r.id} variant="secondary">{r.name}</Badge>
         ))}
       </div>
     );
-
-  const outletNames = (ids: string[]) =>
-    ids.length === 0 ? (
-      <span className="text-muted-foreground text-sm">No outlets (API)</span>
-    ) : (
-      ids.map((id) => outlets.find((o) => o.id === id)?.name).filter(Boolean).join(", ") || "—"
-    );
+  };
 
   return (
     <div className="space-y-4">
@@ -66,96 +68,70 @@ export default function UsersList() {
             <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              {roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+              {roles.map((r) => (
+                <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Select value={outletFilter} onValueChange={setOutletFilter}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Outlets</SelectItem>
-              {outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={() => { setEditing(null); setOpen(true); }}>
+          <Button
+            onClick={() => { setEditing(null); setOpen(true); }}
+            disabled={roles.length === 0}
+          >
             <Plus className="h-4 w-4" /> Add User
           </Button>
         </div>
       </Card>
 
       <Card className="rounded-2xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Outlets</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">No users found</TableCell></TableRow>
-            )}
-            {filtered.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.name}</TableCell>
-                <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                <TableCell>{roleBadges(u.roleIds)}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{outletNames(u.outletIds)}</TableCell>
-                <TableCell>
-                  <Badge className={u.status === "active" ? "bg-primary/15 text-primary hover:bg-primary/20" : "bg-muted text-muted-foreground"}>
-                    {u.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading users…
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>PIN</TableHead>
+                <TableHead>Roles</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">No users found</TableCell></TableRow>
+              )}
+              {filtered.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium">{u.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell>
+                    {u.pinSet ? (
+                      <Badge variant="outline" className="font-normal">Set</Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{roleBadges(u)}</TableCell>
+                  <TableCell className="text-right">
                     <Button size="icon" variant="ghost" onClick={() => { setEditing(u); setOpen(true); }}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => setDeactivateTarget(u)}>
-                      <Power className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Card>
 
-      <UserFormModal open={open} onOpenChange={setOpen} editing={editing} />
-
-      <AlertDialog open={!!deactivateTarget} onOpenChange={(o) => !o && setDeactivateTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Change user status?</AlertDialogTitle>
-            <AlertDialogDescription>
-              User active/inactive status is not stored by the API yet. Use your identity provider or a future API update.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                toast.info("User status changes require API support.");
-                setDeactivateTarget(null);
-              }}
-            >
-              OK
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UserFormModal
+        open={open}
+        onOpenChange={setOpen}
+        editing={editing}
+        roles={roles}
+      />
     </div>
   );
 }

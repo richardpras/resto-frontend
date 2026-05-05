@@ -10,7 +10,7 @@ export default function Purchases() {
   const [tab, setTab] = useState("pr");
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       {/* Flow visualization */}
       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground py-3 px-4 bg-muted/30 rounded-xl border border-border/50">
         <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "pr" ? "bg-primary text-primary-foreground" : "bg-background"}`}>

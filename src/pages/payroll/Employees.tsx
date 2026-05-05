@@ -6,9 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { usePayrollStore, formatIDR, type Employee, type SalaryType } from "@/stores/payrollStore";
+import { DataTable, type Column } from "@/components/DataTable";
 import {
   createEmployee as createEmployeeApi,
   updateEmployee as updateEmployeeApi,
@@ -95,43 +95,36 @@ export default function Employees() {
         <Button onClick={openCreate} size="sm"><Plus className="h-4 w-4" />Add Employee</Button>
       </div>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>No.</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Position</TableHead>
-              <TableHead>Outlet</TableHead>
-              <TableHead>Salary Type</TableHead>
-              <TableHead>Base Salary</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {employees.map((e) => (
-              <TableRow key={e.id}>
-                <TableCell className="font-mono text-xs text-muted-foreground">{e.employeeNo || "—"}</TableCell>
-                <TableCell className="font-medium">{e.name}</TableCell>
-                <TableCell>{e.position}</TableCell>
-                <TableCell>{e.outlet}</TableCell>
-                <TableCell className="capitalize">{e.salaryType}</TableCell>
-                <TableCell>{formatIDR(e.baseSalary)}</TableCell>
-                <TableCell>
-                  <Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status}</Badge>
-                </TableCell>
-                <TableCell className="text-right">
+      <Card className="p-0 border-0 shadow-none">
+        <DataTable
+          data={employees}
+          rowKey={(e) => e.id}
+          searchPlaceholder="Search employee..."
+          searchKeys={["employeeNo", "name", "position", "outlet", "status"]}
+          emptyMessage="No employees (check API token and backend)."
+          defaultPageSize={10}
+          pageSizeOptions={[10, 25, 50]}
+          columns={[
+            { key: "employeeNo", header: "No.", sortable: true, render: (e) => <span className="font-mono text-xs text-muted-foreground">{e.employeeNo || "—"}</span> },
+            { key: "name", header: "Name", sortable: true, render: (e) => <span className="font-medium">{e.name}</span> },
+            { key: "position", header: "Position", sortable: true },
+            { key: "outlet", header: "Outlet", sortable: true },
+            { key: "salaryType", header: "Salary Type", sortable: true, render: (e) => <span className="capitalize">{e.salaryType}</span> },
+            { key: "baseSalary", header: "Base Salary", sortable: true, render: (e) => formatIDR(e.baseSalary) },
+            { key: "status", header: "Status", sortable: true, render: (e) => <Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status}</Badge> },
+            {
+              key: "actions",
+              header: "Actions",
+              className: "text-right",
+              render: (e) => (
+                <div className="flex justify-end gap-1">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(e)}><Pencil className="h-4 w-4" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => void remove(e.id)}><Trash2 className="h-4 w-4" /></Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {employees.length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No employees (check API token and backend).</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+                </div>
+              ),
+            },
+          ] as Column<Employee>[]}
+        />
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -153,7 +146,7 @@ export default function Employees() {
               <Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Outlet (UI only)</Label>
+              <Label>Outlet</Label>
               <Input value={form.outlet} onChange={(e) => setForm({ ...form, outlet: e.target.value })} />
             </div>
             <div className="space-y-2">
@@ -161,7 +154,7 @@ export default function Employees() {
               <Input type="date" value={form.joinDate} onChange={(e) => setForm({ ...form, joinDate: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Salary Type (UI only)</Label>
+              <Label>Salary Type</Label>
               <Select value={form.salaryType} onValueChange={(v) => setForm({ ...form, salaryType: v as SalaryType })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -194,7 +187,7 @@ export default function Employees() {
               <Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Overtime rate (UI only)</Label>
+              <Label>Overtime rate</Label>
               <Input type="number" value={form.overtimeRate} onChange={(e) => setForm({ ...form, overtimeRate: Number(e.target.value) })} />
             </div>
           </div>

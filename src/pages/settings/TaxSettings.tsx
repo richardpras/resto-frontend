@@ -9,22 +9,43 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useSettingsStore, Tax, newId } from "@/stores/settingsStore";
+import { useSettingsStore, Tax, newId, removeTaxCascade } from "@/stores/settingsStore";
 import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchTax, postTax } from "@/lib/api-integration/settingsDomainEndpoints";
 
 const empty: Tax = { id: "", name: "", type: "percentage", value: 0, applyDineIn: true, applyTakeaway: true, inclusive: false, status: "active" };
 
 export default function TaxSettings() {
-  const { taxes, upsertTax, deleteTax } = useSettingsStore();
+  const taxes = useSettingsStore((s) => s.taxes);
+  const upsertTax = useSettingsStore((s) => s.upsertTax);
+  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Tax>(empty);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return toast.error("Tax name required");
     if (form.value < 0) return toast.error("Value must be ≥ 0");
-    upsertTax(form);
-    setOpen(false);
-    toast.success("Tax saved");
+    const wasInList = useSettingsStore.getState().taxes.some((t) => t.id === form.id);
+    setSaving(true);
+    try {
+      if (!getApiAccessToken()) {
+        upsertTax(form);
+        toast.success("Tax saved locally");
+        setOpen(false);
+        return;
+      }
+      const saved = wasInList ? await patchTax(form.id, form) : await postTax(form);
+      upsertTax(saved);
+      await refreshFromApi();
+      toast.success("Tax saved");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -55,7 +76,22 @@ export default function TaxSettings() {
                 <TableCell>
                   <div className="flex gap-1">
                     <Button size="icon" variant="ghost" onClick={() => { setForm(t); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete tax?")) deleteTax(t.id); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!confirm("Delete tax?")) return;
+                        void (async () => {
+                          try {
+                            await removeTaxCascade(t.id);
+                            if (getApiAccessToken()) await refreshFromApi();
+                          } catch (e) {
+                            toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+                          }
+                        })();
+                      }}
+                    ><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -110,8 +146,8 @@ export default function TaxSettings() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={save}>Save</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

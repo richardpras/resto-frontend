@@ -22,8 +22,14 @@ import Settings from "./pages/Settings";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { PERMISSIONS } from "@/stores/authStore";
+import Suppliers from "./pages/Suppliers";
+import Members from "./pages/Members";
 
 const queryClient = new QueryClient();
+const guarded = (perm: string | undefined, el: React.ReactNode) =>
+  <ProtectedRoute permission={perm}>{el}</ProtectedRoute>
 
 function AppShell() {
   return (
@@ -41,23 +47,26 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* Guest QR menu: full viewport, no sidebar (not a bug). Staff list: /qr-orders inside shell. */}
+          <Route path="/qr-order" element={<QROrder />} />
           <Route element={<AppShell />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/pos" element={<POS />} />
-            <Route path="/kitchen" element={<Kitchen />} />
-            <Route path="/qr-order" element={<QROrder />} />
-            <Route path="/qr-orders" element={<QROrdersList />} />
-            <Route path="/tables" element={<Tables />} />
-            <Route path="/menu" element={<MenuManagement />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/purchases" element={<Purchases />} />
-            <Route path="/promotions" element={<Promotions />} />
-            <Route path="/payroll" element={<Payroll />} />
-            <Route path="/cashier" element={<Cashier />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/accounting" element={<Accounting />} />
-            <Route path="/reports" element={<PlaceholderPage title="Reports" description="Sales, purchases, P&L, and employee performance reports." />} />
-            <Route path="/settings" element={<Settings />} />
+          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/pos" element={guarded(PERMISSIONS.POS, <POS />)} />
+            <Route path="/kitchen" element={guarded(PERMISSIONS.KITCHEN, <Kitchen />)} />
+            <Route path="/qr-orders" element={guarded(PERMISSIONS.QR_ORDERS, <QROrdersList />)} />
+            <Route path="/cashier" element={guarded(PERMISSIONS.POS, <Cashier />)} />
+            <Route path="/tables" element={guarded(PERMISSIONS.TABLES, <Tables />)} />
+            <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
+            <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
+            <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
+            <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />
+            <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
+            <Route path="/promotions" element={guarded(PERMISSIONS.PROMOTIONS, <Promotions />)} />
+            <Route path="/payroll" element={guarded(PERMISSIONS.PAYROLL, <Payroll />)} />
+            <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
+            <Route path="/accounting" element={guarded(PERMISSIONS.ACCOUNTING, <Accounting />)} />
+            <Route path="/reports" element={guarded(PERMISSIONS.REPORTS, <PlaceholderPage title="Reports" description="Sales, purchases, P&L, and employee performance reports." />)} />
+            <Route path="/settings" element={guarded(PERMISSIONS.SETTINGS, <Settings />)} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

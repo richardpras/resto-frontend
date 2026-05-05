@@ -12,6 +12,8 @@ export type AuthUserSummary = {
 export type MeResponse = AuthUserSummary & {
   roles: { id: number; name: string }[];
   permissionCodes: string[];
+  /** Server stores a bcrypt PIN hash; unlock goes through verify-screen-pin. */
+  pinSet?: boolean;
 };
 
 export type LoginResponse = {
@@ -33,6 +35,8 @@ export type UserApiRow = {
   id: number;
   name: string;
   email: string;
+  /** POS screen-lock PIN configured (hash on server only). */
+  pinSet?: boolean;
   roles?: UserRoleSummary[];
   createdAt?: string | null;
 };
@@ -71,15 +75,52 @@ export async function me(): Promise<MeResponse> {
   return res.data;
 }
 
+export async function verifyScreenPin(pin: string): Promise<void> {
+  await request<{ message: string }>("/auth/verify-screen-pin", {
+    method: "POST",
+    body: JSON.stringify({ pin }),
+  });
+}
+
+export async function updateScreenPin(payload: { pin: string; currentPin?: string }): Promise<void> {
+  const body =
+    payload.currentPin !== undefined ? { pin: payload.pin, currentPin: payload.currentPin } : { pin: payload.pin };
+  await request<{ message: string }>("/auth/screen-pin", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function listUsers(): Promise<UserApiRow[]> {
   const res = await request<ListEnvelope<UserApiRow>>("/users");
   return res.data;
 }
 
-export async function createUser(payload: { name: string; email: string; password: string }): Promise<UserApiRow> {
+export async function createUser(payload: {
+  name: string;
+  email: string;
+  password: string;
+  /** Optional 4-digit POS unlock PIN set by admin during create. */
+  pin?: string;
+}): Promise<UserApiRow> {
   const res = await request<{ message: string; data: UserApiRow }>("/users", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function adminSetUserScreenPin(userId: number | string, pin: string): Promise<UserApiRow> {
+  const res = await request<{ message: string; data: UserApiRow }>(`/users/${userId}/screen-pin`, {
+    method: "PUT",
+    body: JSON.stringify({ pin }),
+  });
+  return res.data;
+}
+
+export async function adminClearUserScreenPin(userId: number | string): Promise<UserApiRow> {
+  const res = await request<{ message: string; data: UserApiRow }>(`/users/${userId}/screen-pin`, {
+    method: "DELETE",
   });
   return res.data;
 }

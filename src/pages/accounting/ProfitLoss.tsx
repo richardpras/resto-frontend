@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react";
-import { useAccountingStore, formatIDR, buildPL } from "@/stores/accountingStore";
+import { useEffect, useMemo, useState } from "react";
+import { getProfitLossReport, type ProfitLossReportData } from "@/lib/api";
+import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Download, TrendingUp, TrendingDown } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ProfitLoss() {
-  const { accounts, journals, outlets } = useAccountingStore();
+  const { outlets } = useAccountingStore();
   const today = new Date();
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const endMonth = today.toISOString().slice(0, 10);
@@ -19,9 +21,31 @@ export default function ProfitLoss() {
   const [to, setTo] = useState(endMonth);
   const [outlet, setOutlet] = useState("all");
   const [compare, setCompare] = useState(true);
+  const [current, setCurrent] = useState<ProfitLossReportData>({
+    revenue: [], cogs: [], expenses: [], totalRevenue: 0, totalCOGS: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0,
+  });
+  const [previous, setPrevious] = useState<ProfitLossReportData>({
+    revenue: [], cogs: [], expenses: [], totalRevenue: 0, totalCOGS: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0,
+  });
 
-  const current = useMemo(() => buildPL(accounts, journals, { from, to, outlet }), [accounts, journals, from, to, outlet]);
-  const previous = useMemo(() => buildPL(accounts, journals, { from: startPrev, to: endPrev, outlet }), [accounts, journals, startPrev, endPrev, outlet]);
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      getProfitLossReport({ from, to, outlet }),
+      getProfitLossReport({ from: startPrev, to: endPrev, outlet }),
+    ])
+      .then(([curr, prev]) => {
+        if (!active) return;
+        setCurrent(curr);
+        setPrevious(prev);
+      })
+      .catch((e) => {
+        if (active) toast.error(e instanceof Error ? e.message : "Failed to load P&L report");
+      });
+    return () => {
+      active = false;
+    };
+  }, [from, to, outlet, startPrev, endPrev]);
 
   const pct = (curr: number, prev: number) => {
     if (prev === 0) return curr === 0 ? 0 : 100;

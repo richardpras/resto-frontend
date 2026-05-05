@@ -9,24 +9,63 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useSettingsStore, Outlet, newId } from "@/stores/settingsStore";
+import { useSettingsStore, Outlet, newId, removeOutletCascade } from "@/stores/settingsStore";
 import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchOutlet, postOutlet } from "@/lib/api-integration/settingsDomainEndpoints";
 
 const empty: Outlet = { id: "", name: "", address: "", phone: "", manager: "", status: "active" };
 
 export default function OutletsSettings() {
-  const { outlets, upsertOutlet, deleteOutlet } = useSettingsStore();
+  const outlets = useSettingsStore((s) => s.outlets);
+  const upsertOutlet = useSettingsStore((s) => s.upsertOutlet);
+  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Outlet>(empty);
+  const [saving, setSaving] = useState(false);
 
-  const openNew = () => { setForm({ ...empty, id: newId() }); setOpen(true); };
-  const openEdit = (o: Outlet) => { setForm(o); setOpen(true); };
+  const openNew = () => {
+    setForm({ ...empty, id: newId() });
+    setOpen(true);
+  };
+  const openEdit = (o: Outlet) => {
+    setForm(o);
+    setOpen(true);
+  };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return toast.error("Outlet name required");
-    upsertOutlet(form);
-    setOpen(false);
-    toast.success("Outlet saved");
+    const wasInList = useSettingsStore.getState().outlets.some((o) => o.id === form.id);
+
+    setSaving(true);
+    try {
+      if (!getApiAccessToken()) {
+        upsertOutlet(form);
+        toast.success("Outlet saved locally");
+        setOpen(false);
+        return;
+      }
+      const saved = wasInList ? await patchOutlet(form.id, form) : await postOutlet(form);
+      upsertOutlet(saved);
+      await refreshFromApi();
+      toast.success("Outlet saved");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    if (!confirm("Delete outlet?")) return;
+    try {
+      await removeOutletCascade(id);
+      if (getApiAccessToken()) await refreshFromApi();
+      toast.success("Outlet deleted");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+    }
   };
 
   return (
@@ -34,7 +73,7 @@ export default function OutletsSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">Outlets</h2>
-          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Outlet</Button>
+          <Button type="button" onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Outlet</Button>
         </div>
         <Table>
           <TableHeader>
@@ -53,8 +92,8 @@ export default function OutletsSettings() {
                 <TableCell><Badge variant={o.status === "active" ? "default" : "secondary"}>{o.status}</Badge></TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(o)}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete outlet?")) deleteOutlet(o.id); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}><Pencil className="h-4 w-4" /></Button>
+                    <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -64,7 +103,7 @@ export default function OutletsSettings() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>{outlets.find(o => o.id === form.id) ? "Edit" : "New"} Outlet</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{outlets.find((o) => o.id === form.id) ? "Edit" : "New"} Outlet</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
               <div className="space-y-2"><Label>Address</Label><Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
@@ -84,8 +123,8 @@ export default function OutletsSettings() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={save}>Save</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

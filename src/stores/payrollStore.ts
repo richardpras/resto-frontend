@@ -1,10 +1,26 @@
 import { create } from "zustand";
 import {
-  listEmployees as listEmployeesApi,
-  listAttendances as listAttendancesApi,
-  listPayrolls as listPayrollsApi,
+  createAdjustment as createAdjustmentApi,
+  createAttendance as createAttendanceApi,
+  createLoan as createLoanApi,
+  createOvertime as createOvertimeApi,
+  createShift as createShiftApi,
+  deleteAdjustment as deleteAdjustmentApi,
+  deleteAttendance as deleteAttendanceApi,
+  deleteLoan as deleteLoanApi,
+  deleteOvertime as deleteOvertimeApi,
+  deleteShift as deleteShiftApi,
+  listAdjustments,
+  listAttendances,
+  listEmployees,
+  listLoans,
+  listOvertime,
+  listPayrolls,
+  listShifts,
+  updateLoan as updateLoanApi,
+  updateOvertime as updateOvertimeApi,
+  type PayrollApiRow,
 } from "@/lib/api";
-import type { PayrollApiRow } from "@/lib/api-integration/hrEndpoints";
 import { attendanceFromApi, employeeFromApi } from "@/lib/payrollMappers";
 
 export type SalaryType = "monthly" | "daily" | "hourly";
@@ -20,7 +36,6 @@ export interface Employee {
   baseSalary: number; // per month/day/hour depending on type
   overtimeRate: number; // per hour
   status: EmployeeStatus;
-  /** From HR API — required for updates. */
   employeeNo?: string;
   email?: string;
   phone?: string;
@@ -107,39 +122,47 @@ export interface PayrollRun {
 interface PayrollState {
   employees: Employee[];
   attendance: Attendance[];
-  /** Posted payroll rows from `GET /payrolls` (when token + permission allow). */
-  apiPayrolls: PayrollApiRow[];
   overtimes: Overtime[];
   adjustments: Adjustment[];
   shifts: Shift[];
   loans: Loan[];
   runs: PayrollRun[];
+  apiPayrolls: PayrollApiRow[];
 
-  refreshEmployeesFromApi: () => Promise<void>;
-  refreshAttendanceFromApi: () => Promise<void>;
-  refreshPayrollsFromApi: () => Promise<void>;
+  addEmployee: (e: Omit<Employee, "id">) => void;
+  updateEmployee: (id: string, e: Partial<Employee>) => void;
+  removeEmployee: (id: string) => void;
 
+  addAttendance: (a: Omit<Attendance, "id">) => Promise<void>;
   updateAttendance: (id: string, a: Partial<Attendance>) => void;
+  removeAttendance: (id: string) => Promise<void>;
 
-  addOvertime: (o: Omit<Overtime, "id">) => void;
-  updateOvertime: (id: string, o: Partial<Overtime>) => void;
-  removeOvertime: (id: string) => void;
+  addOvertime: (o: Omit<Overtime, "id">) => Promise<void>;
+  updateOvertime: (id: string, o: Partial<Overtime>) => Promise<void>;
+  removeOvertime: (id: string) => Promise<void>;
 
-  addAdjustment: (a: Omit<Adjustment, "id">) => void;
-  removeAdjustment: (id: string) => void;
+  addAdjustment: (a: Omit<Adjustment, "id">) => Promise<void>;
+  removeAdjustment: (id: string) => Promise<void>;
 
-  addShift: (s: Omit<Shift, "id">) => void;
-  removeShift: (id: string) => void;
+  addShift: (s: Omit<Shift, "id">) => Promise<void>;
+  removeShift: (id: string) => Promise<void>;
 
-  addLoan: (l: Omit<Loan, "id" | "paidInstallments" | "status">) => void;
-  payLoanInstallment: (id: string) => void;
-  removeLoan: (id: string) => void;
+  addLoan: (l: Omit<Loan, "id" | "paidInstallments" | "status">) => Promise<void>;
+  payLoanInstallment: (id: string) => Promise<void>;
+  removeLoan: (id: string) => Promise<void>;
 
   calculateRun: (period: string, outlet?: string) => PayrollRun;
   saveRun: (run: PayrollRun) => void;
   finalizeRun: (id: string) => void;
   markRunPaid: (id: string) => void;
   deleteRun: (id: string) => void;
+  refreshEmployeesFromApi: () => Promise<void>;
+  refreshAttendanceFromApi: () => Promise<void>;
+  refreshPayrollsFromApi: () => Promise<void>;
+  refreshOvertimeFromApi: () => Promise<void>;
+  refreshAdjustmentsFromApi: () => Promise<void>;
+  refreshShiftsFromApi: () => Promise<void>;
+  refreshLoansFromApi: () => Promise<void>;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -168,56 +191,130 @@ function calcPPH21(monthlyTaxable: number): number {
 }
 
 export const usePayrollStore = create<PayrollState>((set, get) => ({
-  employees: [],
+  employees: [
+    { id: "e1", name: "Andi Wijaya", position: "Cashier", outlet: "Main", joinDate: "2024-06-01", salaryType: "monthly", baseSalary: 5000000, overtimeRate: 30000, status: "active" },
+    { id: "e2", name: "Siti Rahma", position: "Chef", outlet: "Main", joinDate: "2023-01-15", salaryType: "monthly", baseSalary: 8000000, overtimeRate: 50000, status: "active" },
+    { id: "e3", name: "Budi Santoso", position: "Waiter", outlet: "Main", joinDate: "2025-02-10", salaryType: "daily", baseSalary: 150000, overtimeRate: 25000, status: "active" },
+  ],
   attendance: [],
-  apiPayrolls: [],
   overtimes: [],
   adjustments: [],
   shifts: [],
   loans: [],
   runs: [],
+  apiPayrolls: [],
 
-  refreshEmployeesFromApi: async () => {
-    const rows = await listEmployeesApi();
-    set({ employees: rows.map(employeeFromApi) });
-  },
+  addEmployee: (e) => set((s) => ({ employees: [...s.employees, { ...e, id: uid() }] })),
+  updateEmployee: (id, e) => set((s) => ({ employees: s.employees.map((x) => (x.id === id ? { ...x, ...e } : x)) })),
+  removeEmployee: (id) => set((s) => ({ employees: s.employees.filter((x) => x.id !== id) })),
 
-  refreshAttendanceFromApi: async () => {
-    const rows = await listAttendancesApi();
-    set({ attendance: rows.map(attendanceFromApi) });
-  },
-
-  refreshPayrollsFromApi: async () => {
-    try {
-      const rows = await listPayrollsApi();
-      set({ apiPayrolls: rows });
-    } catch {
-      set({ apiPayrolls: [] });
+  addAttendance: async (a) => {
+    const employeeIdNum = Number(a.employeeId);
+    if (!Number.isFinite(employeeIdNum) || employeeIdNum <= 0) {
+      return;
     }
+    await createAttendanceApi({
+      employeeId: employeeIdNum,
+      date: a.date,
+      checkIn: a.checkIn,
+      checkOut: a.checkOut,
+      status: a.status,
+      notes: a.notes,
+    });
+    await get().refreshAttendanceFromApi();
+  },
+  updateAttendance: (id, a) => set((s) => ({ attendance: s.attendance.map((x) => (x.id === id ? { ...x, ...a } : x)) })),
+  removeAttendance: async (id) => {
+    await deleteAttendanceApi(id);
+    await get().refreshAttendanceFromApi();
   },
 
-  updateAttendance: (id, a) => set((s) => ({ attendance: s.attendance.map((x) => (x.id === id ? { ...x, ...a } : x)) })),
+  addOvertime: async (o) => {
+    await createOvertimeApi({
+      employeeId: Number(o.employeeId),
+      date: o.date,
+      hours: o.hours,
+      status: o.status,
+      notes: o.notes,
+    });
+    await get().refreshOvertimeFromApi();
+  },
+  updateOvertime: async (id, o) => {
+    await updateOvertimeApi(id, {
+      employeeId: o.employeeId ? Number(o.employeeId) : undefined,
+      date: o.date,
+      hours: o.hours,
+      status: o.status,
+      notes: o.notes,
+    });
+    await get().refreshOvertimeFromApi();
+  },
+  removeOvertime: async (id) => {
+    await deleteOvertimeApi(id);
+    await get().refreshOvertimeFromApi();
+  },
 
-  addOvertime: (o) => set((s) => ({ overtimes: [...s.overtimes, { ...o, id: uid() }] })),
-  updateOvertime: (id, o) => set((s) => ({ overtimes: s.overtimes.map((x) => (x.id === id ? { ...x, ...o } : x)) })),
-  removeOvertime: (id) => set((s) => ({ overtimes: s.overtimes.filter((x) => x.id !== id) })),
+  addAdjustment: async (a) => {
+    await createAdjustmentApi({
+      employeeId: Number(a.employeeId),
+      type: a.type,
+      category: a.category,
+      amount: a.amount,
+      date: a.date,
+      notes: a.notes,
+    });
+    await get().refreshAdjustmentsFromApi();
+  },
+  removeAdjustment: async (id) => {
+    await deleteAdjustmentApi(id);
+    await get().refreshAdjustmentsFromApi();
+  },
 
-  addAdjustment: (a) => set((s) => ({ adjustments: [...s.adjustments, { ...a, id: uid() }] })),
-  removeAdjustment: (id) => set((s) => ({ adjustments: s.adjustments.filter((x) => x.id !== id) })),
+  addShift: async (sh) => {
+    const start = sh.startTime.length === 5 ? `${sh.startTime}:00` : sh.startTime;
+    const end = sh.endTime.length === 5 ? `${sh.endTime}:00` : sh.endTime;
+    await createShiftApi({
+      code: `SHIFT-${start.slice(0, 5).replace(":", "")}-${end.slice(0, 5).replace(":", "")}-${Date.now().toString().slice(-4)}`,
+      name: sh.notes?.trim() || `Shift ${start.slice(0, 5)}-${end.slice(0, 5)}`,
+      startTime: start.slice(0, 5),
+      endTime: end.slice(0, 5),
+      lateToleranceMinutes: 10,
+      overtimeAfterMinutes: 0,
+      active: true,
+    });
+    await get().refreshShiftsFromApi();
+  },
+  removeShift: async (id) => {
+    await deleteShiftApi(id);
+    await get().refreshShiftsFromApi();
+  },
 
-  addShift: (sh) => set((s) => ({ shifts: [...s.shifts, { ...sh, id: uid() }] })),
-  removeShift: (id) => set((s) => ({ shifts: s.shifts.filter((x) => x.id !== id) })),
-
-  addLoan: (l) => set((s) => ({ loans: [...s.loans, { ...l, id: uid(), paidInstallments: 0, status: "active" }] })),
-  payLoanInstallment: (id) =>
-    set((s) => ({
-      loans: s.loans.map((x) => {
-        if (x.id !== id) return x;
-        const paid = x.paidInstallments + 1;
-        return { ...x, paidInstallments: paid, status: paid >= x.installments ? "completed" : "active" };
-      }),
-    })),
-  removeLoan: (id) => set((s) => ({ loans: s.loans.filter((x) => x.id !== id) })),
+  addLoan: async (l) => {
+    await createLoanApi({
+      employeeId: Number(l.employeeId),
+      amount: l.amount,
+      installments: l.installments,
+      paidInstallments: 0,
+      startDate: l.startDate,
+      notes: l.notes,
+      status: "active",
+    });
+    await get().refreshLoansFromApi();
+  },
+  payLoanInstallment: async (id) => {
+    const loan = get().loans.find((x) => x.id === id);
+    if (!loan) return;
+    const paid = loan.paidInstallments + 1;
+    await updateLoanApi(id, {
+      paidInstallments: paid,
+      status: paid >= loan.installments ? "completed" : "active",
+    });
+    await get().refreshLoansFromApi();
+  },
+  removeLoan: async (id) => {
+    await deleteLoanApi(id);
+    await get().refreshLoansFromApi();
+  },
 
   calculateRun: (period, outlet) => {
     const { employees, attendance, overtimes, adjustments, loans } = get();
@@ -306,6 +403,73 @@ export const usePayrollStore = create<PayrollState>((set, get) => ({
     set((s) => ({ runs: s.runs.map((r) => (r.id === id ? { ...r, status: "paid", paidAt: new Date().toISOString() } : r)) }));
   },
   deleteRun: (id) => set((s) => ({ runs: s.runs.filter((r) => r.id !== id) })),
+  refreshEmployeesFromApi: async () => {
+    const rows = await listEmployees();
+    set({ employees: rows.map(employeeFromApi) });
+  },
+  refreshAttendanceFromApi: async () => {
+    const rows = await listAttendances();
+    set({ attendance: rows.map(attendanceFromApi) });
+  },
+  refreshPayrollsFromApi: async () => {
+    const rows = await listPayrolls();
+    set({ apiPayrolls: rows });
+  },
+  refreshOvertimeFromApi: async () => {
+    const rows = await listOvertime();
+    set({
+      overtimes: rows.map((r) => ({
+        id: String(r.id),
+        employeeId: String(r.employeeId),
+        date: r.date,
+        hours: r.hours,
+        status: r.status,
+        notes: r.notes ?? undefined,
+      })),
+    });
+  },
+  refreshAdjustmentsFromApi: async () => {
+    const rows = await listAdjustments();
+    set({
+      adjustments: rows.map((r) => ({
+        id: String(r.id),
+        employeeId: String(r.employeeId),
+        type: r.type,
+        category: r.category,
+        amount: r.amount,
+        date: r.date,
+        notes: r.notes ?? undefined,
+      })),
+    });
+  },
+  refreshShiftsFromApi: async () => {
+    const rows = await listShifts();
+    set({
+      shifts: rows.map((r) => ({
+        id: String(r.id),
+        employeeId: "",
+        date: "",
+        startTime: r.startTime.slice(0, 5),
+        endTime: r.endTime.slice(0, 5),
+        notes: `${r.code} - ${r.name}`,
+      })),
+    });
+  },
+  refreshLoansFromApi: async () => {
+    const rows = await listLoans();
+    set({
+      loans: rows.map((r) => ({
+        id: String(r.id),
+        employeeId: String(r.employeeId),
+        amount: r.amount,
+        installments: r.installments,
+        paidInstallments: r.paidInstallments,
+        startDate: r.startDate,
+        notes: r.notes ?? undefined,
+        status: r.status,
+      })),
+    });
+  },
 }));
 
 export const formatIDR = (n: number) =>

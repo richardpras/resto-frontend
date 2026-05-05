@@ -15,19 +15,35 @@ export default function Payroll() {
   const refreshEmployeesFromApi = usePayrollStore((s) => s.refreshEmployeesFromApi);
   const refreshAttendanceFromApi = usePayrollStore((s) => s.refreshAttendanceFromApi);
   const refreshPayrollsFromApi = usePayrollStore((s) => s.refreshPayrollsFromApi);
+  const refreshOvertimeFromApi = usePayrollStore((s) => s.refreshOvertimeFromApi);
+  const refreshAdjustmentsFromApi = usePayrollStore((s) => s.refreshAdjustmentsFromApi);
+  const refreshShiftsFromApi = usePayrollStore((s) => s.refreshShiftsFromApi);
+  const refreshLoansFromApi = usePayrollStore((s) => s.refreshLoansFromApi);
 
   useEffect(() => {
     void Promise.all([
       refreshEmployeesFromApi(),
       refreshAttendanceFromApi(),
       refreshPayrollsFromApi(),
+      refreshOvertimeFromApi(),
+      refreshAdjustmentsFromApi(),
+      refreshShiftsFromApi(),
+      refreshLoansFromApi(),
     ]).catch((e) => {
       toast.error(e instanceof Error ? e.message : "Failed to refresh payroll data from API");
     });
-  }, [refreshEmployeesFromApi, refreshAttendanceFromApi, refreshPayrollsFromApi]);
+  }, [
+    refreshEmployeesFromApi,
+    refreshAttendanceFromApi,
+    refreshPayrollsFromApi,
+    refreshOvertimeFromApi,
+    refreshAdjustmentsFromApi,
+    refreshShiftsFromApi,
+    refreshLoansFromApi,
+  ]);
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Payroll Management</h1>
         <p className="text-sm text-muted-foreground">Employees, attendance, overtime, allowances, payroll processing & payslips</p>

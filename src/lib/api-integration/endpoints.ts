@@ -56,10 +56,42 @@ export async function deleteIngredient(id: string): Promise<void> {
   });
 }
 
+export type StockMovementApi = {
+  id: number;
+  inventory_item_id: number;
+  inventory_item_name?: string | null;
+  type: "purchase" | "sale" | "adjustment" | "waste";
+  quantity: number;
+  source_type: string;
+  source_id?: string | null;
+  created_at?: string | null;
+};
+
+export type StockMovementPayload = {
+  inventory_item_id: number;
+  type: "purchase" | "sale" | "adjustment" | "waste";
+  quantity: number;
+  source_type: string;
+  source_id?: string;
+};
+
+export async function listStockMovements(): Promise<StockMovementApi[]> {
+  const response = await request<ApiListResponse<StockMovementApi>>("/stock-movements");
+  return response.data;
+}
+
+export async function createStockMovement(payload: StockMovementPayload): Promise<StockMovementApi> {
+  const response = await request<{ data: StockMovementApi }>("/stock-movements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export type MenuRecipeApi = {
   id?: string | number;
-  ingredientId: string;
-  qty: number;
+  inventoryItemId: string;
+  quantity: number;
 };
 
 export type MenuItemApi = {
@@ -77,8 +109,25 @@ export type MenuPayload = Omit<MenuItemApi, "id"> & {
   outletId?: number;
 };
 
-export async function listMenuItems(): Promise<MenuItemApi[]> {
-  const response = await request<ApiListResponse<MenuItemApi>>("/menu-items");
+export type ListMenuItemsParams = {
+  tenantId?: number;
+  perPage?: number;
+};
+
+export async function listMenuItems(params?: ListMenuItemsParams): Promise<MenuItemApi[]> {
+  const query = new URLSearchParams();
+  if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
+  if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiListResponse<MenuItemApi>>(`/menu-items${suffix}`);
+  return response.data;
+}
+
+export async function createMenuItem(payload: MenuPayload): Promise<MenuItemApi> {
+  const response = await request<{ data: MenuItemApi }>("/menu-items", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
   return response.data;
 }
 
@@ -103,7 +152,7 @@ export type OrderItemPayload = {
 export type OrderPaymentPayload = {
   method: string;
   amount: number;
-  paidAt: string;
+  paidAt?: string;
   splitBillLabel?: string;
   splitBillGroup?: string;
   allocations?: {
@@ -114,6 +163,8 @@ export type OrderPaymentPayload = {
 };
 
 export type CreateOrderPayload = {
+  tenantId?: number;
+  outletId?: number;
   code: string;
   source: "pos" | "qr";
   orderType: string;
@@ -123,10 +174,11 @@ export type CreateOrderPayload = {
   subtotal: number;
   tax: number;
   total: number;
+  discountAmount?: number;
   payments: OrderPaymentPayload[];
-  customerName: string;
-  customerPhone: string;
-  tableNumber: string;
+  customerName?: string;
+  customerPhone?: string;
+  tableNumber?: string;
   createdAt?: string;
   confirmedAt?: string;
   splitBill?: unknown;
@@ -139,11 +191,18 @@ export type OrderApi = {
   orderType: string;
   status: "pending" | "confirmed" | "cooking" | "ready" | "completed" | "cancelled";
   paymentStatus: "unpaid" | "partial" | "paid";
-  items: OrderItemPayload[];
+  items: (OrderItemPayload & { orderItemId?: string })[];
   subtotal: number;
   tax: number;
   total: number;
-  payments: { id: string; method: string; amount: number; paidAt?: string; allocations?: { orderItemId: number; qty: number; amount: number }[] }[];
+  discountAmount?: number;
+  payments: {
+    id: string;
+    method: string;
+    amount: number;
+    paidAt?: string;
+    allocations?: { orderItemId: number; qty: number; amount: number }[];
+  }[];
   customerName: string;
   customerPhone: string;
   tableNumber: string;
@@ -166,6 +225,11 @@ export async function createOrder(payload: CreateOrderPayload): Promise<OrderApi
     method: "POST",
     body: JSON.stringify(payload),
   });
+  return response.data;
+}
+
+export async function getOrder(id: string): Promise<OrderApi> {
+  const response = await request<{ data: OrderApi }>(`/orders/${id}`);
   return response.data;
 }
 

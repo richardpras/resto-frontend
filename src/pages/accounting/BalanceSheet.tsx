@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { useAccountingStore, formatIDR, buildBalanceSheet } from "@/stores/accountingStore";
+import { useEffect, useState } from "react";
+import { getBalanceSheetReport, type BalanceSheetReportData } from "@/lib/api";
+import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,16 +8,38 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
+import { toast } from "sonner";
 
 export default function BalanceSheet() {
-  const { accounts, journals, outlets } = useAccountingStore();
+  const { outlets } = useAccountingStore();
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
   const [outlet, setOutlet] = useState("all");
+  const [bs, setBs] = useState<BalanceSheetReportData>({
+    currentAssets: [],
+    fixedAssets: [],
+    shortLiab: [],
+    longLiab: [],
+    equity: [],
+    totalAssets: 0,
+    totalLiabilities: 0,
+    totalEquity: 0,
+    netProfit: 0,
+    balanced: true,
+  });
 
-  const bs = useMemo(
-    () => buildBalanceSheet(accounts, journals, { to: asOf, outlet }),
-    [accounts, journals, asOf, outlet],
-  );
+  useEffect(() => {
+    let active = true;
+    void getBalanceSheetReport({ to: asOf, outlet })
+      .then((res) => {
+        if (active) setBs(res);
+      })
+      .catch((e) => {
+        if (active) toast.error(e instanceof Error ? e.message : "Failed to load balance sheet report");
+      });
+    return () => {
+      active = false;
+    };
+  }, [asOf, outlet]);
 
   const Section = ({ title, items, total }: { title: string; items: { account: { id: string; name: string }; amount: number }[]; total?: boolean }) => (
     <div>

@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Check, X, Trash2 } from "lucide-react";
 import { usePayrollStore } from "@/stores/payrollStore";
+import { DataTable, type Column } from "@/components/DataTable";
 import { toast } from "sonner";
 
 export default function Overtime() {
@@ -23,15 +22,56 @@ export default function Overtime() {
 
   const empName = (id: string) => employees.find((e) => e.id === id)?.name || "Unknown";
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.employeeId || form.hours <= 0) {
       toast.error("Fill all fields");
       return;
     }
-    addOvertime({ ...form, status: "pending" });
-    toast.success("Overtime requested");
-    setOpen(false);
+    try {
+      await addOvertime({ ...form, status: "pending" });
+      toast.success("Overtime requested");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save overtime");
+    }
   };
+
+  const columns: Column<(typeof overtimes)[number]>[] = [
+    { key: "employee", header: "Employee", sortable: true, render: (o) => empName(o.employeeId) },
+    { key: "date", header: "Date", sortable: true },
+    { key: "hours", header: "Hours", sortable: true, render: (o) => `${o.hours}h` },
+    { key: "notes", header: "Notes", render: (o) => <span className="text-muted-foreground">{o.notes || "-"}</span> },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      render: (o) => (
+        <Badge variant={o.status === "approved" ? "default" : o.status === "rejected" ? "destructive" : "secondary"}>
+          {o.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      render: (o) => (
+        <div className="flex justify-end">
+          {o.status === "pending" && (
+            <>
+              <Button variant="ghost" size="icon" onClick={() => void updateOvertime(o.id, { status: "approved" })}>
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => void updateOvertime(o.id, { status: "rejected" })}>
+                <X className="h-4 w-4 text-destructive" />
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="icon" onClick={() => void removeOvertime(o.id)}><Trash2 className="h-4 w-4" /></Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -40,51 +80,14 @@ export default function Overtime() {
         <Button onClick={() => setOpen(true)} size="sm"><Plus className="h-4 w-4" />Add Overtime</Button>
       </div>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Hours</TableHead>
-              <TableHead>Notes</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {overtimes.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell>{empName(o.employeeId)}</TableCell>
-                <TableCell>{o.date}</TableCell>
-                <TableCell>{o.hours}h</TableCell>
-                <TableCell className="text-muted-foreground">{o.notes || "-"}</TableCell>
-                <TableCell>
-                  <Badge variant={o.status === "approved" ? "default" : o.status === "rejected" ? "destructive" : "secondary"}>
-                    {o.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {o.status === "pending" && (
-                    <>
-                      <Button variant="ghost" size="icon" onClick={() => updateOvertime(o.id, { status: "approved" })}>
-                        <Check className="h-4 w-4 text-green-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => updateOvertime(o.id, { status: "rejected" })}>
-                        <X className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </>
-                  )}
-                  <Button variant="ghost" size="icon" onClick={() => removeOvertime(o.id)}><Trash2 className="h-4 w-4" /></Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {overtimes.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No overtime records</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+      <DataTable
+        data={overtimes}
+        columns={columns}
+        rowKey={(o) => o.id}
+        searchKeys={["date", "status", "notes"]}
+        emptyMessage="No overtime records"
+        defaultPageSize={10}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -116,7 +119,7 @@ export default function Overtime() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={submit}>Save</Button>
+            <Button onClick={() => void submit()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,289 +1,369 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Calculator, Save, CheckCircle2, DollarSign, FileText, Trash2, Eye, Printer } from "lucide-react";
-import { usePayrollStore, formatIDR, type PayrollRun, type PayrollLine } from "@/stores/payrollStore";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Calculator, DollarSign, FileText, Printer, Download, Lock, Unlock } from "lucide-react";
+import { usePayrollStore, formatIDR } from "@/stores/payrollStore";
+import { generatePayrollRun, getPayrollDetail, listPayrollTable, lockPayrollLine, markPayrollRunPaid, unlockPayrollLine, type PayrollDetail, type PayrollListRow } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function PayrollRunPage() {
-  const { employees, runs, apiPayrolls, calculateRun, saveRun, finalizeRun, markRunPaid, deleteRun } = usePayrollStore();
+  const { employees } = usePayrollStore();
   const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [periodTo, setPeriodTo] = useState(new Date().toISOString().slice(0, 7));
   const [outlet, setOutlet] = useState("");
-  const [draft, setDraft] = useState<PayrollRun | null>(null);
-  const [viewRun, setViewRun] = useState<PayrollRun | null>(null);
-  const [payslipLine, setPayslipLine] = useState<{ run: PayrollRun; line: PayrollLine } | null>(null);
+  const [employeeId, setEmployeeId] = useState("");
+  const [status, setStatus] = useState<"" | "paid" | "unpaid">("");
+  const [search, setSearch] = useState("");
+  const [rows, setRows] = useState<PayrollListRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState<10 | 25 | 50>(10);
+  const [lastPage, setLastPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [detail, setDetail] = useState<PayrollDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const empName = (id: string) => employees.find((e) => e.id === id)?.name || "Unknown";
-  const empPosition = (id: string) => employees.find((e) => e.id === id)?.position || "";
-
-  const handleCalculate = () => {
-    const run = calculateRun(period, outlet || undefined);
-    setDraft(run);
-    toast.success(`Calculated for ${run.lines.length} employees`);
+  const fetchRows = async () => {
+    setLoading(true);
+    try {
+      const res = await listPayrollTable({
+        page,
+        perPage,
+        periodFrom: period,
+        periodTo,
+        outlet: outlet || undefined,
+        employeeId: employeeId ? Number(employeeId) : undefined,
+        status,
+        search: search || undefined,
+      });
+      setRows(res.data);
+      setLastPage(res.meta.lastPage);
+      setTotal(res.meta.total);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load payroll table");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSave = () => {
-    if (!draft) return;
-    saveRun(draft);
-    setDraft(null);
-    toast.success("Payroll saved as draft");
+  useEffect(() => {
+    void fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, perPage, period, periodTo, outlet, employeeId, status, search]);
+
+  const handleGenerate = async () => {
+    try {
+      await generatePayrollRun({ period, outlet: outlet || undefined });
+      toast.success("Payroll generated");
+      void fetchRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate payroll");
+    }
   };
 
-  const handleFinalize = (id: string) => {
-    finalizeRun(id);
-    toast.success("Payroll finalized — data locked");
+  const handleMarkPaid = async (runId: number) => {
+    try {
+      await markPayrollRunPaid(runId);
+      toast.success("Payroll marked as paid");
+      void fetchRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to mark paid");
+    }
   };
 
-  const handlePay = (id: string) => {
-    markRunPaid(id);
-    toast.success("Marked as paid");
+  const handleLock = async (lineId: number) => {
+    try {
+      await lockPayrollLine(lineId);
+      toast.success("Payroll line locked");
+      void fetchRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to lock line");
+    }
   };
 
-  const printPayslip = () => {
+  const handleUnlock = async (lineId: number) => {
+    try {
+      await unlockPayrollLine(lineId);
+      toast.success("Payroll line unlocked");
+      void fetchRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to unlock line");
+    }
+  };
+
+  const openDetail = async (row: PayrollListRow) => {
+    setDetailLoading(true);
+    try {
+      const data = await getPayrollDetail(row.id);
+      setDetail(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load detail");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const exportCsv = () => {
+    const header = ["Employee Name", "Period", "Basic Salary", "Overtime Amount", "Deduction", "Net Salary", "Status"];
+    const lines = rows.map((r) => [
+      r.employeeName,
+      r.period,
+      String(r.basicSalary),
+      String(r.overtimeAmount),
+      String(r.deductionAmount),
+      String(r.netSalary),
+      r.status,
+    ]);
+    const csv = [header, ...lines].map((line) => line.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `payroll-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportPdf = () => {
     window.print();
   };
 
+  const outlets = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.outlet) set.add(e.outlet);
+    });
+    return Array.from(set.values());
+  }, [employees]);
+
   return (
     <div className="space-y-6">
-      {/* Process Payroll */}
       <Card className="p-6 space-y-4">
         <div className="flex items-center gap-2">
           <Calculator className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Process Payroll</h2>
+          <h2 className="text-lg font-semibold">Payroll List</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <Label>Period</Label>
+            <Label>Period From</Label>
             <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Outlet (optional)</Label>
-            <Input placeholder="All outlets" value={outlet} onChange={(e) => setOutlet(e.target.value)} />
+            <Label>Period To</Label>
+            <Input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
           </div>
-          <div className="flex items-end">
-            <Button onClick={handleCalculate} className="w-full"><Calculator className="h-4 w-4" />Calculate Payroll</Button>
+          <div className="space-y-2">
+            <Label>Outlet</Label>
+            <Select value={outlet || "__ALL__"} onValueChange={(v) => setOutlet(v === "__ALL__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="All outlets" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ALL__">All outlets</SelectItem>
+                {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Employee</Label>
+            <Select value={employeeId || "__ALL__"} onValueChange={(v) => setEmployeeId(v === "__ALL__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="All employees" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ALL__">All employees</SelectItem>
+                {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-
-        {draft && (
-          <div className="space-y-4 pt-4 border-t">
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-muted-foreground">
-                Draft for <span className="font-medium text-foreground">{draft.period}</span> · {draft.lines.length} employees
-              </div>
-              <Button onClick={handleSave} size="sm"><Save className="h-4 w-4" />Save Draft</Button>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead className="text-right">Base</TableHead>
-                    <TableHead className="text-right">Att. Adj</TableHead>
-                    <TableHead className="text-right">OT</TableHead>
-                    <TableHead className="text-right">Allow.</TableHead>
-                    <TableHead className="text-right">Deduct.</TableHead>
-                    <TableHead className="text-right">Loan</TableHead>
-                    <TableHead className="text-right">PPH21</TableHead>
-                    <TableHead className="text-right font-semibold">Net</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {draft.lines.map((l) => (
-                    <TableRow key={l.employeeId}>
-                      <TableCell>{empName(l.employeeId)}</TableCell>
-                      <TableCell className="text-right">{formatIDR(l.baseSalary)}</TableCell>
-                      <TableCell className="text-right text-destructive">{l.attendanceAdjustment ? formatIDR(l.attendanceAdjustment) : "-"}</TableCell>
-                      <TableCell className="text-right text-green-600">{l.overtimePay ? formatIDR(l.overtimePay) : "-"}</TableCell>
-                      <TableCell className="text-right text-green-600">{l.allowances ? formatIDR(l.allowances) : "-"}</TableCell>
-                      <TableCell className="text-right text-destructive">{l.deductions ? formatIDR(l.deductions) : "-"}</TableCell>
-                      <TableCell className="text-right text-destructive">{l.loanDeduction ? formatIDR(l.loanDeduction) : "-"}</TableCell>
-                      <TableCell className="text-right text-destructive">{formatIDR(l.pph21)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatIDR(l.netSalary)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select value={status || "__ALL__"} onValueChange={(v) => setStatus(v === "__ALL__" ? "" : (v as "paid" | "unpaid"))}>
+              <SelectTrigger><SelectValue placeholder="All status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ALL__">All status</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        )}
+          <div className="space-y-2">
+            <Label>Search Employee</Label>
+            <Input placeholder="Type employee name..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Rows per page</Label>
+            <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v) as 10 | 25 | 50); setPage(1); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button onClick={handleGenerate} className="w-full"><Calculator className="h-4 w-4" />Generate Payroll</Button>
+            <Button variant="outline" onClick={exportCsv}><Download className="h-4 w-4" />Excel</Button>
+            <Button variant="outline" onClick={exportPdf}><Printer className="h-4 w-4" />PDF</Button>
+          </div>
+        </div>
       </Card>
 
-      {/* Server-posted payrolls (HR API) */}
-      {apiPayrolls.length > 0 && (
-        <Card>
-          <div className="p-6 flex items-center gap-2 border-b">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">Posted payrolls (server)</h2>
-          </div>
+      <Card>
+        <div className="p-6 flex items-center gap-2 border-b">
+          <FileText className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Payroll Records</h2>
+        </div>
+        <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Employee</TableHead>
+                <TableHead>Employee Name</TableHead>
                 <TableHead>Period</TableHead>
-                <TableHead className="text-right">Base</TableHead>
-                <TableHead className="text-right">Net</TableHead>
+                <TableHead className="text-right">Basic Salary</TableHead>
+                <TableHead className="text-right">Overtime Amount</TableHead>
+                <TableHead className="text-right">Deduction</TableHead>
+                <TableHead className="text-right">Net Salary</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {apiPayrolls.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>{empName(String(p.employeeId))}</TableCell>
-                  <TableCell className="text-sm">
-                    {p.periodStart} → {p.periodEnd}
+              {loading ? (
+                Array.from({ length: 8 }).map((_, idx) => (
+                  <TableRow key={`pay-sk-${idx}`}>
+                    <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-28 ml-auto" /></TableCell>
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No payroll records found</TableCell>
+                </TableRow>
+              ) : rows.map((r) => (
+                <TableRow key={r.id} onClick={() => void openDetail(r)} className="cursor-pointer">
+                  <TableCell>{r.employeeName}</TableCell>
+                  <TableCell>{r.period}</TableCell>
+                  <TableCell className="text-right">{formatIDR(r.basicSalary)}</TableCell>
+                  <TableCell className="text-right">{formatIDR(r.overtimeAmount)}</TableCell>
+                  <TableCell className="text-right">
+                    <div>{formatIDR(r.deductionAmount)}</div>
+                    <div className="text-xs text-muted-foreground">See detail for breakdown</div>
                   </TableCell>
-                  <TableCell className="text-right">{formatIDR(p.baseAmount)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatIDR(p.netAmount)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{p.status}</Badge>
+                  <TableCell className="text-right font-medium">{formatIDR(r.netSalary)}</TableCell>
+                  <TableCell><Badge variant={r.status === "paid" ? "default" : "secondary"}>{r.status}</Badge></TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {r.paymentStatus === "locked" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleUnlock(r.id);
+                          }}
+                        >
+                          <Unlock className="h-4 w-4" />Unlock
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleLock(r.id);
+                          }}
+                        >
+                          <Lock className="h-4 w-4" />Lock
+                        </Button>
+                      )}
+                      {r.status !== "paid" && (
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleMarkPaid(r.payrollRunId);
+                          }}
+                        >
+                          <DollarSign className="h-4 w-4" />Pay Run
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </Card>
-      )}
-
-      {/* Payroll Runs */}
-      <Card>
-        <div className="p-6 flex items-center gap-2 border-b">
-          <FileText className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Payroll Runs</h2>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Period</TableHead>
-              <TableHead>Outlet</TableHead>
-              <TableHead>Employees</TableHead>
-              <TableHead>Total Net</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {runs.map((r) => {
-              const total = r.lines.reduce((s, l) => s + l.netSalary, 0);
-              return (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.period}</TableCell>
-                  <TableCell>{r.outlet || "All"}</TableCell>
-                  <TableCell>{r.lines.length}</TableCell>
-                  <TableCell>{formatIDR(total)}</TableCell>
-                  <TableCell>
-                    <Badge variant={r.status === "paid" ? "default" : r.status === "processed" ? "secondary" : "outline"}>
-                      {r.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => setViewRun(r)}><Eye className="h-4 w-4" /></Button>
-                    {r.status === "draft" && (
-                      <Button variant="outline" size="sm" onClick={() => handleFinalize(r.id)}>
-                        <CheckCircle2 className="h-4 w-4" />Finalize
-                      </Button>
-                    )}
-                    {r.status === "processed" && (
-                      <Button size="sm" onClick={() => handlePay(r.id)}>
-                        <DollarSign className="h-4 w-4" />Mark Paid
-                      </Button>
-                    )}
-                    {r.status === "draft" && (
-                      <Button variant="ghost" size="icon" onClick={() => deleteRun(r.id)}><Trash2 className="h-4 w-4" /></Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {runs.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No payroll runs yet</TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
+        <div className="p-4 flex items-center justify-between border-t">
+          <div className="text-sm text-muted-foreground">
+            Showing page {page} of {lastPage} · {total} rows
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</Button>
+            <Button variant="outline" disabled={page >= lastPage} onClick={() => setPage((p) => Math.min(lastPage, p + 1))}>Next</Button>
+          </div>
+        </div>
       </Card>
 
-      {/* View run dialog */}
-      <Dialog open={!!viewRun} onOpenChange={(o) => !o && setViewRun(null)}>
-        <DialogContent className="max-w-5xl">
+      <Dialog open={!!detail || detailLoading} onOpenChange={(o) => !o && setDetail(null)}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Payroll {viewRun?.period} · {viewRun?.status}</DialogTitle>
+            <DialogTitle>Payroll Detail</DialogTitle>
           </DialogHeader>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead className="text-right">Base</TableHead>
-                  <TableHead className="text-right">OT</TableHead>
-                  <TableHead className="text-right">Allow.</TableHead>
-                  <TableHead className="text-right">Deduct.</TableHead>
-                  <TableHead className="text-right">PPH21</TableHead>
-                  <TableHead className="text-right">Net</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {viewRun?.lines.map((l) => (
-                  <TableRow key={l.employeeId}>
-                    <TableCell>{empName(l.employeeId)}</TableCell>
-                    <TableCell className="text-right">{formatIDR(l.baseSalary)}</TableCell>
-                    <TableCell className="text-right">{formatIDR(l.overtimePay)}</TableCell>
-                    <TableCell className="text-right">{formatIDR(l.allowances)}</TableCell>
-                    <TableCell className="text-right">{formatIDR(l.deductions + l.loanDeduction)}</TableCell>
-                    <TableCell className="text-right">{formatIDR(l.pph21)}</TableCell>
-                    <TableCell className="text-right font-semibold">{formatIDR(l.netSalary)}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => { if (viewRun) setPayslipLine({ run: viewRun, line: l }); }}>
-                        <FileText className="h-4 w-4" />Payslip
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Payslip dialog */}
-      <Dialog open={!!payslipLine} onOpenChange={(o) => !o && setPayslipLine(null)}>
-        <DialogContent className="max-w-md print:shadow-none">
-          <DialogHeader>
-            <DialogTitle>Payslip</DialogTitle>
-          </DialogHeader>
-          {payslipLine && (
-            <div className="space-y-4 print:p-4">
-              <div className="border-b pb-3">
-                <div className="font-bold text-lg">{empName(payslipLine.line.employeeId)}</div>
-                <div className="text-sm text-muted-foreground">{empPosition(payslipLine.line.employeeId)}</div>
-                <div className="text-sm text-muted-foreground">Period: {payslipLine.run.period}</div>
+          {detailLoading && !detail ? (
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ) : detail ? (
+            <div className="space-y-4">
+              <div className="border-b pb-2">
+                <div className="font-medium">{detail.employeeName}</div>
+                <div className="text-sm text-muted-foreground">Period: {detail.period} · Status: {detail.status}</div>
               </div>
-
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span>Base Salary</span><span>{formatIDR(payslipLine.line.baseSalary)}</span></div>
-                <div className="flex justify-between"><span>Attendance Adjustment</span><span>{formatIDR(payslipLine.line.attendanceAdjustment)}</span></div>
-                <div className="flex justify-between"><span>Overtime ({payslipLine.line.overtimeHours}h)</span><span className="text-green-600">+{formatIDR(payslipLine.line.overtimePay)}</span></div>
-                <div className="flex justify-between"><span>Allowances</span><span className="text-green-600">+{formatIDR(payslipLine.line.allowances)}</span></div>
-                <div className="border-t pt-2 flex justify-between font-medium"><span>Gross</span><span>{formatIDR(payslipLine.line.taxableIncome)}</span></div>
-                <div className="flex justify-between text-destructive"><span>Deductions</span><span>-{formatIDR(payslipLine.line.deductions)}</span></div>
-                <div className="flex justify-between text-destructive"><span>Loan Repayment</span><span>-{formatIDR(payslipLine.line.loanDeduction)}</span></div>
-                <div className="flex justify-between text-destructive"><span>PPH21 Tax</span><span>-{formatIDR(payslipLine.line.pph21)}</span></div>
-                <div className="border-t pt-2 flex justify-between font-bold text-base"><span>Net Salary</span><span>{formatIDR(payslipLine.line.netSalary)}</span></div>
+                <div className="font-medium">Attendance summary</div>
+                <div className="flex justify-between"><span>Late count</span><span>{detail.attendanceSummary.lateCount}</span></div>
+                <div className="flex justify-between"><span>Absent count</span><span>{detail.attendanceSummary.absentCount}</span></div>
+                <div className="flex justify-between"><span>Overtime minutes</span><span>{detail.attendanceSummary.overtimeMinutes}</span></div>
               </div>
-
-              <div className="text-xs text-muted-foreground pt-2 border-t">
-                Attendance: {payslipLine.line.presentDays}/{payslipLine.line.workingDays} working days
+              <div className="space-y-2 text-sm">
+                <div className="font-medium">Earnings breakdown</div>
+                <div className="flex justify-between"><span>Basic salary</span><span>{formatIDR(detail.earningsBreakdown?.basicSalary ?? detail.salaryBreakdown.basicSalary)}</span></div>
+                <div className="flex justify-between"><span>Attendance adjustment</span><span>{formatIDR(detail.earningsBreakdown?.attendanceAdjustment ?? 0)}</span></div>
+                <div className="flex justify-between"><span>Overtime pay</span><span>{formatIDR(detail.earningsBreakdown?.overtimePay ?? 0)}</span></div>
+                <div className="flex justify-between"><span>Allowance</span><span>{formatIDR(detail.earningsBreakdown?.allowance ?? detail.salaryBreakdown.allowance)}</span></div>
+                <div className="flex justify-between"><span>Taxable income</span><span>{formatIDR(detail.earningsBreakdown?.taxableIncome ?? 0)}</span></div>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="font-medium">Deduction breakdown</div>
+                <div className="flex justify-between"><span>Penalty/other deductions</span><span>-{formatIDR(detail.deductionBreakdown?.adjustmentDeductions ?? detail.salaryBreakdown.deductions)}</span></div>
+                <div className="flex justify-between"><span>Loan deduction</span><span>-{formatIDR(detail.deductionBreakdown?.loanDeduction ?? 0)}</span></div>
+                <div className="flex justify-between"><span>PPH21</span><span>-{formatIDR(detail.deductionBreakdown?.pph21 ?? 0)}</span></div>
+                <div className="flex justify-between"><span>Total deductions</span><span>-{formatIDR(detail.deductionBreakdown?.totalDeduction ?? detail.salaryBreakdown.deductions)}</span></div>
+                <div className="border-t pt-2 flex justify-between font-bold"><span>Final net salary</span><span>{formatIDR(detail.netSalary)}</span></div>
               </div>
             </div>
-          )}
-          <DialogFooter className="print:hidden">
-            <Button variant="outline" onClick={() => setPayslipLine(null)}>Close</Button>
-            <Button onClick={printPayslip}><Printer className="h-4 w-4" />Print / PDF</Button>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetail(null)}>Close</Button>
+            <Button onClick={exportPdf}><Printer className="h-4 w-4" />PDF</Button>
+            <Button onClick={exportCsv}><Download className="h-4 w-4" />Excel</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

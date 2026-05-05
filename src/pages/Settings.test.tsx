@@ -15,6 +15,5 @@ describe("Settings page", () => {
     expect(screen.getByRole("heading", { name: /Settings/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Merchant/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Reload settings from server/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Save all settings to server/i })).toBeTruthy();
   });
 });

@@ -2,5 +2,5 @@ export { API_BASE_URL, apiRequest, ApiHttpError, setApiAccessToken, getApiAccess
 export * from "./accountingEndpoints";
 export * from "./hrEndpoints";
 export * from "./userManagementEndpoints";
-export * from "./settingsEndpoints";
+export * from "./settingsDomainEndpoints";
 export * from "./endpoints";

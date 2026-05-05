@@ -12,7 +12,7 @@ import BankSettings from "./settings/BankSettings";
 import ReceiptSettings from "./settings/ReceiptsSettings";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, RefreshCw, CloudUpload, Loader2 } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { ApiHttpError, getApiAccessToken, setApiAccessToken } from "@/lib/api-integration/client";
 import { toast } from "sonner";
@@ -63,22 +63,6 @@ export default function Settings() {
     }
   };
 
-  const saveAllToServer = async () => {
-    if (!getApiAccessToken()) {
-      toast.message("Not signed in", { description: "Sign in to save settings to the server." });
-      return;
-    }
-    setSyncing(true);
-    try {
-      await useSettingsStore.getState().persistToApi();
-      toast.success("All settings saved to server");
-    } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -97,16 +81,6 @@ export default function Settings() {
           >
             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2 hidden sm:inline">Reload from server</span>
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={syncing}
-            aria-label="Save all settings to server"
-            onClick={() => void saveAllToServer()}
-          >
-            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-            <span className="ml-2 hidden sm:inline">Save all to server</span>
           </Button>
           <Button asChild variant="outline" size="sm">
             <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />Users & Permissions</Link>

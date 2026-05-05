@@ -7,22 +7,54 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2, Star } from "lucide-react";
-import { useSettingsStore, BankAccount, newId } from "@/stores/settingsStore";
+import { useSettingsStore, BankAccount, newId, removeBankCascade } from "@/stores/settingsStore";
 import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchBankAccount, postBankAccount } from "@/lib/api-integration/settingsDomainEndpoints";
 
 const empty: BankAccount = { id: "", bankName: "", accountName: "", accountNumber: "", isDefault: false };
 
+async function syncAllBanksToApi(): Promise<void> {
+  const { banks } = useSettingsStore.getState();
+  await Promise.all(banks.map((b) => patchBankAccount(b.id, b)));
+}
+
 export default function BankSettings() {
-  const { banks, upsertBank, deleteBank, setDefaultBank } = useSettingsStore();
+  const banks = useSettingsStore((s) => s.banks);
+  const upsertBank = useSettingsStore((s) => s.upsertBank);
+  const setDefaultBank = useSettingsStore((s) => s.setDefaultBank);
+  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<BankAccount>(empty);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  const save = async () => {
     if (!form.bankName.trim() || !form.accountNumber.trim()) return toast.error("Bank name & account number required");
+    const wasInList = useSettingsStore.getState().banks.some((b) => b.id === form.id);
     upsertBank(form);
     if (form.isDefault) setDefaultBank(form.id);
-    setOpen(false);
-    toast.success("Bank account saved");
+
+    setSaving(true);
+    try {
+      if (!getApiAccessToken()) {
+        toast.success("Bank account saved locally");
+        setOpen(false);
+        return;
+      }
+      if (!wasInList) await postBankAccount(form);
+      else {
+        const latest = useSettingsStore.getState().banks.find((b) => b.id === form.id)!;
+        await patchBankAccount(form.id, latest);
+      }
+      if (form.isDefault) await syncAllBanksToApi();
+      await refreshFromApi();
+      toast.success("Bank account saved");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -30,7 +62,7 @@ export default function BankSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">Bank & Finance</h2>
-          <Button onClick={() => { setForm({ ...empty, id: newId() }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Account</Button>
+          <Button type="button" onClick={() => { setForm({ ...empty, id: newId() }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Account</Button>
         </div>
         <Table>
           <TableHeader>
@@ -48,9 +80,42 @@ export default function BankSettings() {
                 <TableCell>{b.isDefault && <Badge><Star className="h-3 w-3 mr-1" />Default</Badge>}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    {!b.isDefault && <Button size="sm" variant="ghost" onClick={() => setDefaultBank(b.id)}>Set Default</Button>}
-                    <Button size="icon" variant="ghost" onClick={() => { setForm(b); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete?")) deleteBank(b.id); }}><Trash2 className="h-4 w-4" /></Button>
+                    {!b.isDefault && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          void (async () => {
+                            setDefaultBank(b.id);
+                            if (!getApiAccessToken()) return;
+                            try {
+                              await syncAllBanksToApi();
+                              await refreshFromApi();
+                            } catch (e) {
+                              toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+                            }
+                          })();
+                        }}
+                      >Set Default</Button>
+                    )}
+                    <Button type="button" size="icon" variant="ghost" onClick={() => { setForm(b); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!confirm("Delete?")) return;
+                        void (async () => {
+                          try {
+                            await removeBankCascade(b.id);
+                            if (getApiAccessToken()) await refreshFromApi();
+                          } catch (e) {
+                            toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+                          }
+                        })();
+                      }}
+                    ><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -71,8 +136,8 @@ export default function BankSettings() {
               </label>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={save}>Save</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -121,3 +121,98 @@ export async function postJournal(id: string): Promise<JournalApiRow> {
   });
   return res.data;
 }
+
+export type ReportAccountRow = {
+  id: string;
+  code: string;
+  name: string;
+  type: "asset" | "liability" | "equity" | "revenue" | "expense";
+  subtype: string;
+  parentId?: string | null;
+  description?: string | null;
+  active: boolean;
+};
+
+export type LedgerReportRow = {
+  id: string;
+  date: string;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+export type LedgerReportData = {
+  account: ReportAccountRow | null;
+  rows: LedgerReportRow[];
+  opening: number;
+  closing: number;
+};
+
+export type ProfitLossReportData = {
+  revenue: { account: ReportAccountRow; amount: number }[];
+  cogs: { account: ReportAccountRow; amount: number }[];
+  expenses: { account: ReportAccountRow; amount: number }[];
+  totalRevenue: number;
+  totalCOGS: number;
+  grossProfit: number;
+  totalExpenses: number;
+  netProfit: number;
+};
+
+export type BalanceSheetReportData = {
+  currentAssets: { account: ReportAccountRow; amount: number }[];
+  fixedAssets: { account: ReportAccountRow; amount: number }[];
+  shortLiab: { account: ReportAccountRow; amount: number }[];
+  longLiab: { account: ReportAccountRow; amount: number }[];
+  equity: { account: ReportAccountRow; amount: number }[];
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  netProfit: number;
+  balanced: boolean;
+};
+
+type ApiSingleEnvelope<T> = { data: T };
+
+export async function getLedgerReport(params: {
+  accountId: string;
+  from?: string;
+  to?: string;
+  outlet?: string;
+}): Promise<LedgerReportData> {
+  const qs = new URLSearchParams();
+  qs.set("accountId", params.accountId);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.outlet) qs.set("outlet", params.outlet);
+  const res = await request<ApiSingleEnvelope<LedgerReportData>>(`/reports/ledger?${qs.toString()}`);
+  return res.data;
+}
+
+export async function getProfitLossReport(params: {
+  from?: string;
+  to?: string;
+  outlet?: string;
+}): Promise<ProfitLossReportData> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.outlet) qs.set("outlet", params.outlet);
+  const suffix = qs.toString();
+  const res = await request<ApiSingleEnvelope<ProfitLossReportData>>(`/reports/profit-loss${suffix ? `?${suffix}` : ""}`);
+  return res.data;
+}
+
+export async function getBalanceSheetReport(params: {
+  to?: string;
+  outlet?: string;
+}): Promise<BalanceSheetReportData> {
+  const qs = new URLSearchParams();
+  if (params.to) qs.set("to", params.to);
+  if (params.outlet) qs.set("outlet", params.outlet);
+  const suffix = qs.toString();
+  const res = await request<ApiSingleEnvelope<BalanceSheetReportData>>(`/reports/balance-sheet${suffix ? `?${suffix}` : ""}`);
+  return res.data;
+}

@@ -33,6 +33,11 @@ function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
 type View = "menu" | "cart" | "confirm" | "success";
 
+/**
+ * Guest / table self-order flow. Routed at `/qr-order` outside the main layout in `App.tsx`
+ * so it is full-viewport without the staff sidebar — intentional for customer phones & kiosks.
+ * Staff monitors QR traffic at `/qr-orders` inside the app shell.
+ */
 export default function QROrder() {
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");

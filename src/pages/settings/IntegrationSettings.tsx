@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,16 +7,37 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { putIntegrationSettings } from "@/lib/api-integration/settingsDomainEndpoints";
 
 export default function IntegrationSettings() {
   const { integration, updateIntegration } = useSettingsStore();
   const [form, setForm] = useState(integration);
   const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  useEffect(() => {
+    setForm(integration);
+  }, [integration]);
+
+  const save = async () => {
     if (!confirm("Update sensitive integration settings?")) return;
     updateIntegration(form);
-    toast.success("Integrations saved");
+    if (!getApiAccessToken()) {
+      toast.success("Integrations saved locally (sign in to sync)");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await putIntegrationSettings(form);
+      updateIntegration(saved);
+      setForm(saved);
+      toast.success("Integrations saved to server");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -27,7 +48,7 @@ export default function IntegrationSettings() {
           <Label>Payment Gateway API Key</Label>
           <div className="flex gap-2">
             <Input type={show ? "text" : "password"} value={form.paymentGatewayKey} onChange={(e) => setForm({ ...form, paymentGatewayKey: e.target.value })} placeholder="sk_live_..." />
-            <Button variant="outline" size="icon" onClick={() => setShow(!show)}>{show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
+            <Button variant="outline" size="icon" type="button" onClick={() => setShow(!show)}>{show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
           </div>
         </div>
         <div className="space-y-2">
@@ -44,8 +65,8 @@ export default function IntegrationSettings() {
           <Textarea value={form.thirdPartyNotes} onChange={(e) => setForm({ ...form, thirdPartyNotes: e.target.value })} placeholder="GoFood, GrabFood, ShopeeFood configurations..." />
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setForm(integration)}>Reset</Button>
-          <Button onClick={save}>Save</Button>
+          <Button variant="outline" type="button" onClick={() => setForm(integration)} disabled={saving}>Reset</Button>
+          <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </CardContent>
     </Card>
