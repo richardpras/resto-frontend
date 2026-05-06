@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePurchaseStore, GRNStatus } from "@/stores/purchaseStore";
-import { useInventoryStore } from "@/stores/inventoryStore";
 import { Plus, PackageCheck, Search, Check } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,14 +16,24 @@ const statusColors: Record<GRNStatus, string> = {
 };
 
 export default function GoodsReceipts() {
-  const { goodsReceipts, addGRN, confirmGRN, purchaseOrders } = usePurchaseStore();
-  const { ingredients } = useInventoryStore();
+  const {
+    goodsReceipts,
+    addGRN,
+    confirmGRN,
+    purchaseOrders,
+    fetchGoodsReceipts,
+    fetchPurchaseOrders,
+  } = usePurchaseStore();
   const [formOpen, setFormOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const [selectedPO, setSelectedPO] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [receivedQtys, setReceivedQtys] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    void Promise.all([fetchGoodsReceipts(), fetchPurchaseOrders()]);
+  }, [fetchGoodsReceipts, fetchPurchaseOrders]);
 
   const sentPOs = purchaseOrders.filter((po) => po.status === "sent" || po.status === "partial");
 
@@ -45,7 +54,7 @@ export default function GoodsReceipts() {
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const po = purchaseOrders.find((p) => p.id === selectedPO);
     if (!po) { toast.error("Select a PO"); return; }
     const grnItems = po.items.map((i) => ({
@@ -57,13 +66,13 @@ export default function GoodsReceipts() {
 
     if (grnItems.length === 0) { toast.error("Enter received quantities"); return; }
 
-    const id = addGRN({ poReference: po.poNumber, date, status: "pending", items: grnItems });
-    confirmGRN(id);
+    const id = await addGRN({ poReference: po.poNumber, date, status: "pending", items: grnItems });
+    await confirmGRN(id);
     toast.success("Goods received & stock updated");
     setFormOpen(false);
   };
 
-  const getItemName = (id: string) => ingredients.find((i) => i.id === id)?.name ?? "—";
+  const getItemName = (id: string) => `Item #${id}`;
   const filtered = goodsReceipts.filter((g) => g.grnNumber.toLowerCase().includes(search.toLowerCase()) || g.poReference.toLowerCase().includes(search.toLowerCase()));
 
   return (

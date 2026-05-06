@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,7 +20,11 @@ const statusColors: Record<PRStatus, string> = {
 };
 
 export default function PurchaseRequests() {
-  const { purchaseRequests, addPR, updatePR, suppliers, createPOFromPR } = usePurchaseStore();
+  const { purchaseRequests, addPR, updatePR, suppliers, createPOFromPR, fetchPurchaseRequests } = usePurchaseStore();
+  useEffect(() => {
+    void fetchPurchaseRequests();
+  }, [fetchPurchaseRequests]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -62,7 +66,7 @@ export default function PurchaseRequests() {
     setFormOpen(true);
   };
 
-  const handleSave = (status: PRStatus) => {
+  const handleSave = async (status: PRStatus) => {
     if (!requestedBy.trim()) { toast.error("Requested by is required"); return; }
     if (items.length === 0 || items.some((i) => !i.inventoryItemId)) {
       toast.error("Add at least one valid item");
@@ -70,20 +74,20 @@ export default function PurchaseRequests() {
     }
     const prItems = items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: i.qty, unit: i.unit, notes: i.notes }));
     if (editId) {
-      updatePR(editId, { date, outlet, requestedBy, notes, items: prItems, status });
+      await updatePR(editId, { date, outlet, requestedBy, notes, items: prItems, status });
       toast.success("PR updated");
     } else {
-      addPR({ date, outlet, requestedBy, notes, items: prItems, status });
+      await addPR({ date, outlet, requestedBy, notes, items: prItems, status });
       toast.success(status === "draft" ? "PR saved as draft" : "PR submitted");
     }
     setFormOpen(false);
     resetForm();
   };
 
-  const handleConvertToPO = () => {
+  const handleConvertToPO = async () => {
     if (!convertId || !convertSupplierId) { toast.error("Select a supplier"); return; }
-    createPOFromPR(convertId, convertSupplierId);
-    updatePR(convertId, { status: "approved" });
+    await createPOFromPR(convertId, convertSupplierId);
+    await updatePR(convertId, { status: "approved" });
     toast.success("PO created from PR");
     setConvertId(null);
     setConvertSupplierId("");

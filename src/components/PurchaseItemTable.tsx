@@ -8,6 +8,10 @@ import { Plus, Trash2 } from "lucide-react";
 export type PurchaseLineItem = {
   inventoryItemId: string;
   qty: number;
+  prItemId?: string;
+  requestedQty?: number;
+  prRemainingQty?: number;
+  isFromPr?: boolean;
   unit: string;
   price: number;
   notes?: string;
@@ -22,6 +26,7 @@ type Props = {
   receivedQtyMap?: Record<string, number>;
   onReceivedQtyChange?: (idx: number, val: number) => void;
   showReceiving?: boolean;
+  showPrComparison?: boolean;
 };
 
 export function PurchaseItemTable({
@@ -33,6 +38,7 @@ export function PurchaseItemTable({
   showReceiving = false,
   receivedQtyMap,
   onReceivedQtyChange,
+  showPrComparison = false,
 }: Props) {
   const { ingredients } = useInventoryStore();
 
@@ -65,6 +71,8 @@ export function PurchaseItemTable({
             <TableRow className="bg-muted/50">
               <TableHead className="w-[240px]">Item</TableHead>
               <TableHead className="w-24">Qty</TableHead>
+              {showPrComparison && <TableHead className="w-24">PR Qty</TableHead>}
+              {showPrComparison && <TableHead className="w-24">Remaining</TableHead>}
               <TableHead className="w-20">Unit</TableHead>
               {showPrice && <TableHead className="w-28">Price</TableHead>}
               {showPrice && <TableHead className="w-28">Subtotal</TableHead>}
@@ -104,7 +112,7 @@ export function PurchaseItemTable({
                     </Select>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className={showPrComparison && item.isFromPr && item.requestedQty !== undefined && item.qty !== item.requestedQty ? "text-warning font-medium" : ""}>
                   {readOnly ? (
                     <span className="text-sm">{item.qty}</span>
                   ) : (
@@ -117,6 +125,16 @@ export function PurchaseItemTable({
                     />
                   )}
                 </TableCell>
+                {showPrComparison && (
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">{item.isFromPr ? (item.requestedQty ?? 0) : "-"}</span>
+                  </TableCell>
+                )}
+                {showPrComparison && (
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">{item.isFromPr ? (item.prRemainingQty ?? 0) : "-"}</span>
+                  </TableCell>
+                )}
                 <TableCell>
                   <span className="text-sm text-muted-foreground">{item.unit || "—"}</span>
                 </TableCell>

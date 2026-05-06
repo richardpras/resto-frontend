@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PurchaseItemTable, PurchaseLineItem } from "@/components/PurchaseItemTable";
 import { usePurchaseStore, POStatus } from "@/stores/purchaseStore";
-import { useInventoryStore } from "@/stores/inventoryStore";
-import { Plus, FileText, Send, Search, Package } from "lucide-react";
+import { Plus, Send, Search, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const statusColors: Record<POStatus, string> = {
@@ -21,8 +20,11 @@ const statusColors: Record<POStatus, string> = {
 };
 
 export default function PurchaseOrders() {
-  const { purchaseOrders, addPO, updatePO, suppliers } = usePurchaseStore();
-  const { ingredients } = useInventoryStore();
+  const { purchaseOrders, addPO, updatePO, suppliers, purchaseRequests, fetchPurchaseOrders, fetchPurchaseRequests } = usePurchaseStore();
+  useEffect(() => {
+    void Promise.all([fetchPurchaseOrders(), fetchPurchaseRequests()]);
+  }, [fetchPurchaseOrders, fetchPurchaseRequests]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -52,19 +54,45 @@ export default function PurchaseOrders() {
     setDate(po.date);
     setReferencePR(po.referencePR ?? "");
     setNotes(po.notes ?? "");
-    setItems(po.items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: i.qty, unit: i.unit, price: i.price })));
+    setItems(po.items.map((i) => ({
+      inventoryItemId: i.inventoryItemId,
+      qty: i.qty,
+      prItemId: i.prItemId,
+      requestedQty: i.requestedQty,
+      prRemainingQty: i.requestedQty,
+      isFromPr: i.isFromPr,
+      unit: i.unit,
+      price: i.price,
+    })));
     setFormOpen(true);
   };
 
-  const handleSave = (status: POStatus) => {
+  const handleSelectPr = (prNumber: string) => {
+    setReferencePR(prNumber);
+    const pr = purchaseRequests.find((p) => p.prNumber === prNumber);
+    if (!pr) return;
+    setItems(pr.items.map((item) => ({
+      inventoryItemId: item.inventoryItemId,
+      qty: item.remainingQty ?? item.qty,
+      prItemId: item.id,
+      requestedQty: item.qty,
+      prRemainingQty: item.remainingQty ?? item.qty,
+      isFromPr: true,
+      unit: item.unit,
+      price: 0,
+    })));
+  };
+
+  const handleSave = async (status: POStatus) => {
     if (!supplierId) { toast.error("Select a supplier"); return; }
     if (items.length === 0 || items.some((i) => !i.inventoryItemId)) { toast.error("Add valid items"); return; }
-    const poItems = items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: i.qty, unit: i.unit, price: i.price, receivedQty: 0 }));
+    const overOrdered = items.some((i) => i.isFromPr && i.prRemainingQty !== undefined && i.qty > i.prRemainingQty);
+    if (overOrdered) { toast.error("PO qty cannot exceed remaining PR qty"); return; }
     if (editId) {
-      updatePO(editId, { supplierId, date, referencePR: referencePR || undefined, notes, items: poItems, status });
+      await updatePO(editId, { supplierId, date, referencePR: referencePR || undefined, notes, items, status });
       toast.success("PO updated");
     } else {
-      addPO({ supplierId, date, referencePR: referencePR || undefined, notes, items: poItems, status });
+      await addPO({ supplierId, date, referencePR: referencePR || undefined, notes, items, status });
       toast.success(status === "draft" ? "PO saved as draft" : "PO sent");
     }
     setFormOpen(false);
@@ -153,7 +181,14 @@ export default function PurchaseOrders() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reference PR</label>
-                <Input value={referencePR} onChange={(e) => setReferencePR(e.target.value)} placeholder="Optional" />
+                <Select value={referencePR} onValueChange={handleSelectPr}>
+                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectContent>
+                    {purchaseRequests.filter((p) => p.status === "submitted" || p.status === "approved").map((pr) => (
+                      <SelectItem key={pr.id} value={pr.prNumber}>{pr.prNumber}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -162,7 +197,7 @@ export default function PurchaseOrders() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Items</label>
-              <PurchaseItemTable items={items} onChange={setItems} showPrice />
+              <PurchaseItemTable items={items} onChange={setItems} showPrice showPrComparison />
             </div>
             {items.length > 0 && (
               <div className="text-right text-sm font-semibold text-foreground">

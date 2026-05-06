@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,35 +13,62 @@ import { toast } from "sonner";
 
 const statusColors: Record<InvoiceStatus, string> = {
   unpaid: "bg-destructive/15 text-destructive border-destructive/30",
+  partial: "bg-warning/15 text-warning border-warning/30",
   paid: "bg-success/15 text-success border-success/30",
 };
 
 export default function PurchaseInvoices() {
-  const { invoices, addInvoice, updateInvoice, purchaseOrders, suppliers } = usePurchaseStore();
+  const {
+    invoices,
+    addInvoice,
+    updateInvoice,
+    purchaseOrders,
+    suppliers,
+    goodsReceipts,
+    fetchPurchaseOrders,
+    fetchGoodsReceipts,
+    fetchPurchaseInvoices,
+    addInvoicePayment,
+  } = usePurchaseStore();
   const { ingredients } = useInventoryStore();
   const [formOpen, setFormOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const [selectedPO, setSelectedPO] = useState("");
+  const [selectedGR, setSelectedGR] = useState("");
   const [invNumber, setInvNumber] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [tax, setTax] = useState(0);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [payInvoiceId, setPayInvoiceId] = useState("");
+  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [payAmount, setPayAmount] = useState(0);
+  const [payMethod, setPayMethod] = useState<"cash" | "bank">("cash");
+  const [payReference, setPayReference] = useState("");
+
+  useEffect(() => {
+    void Promise.all([fetchPurchaseOrders(), fetchGoodsReceipts(), fetchPurchaseInvoices()]);
+  }, [fetchPurchaseOrders, fetchGoodsReceipts, fetchPurchaseInvoices]);
 
   const openNew = () => {
     setSelectedPO("");
+    setSelectedGR("");
     setInvNumber("");
     setDate(new Date().toISOString().slice(0, 10));
     setTax(0);
     setFormOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const po = purchaseOrders.find((p) => p.id === selectedPO);
     if (!po) { toast.error("Select a PO"); return; }
+    const gr = goodsReceipts.find((g) => g.id === selectedGR);
+    if (!gr) { toast.error("Select a GR"); return; }
     const items = po.items.map((i) => ({ inventoryItemId: i.inventoryItemId, qty: i.qty, unit: i.unit, price: i.price }));
-    addInvoice({
+    await addInvoice({
       supplierId: po.supplierId,
       poReference: po.poNumber,
+      grReference: gr.grnNumber,
       date,
       status: "unpaid",
       tax,
@@ -51,9 +78,41 @@ export default function PurchaseInvoices() {
     setFormOpen(false);
   };
 
-  const markPaid = (id: string) => {
-    updateInvoice(id, { status: "paid" });
-    toast.success("Invoice marked as paid");
+  const openPay = (id: string) => {
+    const inv = invoices.find((x) => x.id === id);
+    if (!inv) return;
+    setPayInvoiceId(id);
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayAmount(inv.remainingAmount);
+    setPayMethod("cash");
+    setPayReference("");
+    setPaymentOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!payInvoiceId || payAmount <= 0) {
+      toast.error("Amount must be greater than zero");
+      return;
+    }
+    await addInvoicePayment(payInvoiceId, {
+      date: payDate,
+      amount: payAmount,
+      paymentMethod: payMethod,
+      referenceNo: payReference || undefined,
+    });
+    toast.success("Supplier payment recorded");
+    setPaymentOpen(false);
+  };
+
+  const markPaid = async (id: string) => {
+    const inv = invoices.find((x) => x.id === id);
+    if (!inv) return;
+    if (inv.remainingAmount <= 0) {
+      await updateInvoice(id, { status: "paid" });
+      toast.success("Invoice marked as paid");
+      return;
+    }
+    openPay(id);
   };
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "—";
@@ -65,6 +124,10 @@ export default function PurchaseInvoices() {
   );
 
   const eligiblePOs = purchaseOrders.filter((po) => po.status !== "draft");
+  const eligibleGRs = goodsReceipts.filter((gr) => {
+    const po = purchaseOrders.find((p) => p.id === selectedPO);
+    return po ? gr.poReference === po.poNumber : false;
+  });
 
   return (
     <div className="space-y-6">
@@ -112,9 +175,9 @@ export default function PurchaseInvoices() {
                   <TableCell className="text-sm font-medium">Rp {getTotal(inv).toLocaleString()}</TableCell>
                   <TableCell><Badge variant="outline" className={statusColors[inv.status]}>{inv.status}</Badge></TableCell>
                   <TableCell className="text-right">
-                    {inv.status === "unpaid" && (
+                    {inv.status !== "paid" && (
                       <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => markPaid(inv.id)}>
-                        <Check className="h-3 w-3" /> Mark Paid
+                        <Check className="h-3 w-3" /> Add Payment
                       </Button>
                     )}
                   </TableCell>
@@ -146,6 +209,17 @@ export default function PurchaseInvoices() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Invoice Number</label>
                 <Input value={invNumber} onChange={(e) => setInvNumber(e.target.value)} placeholder="Supplier invoice #" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">GR Reference *</label>
+                <Select value={selectedGR} onValueChange={setSelectedGR}>
+                  <SelectTrigger><SelectValue placeholder="Select GR" /></SelectTrigger>
+                  <SelectContent>
+                    {eligibleGRs.map((gr) => (
+                      <SelectItem key={gr.id} value={gr.id}>{gr.grnNumber}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Date</label>
@@ -199,6 +273,40 @@ export default function PurchaseInvoices() {
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
               <Button onClick={handleSave}>Save Invoice</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Supplier Payment</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Date</label>
+              <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Amount</label>
+              <Input type="number" min={0} value={payAmount} onChange={(e) => setPayAmount(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Payment Method</label>
+              <Select value={payMethod} onValueChange={(v: "cash" | "bank") => setPayMethod(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank">Bank</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reference No</label>
+              <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="Optional transfer/bank ref" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPaymentOpen(false)}>Cancel</Button>
+              <Button onClick={submitPayment}>Save Payment</Button>
             </div>
           </div>
         </DialogContent>

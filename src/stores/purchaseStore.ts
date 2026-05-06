@@ -1,5 +1,22 @@
 import { create } from "zustand";
-import { useInventoryStore } from "./inventoryStore";
+import {
+  createPurchaseInvoicePayment,
+  createGoodsReceipt,
+  createPurchaseInvoice,
+  createPurchaseOrder,
+  createPurchaseRequest,
+  listGoodsReceipts,
+  listPurchaseInvoices,
+  listPurchaseOrders,
+  listPurchaseRequests,
+  updatePurchaseInvoice,
+  updatePurchaseOrder,
+  updatePurchaseRequest,
+  type GoodsReceiptApiRow,
+  type PurchaseInvoiceApiRow,
+  type PurchaseOrderApiRow,
+  type PurchaseRequestApiRow,
+} from "@/lib/api-integration/purchaseEndpoints";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -13,11 +30,14 @@ export type Supplier = {
 export type PRStatus = "draft" | "submitted" | "approved" | "rejected";
 export type POStatus = "draft" | "sent" | "partial" | "completed";
 export type GRNStatus = "pending" | "received";
-export type InvoiceStatus = "unpaid" | "paid";
+export type InvoiceStatus = "unpaid" | "partial" | "paid";
 
 export type PRItem = {
+  id?: string;
   inventoryItemId: string;
   qty: number;
+  fulfilledQty?: number;
+  remainingQty?: number;
   unit: string;
   notes?: string;
 };
@@ -37,6 +57,9 @@ export type PurchaseRequest = {
 export type POItem = {
   inventoryItemId: string;
   qty: number;
+  prItemId?: string;
+  requestedQty?: number;
+  isFromPr?: boolean;
   unit: string;
   price: number;
   receivedQty: number;
@@ -76,10 +99,15 @@ export type PurchaseInvoice = {
   invoiceNumber: string;
   supplierId: string;
   poReference: string;
+  grReference?: string;
   date: string;
   status: InvoiceStatus;
+  total: number;
+  paidAmount: number;
+  remainingAmount: number;
   tax: number;
   items: { inventoryItemId: string; qty: number; unit: string; price: number }[];
+  payments: { id: string; date: string; amount: number; paymentMethod: "cash" | "bank"; referenceNo?: string; notes?: string }[];
   createdAt: string;
 };
 
@@ -91,35 +119,47 @@ type PurchaseStore = {
   purchaseOrders: PurchaseOrder[];
   goodsReceipts: GoodsReceipt[];
   invoices: PurchaseInvoice[];
+  loading: boolean;
+
+  fetchPurchaseRequests: () => Promise<void>;
+  fetchPurchaseOrders: () => Promise<void>;
+  fetchGoodsReceipts: () => Promise<void>;
+  fetchPurchaseInvoices: () => Promise<void>;
 
   addSupplier: (s: Omit<Supplier, "id">) => string;
 
   // PR
-  addPR: (pr: Omit<PurchaseRequest, "id" | "prNumber" | "createdAt">) => string;
-  updatePR: (id: string, data: Partial<PurchaseRequest>) => void;
+  addPR: (pr: Omit<PurchaseRequest, "id" | "prNumber" | "createdAt">) => Promise<string>;
+  updatePR: (id: string, data: Partial<PurchaseRequest>) => Promise<void>;
 
   // PO
-  addPO: (po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">) => string;
-  updatePO: (id: string, data: Partial<PurchaseOrder>) => void;
-  createPOFromPR: (prId: string, supplierId: string) => string | null;
+  addPO: (po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">) => Promise<string>;
+  updatePO: (id: string, data: Partial<PurchaseOrder>) => Promise<void>;
+  createPOFromPR: (prId: string, supplierId: string) => Promise<string | null>;
 
   // GRN
-  addGRN: (grn: Omit<GoodsReceipt, "id" | "grnNumber" | "createdAt">) => string;
-  confirmGRN: (id: string) => void;
+  addGRN: (grn: Omit<GoodsReceipt, "id" | "grnNumber" | "createdAt">) => Promise<string>;
+  confirmGRN: (id: string) => Promise<void>;
 
   // Invoice
-  addInvoice: (inv: Omit<PurchaseInvoice, "id" | "invoiceNumber" | "createdAt">) => string;
-  updateInvoice: (id: string, data: Partial<PurchaseInvoice>) => void;
+  addInvoice: (inv: {
+    supplierId: string;
+    poReference: string;
+    grReference?: string;
+    date: string;
+    status: InvoiceStatus;
+    tax: number;
+    items: { inventoryItemId: string; qty: number; unit: string; price: number }[];
+  }) => Promise<string>;
+  updateInvoice: (id: string, data: Partial<PurchaseInvoice>) => Promise<void>;
+  addInvoicePayment: (
+    id: string,
+    payment: { date: string; amount: number; paymentMethod: "cash" | "bank"; referenceNo?: string; notes?: string },
+  ) => Promise<void>;
 };
 
 let nextId = 1;
 const uid = () => `pur-${nextId++}`;
-let prSeq = 1;
-let poSeq = 1;
-let grnSeq = 1;
-let invSeq = 1;
-
-const pad = (n: number) => String(n).padStart(4, "0");
 
 const defaultSuppliers: Supplier[] = [
   { id: "sup-1", name: "PT Sumber Pangan", contact: "08123456789", email: "info@sumberpangan.id" },
@@ -127,12 +167,142 @@ const defaultSuppliers: Supplier[] = [
   { id: "sup-3", name: "UD Tani Makmur", contact: "08111222333", email: "sales@tanimakmur.id" },
 ];
 
+const mapPurchaseRequest = (row: PurchaseRequestApiRow): PurchaseRequest => ({
+  id: row.id,
+  prNumber: row.prNumber,
+  date: row.date,
+  outlet: row.outlet || "Main Outlet",
+  requestedBy: row.requestedBy,
+  status: row.status,
+  notes: row.notes ?? undefined,
+  items: row.items.map((item) => ({
+    id: item.id,
+    inventoryItemId: item.inventoryItemId,
+    qty: item.qty,
+    fulfilledQty: item.fulfilledQty ?? 0,
+    remainingQty: item.remainingQty ?? Math.max(0, item.qty - (item.fulfilledQty ?? 0)),
+    unit: item.unit,
+    notes: item.notes ?? undefined,
+  })),
+  createdAt: row.createdAt,
+});
+
+const mapPurchaseOrder = (row: PurchaseOrderApiRow): PurchaseOrder => ({
+  id: row.id,
+  poNumber: row.poNumber,
+  supplierId: row.supplierId,
+  date: row.date,
+  referencePR: row.referencePR ?? undefined,
+  status: row.status,
+  notes: row.notes ?? undefined,
+  items: row.items.map((item) => ({
+    inventoryItemId: item.inventoryItemId,
+    qty: item.qty,
+    prItemId: item.prItemId ?? undefined,
+    requestedQty: item.requestedQty ?? undefined,
+    isFromPr: item.isFromPr ?? false,
+    unit: item.unit ?? "",
+    price: item.price,
+    receivedQty: item.receivedQty,
+  })),
+  createdAt: row.createdAt,
+});
+
+const mapGoodsReceipt = (row: GoodsReceiptApiRow): GoodsReceipt => ({
+  id: row.id,
+  grnNumber: row.grnNumber,
+  poReference: row.poReference,
+  date: row.date,
+  status: row.status,
+  items: row.items.map((item) => ({
+    inventoryItemId: item.inventoryItemId,
+    orderedQty: item.orderedQty,
+    receivedQty: item.receivedQty,
+    unit: item.unit ?? "",
+  })),
+  createdAt: row.createdAt,
+});
+
+const mapPurchaseInvoice = (row: PurchaseInvoiceApiRow): PurchaseInvoice => ({
+  id: row.id,
+  invoiceNumber: row.invoiceNumber,
+  supplierId: row.supplierId,
+  poReference: row.poReference,
+  grReference: row.grReference,
+  date: row.date,
+  status: row.status,
+  total: row.total,
+  paidAmount: row.paidAmount,
+  remainingAmount: row.remainingAmount,
+  tax: row.tax,
+  items: row.items.map((item) => ({
+    inventoryItemId: item.inventoryItemId,
+    qty: item.qty,
+    unit: item.unit,
+    price: item.price,
+  })),
+  payments: row.payments.map((payment) => ({
+    id: payment.id,
+    date: payment.date,
+    amount: payment.amount,
+    paymentMethod: payment.paymentMethod,
+    referenceNo: payment.referenceNo ?? undefined,
+    notes: payment.notes ?? undefined,
+  })),
+  createdAt: row.createdAt,
+});
+
 export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   suppliers: defaultSuppliers,
   purchaseRequests: [],
   purchaseOrders: [],
   goodsReceipts: [],
   invoices: [],
+  loading: false,
+
+  fetchPurchaseRequests: async () => {
+    set({ loading: true });
+    try {
+      const rows = await listPurchaseRequests();
+      set({ purchaseRequests: rows.map(mapPurchaseRequest), loading: false });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
+  },
+
+  fetchPurchaseOrders: async () => {
+    set({ loading: true });
+    try {
+      const rows = await listPurchaseOrders();
+      set({ purchaseOrders: rows.map(mapPurchaseOrder), loading: false });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
+  },
+
+  fetchGoodsReceipts: async () => {
+    set({ loading: true });
+    try {
+      const rows = await listGoodsReceipts();
+      set({ goodsReceipts: rows.map(mapGoodsReceipt), loading: false });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
+  },
+
+  fetchPurchaseInvoices: async () => {
+    set({ loading: true });
+    try {
+      const rows = await listPurchaseInvoices();
+      set({ invoices: rows.map(mapPurchaseInvoice), loading: false });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
+  },
 
   addSupplier: (s) => {
     const id = uid();
@@ -141,124 +311,155 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   },
 
   // ── PR ──
-  addPR: (pr) => {
-    const id = uid();
-    const prNumber = `PR-${pad(prSeq++)}`;
-    set((st) => ({
-      purchaseRequests: [...st.purchaseRequests, { ...pr, id, prNumber, createdAt: new Date().toISOString() }],
-    }));
-    return id;
+  addPR: async (pr) => {
+    const created = await createPurchaseRequest({
+      date: pr.date,
+      outlet: pr.outlet,
+      requestedBy: pr.requestedBy,
+      status: pr.status,
+      notes: pr.notes,
+      items: pr.items.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        qty: item.qty,
+        unit: item.unit,
+        notes: item.notes,
+      })),
+    });
+    await get().fetchPurchaseRequests();
+    return created.id;
   },
-  updatePR: (id, data) =>
-    set((st) => ({
-      purchaseRequests: st.purchaseRequests.map((p) => (p.id === id ? { ...p, ...data } : p)),
-    })),
+  updatePR: async (id, data) => {
+    await updatePurchaseRequest(id, {
+      date: data.date,
+      outlet: data.outlet,
+      requestedBy: data.requestedBy,
+      status: data.status,
+      notes: data.notes ?? null,
+      items: data.items?.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        qty: item.qty,
+        unit: item.unit,
+        notes: item.notes,
+      })),
+    });
+    await get().fetchPurchaseRequests();
+  },
 
   // ── PO ──
-  addPO: (po) => {
-    const id = uid();
-    const poNumber = `PO-${pad(poSeq++)}`;
-    set((st) => ({
-      purchaseOrders: [...st.purchaseOrders, { ...po, id, poNumber, createdAt: new Date().toISOString() }],
-    }));
-    return id;
+  addPO: async (po) => {
+    const prId = get().purchaseRequests.find((pr) => pr.prNumber === po.referencePR)?.id;
+    const created = await createPurchaseOrder({
+      date: po.date,
+      supplierId: po.supplierId,
+      purchaseRequestId: prId,
+      status: po.status,
+      notes: po.notes,
+      items: po.items.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        qty: item.qty,
+        unit: item.unit,
+        price: item.price,
+        prItemId: item.prItemId,
+        requestedQty: item.requestedQty,
+        isFromPr: item.isFromPr,
+      })),
+    });
+    await get().fetchPurchaseOrders();
+    return created.id;
   },
-  updatePO: (id, data) =>
-    set((st) => ({
-      purchaseOrders: st.purchaseOrders.map((p) => (p.id === id ? { ...p, ...data } : p)),
-    })),
+  updatePO: async (id, data) => {
+    const prId = data.referencePR ? get().purchaseRequests.find((pr) => pr.prNumber === data.referencePR)?.id : undefined;
+    await updatePurchaseOrder(id, {
+      date: data.date,
+      supplierId: data.supplierId,
+      purchaseRequestId: prId,
+      status: data.status,
+      notes: data.notes ?? null,
+      items: data.items?.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        qty: item.qty,
+        unit: item.unit,
+        price: item.price,
+        prItemId: item.prItemId,
+        requestedQty: item.requestedQty,
+        isFromPr: item.isFromPr,
+      })),
+    });
+    await get().fetchPurchaseOrders();
+  },
 
-  createPOFromPR: (prId, supplierId) => {
+  createPOFromPR: async (prId, supplierId) => {
     const pr = get().purchaseRequests.find((p) => p.id === prId);
     if (!pr) return null;
-    const poItems: POItem[] = pr.items.map((i) => ({
-      inventoryItemId: i.inventoryItemId,
-      qty: i.qty,
-      unit: i.unit,
-      price: 0,
-      receivedQty: 0,
-    }));
-    const id = uid();
-    const poNumber = `PO-${pad(poSeq++)}`;
-    set((st) => ({
-      purchaseOrders: [
-        ...st.purchaseOrders,
-        {
-          id,
-          poNumber,
-          supplierId,
-          date: new Date().toISOString().slice(0, 10),
-          referencePR: pr.prNumber,
-          status: "draft" as POStatus,
-          items: poItems,
-          notes: "",
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    }));
-    return id;
+    const created = await createPurchaseOrder({
+      date: new Date().toISOString().slice(0, 10),
+      supplierId,
+      purchaseRequestId: pr.id,
+      status: "draft",
+      notes: "",
+      items: pr.items.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        qty: item.remainingQty ?? item.qty,
+        prItemId: item.id,
+        requestedQty: item.qty,
+        isFromPr: true,
+        unit: item.unit,
+        price: 0,
+      })),
+    });
+    await get().fetchPurchaseOrders();
+    return created.id;
   },
 
   // ── GRN ──
-  addGRN: (grn) => {
-    const id = uid();
-    const grnNumber = `GRN-${pad(grnSeq++)}`;
-    set((st) => ({
-      goodsReceipts: [...st.goodsReceipts, { ...grn, id, grnNumber, createdAt: new Date().toISOString() }],
-    }));
-    return id;
-  },
-
-  confirmGRN: (id) => {
-    const grn = get().goodsReceipts.find((g) => g.id === id);
-    if (!grn || grn.status === "received") return;
-
-    // Update stock
-    const { updateIngredientStock, ingredients } = useInventoryStore.getState();
-    grn.items.forEach((item) => {
-      const inv = ingredients.find((i) => i.id === item.inventoryItemId);
-      if (inv) {
-        updateIngredientStock(item.inventoryItemId, inv.stock + item.receivedQty);
-      }
-    });
-
-    // Update PO received quantities
+  addGRN: async (grn) => {
     const po = get().purchaseOrders.find((p) => p.poNumber === grn.poReference);
-    if (po) {
-      const updatedItems = po.items.map((poItem) => {
-        const grnItem = grn.items.find((g) => g.inventoryItemId === poItem.inventoryItemId);
-        if (grnItem) {
-          return { ...poItem, receivedQty: poItem.receivedQty + grnItem.receivedQty };
-        }
-        return poItem;
-      });
-      const allReceived = updatedItems.every((i) => i.receivedQty >= i.qty);
-      const someReceived = updatedItems.some((i) => i.receivedQty > 0);
-      set((st) => ({
-        purchaseOrders: st.purchaseOrders.map((p) =>
-          p.id === po.id
-            ? { ...p, items: updatedItems, status: allReceived ? "completed" : someReceived ? "partial" : p.status }
-            : p
-        ),
-      }));
+    if (!po) {
+      throw new Error("PO not found");
     }
 
-    set((st) => ({
-      goodsReceipts: st.goodsReceipts.map((g) => (g.id === id ? { ...g, status: "received" as GRNStatus } : g)),
-    }));
+    const created = await createGoodsReceipt({
+      purchaseOrderId: po.id,
+      date: grn.date,
+      items: grn.items.map((item) => ({
+        inventoryItemId: item.inventoryItemId,
+        receivedQty: item.receivedQty,
+      })),
+    });
+
+    await Promise.all([get().fetchGoodsReceipts(), get().fetchPurchaseOrders()]);
+    return created.id;
+  },
+
+  confirmGRN: async (_id) => {
+    await Promise.all([get().fetchGoodsReceipts(), get().fetchPurchaseOrders()]);
   },
 
   // ── Invoice ──
-  addInvoice: (inv) => {
-    const id = uid();
-    const invoiceNumber = `INV-${pad(invSeq++)}`;
-    set((st) => ({
-      invoices: [...st.invoices, { ...inv, id, invoiceNumber, createdAt: new Date().toISOString() }],
-    }));
-    return id;
+  addInvoice: async (inv) => {
+    const po = get().purchaseOrders.find((order) => order.poNumber === inv.poReference);
+    if (!po) throw new Error("Purchase order not found");
+    const gr = get().goodsReceipts.find((receipt) =>
+      inv.grReference ? receipt.grnNumber === inv.grReference : receipt.poReference === po.poNumber
+    );
+    if (!gr) throw new Error("Goods receipt not found for selected PO");
+
+    const created = await createPurchaseInvoice({
+      purchaseOrderId: po.id,
+      goodsReceiptId: gr.id,
+      date: inv.date,
+      tax: inv.tax,
+    });
+    await get().fetchPurchaseInvoices();
+    return created.id;
   },
-  updateInvoice: (id, data) =>
-    set((st) => ({
-      invoices: st.invoices.map((i) => (i.id === id ? { ...i, ...data } : i)),
-    })),
+  updateInvoice: async (id, data) => {
+    if (!data.status) return;
+    await updatePurchaseInvoice(id, { status: data.status });
+    await get().fetchPurchaseInvoices();
+  },
+  addInvoicePayment: async (id, payment) => {
+    await createPurchaseInvoicePayment(id, payment);
+    await get().fetchPurchaseInvoices();
+  },
 }));
