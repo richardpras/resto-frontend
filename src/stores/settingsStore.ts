@@ -90,7 +90,7 @@ interface SettingsStore {
 
   updateMerchant: (m: Partial<Merchant>) => void;
   upsertOutlet: (o: Outlet) => void;
-  deleteOutlet: (id: string) => void;
+  deleteOutlet: (id: number) => void;
   upsertTax: (t: Tax) => void;
   deleteTax: (id: string) => void;
   upsertPrinter: (p: Printer) => void;
@@ -104,7 +104,7 @@ interface SettingsStore {
   deleteBank: (id: string) => void;
   setDefaultBank: (id: string) => void;
   setOutletReceiptRows: (rows: OutletReceiptSettingRow[]) => void;
-  patchOutletReceiptLocal: (outletId: string, patch: Partial<OutletReceiptSettingRow>) => void;
+  patchOutletReceiptLocal: (outletId: number, patch: Partial<OutletReceiptSettingRow>) => void;
 
   refreshFromApi: () => Promise<void>;
 }
@@ -211,7 +211,7 @@ export async function persistOutletPrefixesFromStore(): Promise<void> {
   await Promise.all(outlets.map((o) => patchOutlet(o.id, o)));
 }
 
-export async function removeOutletCascade(outletId: string): Promise<void> {
+export async function removeOutletCascade(outletId: number): Promise<void> {
   if (getApiAccessToken()) await deleteOutletApi(outletId);
   useSettingsStore.getState().deleteOutlet(outletId);
 }

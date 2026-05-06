@@ -4,3 +4,4 @@ export * from "./hrEndpoints";
 export * from "./userManagementEndpoints";
 export * from "./settingsDomainEndpoints";
 export * from "./endpoints";
+export * from "./tableEndpoints";

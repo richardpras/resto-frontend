@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchPrinter, postPrinter } from "@/lib/api-integration/settingsDomainEndpoints";
 
-const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: "" };
+const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: 0 };
 
 export default function PrinterSettings() {
   const printers = useSettingsStore((s) => s.printers);
@@ -26,7 +26,7 @@ export default function PrinterSettings() {
 
   const save = async () => {
     if (!form.name.trim()) return toast.error("Printer name required");
-    if (!form.outletId) return toast.error("Select outlet");
+    if (!form.outletId || form.outletId < 1) return toast.error("Select outlet");
     if (form.connection === "lan" && !form.ip?.trim()) return toast.error("IP address required for LAN");
     const wasInList = useSettingsStore.getState().printers.some((p) => p.id === form.id);
     setSaving(true);
@@ -61,7 +61,16 @@ export default function PrinterSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">Printer Setup</h2>
-          <Button onClick={() => { setForm({ ...empty, id: newId(), outletId: outlets[0]?.id || "" }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Printer</Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setForm({ ...empty, id: newId(), outletId: outlets[0]?.id ?? 0 });
+              setOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Printer
+          </Button>
         </div>
         <Table>
           <TableHeader>
@@ -139,10 +148,19 @@ export default function PrinterSettings() {
               )}
               <div className="space-y-2">
                 <Label>Outlet</Label>
-                <Select value={form.outletId} onValueChange={(v) => setForm({ ...form, outletId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select outlet" /></SelectTrigger>
+                <Select
+                  value={form.outletId > 0 ? String(form.outletId) : ""}
+                  onValueChange={(v) => setForm({ ...form, outletId: Number(v) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select outlet" />
+                  </SelectTrigger>
                   <SelectContent>
-                    {outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                    {outlets.map((o) => (
+                      <SelectItem key={o.id} value={String(o.id)}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

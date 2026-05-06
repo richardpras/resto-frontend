@@ -44,6 +44,10 @@ export type Order = {
   payments: PaymentEntry[];
   customerName: string;
   customerPhone: string;
+  /** Master floor table id when assigned */
+  tableId?: string;
+  tableName?: string;
+  /** Display label / legacy QR text */
   tableNumber: string;
   createdAt: Date;
   confirmedAt?: Date;
@@ -58,16 +62,42 @@ export type Table = {
   orderId?: string;
 };
 
-const defaultTables: Table[] = Array.from({ length: 12 }, (_, i) => ({
-  id: `table-${i + 1}`,
-  name: `Table ${i + 1}`,
-  seats: i < 4 ? 2 : i < 8 ? 4 : 6,
-  status: "available" as const,
-}));
+/** Build POS/store table roster from master rows + active local orders */
+export function deriveRuntimeFloorTables(
+  masters: { id: number; name: string; capacity: number | null; status: string }[],
+  orders: Order[],
+): Table[] {
+  return masters
+    .filter((m) => m.status === "active")
+    .map((m) => {
+      const open = orders.find(
+        (o) =>
+          o.tableId === String(m.id) && o.status !== "completed" && o.status !== "cancelled",
+      );
+      let status: Table["status"] = "available";
+      let orderId: string | undefined;
+      if (open) {
+        orderId = open.id;
+        status =
+          open.paymentStatus === "paid" || open.paymentStatus === "partial"
+            ? "waiting-payment"
+            : "occupied";
+      }
+      return {
+        id: String(m.id),
+        name: m.name,
+        seats: m.capacity ?? 4,
+        status,
+        orderId,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
 
 type OrderStore = {
   orders: Order[];
   tables: Table[];
+  replaceFloorTables: (tables: Table[]) => void;
   addOrder: (order: Order) => void;
   updateOrderStatus: (id: string, status: Order["status"]) => void;
   confirmOrder: (id: string) => void;
@@ -87,7 +117,8 @@ function calcPaymentStatus(order: Order): Order["paymentStatus"] {
 
 export const useOrderStore = create<OrderStore>((set) => ({
   orders: [],
-  tables: defaultTables,
+  tables: [],
+  replaceFloorTables: (tables) => set({ tables }),
   addOrder: (order) => set((s) => ({ orders: [order, ...s.orders] })),
   updateOrderStatus: (id, status) =>
     set((s) => ({

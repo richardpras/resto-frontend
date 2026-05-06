@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Banknote, CreditCard, QrCode, Smartphone, RefreshCw } from "lucide-react";
 import { addOrderPayments, listOrders, type OrderApi } from "@/lib/api";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import { toast } from "sonner";
+import { useOutletStore } from "@/stores/outletStore";
+
+const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 type PaymentMethod = "cash" | "qris" | "ewallet" | "card";
 
@@ -10,6 +13,7 @@ type CashierOrder = {
   id: string;
   code: string;
   customerName: string;
+  tableName: string;
   tableNumber: string;
   total: number;
   paidTotal: number;
@@ -42,6 +46,7 @@ function mapOrder(order: OrderApi): CashierOrder {
     id: order.id,
     code: order.code,
     customerName: order.customerName ?? "",
+    tableName: order.tableName ?? "",
     tableNumber: order.tableNumber ?? "",
     total: order.total,
     paidTotal,
@@ -91,6 +96,7 @@ function buildSplitSettlementAllocations(order: CashierOrder): AllocationLine[] 
 }
 
 export default function Cashier() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [orders, setOrders] = useState<CashierOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -103,41 +109,46 @@ export default function Cashier() {
 
   const draftTotal = payments.reduce((sum, payment) => sum + (Number.isFinite(payment.amount) ? payment.amount : 0), 0);
 
-  const loadOpenOrders = async () => {
+  const loadOpenOrders = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listOrders({
-        source: "pos",
-        orderType: "Dine-in",
-        status: "confirmed",
-        paymentStatus: "unpaid",
+      if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+        setOrders([]);
+        setSelectedOrderId(null);
+        return;
+      }
+      const baseFilters = {
+        tenantId: POS_TENANT_ID,
+        outletId: activeOutletId,
+        source: "pos" as const,
+        orderType: "Dine-in" as const,
+        status: "confirmed" as const,
         perPage: 200,
+      };
+      const data = await listOrders({
+        ...baseFilters,
+        paymentStatus: "unpaid",
       });
       const partialData = await listOrders({
-        source: "pos",
-        orderType: "Dine-in",
-        status: "confirmed",
+        ...baseFilters,
         paymentStatus: "partial",
-        perPage: 200,
       });
       const merged = [...data, ...partialData].reduce<OrderApi[]>((acc, order) => {
         if (!acc.some((existing) => existing.id === order.id)) acc.push(order);
         return acc;
       }, []);
       setOrders(merged.map(mapOrder));
-      if (selectedOrderId && !merged.some((order) => order.id === selectedOrderId)) {
-        setSelectedOrderId(null);
-      }
+      setSelectedOrderId((prev) => (prev && !merged.some((order) => order.id === prev) ? null : prev));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load open cashier orders");
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeOutletId]);
 
   useEffect(() => {
     void loadOpenOrders();
-  }, []);
+  }, [loadOpenOrders]);
 
   useEffect(() => {
     if (!selectedOrder) return;
@@ -201,6 +212,11 @@ export default function Cashier() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+      {(!activeOutletId || activeOutletId < 1) && (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          Select an outlet in the header with a numeric id from <code className="text-xs">outlet_bridge</code> to load cashier queues for that outlet.
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Cashier Payments</h1>
@@ -236,7 +252,9 @@ export default function Cashier() {
                   <p className="font-bold text-foreground">{formatRp(order.balanceDue)}</p>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {order.tableNumber ? `Table ${order.tableNumber}` : "No table"}{" "}
+                  {(order.tableName?.trim() || order.tableNumber)
+                    ? `Table ${order.tableName?.trim() || order.tableNumber}`
+                    : "No table"}{" "}
                   {order.customerName ? `• ${order.customerName}` : ""}
                 </p>
               </button>

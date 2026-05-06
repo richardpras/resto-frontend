@@ -13,7 +13,8 @@ export interface Merchant {
 }
 
 export interface Outlet {
-  id: string;
+  id: number;
+  code: string;
   name: string;
   address: string;
   phone: string;
@@ -42,7 +43,7 @@ export interface Printer {
   connection: "bluetooth" | "lan";
   ip?: string;
   bluetoothDevice?: string;
-  outletId: string;
+  outletId: number;
   assignedCategories?: string[];
 }
 
@@ -83,7 +84,7 @@ export interface BankAccount {
 }
 
 export interface OutletReceiptSettingRow {
-  outletId: string;
+  outletId: number;
   outletName: string;
   receiptHeader: string;
   receiptFooter: string;

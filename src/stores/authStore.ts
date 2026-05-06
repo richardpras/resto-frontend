@@ -42,6 +42,7 @@ export const PERMISSIONS = {
   MEMBERS: "members.manage",
   TABLES: "tables.view",
   QR_ORDERS: "qr_orders.view",
+  TABLES_MANAGE: "tables.manage",
 } as const;
 
 const allPermValues = new Set<string>(Object.values(PERMISSIONS));
@@ -67,6 +68,7 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);
   if (has("settings.view", "settings.update")) out.add(PERMISSIONS.SETTINGS);
   if (codes.some((c) => c.startsWith("payroll."))) out.add(PERMISSIONS.PAYROLL);
+  if (codes.includes("tables.manage")) out.add(PERMISSIONS.TABLES_MANAGE);
 
   for (const c of codes) {
     if (allPermValues.has(c)) out.add(c);

@@ -29,8 +29,20 @@ export type InventoryPayload = Omit<InventoryItemApi, "id"> & {
   outletId?: number;
 };
 
-export async function listIngredients(): Promise<InventoryItemApi[]> {
-  const response = await request<ApiListResponse<InventoryItemApi>>("/ingredients");
+export type ListIngredientsParams = {
+  tenantId?: number;
+  perPage?: number;
+  /** Numeric outlet → per-outlet ledger stock (`inventory_stocks`) */
+  outletId?: number;
+};
+
+export async function listIngredients(params?: ListIngredientsParams): Promise<InventoryItemApi[]> {
+  const query = new URLSearchParams();
+  if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
+  if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
+  if (params?.outletId !== undefined) query.set("outletId", String(params.outletId));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiListResponse<InventoryItemApi>>(`/ingredients${suffix}`);
   return response.data;
 }
 
@@ -59,6 +71,7 @@ export async function deleteIngredient(id: string): Promise<void> {
 export type StockMovementApi = {
   id: number;
   inventory_item_id: number;
+  outlet_id?: number | null;
   inventory_item_name?: string | null;
   type: "purchase" | "sale" | "adjustment" | "waste";
   quantity: number;
@@ -94,6 +107,14 @@ export type MenuRecipeApi = {
   quantity: number;
 };
 
+export type MenuItemOutletApi = {
+  outletId: number;
+  isActive: boolean;
+  priceOverride?: number | null;
+  nameOverride?: string | null;
+  receiptName?: string | null;
+};
+
 export type MenuItemApi = {
   id: string;
   name: string;
@@ -102,6 +123,7 @@ export type MenuItemApi = {
   available: boolean;
   emoji?: string | null;
   recipes?: MenuRecipeApi[];
+  menuItemOutlets?: MenuItemOutletApi[];
 };
 
 export type MenuPayload = Omit<MenuItemApi, "id"> & {
@@ -112,12 +134,15 @@ export type MenuPayload = Omit<MenuItemApi, "id"> & {
 export type ListMenuItemsParams = {
   tenantId?: number;
   perPage?: number;
+  /** Numeric outlet PK — filters `menu_item_outlets`; pass with `tenantId` for POS */
+  outletId?: number;
 };
 
 export async function listMenuItems(params?: ListMenuItemsParams): Promise<MenuItemApi[]> {
   const query = new URLSearchParams();
   if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
   if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
+  if (params?.outletId !== undefined && params.outletId >= 1) query.set("outletId", String(params.outletId));
   const suffix = query.toString() ? `?${query.toString()}` : "";
   const response = await request<ApiListResponse<MenuItemApi>>(`/menu-items${suffix}`);
   return response.data;
@@ -178,7 +203,8 @@ export type CreateOrderPayload = {
   payments: OrderPaymentPayload[];
   customerName?: string;
   customerPhone?: string;
-  tableNumber?: string;
+  /** Floor master table PK; server fills `tableName` snapshot. */
+  tableId?: number;
   createdAt?: string;
   confirmedAt?: string;
   splitBill?: unknown;
@@ -186,6 +212,7 @@ export type CreateOrderPayload = {
 
 export type OrderApi = {
   id: string;
+  outletId?: number | null;
   code: string;
   source: "pos" | "qr";
   orderType: string;
@@ -205,6 +232,8 @@ export type OrderApi = {
   }[];
   customerName: string;
   customerPhone: string;
+  tableId?: number | null;
+  tableName?: string | null;
   tableNumber: string;
   createdAt?: string;
   confirmedAt?: string;
@@ -213,6 +242,7 @@ export type OrderApi = {
 
 export type ListOrdersParams = {
   tenantId?: number;
+  outletId?: number;
   perPage?: number;
   paymentStatus?: "unpaid" | "partial" | "paid";
   orderType?: string;
@@ -236,6 +266,7 @@ export async function getOrder(id: string): Promise<OrderApi> {
 export async function listOrders(params?: ListOrdersParams): Promise<OrderApi[]> {
   const query = new URLSearchParams();
   if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
+  if (params?.outletId !== undefined && params.outletId > 0) query.set("outletId", String(params.outletId));
   if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
   if (params?.paymentStatus) query.set("paymentStatus", params.paymentStatus);
   if (params?.orderType) query.set("orderType", params.orderType);

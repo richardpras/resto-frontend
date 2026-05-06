@@ -5,12 +5,12 @@ import {
   SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
+import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
 import { useMemberStore, type Member } from "@/stores/memberStore";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
-import { ApiHttpError } from "@/lib/api-integration/client";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
   addOrderPayments,
   createOrder,
@@ -20,6 +20,8 @@ import {
   type OrderApi,
   type OrderPaymentPayload,
 } from "@/lib/api-integration/endpoints";
+import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
+import { useOutletStore } from "@/stores/outletStore";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -72,6 +74,8 @@ function orderApiToStoreOrder(o: OrderApi): Order {
     })),
     customerName: o.customerName ?? "",
     customerPhone: o.customerPhone ?? "",
+    tableId: o.tableId != null ? String(o.tableId) : undefined,
+    tableName: o.tableName ?? undefined,
     tableNumber: o.tableNumber ?? "",
     createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
     confirmedAt: o.confirmedAt ? new Date(o.confirmedAt) : undefined,
@@ -90,7 +94,7 @@ function buildCartPayload(
   selectedTable: string,
 ): Pick<
   CreateOrderPayload,
-  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableNumber" | "discountAmount"
+  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableId" | "discountAmount"
 > {
   return {
     items: cart.map((c) => ({
@@ -107,7 +111,7 @@ function buildCartPayload(
     ...(discount > 0 ? { discountAmount: discount } : {}),
     ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
     ...(customerPhone.trim() ? { customerPhone: customerPhone.trim() } : {}),
-    ...(selectedTable ? { tableNumber: selectedTable } : {}),
+    ...(selectedTable && /^\d+$/.test(selectedTable.trim()) ? { tableId: Number(selectedTable.trim()) } : {}),
   };
 }
 
@@ -163,7 +167,8 @@ const paymentMethods = [
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
 export default function POS() {
-  const { addOrder, tables, updateTableStatus } = useOrderStore();
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const { addOrder, tables, orders, updateTableStatus, replaceFloorTables } = useOrderStore();
   const { getBestPromo, getApplicablePromos } = usePromotionStore();
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
@@ -201,9 +206,30 @@ export default function POS() {
     });
   }, [fetchMembers]);
 
+  const { data: floorMasters } = useQuery({
+    queryKey: ["floor-tables", activeOutletId ?? 0],
+    queryFn: () => listFloorTables(activeOutletId!),
+    enabled: typeof activeOutletId === "number" && activeOutletId >= 1 && Boolean(getApiAccessToken()),
+  });
+
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || !getApiAccessToken()) {
+      replaceFloorTables([]);
+      return;
+    }
+    if (!floorMasters) return;
+    replaceFloorTables(deriveRuntimeFloorTables(floorMasters, orders));
+  }, [floorMasters, orders, activeOutletId, replaceFloorTables]);
+
   const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
-    queryKey: ["menu-items", POS_TENANT_ID],
-    queryFn: () => listMenuItems({ tenantId: POS_TENANT_ID, perPage: 200 }),
+    queryKey: ["menu-items", POS_TENANT_ID, activeOutletId ?? 0],
+    queryFn: () =>
+      listMenuItems({
+        tenantId: POS_TENANT_ID,
+        perPage: 200,
+        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
+      }),
+    enabled: typeof activeOutletId === "number" && activeOutletId >= 1,
   });
 
   const menuItems: MenuItem[] = useMemo(() => {
@@ -255,6 +281,21 @@ export default function POS() {
 
   const availableTables = tables.filter((t) => t.status === "available");
 
+  const outletOrderFields = useMemo((): Pick<CreateOrderPayload, "outletId"> => {
+    if (typeof activeOutletId === "number" && activeOutletId >= 1) return { outletId: activeOutletId };
+    return {};
+  }, [activeOutletId]);
+
+  const orderContextReady = typeof activeOutletId === "number" && activeOutletId >= 1;
+
+  function requireOutletOrderContext(): boolean {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+      toast.error("Select an outlet in the header.");
+      return false;
+    }
+    return true;
+  }
+
   function toastApiError(e: unknown): void {
     if (e instanceof ApiHttpError) {
       toast.error(e.message);
@@ -266,11 +307,13 @@ export default function POS() {
   // FLOW 1: Confirm Order → Send to Kitchen (single POST: confirmed + unpaid → kitchen ticket)
   const handleConfirmOrder = async () => {
     if (cart.length === 0 || submitting) return;
+    if (!requireOutletOrderContext()) return;
     setSubmitting(true);
     try {
       const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
       const payload: CreateOrderPayload = {
         tenantId: POS_TENANT_ID,
+        ...outletOrderFields,
         code,
         source: "pos",
         orderType,
@@ -304,11 +347,13 @@ export default function POS() {
 
   const completeDirectPayment = async () => {
     if (!selectedPayment || submitting) return;
+    if (!requireOutletOrderContext()) return;
     setSubmitting(true);
     try {
       const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
       const payload: CreateOrderPayload = {
         tenantId: POS_TENANT_ID,
+        ...outletOrderFields,
         code,
         source: "pos",
         orderType,
@@ -404,11 +449,13 @@ export default function POS() {
 
   const completeSplitOrder = async () => {
     if (submitting || splitPersons.length === 0) return;
+    if (!requireOutletOrderContext()) return;
     setSubmitting(true);
     try {
       const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
       const created = await createOrder({
         tenantId: POS_TENANT_ID,
+        ...outletOrderFields,
         code,
         source: "pos",
         orderType,
@@ -492,6 +539,11 @@ export default function POS() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {(!activeOutletId || activeOutletId < 1) && (
+            <div className="mb-4 p-4 rounded-xl border border-border bg-muted/20 text-sm text-muted-foreground text-center">
+              Select an outlet in the header to load the menu for that location.
+            </div>
+          )}
           {menuLoading && (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">Loading menu…</div>
           )}
@@ -507,9 +559,9 @@ export default function POS() {
               </button>
             </div>
           )}
-          {!menuLoading && !menuError && menuItems.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">
-              No menu items available for this tenant.
+          {!menuLoading && !menuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm text-center px-4">
+              No menu items mapped for this outlet (check Menu → Outlet Settings and menu_item_outlets).
             </div>
           )}
           {!menuLoading && !menuError && menuItems.length > 0 && (
@@ -674,17 +726,17 @@ export default function POS() {
           <div className="flex gap-2">
             {orderType === "Dine-in" ? (
               <>
-                <button onClick={() => void handleConfirmOrder()} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
+                <button onClick={() => void handleConfirmOrder()} disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-accent text-accent-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <ChefHat className="h-4 w-4" /> {submitting ? "…" : "Confirm Order"}
                 </button>
-                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
+                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <CreditCard className="h-4 w-4" /> Pay Now
                 </button>
               </>
             ) : (
-              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError}
+              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
                 Pay {formatRp(total)}
               </button>

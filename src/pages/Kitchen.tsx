@@ -4,6 +4,9 @@ import { motion } from "framer-motion";
 import type { Order } from "@/stores/orderStore";
 import { listOrders, type OrderApi, updateOrderStatus as updateOrderStatusApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useOutletStore } from "@/stores/outletStore";
+
+const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 type KitchenStatus = "confirmed" | "cooking" | "ready";
 
@@ -51,6 +54,8 @@ function mapApiOrder(order: OrderApi): Order {
     })),
     customerName: order.customerName ?? "",
     customerPhone: order.customerPhone ?? "",
+    tableId: order.tableId != null ? String(order.tableId) : undefined,
+    tableName: order.tableName ?? undefined,
     tableNumber: order.tableNumber ?? "",
     createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
     confirmedAt: order.confirmedAt ? new Date(order.confirmedAt) : undefined,
@@ -59,6 +64,7 @@ function mapApiOrder(order: OrderApi): Order {
 }
 
 export default function Kitchen() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [, setTick] = useState(0);
 
@@ -69,15 +75,33 @@ export default function Kitchen() {
 
   useEffect(() => {
     const load = async () => {
+      if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+        setOrders([]);
+        return;
+      }
       try {
-        const data = await listOrders();
+        const data = await listOrders({
+          tenantId: POS_TENANT_ID,
+          outletId: activeOutletId,
+          perPage: 200,
+        });
         setOrders(data.map(mapApiOrder));
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load kitchen orders");
       }
     };
     void load();
-  }, []);
+  }, [activeOutletId]);
+
+  useEffect(() => {
+    const poll = setInterval(() => {
+      if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+      void listOrders({ tenantId: POS_TENANT_ID, outletId: activeOutletId, perPage: 200 })
+        .then((data) => setOrders(data.map(mapApiOrder)))
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(poll);
+  }, [activeOutletId]);
 
   const updateOrderStatus = async (id: string, status: Order["status"]) => {
     try {
@@ -110,6 +134,11 @@ export default function Kitchen() {
 
   return (
     <div className="p-4 md:p-6">
+      {(!activeOutletId || activeOutletId < 1) && (
+        <div className="mb-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          Select an outlet in the header with a configured numeric id (<code className="text-xs">outlet_bridge</code>) to show this kitchen&apos;s tickets.
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -166,7 +195,9 @@ export default function Kitchen() {
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-medium text-muted-foreground">
-                        {order.tableNumber ? `Table #${order.tableNumber.replace("table-", "")}` : order.orderType}
+                        {(order.tableName || order.tableNumber)
+                          ? `Table ${order.tableName || order.tableNumber}`
+                          : order.orderType}
                         {order.customerName && ` • ${order.customerName}`}
                       </span>
                       <span className={`flex items-center gap-1 text-xs font-mono font-medium ${isLate ? "text-destructive" : "text-muted-foreground"}`}>

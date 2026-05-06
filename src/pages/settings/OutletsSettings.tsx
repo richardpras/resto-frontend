@@ -9,12 +9,20 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useSettingsStore, Outlet, newId, removeOutletCascade } from "@/stores/settingsStore";
+import { useSettingsStore, Outlet, removeOutletCascade } from "@/stores/settingsStore";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchOutlet, postOutlet } from "@/lib/api-integration/settingsDomainEndpoints";
 
-const empty: Outlet = { id: "", name: "", address: "", phone: "", manager: "", status: "active" };
+const empty: Outlet = {
+  id: 0,
+  code: "",
+  name: "",
+  address: "",
+  phone: "",
+  manager: "",
+  status: "active",
+};
 
 export default function OutletsSettings() {
   const outlets = useSettingsStore((s) => s.outlets);
@@ -25,7 +33,7 @@ export default function OutletsSettings() {
   const [saving, setSaving] = useState(false);
 
   const openNew = () => {
-    setForm({ ...empty, id: newId() });
+    setForm({ ...empty });
     setOpen(true);
   };
   const openEdit = (o: Outlet) => {
@@ -35,17 +43,19 @@ export default function OutletsSettings() {
 
   const save = async () => {
     if (!form.name.trim()) return toast.error("Outlet name required");
-    const wasInList = useSettingsStore.getState().outlets.some((o) => o.id === form.id);
+    const wasInList = form.id > 0 && outlets.some((o) => o.id === form.id);
 
     setSaving(true);
     try {
       if (!getApiAccessToken()) {
-        upsertOutlet(form);
+        const local = { ...form, id: wasInList ? form.id : Date.now() };
+        upsertOutlet(local);
         toast.success("Outlet saved locally");
         setOpen(false);
         return;
       }
-      const saved = wasInList ? await patchOutlet(form.id, form) : await postOutlet(form);
+      const { id: _id, ...createBody } = form;
+      const saved = wasInList ? await patchOutlet(form.id, form) : await postOutlet(createBody);
       upsertOutlet(saved);
       await refreshFromApi();
       toast.success("Outlet saved");
@@ -57,7 +67,7 @@ export default function OutletsSettings() {
     }
   };
 
-  const onDelete = async (id: string) => {
+  const onDelete = async (id: number) => {
     if (!confirm("Delete outlet?")) return;
     try {
       await removeOutletCascade(id);
@@ -73,27 +83,44 @@ export default function OutletsSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">Outlets</h2>
-          <Button type="button" onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Outlet</Button>
+          <Button type="button" onClick={openNew}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Outlet
+          </Button>
         </div>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead><TableHead>Address</TableHead><TableHead>Phone</TableHead>
-              <TableHead>Manager</TableHead><TableHead>Status</TableHead><TableHead className="w-24"></TableHead>
+              <TableHead>ID</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Manager</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {outlets.map((o) => (
               <TableRow key={o.id}>
+                <TableCell className="text-muted-foreground font-mono text-xs">{o.id}</TableCell>
+                <TableCell className="font-mono text-xs">{o.code}</TableCell>
                 <TableCell className="font-medium">{o.name}</TableCell>
                 <TableCell className="text-muted-foreground">{o.address}</TableCell>
                 <TableCell>{o.phone}</TableCell>
                 <TableCell>{o.manager}</TableCell>
-                <TableCell><Badge variant={o.status === "active" ? "default" : "secondary"}>{o.status}</Badge></TableCell>
+                <TableCell>
+                  <Badge variant={o.status === "active" ? "default" : "secondary"}>{o.status}</Badge>
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}><Pencil className="h-4 w-4" /></Button>
-                    <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}><Trash2 className="h-4 w-4" /></Button>
+                    <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -103,18 +130,45 @@ export default function OutletsSettings() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>{outlets.find((o) => o.id === form.id) ? "Edit" : "New"} Outlet</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>{form.id > 0 && outlets.some((o) => o.id === form.id) ? "Edit" : "New"} Outlet</DialogTitle>
+            </DialogHeader>
             <div className="space-y-3">
-              <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-              <div className="space-y-2"><Label>Address</Label><Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+              <p className="text-xs text-muted-foreground">
+                Leave <strong>Code</strong> empty to auto-generate (<code>OUT-{"{id}"}</code>) after save.
+              </p>
+              <div className="space-y-2">
+                <Label>Code (optional)</Label>
+                <Input
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  placeholder="e.g. o-main"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Address</Label>
+                <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Manager</Label><Input value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} /></div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Manager</Label>
+                  <Input value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select value={form.status} onValueChange={(v: "active" | "inactive") => setForm({ ...form, status: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
@@ -123,8 +177,12 @@ export default function OutletsSettings() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

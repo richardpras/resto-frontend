@@ -1,5 +1,6 @@
 import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Paperclip, Armchair } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useOutletStore } from "@/stores/outletStore";
 import { type InventoryItemType } from "@/stores/inventoryStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,8 @@ import {
   updateIngredient,
 } from "@/lib/api";
 
+const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
+
 const typeIcon: Record<InventoryItemType, React.ReactNode> = {
   ingredient: <Package className="h-4 w-4" />,
   atk: <Paperclip className="h-4 w-4" />,
@@ -27,6 +30,7 @@ const typeBadge: Record<InventoryItemType, { label: string; className: string }>
 };
 
 export default function Inventory() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<InventoryItemType | "all">("all");
   const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
@@ -38,7 +42,10 @@ export default function Inventory() {
     const load = async () => {
       try {
         setLoading(true);
-        const data = await listIngredients();
+        const data = await listIngredients({
+          tenantId: TENANT_ID,
+          ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
+        });
         setIngredients(data);
       } catch (error) {
         toast({
@@ -51,7 +58,7 @@ export default function Inventory() {
     };
 
     void load();
-  }, []);
+  }, [activeOutletId]);
 
   const filtered = ingredients
     .filter((i) => filterType === "all" || i.type === filterType)
@@ -90,18 +97,25 @@ export default function Inventory() {
   };
 
   const handleSave = async (payload: InventoryPayload, id?: string) => {
+    const outletContext =
+      typeof activeOutletId === "number" && activeOutletId >= 1 ? { tenantId: TENANT_ID, outletId: activeOutletId } : { tenantId: TENANT_ID };
     if (id) {
-      const updated = await updateIngredient(id, payload);
+      const updated = await updateIngredient(id, { ...payload, ...outletContext });
       setIngredients((prev) => prev.map((item) => (item.id === id ? updated : item)));
       return;
     }
 
-    const created = await createIngredient(payload);
+    const created = await createIngredient({ ...payload, ...outletContext });
     setIngredients((prev) => [created, ...prev]);
   };
 
   return (
     <div className="p-4 md:p-6 max-w-5xl">
+      {(!activeOutletId || activeOutletId < 1) && (
+        <div className="mb-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          Select an outlet with a numeric bridge id to see outlet-specific ledger stock and to seed stock on create. Without it, totals may fall back to legacy fields only.
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Inventory</h1>

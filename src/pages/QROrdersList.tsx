@@ -4,6 +4,9 @@ import { Clock, CheckCircle2, ChefHat, Package, Eye, X, CreditCard, XCircle } fr
 import { motion, AnimatePresence } from "framer-motion";
 import { listOrders, type OrderApi, updateOrderStatus as updateOrderStatusApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useOutletStore } from "@/stores/outletStore";
+
+const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
@@ -50,6 +53,8 @@ function mapApiOrder(order: OrderApi): Order {
     })),
     customerName: order.customerName ?? "",
     customerPhone: order.customerPhone ?? "",
+    tableId: order.tableId != null ? String(order.tableId) : undefined,
+    tableName: order.tableName ?? undefined,
     tableNumber: order.tableNumber ?? "",
     createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
     confirmedAt: order.confirmedAt ? new Date(order.confirmedAt) : undefined,
@@ -58,21 +63,26 @@ function mapApiOrder(order: OrderApi): Order {
 }
 
 export default function QROrders() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     const load = async () => {
+      if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+        setOrders([]);
+        return;
+      }
       try {
-        const data = await listOrders();
+        const data = await listOrders({ tenantId: POS_TENANT_ID, outletId: activeOutletId, perPage: 200 });
         setOrders(data.map(mapApiOrder));
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load orders");
       }
     };
     void load();
-  }, []);
+  }, [activeOutletId]);
 
   const updateOrderStatus = async (id: string, status: Order["status"]) => {
     try {
@@ -98,6 +108,11 @@ export default function QROrders() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+      {(!activeOutletId || activeOutletId < 1) && (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          Select an outlet in the header with a configured numeric id to list QR and POS orders for that outlet only.
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">All Orders</h1>
@@ -152,7 +167,8 @@ export default function QROrders() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {order.tableNumber && `Table #${order.tableNumber.replace("table-", "")}`}
+                        {(order.tableName?.trim() || order.tableNumber) &&
+                          `Table #${order.tableName?.trim() || order.tableNumber}`}
                         {order.customerName && ` • ${order.customerName}`}
                         {" • "}{new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
                       </p>
@@ -218,7 +234,8 @@ export default function QROrders() {
                   <h3 className="text-lg font-bold text-foreground">{selectedOrder.code}</h3>
                   <p className="text-xs text-muted-foreground">
                     {selectedOrder.source === "qr" ? "QR Order" : "POS Order"}
-                    {selectedOrder.tableNumber && ` • Table #${selectedOrder.tableNumber.replace("table-", "")}`}
+                    {(selectedOrder.tableName?.trim() || selectedOrder.tableNumber) &&
+                      ` • Table #${selectedOrder.tableName?.trim() || selectedOrder.tableNumber}`}
                     {selectedOrder.customerName && ` • ${selectedOrder.customerName}`}
                   </p>
                 </div>

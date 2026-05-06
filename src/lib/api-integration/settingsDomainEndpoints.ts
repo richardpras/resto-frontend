@@ -36,27 +36,63 @@ export async function listOutlets(): Promise<Outlet[]> {
   return res.data;
 }
 
+function serializeOutletCreate(o: Omit<Outlet, "id">): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: o.name,
+    address: o.address || null,
+    phone: o.phone || null,
+    manager: o.manager || null,
+    status: o.status,
+    logo: o.logo ?? null,
+    invoicePrefix: o.invoicePrefix ?? null,
+    orderPrefix: o.orderPrefix ?? null,
+  };
+  if ((o.code ?? "").trim() !== "") {
+    payload.code = o.code.trim();
+  }
+  return payload;
+}
+
+function serializeOutletPatch(o: Outlet): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: o.name,
+    address: o.address || null,
+    phone: o.phone || null,
+    manager: o.manager || null,
+    status: o.status,
+    logo: o.logo ?? null,
+    invoicePrefix: o.invoicePrefix ?? null,
+    orderPrefix: o.orderPrefix ?? null,
+  };
+  if ((o.code ?? "").trim() !== "") {
+    payload.code = o.code.trim();
+  }
+  return payload;
+}
+
 /** POST /outlets */
-export async function postOutlet(body: Outlet): Promise<Outlet> {
+export async function postOutlet(body: Omit<Outlet, "id">): Promise<Outlet> {
+  const payload = serializeOutletCreate(body);
   const res = await request<MessageEnvelope<Outlet>>("/outlets", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   return res.data;
 }
 
 /** PATCH /outlets/:id */
-export async function patchOutlet(outletId: string, body: Outlet): Promise<Outlet> {
-  const res = await request<MessageEnvelope<Outlet>>(`/outlets/${encodeURIComponent(outletId)}`, {
+export async function patchOutlet(outletId: number, body: Outlet): Promise<Outlet> {
+  const payload = serializeOutletPatch(body);
+  const res = await request<MessageEnvelope<Outlet>>(`/outlets/${encodeURIComponent(String(outletId))}`, {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   return res.data;
 }
 
 /** DELETE /outlets/:id */
-export async function deleteOutletApi(outletId: string): Promise<void> {
-  await request<{ message?: string }>(`/outlets/${encodeURIComponent(outletId)}`, {
+export async function deleteOutletApi(outletId: number): Promise<void> {
+  await request<{ message?: string }>(`/outlets/${encodeURIComponent(String(outletId))}`, {
     method: "DELETE",
   });
 }
@@ -212,11 +248,11 @@ export async function listOutletReceiptSettings(): Promise<OutletReceiptSettingR
 
 /** PATCH /outlet-receipt-settings/:outletId */
 export async function patchOutletReceiptSetting(
-  outletId: string,
+  outletId: number,
   body: Pick<OutletReceiptSettingRow, "receiptHeader" | "receiptFooter" | "showLogo" | "showTaxBreakdown">,
 ): Promise<OutletReceiptSettingRow> {
   const res = await request<MessageEnvelope<OutletReceiptSettingRow>>(
-    `/outlet-receipt-settings/${encodeURIComponent(outletId)}`,
+    `/outlet-receipt-settings/${encodeURIComponent(String(outletId))}`,
     { method: "PATCH", body: JSON.stringify(body) },
   );
   return res.data;

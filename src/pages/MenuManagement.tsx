@@ -1,8 +1,11 @@
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Trash2, ChefHat, Settings2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createMenuItem, listIngredients, listMenuItems, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
+import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useOutletStore } from "@/stores/outletStore";
+
+const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 function formatRp(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
@@ -19,41 +22,82 @@ type EditMenuForm = {
   category: string;
   price: string;
   emoji: string;
+  menuItemOutlets: MenuItemOutletForm[];
+};
+
+type OutletRow = Awaited<ReturnType<typeof listOutlets>>[number];
+type MenuItemOutletForm = {
+  outletId: number;
+  outletName: string;
+  isActive: boolean;
+  priceOverride: string;
+  nameOverride: string;
+  receiptName: string;
 };
 
 export default function MenuManagement() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<MenuItemApi[]>([]);
   const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
+  const [outlets, setOutlets] = useState<OutletRow[]>([]);
   const [editingRecipe, setEditingRecipe] = useState<EditingRecipe | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItemApi | null>(null);
   const [creatingItem, setCreatingItem] = useState(false);
-  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "" });
+  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", menuItemOutlets: [] });
   const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingEdit, setSavingEdit] = useState(false);
-  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "" });
+  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", menuItemOutlets: [] });
   const [createErrors, setCreateErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingCreate, setSavingCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [blockOnInsufficient, setBlockOnInsufficient] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const [menuItems, ingredientsData] = await Promise.all([listMenuItems(), listIngredients()]);
-        setItems(menuItems);
-        setIngredients(ingredientsData);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load menu data");
-      } finally {
-        setLoading(false);
-      }
-    };
+  const toOutletForms = (allOutlets: OutletRow[], itemOutlets?: MenuItemApi["menuItemOutlets"]): MenuItemOutletForm[] => {
+    const mapping = new Map((itemOutlets ?? []).map((row) => [row.outletId, row]));
+    return allOutlets.map((outlet) => {
+      const row = mapping.get(outlet.id);
+      return {
+        outletId: outlet.id,
+        outletName: outlet.name,
+        isActive: row?.isActive ?? false,
+        priceOverride: row?.priceOverride !== null && row?.priceOverride !== undefined ? String(row.priceOverride) : "",
+        nameOverride: row?.nameOverride ?? "",
+        receiptName: row?.receiptName ?? "",
+      };
+    });
+  };
 
-    void load();
-  }, []);
+  const loadCatalog = useCallback(async () => {
+    try {
+      setLoading(true);
+      const menuParams = {
+        tenantId: TENANT_ID,
+        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
+      };
+      const ingredientParams = {
+        tenantId: TENANT_ID,
+        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
+      };
+      const [menuItems, ingredientsData, outletsData] = await Promise.all([
+        listMenuItems(menuParams),
+        listIngredients(ingredientParams),
+        listOutlets(),
+      ]);
+      setItems(menuItems);
+      setIngredients(ingredientsData);
+      setOutlets(outletsData);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load menu data");
+    } finally {
+      setLoading(false);
+    }
+  }, [activeOutletId]);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
 
   const toggleAvailability = async (id: string) => {
     const current = items.find((i) => i.id === id);
@@ -131,12 +175,13 @@ export default function MenuManagement() {
       category: item.category,
       price: String(item.price),
       emoji: item.emoji,
+      menuItemOutlets: toOutletForms(outlets, item.menuItemOutlets),
     });
     setEditErrors({});
   };
 
   const openCreateModal = () => {
-    setCreateForm({ name: "", category: "", price: "", emoji: "" });
+    setCreateForm({ name: "", category: "", price: "", emoji: "", menuItemOutlets: toOutletForms(outlets) });
     setCreateErrors({});
     setCreatingItem(true);
   };
@@ -151,6 +196,11 @@ export default function MenuManagement() {
       errors.price = "Price must be a valid positive number";
     }
     if (!editForm.emoji.trim()) errors.emoji = "Emoji is required";
+    for (const outletRow of editForm.menuItemOutlets) {
+      if (outletRow.priceOverride.trim() !== "" && (isNaN(Number(outletRow.priceOverride)) || Number(outletRow.priceOverride) < 0)) {
+        errors.price = "Outlet override price must be a valid positive number";
+      }
+    }
 
     setEditErrors(errors);
     return Object.keys(errors).length === 0;
@@ -166,6 +216,11 @@ export default function MenuManagement() {
       errors.price = "Price must be a valid positive number";
     }
     if (!createForm.emoji.trim()) errors.emoji = "Emoji is required";
+    for (const outletRow of createForm.menuItemOutlets) {
+      if (outletRow.priceOverride.trim() !== "" && (isNaN(Number(outletRow.priceOverride)) || Number(outletRow.priceOverride) < 0)) {
+        errors.price = "Outlet override price must be a valid positive number";
+      }
+    }
 
     setCreateErrors(errors);
     return Object.keys(errors).length === 0;
@@ -182,6 +237,13 @@ export default function MenuManagement() {
         category: editForm.category.trim(),
         price: Number(editForm.price),
         emoji: editForm.emoji.trim(),
+        menuItemOutlets: editForm.menuItemOutlets.map((row) => ({
+          outletId: row.outletId,
+          isActive: row.isActive,
+          priceOverride: row.priceOverride.trim() !== "" ? Number(row.priceOverride) : null,
+          nameOverride: row.nameOverride.trim() || null,
+          receiptName: row.receiptName.trim() || null,
+        })),
       });
       setItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
       toast.success("Menu item updated");
@@ -205,6 +267,13 @@ export default function MenuManagement() {
         emoji: createForm.emoji.trim(),
         available: true,
         recipes: [],
+        menuItemOutlets: createForm.menuItemOutlets.map((row) => ({
+          outletId: row.outletId,
+          isActive: row.isActive,
+          priceOverride: row.priceOverride.trim() !== "" ? Number(row.priceOverride) : null,
+          nameOverride: row.nameOverride.trim() || null,
+          receiptName: row.receiptName.trim() || null,
+        })),
       });
       setItems((prev) => [created, ...prev]);
       toast.success("Menu item created");
@@ -519,6 +588,75 @@ export default function MenuManagement() {
                     {editErrors.emoji && <p className="text-xs text-destructive">{editErrors.emoji}</p>}
                   </div>
                 </div>
+
+                <div className="space-y-2.5">
+                  <label className="text-sm font-medium text-foreground">Outlet Settings</label>
+                  <div className="space-y-2 max-h-56 overflow-y-auto border border-border/50 rounded-xl p-3 bg-muted/10">
+                    {editForm.menuItemOutlets.map((row) => (
+                      <div key={row.outletId} className="rounded-lg border border-border/40 p-3 space-y-2 bg-background">
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={row.isActive}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, isActive: e.target.checked } : outletRow
+                                ),
+                              }))
+                            }
+                            className="h-4 w-4 accent-primary"
+                          />
+                          {row.outletName}
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <input
+                            value={row.nameOverride}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, nameOverride: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="POS name override"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            value={row.priceOverride}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, priceOverride: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="Price override"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <input
+                            value={row.receiptName}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, receiptName: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="Receipt name"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="p-5 border-t border-border/50 flex gap-2">
@@ -623,6 +761,75 @@ export default function MenuManagement() {
                       placeholder="🍛"
                     />
                     {createErrors.emoji && <p className="text-xs text-destructive">{createErrors.emoji}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <label className="text-sm font-medium text-foreground">Outlet Settings</label>
+                  <div className="space-y-2 max-h-56 overflow-y-auto border border-border/50 rounded-xl p-3 bg-muted/10">
+                    {createForm.menuItemOutlets.map((row) => (
+                      <div key={row.outletId} className="rounded-lg border border-border/40 p-3 space-y-2 bg-background">
+                        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={row.isActive}
+                            onChange={(e) =>
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, isActive: e.target.checked } : outletRow
+                                ),
+                              }))
+                            }
+                            className="h-4 w-4 accent-primary"
+                          />
+                          {row.outletName}
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <input
+                            value={row.nameOverride}
+                            onChange={(e) =>
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, nameOverride: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="POS name override"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            value={row.priceOverride}
+                            onChange={(e) =>
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, priceOverride: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="Price override"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <input
+                            value={row.receiptName}
+                            onChange={(e) =>
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                menuItemOutlets: prev.menuItemOutlets.map((outletRow) =>
+                                  outletRow.outletId === row.outletId ? { ...outletRow, receiptName: e.target.value } : outletRow
+                                ),
+                              }))
+                            }
+                            placeholder="Receipt name"
+                            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
