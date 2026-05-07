@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, X, Store, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
+import { usePaymentStore } from "@/stores/paymentStore";
 import { toast } from "sonner";
 
 type MenuItem = {
@@ -43,6 +44,11 @@ export default function QROrder() {
   const [searchParams] = useSearchParams();
   const createRequest = useQrOrderStore((s) => s.createRequest);
   const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
+  const paymentTx = usePaymentStore((s) => s.currentTransaction);
+  const paymentCountdown = usePaymentStore((s) => s.expiryCountdown);
+  const paymentCreate = usePaymentStore((s) => s.createPaymentTransaction);
+  const paymentPoll = usePaymentStore((s) => s.pollTransactionStatus);
+  const paymentRetry = usePaymentStore((s) => s.retryPayment);
 
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");
@@ -98,6 +104,15 @@ export default function QROrder() {
           notes: item.notes || undefined,
         })),
       });
+      if (paymentChoice === "online") {
+        const tx = await paymentCreate({
+          orderId: created.id,
+          outletId: outletIdParam,
+          method: "qris",
+          amount: total,
+        });
+        paymentPoll(tx.id);
+      }
       setOrderCode(created.requestCode);
       setView("success");
     } catch (error) {
@@ -124,6 +139,29 @@ export default function QROrder() {
             <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold text-foreground">{formatRp(total)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="font-medium text-foreground">{paymentChoice === "cashier" ? "Pay at Cashier" : "Online Payment"}</span></div>
           </div>
+          {paymentChoice === "online" && paymentTx && (
+            <div className="bg-muted rounded-2xl p-4 mb-4 text-left space-y-2">
+              <p className="text-xs text-muted-foreground">Online checkout status</p>
+              <p className="text-sm font-semibold text-foreground">{paymentTx.status}</p>
+              {paymentTx.status === "paid" && <p className="text-xs text-success">Payment completed.</p>}
+              {paymentTx.status === "expired" && <p className="text-xs text-destructive">Payment expired. Retry to get a new checkout.</p>}
+              {paymentTx.status === "failed" && <p className="text-xs text-destructive">Payment failed. Retry or pay at cashier.</p>}
+              {paymentTx.checkoutUrl && (
+                <a href={paymentTx.checkoutUrl} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
+                  Open Checkout
+                </a>
+              )}
+              {paymentTx.deeplinkUrl && (
+                <a href={paymentTx.deeplinkUrl} target="_blank" rel="noreferrer" className="block text-sm text-primary underline">
+                  Open Payment App
+                </a>
+              )}
+              {paymentTx.qrString && <pre className="text-[10px] bg-background rounded p-2 whitespace-pre-wrap break-all">{paymentTx.qrString}</pre>}
+              {paymentTx.vaNumber && <p className="text-xs text-muted-foreground">VA: <span className="text-foreground">{paymentTx.vaNumber}</span></p>}
+              <p className="text-xs text-muted-foreground">Expires in {paymentCountdown}s</p>
+              <button onClick={() => void paymentRetry(paymentTx.id)} className="text-xs underline text-primary">Retry Payment</button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">Show this code to the cashier when picking up your order.</p>
           <button
             onClick={() => {

@@ -19,6 +19,7 @@ import {
 import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { usePosSessionStore } from "@/stores/posSessionStore";
+import { usePaymentStore } from "@/stores/paymentStore";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -37,6 +38,10 @@ const PAYMENT_LABEL_TO_API: Record<string, string> = {
 
 function toApiPaymentMethod(label: string): string {
   return PAYMENT_LABEL_TO_API[label] ?? label.toLowerCase().replace(/\s+/g, "-");
+}
+
+function isGatewayPaymentMethod(method: string): boolean {
+  return method !== "cash";
 }
 
 function buildCartPayload(
@@ -148,6 +153,7 @@ export default function POS() {
   const [showConfirmSent, setShowConfirmSent] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
   const [showPromoList, setShowPromoList] = useState(false);
   const [manualPromo, setManualPromo] = useState<AppliedPromo | null>(null);
 
@@ -159,6 +165,16 @@ export default function POS() {
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fetchCurrentPosSession = usePosSessionStore((s) => s.fetchCurrent);
+  const paymentIsSubmitting = usePaymentStore((s) => s.isSubmitting);
+  const paymentError = usePaymentStore((s) => s.error);
+  const paymentTransaction = usePaymentStore((s) => s.currentTransaction);
+  const paymentExpiryCountdown = usePaymentStore((s) => s.expiryCountdown);
+  const paymentCreateTransaction = usePaymentStore((s) => s.createPaymentTransaction);
+  const paymentPollTransactionStatus = usePaymentStore((s) => s.pollTransactionStatus);
+  const paymentRetry = usePaymentStore((s) => s.retryPayment);
+  const paymentExpire = usePaymentStore((s) => s.expireTransaction);
+  const paymentReconcile = usePaymentStore((s) => s.reconcileTransaction);
+  const paymentResetAsync = usePaymentStore((s) => s.resetAsync);
 
   useEffect(() => {
     void fetchMembers().catch((e) => {
@@ -189,6 +205,11 @@ export default function POS() {
       // POS session guard is non-blocking for current UI flow.
     });
   }, [activeOutletId, fetchCurrentPosSession]);
+
+  useEffect(() => {
+    if (showPayment) return;
+    paymentResetAsync();
+  }, [showPayment, paymentResetAsync]);
 
   const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
     queryKey: ["menu-items", POS_TENANT_ID, activeOutletId ?? 0],
@@ -326,14 +347,14 @@ export default function POS() {
         source: "pos",
         orderType,
         status: "confirmed",
-        paymentStatus: "paid",
-        payments: [
+        paymentStatus: selectedPayment === "Cash" ? "paid" : "unpaid",
+        payments: selectedPayment === "Cash" ? [
           {
             method: toApiPaymentMethod(selectedPayment),
             amount: total,
             paidAt: new Date().toISOString(),
           },
-        ],
+        ] : [],
         confirmedAt: new Date().toISOString(),
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       };
@@ -341,10 +362,29 @@ export default function POS() {
       if (selectedTable) {
         updateTableStatus(selectedTable, "occupied", storedOrder.id);
       }
-      resetCart();
-      setShowPayment(false);
-      setSelectedPayment(null);
-      toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+      setCurrentOrderId(storedOrder.id);
+      if (selectedPayment === "Cash") {
+        resetCart();
+        setShowPayment(false);
+        setSelectedPayment(null);
+        setPendingGatewayPayments([]);
+        toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+        return;
+      }
+      const gatewayPayment: OrderPaymentPayload = {
+        method: toApiPaymentMethod(selectedPayment),
+        amount: total,
+        paidAt: new Date().toISOString(),
+      };
+      const tx = await paymentCreateTransaction({
+        orderId: storedOrder.id,
+        outletId: activeOutletId ?? undefined,
+        method: gatewayPayment.method,
+        amount: total,
+      });
+      setPendingGatewayPayments([gatewayPayment]);
+      paymentPollTransactionStatus(tx.id);
+      toast.success("Payment checkout created. Ask customer to complete payment.");
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -435,12 +475,31 @@ export default function POS() {
       });
       const fresh = await fetchOrderRemote(created.id);
       const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
-      const paidOrder = batch.length > 0
-        ? await addOrderPaymentsRemote(created.id, batch)
+      const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method));
+      const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method));
+      const paidOrder = immediatePayments.length > 0
+        ? await addOrderPaymentsRemote(created.id, immediatePayments)
         : fresh;
       const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
       if (selectedTable) {
-        updateTableStatus(selectedTable, totalPaid >= total ? "available" : "waiting-payment", created.id);
+        updateTableStatus(selectedTable, totalPaid >= total && gatewayPayments.length === 0 ? "available" : "waiting-payment", created.id);
+      }
+      if (gatewayPayments.length > 0) {
+        const gatewayTotal = gatewayPayments.reduce((sum, payment) => sum + payment.amount, 0);
+        const tx = await paymentCreateTransaction({
+          orderId: created.id,
+          outletId: activeOutletId ?? undefined,
+          method: gatewayPayments.length === 1 ? gatewayPayments[0].method : "mixed",
+          amount: gatewayTotal,
+          splitPayments: gatewayPayments,
+        });
+        setCurrentOrderId(created.id);
+        setPendingGatewayPayments(gatewayPayments);
+        paymentPollTransactionStatus(tx.id);
+        setShowSplit(false);
+        setShowPayment(true);
+        toast.success("Split bill saved. Complete the gateway checkout to finish payment.", { icon: "💰" });
+        return;
       }
       resetCart();
       setShowSplit(false);
@@ -474,6 +533,26 @@ export default function POS() {
     const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
     return paid >= p.totalDue;
   });
+
+  useEffect(() => {
+    if (!showPayment || !paymentTransaction || paymentTransaction.status !== "paid") return;
+    if (!currentOrderId || pendingGatewayPayments.length === 0) return;
+    void (async () => {
+      const paymentsToCommit = pendingGatewayPayments;
+      setPendingGatewayPayments([]);
+      try {
+        await addOrderPaymentsRemote(currentOrderId, paymentsToCommit);
+        resetCart();
+        setShowPayment(false);
+        setShowSplit(false);
+        setSelectedPayment(null);
+        toast.success("Payment completed.");
+      } catch (error) {
+        setPendingGatewayPayments(paymentsToCommit);
+        toastApiError(error);
+      }
+    })();
+  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote]);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -762,10 +841,48 @@ export default function POS() {
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
                 <SplitSquareHorizontal className="h-4 w-4" /> Split Bill
               </button>
-              <button onClick={() => void completeDirectPayment()} disabled={!selectedPayment || submitting}
+              <button onClick={() => void completeDirectPayment()} disabled={!selectedPayment || submitting || paymentIsSubmitting}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3">
-                <span className="flex items-center justify-center gap-2"><CheckCircle2 className="h-4 w-4" /> {submitting ? "Processing…" : "Complete Payment"}</span>
+                <span className="flex items-center justify-center gap-2"><CheckCircle2 className="h-4 w-4" /> {submitting || paymentIsSubmitting ? "Processing…" : "Complete Payment"}</span>
               </button>
+              {paymentTransaction && selectedPayment !== "Cash" && (
+                <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
+                  <p className="font-semibold text-foreground">Online Checkout</p>
+                  <p className="text-muted-foreground">Status: <span className="font-medium text-foreground">{paymentTransaction.status}</span></p>
+                  {paymentTransaction.status === "paid" && (
+                    <p className="rounded-lg bg-success/10 px-2 py-1 text-success">Payment completed. Refreshing order payment...</p>
+                  )}
+                  {paymentTransaction.status === "expired" && (
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Payment expired. Retry to create a new checkout.</p>
+                  )}
+                  {paymentTransaction.status === "failed" && (
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Payment failed. Retry or choose another method.</p>
+                  )}
+                  {paymentTransaction.checkoutUrl && (
+                    <a href={paymentTransaction.checkoutUrl} target="_blank" rel="noreferrer" className="text-primary underline">
+                      Open checkout
+                    </a>
+                  )}
+                  {paymentTransaction.deeplinkUrl && (
+                    <a href={paymentTransaction.deeplinkUrl} target="_blank" rel="noreferrer" className="block text-primary underline">
+                      Open payment app
+                    </a>
+                  )}
+                  {paymentTransaction.qrString && (
+                    <pre className="rounded bg-muted p-2 whitespace-pre-wrap break-all">{paymentTransaction.qrString}</pre>
+                  )}
+                  {paymentTransaction.vaNumber && (
+                    <p className="text-muted-foreground">VA: <span className="font-medium text-foreground">{paymentTransaction.vaNumber}</span></p>
+                  )}
+                  <p className="text-muted-foreground">Expires in: <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span></p>
+                  {paymentError && <p className="text-destructive">{paymentError}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={() => void paymentRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Retry</button>
+                    <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Reconcile</button>
+                    <button onClick={() => void paymentExpire(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Expire</button>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 text-success text-sm">
                 <Printer className="h-4 w-4" /><span className="font-medium">Print: Ready</span>
                 <span className="text-xs opacity-70 ml-auto">Cashier Printer</span>
