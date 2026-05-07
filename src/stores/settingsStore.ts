@@ -17,6 +17,7 @@ import {
   listPrinters,
   listTaxes,
   patchOutlet,
+  postOutlet,
 } from "@/lib/api-integration/settingsDomainEndpoints";
 import type {
   BankAccount,
@@ -87,6 +88,15 @@ interface SettingsStore {
   numbering: NumberingSettings;
   banks: BankAccount[];
   outletReceiptRows: OutletReceiptSettingRow[];
+  outletsLoading: boolean;
+  outletsSubmitting: boolean;
+  outletsError: string | null;
+  outletsPagination: {
+    page: number;
+    perPage: number;
+    total: number;
+    lastPage: number;
+  };
 
   updateMerchant: (m: Partial<Merchant>) => void;
   upsertOutlet: (o: Outlet) => void;
@@ -105,6 +115,9 @@ interface SettingsStore {
   setDefaultBank: (id: string) => void;
   setOutletReceiptRows: (rows: OutletReceiptSettingRow[]) => void;
   patchOutletReceiptLocal: (outletId: number, patch: Partial<OutletReceiptSettingRow>) => void;
+  fetchOutlets: (query?: { page?: number; perPage?: number }) => Promise<void>;
+  saveOutlet: (outlet: Outlet) => Promise<Outlet>;
+  deleteOutletById: (id: number) => Promise<void>;
 
   refreshFromApi: () => Promise<void>;
 }
@@ -120,6 +133,15 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   numbering: { ...EMPTY_NUMBERING },
   banks: [],
   outletReceiptRows: [],
+  outletsLoading: false,
+  outletsSubmitting: false,
+  outletsError: null,
+  outletsPagination: {
+    page: 1,
+    perPage: 10,
+    total: 0,
+    lastPage: 1,
+  },
 
   updateMerchant: (m) => set((s) => ({ merchant: { ...s.merchant, ...m } })),
   upsertOutlet: (o) =>
@@ -162,6 +184,107 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     set((s) => ({
       outletReceiptRows: s.outletReceiptRows.map((r) => (r.outletId === outletId ? { ...r, ...patch } : r)),
     })),
+  fetchOutlets: async (query) => {
+    set({ outletsLoading: true, outletsError: null });
+    try {
+      const current = useSettingsStore.getState().outletsPagination;
+      const page = query?.page ?? current.page;
+      const perPage = query?.perPage ?? current.perPage;
+      if (!getApiAccessToken()) {
+        const total = useSettingsStore.getState().outlets.length;
+        set({
+          outletsPagination: {
+            page,
+            perPage,
+            total,
+            lastPage: Math.max(1, Math.ceil(total / perPage)),
+          },
+        });
+        return;
+      }
+      const outlets = await listOutlets({ page, perPage });
+      const total = outlets.length;
+      set({
+        outlets,
+        outletsPagination: {
+          page,
+          perPage,
+          total,
+          lastPage: Math.max(1, Math.ceil(total / perPage)),
+        },
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to load outlets";
+      set({ outletsError: message });
+      throw e;
+    } finally {
+      set({ outletsLoading: false });
+    }
+  },
+  saveOutlet: async (outlet) => {
+    set({ outletsSubmitting: true, outletsError: null });
+    try {
+      const state = useSettingsStore.getState();
+      const wasInList = outlet.id > 0 && state.outlets.some((o) => o.id === outlet.id);
+      let saved: Outlet;
+      if (!getApiAccessToken()) {
+        saved = { ...outlet, id: wasInList ? outlet.id : Date.now() };
+        state.upsertOutlet(saved);
+      } else {
+        const { id: _id, ...createBody } = outlet;
+        saved = wasInList ? await patchOutlet(outlet.id, outlet) : await postOutlet(createBody);
+        state.upsertOutlet(saved);
+        const { page, perPage } = useSettingsStore.getState().outletsPagination;
+        await useSettingsStore.getState().fetchOutlets({ page, perPage });
+      }
+      const total = useSettingsStore.getState().outlets.length;
+      const { page, perPage } = useSettingsStore.getState().outletsPagination;
+      set({
+        outletsPagination: {
+          page,
+          perPage,
+          total,
+          lastPage: Math.max(1, Math.ceil(total / perPage)),
+        },
+      });
+      return saved;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to save outlet";
+      set({ outletsError: message });
+      throw e;
+    } finally {
+      set({ outletsSubmitting: false });
+    }
+  },
+  deleteOutletById: async (id) => {
+    set({ outletsSubmitting: true, outletsError: null });
+    try {
+      if (getApiAccessToken()) {
+        await deleteOutletApi(id);
+      }
+      useSettingsStore.getState().deleteOutlet(id);
+      if (getApiAccessToken()) {
+        const { page, perPage } = useSettingsStore.getState().outletsPagination;
+        await useSettingsStore.getState().fetchOutlets({ page, perPage });
+      }
+      const total = useSettingsStore.getState().outlets.length;
+      const { page, perPage } = useSettingsStore.getState().outletsPagination;
+      set({
+        outletsPagination: {
+          page,
+          perPage,
+          total,
+          lastPage: Math.max(1, Math.ceil(total / perPage)),
+        },
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to delete outlet";
+      set({ outletsError: message });
+      throw e;
+    } finally {
+      set({ outletsSubmitting: false });
+    }
+  },
 
   refreshFromApi: async () => {
     if (!getApiAccessToken()) return;
@@ -199,6 +322,12 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       integration,
       numbering,
       outletReceiptRows,
+      outletsPagination: {
+        page: 1,
+        perPage: 10,
+        total: outlets.length,
+        lastPage: Math.max(1, Math.ceil(outlets.length / 10)),
+      },
     });
   },
 }));

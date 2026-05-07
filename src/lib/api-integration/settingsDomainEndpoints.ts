@@ -10,10 +10,13 @@ import type {
   SystemPrefs,
   Tax,
 } from "@/domain/settingsDomainTypes";
+import { mapOutletDtoToViewModel, parseOutletListPayload } from "@/domain/outletAdapters";
 import { apiRequest as request } from "./client";
 
 type Envelope<T> = { data: T };
 type MessageEnvelope<T> = { message: string; data: T };
+type OutletListPayload = { data: unknown } | Outlet[] | unknown;
+type OutletListQuery = { page?: number; perPage?: number };
 
 /** GET /merchant-settings */
 export async function getMerchantSettings(): Promise<Merchant> {
@@ -31,9 +34,13 @@ export async function patchMerchantSettings(body: Merchant): Promise<Merchant> {
 }
 
 /** GET /outlets */
-export async function listOutlets(): Promise<Outlet[]> {
-  const res = await request<Envelope<Outlet[]>>("/outlets");
-  return res.data;
+export async function listOutlets(query?: OutletListQuery): Promise<Outlet[]> {
+  const params = new URLSearchParams();
+  if (typeof query?.page === "number") params.set("page", String(query.page));
+  if (typeof query?.perPage === "number") params.set("per_page", String(query.perPage));
+  const path = params.size > 0 ? `/outlets?${params.toString()}` : "/outlets";
+  const res = await request<OutletListPayload>(path);
+  return parseOutletListPayload(res);
 }
 
 function serializeOutletCreate(o: Omit<Outlet, "id">): Record<string, unknown> {
@@ -73,21 +80,21 @@ function serializeOutletPatch(o: Outlet): Record<string, unknown> {
 /** POST /outlets */
 export async function postOutlet(body: Omit<Outlet, "id">): Promise<Outlet> {
   const payload = serializeOutletCreate(body);
-  const res = await request<MessageEnvelope<Outlet>>("/outlets", {
+  const res = await request<MessageEnvelope<unknown>>("/outlets", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return res.data;
+  return mapOutletDtoToViewModel(res.data as Record<string, unknown>);
 }
 
 /** PATCH /outlets/:id */
 export async function patchOutlet(outletId: number, body: Outlet): Promise<Outlet> {
   const payload = serializeOutletPatch(body);
-  const res = await request<MessageEnvelope<Outlet>>(`/outlets/${encodeURIComponent(String(outletId))}`, {
+  const res = await request<MessageEnvelope<unknown>>(`/outlets/${encodeURIComponent(String(outletId))}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
-  return res.data;
+  return mapOutletDtoToViewModel(res.data as Record<string, unknown>);
 }
 
 /** DELETE /outlets/:id */

@@ -9,10 +9,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useSettingsStore, Outlet, removeOutletCascade } from "@/stores/settingsStore";
+import { useSettingsStore, Outlet } from "@/stores/settingsStore";
+import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
-import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
-import { patchOutlet, postOutlet } from "@/lib/api-integration/settingsDomainEndpoints";
 
 const empty: Outlet = {
   id: 0,
@@ -26,11 +25,13 @@ const empty: Outlet = {
 
 export default function OutletsSettings() {
   const outlets = useSettingsStore((s) => s.outlets);
-  const upsertOutlet = useSettingsStore((s) => s.upsertOutlet);
-  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
+  const outletsSubmitting = useSettingsStore((s) => s.outletsSubmitting);
+  const saveOutlet = useSettingsStore((s) => s.saveOutlet);
+  const deleteOutletById = useSettingsStore((s) => s.deleteOutletById);
+  const canManageOutletSettings = useAuthStore((s) => s.canManageOutletSettings);
+  const canCreateOutlet = canManageOutletSettings();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Outlet>(empty);
-  const [saving, setSaving] = useState(false);
 
   const openNew = () => {
     setForm({ ...empty });
@@ -43,38 +44,22 @@ export default function OutletsSettings() {
 
   const save = async () => {
     if (!form.name.trim()) return toast.error("Outlet name required");
-    const wasInList = form.id > 0 && outlets.some((o) => o.id === form.id);
-
-    setSaving(true);
     try {
-      if (!getApiAccessToken()) {
-        const local = { ...form, id: wasInList ? form.id : Date.now() };
-        upsertOutlet(local);
-        toast.success("Outlet saved locally");
-        setOpen(false);
-        return;
-      }
-      const { id: _id, ...createBody } = form;
-      const saved = wasInList ? await patchOutlet(form.id, form) : await postOutlet(createBody);
-      upsertOutlet(saved);
-      await refreshFromApi();
+      await saveOutlet(form);
       toast.success("Outlet saved");
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
+      toast.error(e instanceof Error ? e.message : "Save failed");
     }
   };
 
   const onDelete = async (id: number) => {
     if (!confirm("Delete outlet?")) return;
     try {
-      await removeOutletCascade(id);
-      if (getApiAccessToken()) await refreshFromApi();
+      await deleteOutletById(id);
       toast.success("Outlet deleted");
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "Delete failed");
     }
   };
 
@@ -83,10 +68,12 @@ export default function OutletsSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">Outlets</h2>
-          <Button type="button" onClick={openNew}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Outlet
-          </Button>
+          {canCreateOutlet && (
+            <Button type="button" onClick={openNew}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Outlet
+            </Button>
+          )}
         </div>
         <Table>
           <TableHeader>
@@ -115,12 +102,16 @@ export default function OutletsSettings() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canManageOutletSettings(o.id) && (
+                      <>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -177,11 +168,11 @@ export default function OutletsSettings() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={outletsSubmitting}>
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void save()} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
+              <Button type="button" onClick={() => void save()} disabled={outletsSubmitting}>
+                {outletsSubmitting ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>

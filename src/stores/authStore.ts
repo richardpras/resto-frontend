@@ -17,7 +17,7 @@ export interface AuthUser {
   name: string;
   email: string;
   role: RoleName;
-  outletIds: string[];
+  outletIds: number[];
   /** Whether a screen-unlock PIN is stored on the server (hashed); verify via API only. */
   pinSet: boolean;
   permissions: string[];
@@ -80,13 +80,16 @@ function expandPermissionCodes(codes: string[]): string[] {
 function mapMeToAuthUser(meData: MeResponse): AuthUser {
   const role = resolveRole(meData.roles);
   const permissions = expandPermissionCodes(meData.permissionCodes);
+  const outletIds = Array.isArray(meData.outlets)
+    ? meData.outlets.map((o) => o.id).filter((id): id is number => typeof id === "number")
+    : [];
 
   return {
     id: String(meData.id),
     name: meData.name,
     email: meData.email,
     role,
-    outletIds: ["o-main"],
+    outletIds,
     pinSet: meData.pinSet === true,
     permissions,
   };
@@ -105,6 +108,7 @@ interface AuthStore {
   setAutoLock: (v: boolean) => void;
   setIdleMinutes: (n: number) => void;
   hasPermission: (perm: string) => boolean;
+  canManageOutletSettings: (outletId?: number) => boolean;
   restoreSessionFromApi: () => Promise<void>;
 }
 
@@ -184,6 +188,24 @@ export const useAuthStore = create<AuthStore>()(
         const u = get().user;
         if (!u) return false;
         return u.permissions.includes(perm);
+      },
+      canManageOutletSettings: (outletId) => {
+        const u = get().user;
+        if (!u) return false;
+
+        const canWriteSettings =
+          u.permissions.includes("settings.update") || u.permissions.includes(PERMISSIONS.SETTINGS);
+        if (!canWriteSettings) return false;
+
+        if (u.permissions.includes("outlets.view_all") || u.permissions.includes(PERMISSIONS.DASHBOARD_ALL)) {
+          return true;
+        }
+
+        if (typeof outletId === "number") {
+          return u.outletIds.includes(outletId);
+        }
+
+        return u.outletIds.length > 0;
       },
     }),
     {

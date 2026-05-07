@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { apiRequest, ApiHttpError, API_BASE_URL, setApiAccessToken } from "./client";
+import { mapOutletDtoToViewModel, parseOutletListPayload } from "@/domain/outletAdapters";
+import { normalizeApiError } from "@/domain/apiErrorNormalizer";
+import { listOutlets } from "./settingsDomainEndpoints";
 
 describe("api-integration client", () => {
   afterEach(() => {
@@ -85,5 +88,136 @@ describe("api-integration client", () => {
       message: "Request failed (500)",
       status: 500,
     });
+  });
+});
+
+describe("outlet adapter", () => {
+  it("maps outlet api dto to settings outlet view model", () => {
+    const dto = {
+      id: 1,
+      code: "JKT-01",
+      name: "Jakarta Central",
+      address: "Jl. Sudirman 1",
+      phone: "08123456789",
+      manager: "Ari",
+      status: "active",
+      logo: "logo.png",
+      invoice_prefix: "INV-JKT",
+      order_prefix: "ORD-JKT",
+    };
+
+    const result = mapOutletDtoToViewModel(dto);
+
+    expect(result).toEqual({
+      id: 1,
+      code: "JKT-01",
+      name: "Jakarta Central",
+      address: "Jl. Sudirman 1",
+      phone: "08123456789",
+      manager: "Ari",
+      status: "active",
+      logo: "logo.png",
+      invoicePrefix: "INV-JKT",
+      orderPrefix: "ORD-JKT",
+    });
+  });
+
+  it("parses paginated outlet payload data into outlet view models", () => {
+    const payload = {
+      data: {
+        data: [
+          {
+            id: 2,
+            code: "SBY-01",
+            name: "Surabaya East",
+            address: null,
+            phone: null,
+            manager: null,
+            status: "inactive",
+            invoice_prefix: null,
+            order_prefix: "ORD-SBY",
+          },
+        ],
+      },
+    };
+
+    const result = parseOutletListPayload(payload);
+
+    expect(result).toEqual([
+      {
+        id: 2,
+        code: "SBY-01",
+        name: "Surabaya East",
+        address: "",
+        phone: "",
+        manager: "",
+        status: "inactive",
+        logo: undefined,
+        invoicePrefix: undefined,
+        orderPrefix: "ORD-SBY",
+      },
+    ]);
+  });
+});
+
+describe("api error normalizer", () => {
+  it("normalizes ApiHttpError into reusable frontend shape", () => {
+    const apiError = new ApiHttpError(422, "Validation failed", {
+      message: "Validation failed",
+      errors: {
+        code: ["The code has already been taken."],
+      },
+    });
+
+    expect(normalizeApiError(apiError)).toEqual({
+      statusCode: 422,
+      message: "Validation failed",
+      fieldErrors: {
+        code: ["The code has already been taken."],
+      },
+      isAuthError: false,
+    });
+  });
+});
+
+describe("settings domain endpoint parsing", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("listOutlets parses snake_case api rows through adapter", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            data: [
+              {
+                id: 7,
+                code: "BDG-01",
+                name: "Bandung",
+                address: "Jl. Braga",
+                phone: "0800",
+                manager: "Nina",
+                status: "active",
+                invoice_prefix: "INV-BDG",
+                order_prefix: "ORD-BDG",
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    await expect(listOutlets()).resolves.toEqual([
+      expect.objectContaining({
+        id: 7,
+        invoicePrefix: "INV-BDG",
+        orderPrefix: "ORD-BDG",
+      }),
+    ]);
   });
 });

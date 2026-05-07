@@ -12,6 +12,7 @@ export type AuthUserSummary = {
 export type MeResponse = AuthUserSummary & {
   roles: { id: number; name: string }[];
   permissionCodes: string[];
+  outlets?: { id: number; code?: string; name?: string }[];
   /** Server stores a bcrypt PIN hash; unlock goes through verify-screen-pin. */
   pinSet?: boolean;
 };
