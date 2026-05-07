@@ -1,4 +1,23 @@
 import { create } from "zustand";
+import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  createInventoryItem as apiCreateInventoryItem,
+  createStockMovement as apiCreateStockMovement,
+  deleteInventoryItem as apiDeleteInventoryItem,
+  listInventoryWithMeta as apiListInventoryWithMeta,
+  listStockMovementsWithMeta as apiListStockMovementsWithMeta,
+  updateInventoryItem as apiUpdateInventoryItem,
+  type InventoryListMeta,
+  type InventoryPayload,
+  type ListInventoryParams,
+  type ListStockMovementsParams,
+  type StockMovementPayload,
+} from "@/lib/api-integration/inventoryEndpoints";
+import {
+  mapInventoryItemApiToStore,
+  mapStockMovementApiToStore,
+} from "@/domain/inventoryAdapters";
+export type { InventoryPayload } from "@/lib/api-integration/inventoryEndpoints";
 
 export type InventoryItemType = "ingredient" | "atk" | "asset";
 
@@ -13,24 +32,44 @@ export type InventoryItem = {
   notes?: string;
 };
 
-// Keep backward compat alias
+export type StockMovement = {
+  id: string;
+  inventoryItemId: string;
+  outletId: number | null;
+  inventoryItemName: string | null;
+  type: "purchase" | "sale" | "adjustment" | "waste";
+  quantity: number;
+  sourceType: string;
+  sourceId: string | null;
+  createdAt: string | null;
+};
+
 export type Ingredient = InventoryItem;
-
-export type RecipeItem = {
-  ingredientId: string;
-  qty: number;
-};
-
-export type Recipe = {
-  menuItemId: string;
-  ingredients: RecipeItem[];
-};
+export type RecipeItem = { ingredientId: string; qty: number };
+export type Recipe = { menuItemId: string; ingredients: RecipeItem[] };
 
 type InventoryStore = {
   ingredients: InventoryItem[];
+  stockMovements: StockMovement[];
   recipes: Recipe[];
   blockOnInsufficient: boolean;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  error: string | null;
+  pagination: InventoryListMeta | null;
+  movementPagination: InventoryListMeta | null;
+  lastSyncAt: string | null;
+  lastListParams: ListInventoryParams | null;
+  lastMovementListParams: ListStockMovementsParams | null;
   setBlockOnInsufficient: (v: boolean) => void;
+  fetchInventory: (params?: ListInventoryParams) => Promise<InventoryItem[]>;
+  revalidateInventory: () => Promise<InventoryItem[] | null>;
+  fetchStockMovements: (params?: ListStockMovementsParams) => Promise<StockMovement[]>;
+  revalidateStockMovements: () => Promise<StockMovement[] | null>;
+  createItemRemote: (payload: InventoryPayload) => Promise<InventoryItem>;
+  updateItemRemote: (id: string, payload: Partial<InventoryPayload>) => Promise<InventoryItem>;
+  deleteItemRemote: (id: string) => Promise<void>;
+  createStockMovementRemote: (payload: StockMovementPayload) => Promise<StockMovement>;
   addItem: (item: Omit<InventoryItem, "id">) => void;
   updateItem: (id: string, data: Partial<Omit<InventoryItem, "id">>) => void;
   removeItem: (id: string) => void;
@@ -39,34 +78,8 @@ type InventoryStore = {
   getRecipe: (menuItemId: string) => Recipe | undefined;
   deductStock: (menuItemId: string, qty: number) => { success: boolean; missing: string[] };
   updateIngredientStock: (ingredientId: string, newStock: number) => void;
+  resetAsync: () => void;
 };
-
-const defaultIngredients: InventoryItem[] = [
-  { id: "ing-1", name: "Rice", type: "ingredient", stock: 45, min: 20, unit: "kg", price: 12000 },
-  { id: "ing-2", name: "Chicken", type: "ingredient", stock: 8, min: 10, unit: "kg", price: 35000 },
-  { id: "ing-3", name: "Cooking Oil", type: "ingredient", stock: 12, min: 5, unit: "L", price: 18000 },
-  { id: "ing-4", name: "Eggs", type: "ingredient", stock: 30, min: 50, unit: "pcs", price: 2500 },
-  { id: "ing-5", name: "Noodles", type: "ingredient", stock: 100, min: 30, unit: "pack", price: 3500 },
-  { id: "ing-6", name: "Sugar", type: "ingredient", stock: 3, min: 5, unit: "kg", price: 15000 },
-  { id: "ing-7", name: "Tea bags", type: "ingredient", stock: 15, min: 5, unit: "box", price: 8000 },
-  { id: "ing-8", name: "Coffee beans", type: "ingredient", stock: 6, min: 3, unit: "kg", price: 85000 },
-  { id: "ing-9", name: "Soy Sauce", type: "ingredient", stock: 10, min: 3, unit: "L", price: 12000 },
-  { id: "ing-10", name: "Chili", type: "ingredient", stock: 5, min: 2, unit: "kg", price: 25000 },
-  { id: "ing-11", name: "Garlic", type: "ingredient", stock: 4, min: 2, unit: "kg", price: 30000 },
-  { id: "ing-12", name: "Onion", type: "ingredient", stock: 6, min: 3, unit: "kg", price: 18000 },
-  { id: "ing-13", name: "Peanuts", type: "ingredient", stock: 8, min: 3, unit: "kg", price: 28000 },
-  { id: "ing-14", name: "Coconut Milk", type: "ingredient", stock: 10, min: 4, unit: "L", price: 15000 },
-  { id: "ing-15", name: "Flour", type: "ingredient", stock: 15, min: 5, unit: "kg", price: 10000 },
-  { id: "ing-16", name: "Banana", type: "ingredient", stock: 20, min: 10, unit: "pcs", price: 3000 },
-  { id: "ing-17", name: "Avocado", type: "ingredient", stock: 12, min: 5, unit: "pcs", price: 8000 },
-  { id: "ing-18", name: "Orange", type: "ingredient", stock: 15, min: 5, unit: "pcs", price: 5000 },
-  { id: "ing-19", name: "Shrimp Crackers", type: "ingredient", stock: 25, min: 10, unit: "pack", price: 5000 },
-  { id: "ing-20", name: "Tofu", type: "ingredient", stock: 10, min: 5, unit: "pcs", price: 4000 },
-  { id: "atk-1", name: "Thermal Paper", type: "atk", stock: 20, min: 5, unit: "pcs", price: 15000 },
-  { id: "atk-2", name: "Tissue Box", type: "atk", stock: 12, min: 5, unit: "box", price: 25000 },
-  { id: "asset-1", name: "Dining Chair", type: "asset", stock: 24, min: 0, unit: "pcs", notes: "Wooden chairs for dining area" },
-  { id: "asset-2", name: "Blender", type: "asset", stock: 2, min: 0, unit: "pcs", notes: "Philips HR2157" },
-];
 
 const defaultRecipes: Recipe[] = [
   { menuItemId: "1", ingredients: [{ ingredientId: "ing-1", qty: 0.3 }, { ingredientId: "ing-4", qty: 2 }, { ingredientId: "ing-3", qty: 0.05 }, { ingredientId: "ing-9", qty: 0.02 }, { ingredientId: "ing-11", qty: 0.02 }] },
@@ -80,12 +93,144 @@ const defaultRecipes: Recipe[] = [
 
 let nextId = 100;
 
+function mapApiError(error: unknown): string {
+  if (error instanceof ApiHttpError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Inventory request failed";
+}
+
 export const useInventoryStore = create<InventoryStore>((set, get) => ({
-  ingredients: defaultIngredients,
+  ingredients: [],
+  stockMovements: [],
   recipes: defaultRecipes,
   blockOnInsufficient: false,
+  isLoading: false,
+  isSubmitting: false,
+  error: null,
+  pagination: null,
+  movementPagination: null,
+  lastSyncAt: null,
+  lastListParams: null,
+  lastMovementListParams: null,
 
   setBlockOnInsufficient: (v) => set({ blockOnInsufficient: v }),
+
+  fetchInventory: async (params) => {
+    set({ isLoading: true, error: null, lastListParams: params ?? null });
+    try {
+      const result = await apiListInventoryWithMeta(params);
+      const mapped = result.items.map(mapInventoryItemApiToStore);
+      set({
+        ingredients: mapped,
+        pagination: result.meta,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return mapped;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  revalidateInventory: async () => {
+    const params = get().lastListParams;
+    if (params === null) return null;
+    return get().fetchInventory(params);
+  },
+
+  fetchStockMovements: async (params) => {
+    set({ isLoading: true, error: null, lastMovementListParams: params ?? null });
+    try {
+      const result = await apiListStockMovementsWithMeta(params);
+      const mapped = result.movements.map(mapStockMovementApiToStore);
+      set({
+        stockMovements: mapped,
+        movementPagination: result.meta,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return mapped;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  revalidateStockMovements: async () => {
+    const params = get().lastMovementListParams;
+    if (params === null) return null;
+    return get().fetchStockMovements(params);
+  },
+
+  createItemRemote: async (payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const created = mapInventoryItemApiToStore(await apiCreateInventoryItem(payload));
+      set((state) => ({
+        ingredients: [created, ...state.ingredients],
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return created;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  updateItemRemote: async (id, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const updated = mapInventoryItemApiToStore(await apiUpdateInventoryItem(id, payload));
+      set((state) => ({
+        ingredients: state.ingredients.map((item) => (item.id === id ? updated : item)),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return updated;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  deleteItemRemote: async (id) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await apiDeleteInventoryItem(id);
+      set((state) => ({
+        ingredients: state.ingredients.filter((item) => item.id !== id),
+        lastSyncAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  createStockMovementRemote: async (payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const created = mapStockMovementApiToStore(await apiCreateStockMovement(payload));
+      set((state) => ({
+        stockMovements: [created, ...state.stockMovements],
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return created;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
 
   addItem: (item) =>
     set((s) => ({
@@ -148,4 +293,16 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
         i.id === ingredientId ? { ...i, stock: newStock } : i
       ),
     })),
+
+  resetAsync: () =>
+    set({
+      isLoading: false,
+      isSubmitting: false,
+      error: null,
+      pagination: null,
+      movementPagination: null,
+      lastSyncAt: null,
+      lastListParams: null,
+      lastMovementListParams: null,
+    }),
 }));

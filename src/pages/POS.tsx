@@ -12,16 +12,13 @@ import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
-  addOrderPayments,
-  createOrder,
-  getOrder,
   listMenuItems,
   type CreateOrderPayload,
-  type OrderApi,
   type OrderPaymentPayload,
 } from "@/lib/api-integration/endpoints";
 import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
+import { usePosSessionStore } from "@/stores/posSessionStore";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -40,47 +37,6 @@ const PAYMENT_LABEL_TO_API: Record<string, string> = {
 
 function toApiPaymentMethod(label: string): string {
   return PAYMENT_LABEL_TO_API[label] ?? label.toLowerCase().replace(/\s+/g, "-");
-}
-
-function orderApiToStoreOrder(o: OrderApi): Order {
-  return {
-    id: String(o.id),
-    code: o.code,
-    source: o.source,
-    orderType: o.orderType,
-    items: o.items.map((it) => ({
-      orderItemId: it.orderItemId,
-      id: String(it.id),
-      name: it.name,
-      price: it.price,
-      qty: it.qty,
-      emoji: it.emoji ?? "",
-      notes: typeof it.notes === "string" ? it.notes : "",
-    })),
-    subtotal: o.subtotal,
-    tax: o.tax,
-    total: o.total,
-    status: o.status,
-    paymentStatus: o.paymentStatus,
-    payments: o.payments.map((p) => ({
-      method: p.method,
-      amount: p.amount,
-      paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
-      allocations: p.allocations?.map((a) => ({
-        orderItemId: String(a.orderItemId),
-        qty: a.qty,
-        amount: a.amount,
-      })),
-    })),
-    customerName: o.customerName ?? "",
-    customerPhone: o.customerPhone ?? "",
-    tableId: o.tableId != null ? String(o.tableId) : undefined,
-    tableName: o.tableName ?? undefined,
-    tableNumber: o.tableNumber ?? "",
-    createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
-    confirmedAt: o.confirmedAt ? new Date(o.confirmedAt) : undefined,
-    splitBill: o.splitBill as Order["splitBill"],
-  };
 }
 
 function buildCartPayload(
@@ -116,7 +72,7 @@ function buildCartPayload(
 }
 
 function buildSplitPaymentsPayload(
-  order: OrderApi,
+  order: Order,
   splitPersons: SplitPerson[],
   splitMethod: "equal" | "by-item",
   cart: CartItem[],
@@ -168,7 +124,10 @@ function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
 export default function POS() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
-  const { addOrder, tables, orders, updateTableStatus, replaceFloorTables } = useOrderStore();
+  const { tables, orders, updateTableStatus, replaceFloorTables } = useOrderStore();
+  const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
+  const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
+  const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
   const { getBestPromo, getApplicablePromos } = usePromotionStore();
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
@@ -199,6 +158,7 @@ export default function POS() {
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const fetchCurrentPosSession = usePosSessionStore((s) => s.fetchCurrent);
 
   useEffect(() => {
     void fetchMembers().catch((e) => {
@@ -220,6 +180,15 @@ export default function POS() {
     if (!floorMasters) return;
     replaceFloorTables(deriveRuntimeFloorTables(floorMasters, orders));
   }, [floorMasters, orders, activeOutletId, replaceFloorTables]);
+
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || !getApiAccessToken()) {
+      return;
+    }
+    void fetchCurrentPosSession(activeOutletId).catch(() => {
+      // POS session guard is non-blocking for current UI flow.
+    });
+  }, [activeOutletId, fetchCurrentPosSession]);
 
   const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
     queryKey: ["menu-items", POS_TENANT_ID, activeOutletId ?? 0],
@@ -323,15 +292,14 @@ export default function POS() {
         confirmedAt: new Date().toISOString(),
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       };
-      const apiOrder = await createOrder(payload);
-      addOrder(orderApiToStoreOrder(apiOrder));
+      const storedOrder = await createOrderRemote(payload);
       if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", String(apiOrder.id));
+        updateTableStatus(selectedTable, "occupied", storedOrder.id);
       }
-      setCurrentOrderId(String(apiOrder.id));
+      setCurrentOrderId(storedOrder.id);
       resetCart();
       setShowConfirmSent(true);
-      toast.success(`Order ${apiOrder.code} sent to kitchen!`, { icon: "🍳" });
+      toast.success(`Order ${storedOrder.code} sent to kitchen!`, { icon: "🍳" });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -369,15 +337,14 @@ export default function POS() {
         confirmedAt: new Date().toISOString(),
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       };
-      const apiOrder = await createOrder(payload);
-      addOrder(orderApiToStoreOrder(apiOrder));
+      const storedOrder = await createOrderRemote(payload);
       if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", String(apiOrder.id));
+        updateTableStatus(selectedTable, "occupied", storedOrder.id);
       }
       resetCart();
       setShowPayment(false);
       setSelectedPayment(null);
-      toast.success(`Order ${apiOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+      toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -453,7 +420,7 @@ export default function POS() {
     setSubmitting(true);
     try {
       const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-      const created = await createOrder({
+      const created = await createOrderRemote({
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
         code,
@@ -466,14 +433,14 @@ export default function POS() {
         splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       });
-      const fresh = await getOrder(created.id);
+      const fresh = await fetchOrderRemote(created.id);
       const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
-      const paidOrder =
-        batch.length > 0 ? await addOrderPayments(String(created.id), { payments: batch }) : fresh;
-      addOrder(orderApiToStoreOrder(paidOrder));
+      const paidOrder = batch.length > 0
+        ? await addOrderPaymentsRemote(created.id, batch)
+        : fresh;
       const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
       if (selectedTable) {
-        updateTableStatus(selectedTable, totalPaid >= total ? "available" : "waiting-payment", String(created.id));
+        updateTableStatus(selectedTable, totalPaid >= total ? "available" : "waiting-payment", created.id);
       }
       resetCart();
       setShowSplit(false);

@@ -1,4 +1,22 @@
 import { create } from "zustand";
+import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  addOrderPayments as apiAddOrderPayments,
+  createOrderSplit as apiCreateOrderSplit,
+  createOrder as apiCreateOrder,
+  getOrder as apiGetOrder,
+  listOrderPayments as apiListOrderPayments,
+  listOrdersWithMeta as apiListOrdersWithMeta,
+  updateOrderSplit as apiUpdateOrderSplit,
+  updateOrder as apiUpdateOrder,
+  type CreateOrderPayload,
+  type ListOrdersMeta,
+  type ListOrdersParams,
+  type OrderApi,
+  type OrderPaymentPayload,
+  type OrderSplitPayload,
+  type UpdateOrderPayload,
+} from "@/lib/api-integration/endpoints";
 import { useInventoryStore } from "./inventoryStore";
 
 export type OrderItem = {
@@ -52,6 +70,12 @@ export type Order = {
   createdAt: Date;
   confirmedAt?: Date;
   splitBill?: SplitBillData;
+  /** Phase 2 lifecycle metadata */
+  serviceMode?: "dine_in" | "takeaway" | null;
+  orderChannel?: "dine_in" | "takeaway" | "qr" | null;
+  posSessionId?: number | null;
+  kitchenStatus?: string;
+  outletId?: number | null;
 };
 
 export type Table = {
@@ -94,9 +118,67 @@ export function deriveRuntimeFloorTables(
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
+/** Adapter — backend `OrderApi` → frontend `Order` */
+export function orderApiToStoreOrder(o: OrderApi): Order {
+  return {
+    id: String(o.id),
+    code: o.code,
+    source: o.source,
+    orderType: o.orderType,
+    items: o.items.map((it) => ({
+      orderItemId: it.orderItemId,
+      id: String(it.id),
+      name: it.name,
+      price: it.price,
+      qty: it.qty,
+      emoji: it.emoji ?? "",
+      notes: typeof it.notes === "string" ? it.notes : "",
+    })),
+    subtotal: o.subtotal,
+    tax: o.tax,
+    total: o.total,
+    status: o.status,
+    paymentStatus: o.paymentStatus,
+    payments: o.payments.map((p) => ({
+      method: p.method,
+      amount: p.amount,
+      paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+      allocations: p.allocations?.map((a) => ({
+        orderItemId: String(a.orderItemId),
+        qty: a.qty,
+        amount: a.amount,
+      })),
+    })),
+    customerName: o.customerName ?? "",
+    customerPhone: o.customerPhone ?? "",
+    tableId: o.tableId != null ? String(o.tableId) : undefined,
+    tableName: o.tableName ?? undefined,
+    tableNumber: o.tableNumber ?? "",
+    createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
+    confirmedAt: o.confirmedAt ? new Date(o.confirmedAt) : undefined,
+    splitBill: o.splitBill as Order["splitBill"],
+    serviceMode: o.serviceMode ?? null,
+    orderChannel: o.orderChannel ?? null,
+    posSessionId: o.posSessionId ?? null,
+    kitchenStatus: typeof o.kitchenStatus === "string" ? o.kitchenStatus : undefined,
+    outletId: o.outletId ?? null,
+  };
+}
+
 type OrderStore = {
   orders: Order[];
   tables: Table[];
+  // Async lifecycle state
+  isLoading: boolean;
+  isSubmitting: boolean;
+  error: string | null;
+  pagination: ListOrdersMeta | null;
+  lastSyncAt: string | null;
+  lastListParams: ListOrdersParams | null;
+  splitDrafts: Record<string, OrderSplitPayload>;
+  paymentDrafts: Record<string, { method: string; amount: number }[]>;
+
+  // Local state mutators (kept so the UI hierarchy stays unchanged)
   replaceFloorTables: (tables: Table[]) => void;
   addOrder: (order: Order) => void;
   updateOrderStatus: (id: string, status: Order["status"]) => void;
@@ -106,6 +188,33 @@ type OrderStore = {
   setSplitBill: (orderId: string, split: SplitBillData) => void;
   addSplitPayment: (orderId: string, personIndex: number, payment: PaymentEntry) => void;
   updateTableStatus: (tableId: string, status: Table["status"], orderId?: string) => void;
+
+  // Phase 2 async actions — components call these instead of api-integration directly
+  fetchOrders: (params?: ListOrdersParams) => Promise<Order[]>;
+  fetchOrder: (id: string) => Promise<Order>;
+  createOrderRemote: (payload: CreateOrderPayload) => Promise<Order>;
+  updateOrderRemote: (id: string, payload: UpdateOrderPayload) => Promise<Order>;
+  addOrderPaymentsRemote: (
+    id: string,
+    payments: OrderPaymentPayload[],
+    extra?: { cashAccountCode?: string; revenueAccountCode?: string },
+  ) => Promise<Order>;
+  createOrderSplitRemote: (orderId: string, payload: OrderSplitPayload) => Promise<Order>;
+  updateOrderSplitRemote: (
+    orderId: string,
+    splitId: number,
+    payload: Partial<OrderSplitPayload>,
+  ) => Promise<Order>;
+  listOrderPaymentsRemote: (orderId: string) => Promise<Order["payments"]>;
+  setSplitDraft: (orderId: string, payload: OrderSplitPayload) => void;
+  setPaymentDraft: (orderId: string, drafts: { method: string; amount: number }[]) => void;
+  getPaymentSummary: (orderId: string) => {
+    orderTotal: number;
+    allocatedTotal: number;
+    remainingBalance: number;
+  };
+  revalidateOrders: () => Promise<Order[] | null>;
+  resetAsync: () => void;
 };
 
 function calcPaymentStatus(order: Order): Order["paymentStatus"] {
@@ -115,11 +224,34 @@ function calcPaymentStatus(order: Order): Order["paymentStatus"] {
   return "unpaid";
 }
 
-export const useOrderStore = create<OrderStore>((set) => ({
+function mapApiError(error: unknown): string {
+  if (error instanceof ApiHttpError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Order request failed";
+}
+
+function upsertOrder(orders: Order[], next: Order): Order[] {
+  const idx = orders.findIndex((o) => o.id === next.id);
+  if (idx === -1) return [next, ...orders];
+  const copy = orders.slice();
+  copy[idx] = next;
+  return copy;
+}
+
+export const useOrderStore = create<OrderStore>((set, get) => ({
   orders: [],
   tables: [],
+  isLoading: false,
+  isSubmitting: false,
+  error: null,
+  pagination: null,
+  lastSyncAt: null,
+  lastListParams: null,
+  splitDrafts: {},
+  paymentDrafts: {},
+
   replaceFloorTables: (tables) => set({ tables }),
-  addOrder: (order) => set((s) => ({ orders: [order, ...s.orders] })),
+  addOrder: (order) => set((s) => ({ orders: upsertOrder(s.orders, order) })),
   updateOrderStatus: (id, status) =>
     set((s) => ({
       orders: s.orders.map((o) => (o.id === id ? { ...o, status } : o)),
@@ -133,7 +265,9 @@ export const useOrderStore = create<OrderStore>((set) => ({
   cancelOrder: (id) =>
     set((s) => ({
       orders: s.orders.map((o) => (o.id === id ? { ...o, status: "cancelled" as const } : o)),
-      tables: s.tables.map((t) => (t.orderId === id ? { ...t, status: "available" as const, orderId: undefined } : t)),
+      tables: s.tables.map((t) =>
+        t.orderId === id ? { ...t, status: "available" as const, orderId: undefined } : t,
+      ),
     })),
   addPayment: (orderId, payment) =>
     set((s) => ({
@@ -143,7 +277,6 @@ export const useOrderStore = create<OrderStore>((set) => ({
         updated.paymentStatus = calcPaymentStatus(updated);
         if (updated.paymentStatus === "paid") {
           updated.status = "completed";
-          // Deduct ingredient stock for each item
           const { deductStock } = useInventoryStore.getState();
           for (const item of updated.items) {
             deductStock(item.id, item.qty);
@@ -180,4 +313,225 @@ export const useOrderStore = create<OrderStore>((set) => ({
         t.id === tableId ? { ...t, status, orderId: orderId ?? t.orderId } : t
       ),
     })),
+
+  fetchOrders: async (params) => {
+    set({ isLoading: true, error: null, lastListParams: params ?? null });
+    try {
+      const result = await apiListOrdersWithMeta(params);
+      const mapped = result.orders.map(orderApiToStoreOrder);
+      set({
+        orders: mapped,
+        pagination: result.meta,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchOrder: async (id) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const apiOrder = await apiGetOrder(id);
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  createOrderRemote: async (payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const apiOrder = await apiCreateOrder(payload);
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  updateOrderRemote: async (id, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const apiOrder = await apiUpdateOrder(id, payload);
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  addOrderPaymentsRemote: async (id, payments, extra) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const apiOrder = await apiAddOrderPayments(id, {
+        payments,
+        ...(extra?.cashAccountCode ? { cashAccountCode: extra.cashAccountCode } : {}),
+        ...(extra?.revenueAccountCode ? { revenueAccountCode: extra.revenueAccountCode } : {}),
+      });
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      void get().revalidateOrders();
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  createOrderSplitRemote: async (orderId, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await apiCreateOrderSplit(orderId, payload);
+      const apiOrder = await apiGetOrder(orderId);
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+        splitDrafts: { ...s.splitDrafts, [orderId]: payload },
+      }));
+      void get().revalidateOrders();
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  updateOrderSplitRemote: async (orderId, splitId, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await apiUpdateOrderSplit(orderId, splitId, payload);
+      const apiOrder = await apiGetOrder(orderId);
+      const mapped = orderApiToStoreOrder(apiOrder);
+      set((s) => ({
+        orders: upsertOrder(s.orders, mapped),
+        lastSyncAt: new Date().toISOString(),
+        splitDrafts: s.splitDrafts[orderId]
+          ? {
+              ...s.splitDrafts,
+              [orderId]: { ...s.splitDrafts[orderId], ...payload },
+            }
+          : s.splitDrafts,
+      }));
+      void get().revalidateOrders();
+      return mapped;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  listOrderPaymentsRemote: async (orderId) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      const payments = await apiListOrderPayments(orderId);
+      set((s) => ({
+        orders: s.orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                payments: payments.map((p) => ({
+                  method: p.method,
+                  amount: p.amount,
+                  paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+                  allocations: p.allocations?.map((a) => ({
+                    orderItemId: String(a.orderItemId),
+                    qty: a.qty,
+                    amount: a.amount,
+                  })),
+                })),
+              }
+            : o
+        ),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return get().orders.find((o) => o.id === orderId)?.payments ?? [];
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  setSplitDraft: (orderId, payload) =>
+    set((s) => ({ splitDrafts: { ...s.splitDrafts, [orderId]: payload } })),
+
+  setPaymentDraft: (orderId, drafts) =>
+    set((s) => ({ paymentDrafts: { ...s.paymentDrafts, [orderId]: drafts } })),
+
+  getPaymentSummary: (orderId) => {
+    const state = get();
+    const order = state.orders.find((o) => o.id === orderId);
+    const orderTotal = order?.total ?? 0;
+    const allocatedTotal = (state.paymentDrafts[orderId] ?? []).reduce((sum, p) => sum + p.amount, 0);
+
+    return {
+      orderTotal,
+      allocatedTotal,
+      remainingBalance: Math.max(0, orderTotal - allocatedTotal),
+    };
+  },
+
+  revalidateOrders: async () => {
+    const params = get().lastListParams;
+    if (params === null) return null;
+    return get().fetchOrders(params);
+  },
+
+  resetAsync: () =>
+    set({
+      isLoading: false,
+      isSubmitting: false,
+      error: null,
+      pagination: null,
+      lastSyncAt: null,
+      lastListParams: null,
+      splitDrafts: {},
+      paymentDrafts: {},
+    }),
 }));

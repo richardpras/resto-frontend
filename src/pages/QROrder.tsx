@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, X, Store, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createOrder, type CreateOrderPayload } from "@/lib/api";
+import { useQrOrderStore } from "@/stores/qrOrderStore";
 import { toast } from "sonner";
 
 type MenuItem = {
@@ -39,13 +40,20 @@ type View = "menu" | "cart" | "confirm" | "success";
  * Staff monitors QR traffic at `/qr-orders` inside the app shell.
  */
 export default function QROrder() {
+  const [searchParams] = useSearchParams();
+  const createRequest = useQrOrderStore((s) => s.createRequest);
+  const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
+
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notesItem, setNotesItem] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
-  const [tableNumber, setTableNumber] = useState("12");
+  const outletIdParam = Number(searchParams.get("outletId"));
+  const tableIdParam = Number(searchParams.get("tableId"));
+  const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
+  const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
   const [paymentChoice, setPaymentChoice] = useState<"cashier" | "online">("cashier");
   const [orderCode, setOrderCode] = useState(() => "QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
 
@@ -75,26 +83,22 @@ export default function QROrder() {
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
 
   const submitOrder = async () => {
+    if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) {
+      toast.error("QR link is invalid. Missing outletId/tableId.");
+      return;
+    }
     try {
-      const payload: CreateOrderPayload = {
-        code: orderCode,
-        source: "qr",
-        orderType: "Dine-in",
-        items: cart.map((c) => ({ id: c.id, name: c.name, price: c.price, qty: c.qty, emoji: c.emoji, notes: c.notes })),
-        subtotal,
-        tax,
-        total,
-        status: "confirmed",
-        paymentStatus: "unpaid",
-        payments: [],
-        customerName,
-        customerPhone: "",
-        tableNumber,
-        createdAt: new Date().toISOString(),
-        confirmedAt: new Date().toISOString(),
-      };
-      const response = await createOrder(payload);
-      setOrderCode(response.code);
+      const created = await createRequest({
+        outletId: outletIdParam,
+        tableId: tableIdParam,
+        customerName: customerName.trim() || undefined,
+        items: cart.map((item) => ({
+          menuItemId: Number(item.id),
+          qty: item.qty,
+          notes: item.notes || undefined,
+        })),
+      });
+      setOrderCode(created.requestCode);
       setView("success");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to submit QR order");
@@ -192,8 +196,12 @@ export default function QROrder() {
         </div>
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">
           <div className="max-w-lg mx-auto">
-            <button onClick={submitOrder} className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2">
-              <Send className="h-4 w-4" /> Submit Order • {formatRp(total)}
+            <button
+              disabled={isSubmitting}
+              onClick={submitOrder}
+              className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-70"
+            >
+              <Send className="h-4 w-4" /> {isSubmitting ? "Submitting..." : `Submit Order • ${formatRp(total)}`}
             </button>
           </div>
         </div>

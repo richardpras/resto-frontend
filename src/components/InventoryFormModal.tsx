@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { type InventoryItemType } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
 import { Package, Paperclip, Armchair } from "lucide-react";
-import { type InventoryItemApi, type InventoryPayload } from "@/lib/api";
+import { type InventoryItemApi, type InventoryPayload } from "@/lib/api-integration/inventoryEndpoints";
 
 const typeConfig: Record<InventoryItemType, { label: string; icon: React.ReactNode; units: string[]; color: string }> = {
   ingredient: { label: "Ingredient", icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },

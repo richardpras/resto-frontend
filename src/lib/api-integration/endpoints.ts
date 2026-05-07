@@ -177,6 +177,8 @@ export type OrderItemPayload = {
 export type OrderPaymentPayload = {
   method: string;
   amount: number;
+  status?: "paid" | "pending" | "failed" | "void";
+  orderSplitId?: number;
   paidAt?: string;
   splitBillLabel?: string;
   splitBillGroup?: string;
@@ -186,6 +188,16 @@ export type OrderPaymentPayload = {
     amount: number;
   }[];
 };
+
+export type ServiceMode = "dine_in" | "takeaway";
+export type OrderChannel = "dine_in" | "takeaway" | "qr";
+export type KitchenStatus =
+  | "queued"
+  | "in_progress"
+  | "ready"
+  | "served"
+  | "cancelled"
+  | "pending_confirmation";
 
 export type CreateOrderPayload = {
   tenantId?: number;
@@ -208,16 +220,35 @@ export type CreateOrderPayload = {
   createdAt?: string;
   confirmedAt?: string;
   splitBill?: unknown;
+  serviceMode?: ServiceMode;
+  orderChannel?: OrderChannel;
+  posSessionId?: number;
 };
+
+export type UpdateOrderPayload = Partial<{
+  items: OrderItemPayload[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  discountAmount: number;
+  customerName: string | null;
+  customerPhone: string | null;
+  tableId: number | null;
+  notes: string | null;
+}>;
 
 export type OrderApi = {
   id: string;
   outletId?: number | null;
+  posSessionId?: number | null;
   code: string;
   source: "pos" | "qr";
+  orderChannel?: OrderChannel | null;
+  serviceMode?: ServiceMode | null;
   orderType: string;
   status: "pending" | "confirmed" | "cooking" | "ready" | "completed" | "cancelled";
   paymentStatus: "unpaid" | "partial" | "paid";
+  kitchenStatus?: KitchenStatus | string;
   items: (OrderItemPayload & { orderItemId?: string })[];
   subtotal: number;
   tax: number;
@@ -240,14 +271,51 @@ export type OrderApi = {
   splitBill?: unknown;
 };
 
+export type OrderSplitItemPayload = {
+  orderItemId: number;
+  qty: number;
+  amount: number;
+};
+
+export type OrderSplitPayload = {
+  splitType: "by_item" | "by_person" | "mixed";
+  label: string;
+  status?: "open" | "partial" | "paid";
+  items: OrderSplitItemPayload[];
+};
+
+export type OrderSplitApi = {
+  id: number;
+  orderId: number;
+  splitType: "by_item" | "by_person" | "mixed";
+  label: string;
+  status: "open" | "partial" | "paid";
+  items: OrderSplitItemPayload[];
+};
+
+export type ListOrdersMeta = {
+  currentPage: number;
+  perPage: number;
+  total: number;
+  lastPage: number;
+};
+
+export type ListOrdersResult = {
+  orders: OrderApi[];
+  meta: ListOrdersMeta;
+};
+
 export type ListOrdersParams = {
   tenantId?: number;
   outletId?: number;
+  page?: number;
   perPage?: number;
   paymentStatus?: "unpaid" | "partial" | "paid";
   orderType?: string;
   status?: "pending" | "confirmed" | "cooking" | "ready" | "completed" | "cancelled";
   source?: "pos" | "qr";
+  serviceMode?: ServiceMode;
+  kitchenStatus?: KitchenStatus | string;
 };
 
 export async function createOrder(payload: CreateOrderPayload): Promise<OrderApi> {
@@ -264,17 +332,42 @@ export async function getOrder(id: string): Promise<OrderApi> {
 }
 
 export async function listOrders(params?: ListOrdersParams): Promise<OrderApi[]> {
+  const result = await listOrdersWithMeta(params);
+  return result.orders;
+}
+
+export async function listOrdersWithMeta(params?: ListOrdersParams): Promise<ListOrdersResult> {
   const query = new URLSearchParams();
   if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
   if (params?.outletId !== undefined && params.outletId > 0) query.set("outletId", String(params.outletId));
+  if (params?.page !== undefined) query.set("page", String(params.page));
   if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
   if (params?.paymentStatus) query.set("paymentStatus", params.paymentStatus);
   if (params?.orderType) query.set("orderType", params.orderType);
   if (params?.status) query.set("status", params.status);
   if (params?.source) query.set("source", params.source);
+  if (params?.serviceMode) query.set("serviceMode", params.serviceMode);
+  if (params?.kitchenStatus) query.set("kitchenStatus", String(params.kitchenStatus));
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   const response = await request<ApiListResponse<OrderApi>>(`/orders${suffix}`);
+  const meta = response.meta ?? {};
+  return {
+    orders: response.data,
+    meta: {
+      currentPage: Number(meta.currentPage ?? meta.current_page ?? 1),
+      perPage: Number(meta.perPage ?? meta.per_page ?? response.data.length),
+      total: Number(meta.total ?? response.data.length),
+      lastPage: Number(meta.lastPage ?? meta.last_page ?? 1),
+    },
+  };
+}
+
+export async function updateOrder(id: string, payload: UpdateOrderPayload): Promise<OrderApi> {
+  const response = await request<{ data: OrderApi }>(`/orders/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
   return response.data;
 }
 
@@ -301,5 +394,33 @@ export async function addOrderPayments(
     method: "POST",
     body: JSON.stringify(payload),
   });
+  return response.data;
+}
+
+export async function createOrderSplit(
+  orderId: string,
+  payload: OrderSplitPayload,
+): Promise<OrderSplitApi> {
+  const response = await request<{ data: OrderSplitApi }>(`/orders/${orderId}/splits`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateOrderSplit(
+  orderId: string,
+  splitId: number,
+  payload: Partial<OrderSplitPayload>,
+): Promise<OrderSplitApi> {
+  const response = await request<{ data: OrderSplitApi }>(`/orders/${orderId}/splits/${splitId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function listOrderPayments(orderId: string): Promise<OrderApi["payments"]> {
+  const response = await request<{ data: OrderApi["payments"] }>(`/orders/${orderId}/payments`);
   return response.data;
 }

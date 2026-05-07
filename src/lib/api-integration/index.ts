@@ -5,3 +5,6 @@ export * from "./userManagementEndpoints";
 export * from "./settingsDomainEndpoints";
 export * from "./endpoints";
 export * from "./tableEndpoints";
+export * from "./posSessionEndpoints";
+export * from "./kitchenEndpoints";
+export * from "./qrOrderEndpoints";

@@ -1,19 +1,12 @@
 import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Paperclip, Armchair } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useOutletStore } from "@/stores/outletStore";
-import { type InventoryItemType } from "@/stores/inventoryStore";
+import { useInventoryStore, type InventoryItemType } from "@/stores/inventoryStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import InventoryFormModal from "@/components/InventoryFormModal";
 import { toast } from "@/hooks/use-toast";
-import {
-  createIngredient,
-  deleteIngredient,
-  listIngredients,
-  type InventoryItemApi,
-  type InventoryPayload,
-  updateIngredient,
-} from "@/lib/api";
+import { type InventoryItem, type InventoryPayload, type StockMovement } from "@/stores/inventoryStore";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -31,34 +24,41 @@ const typeBadge: Record<InventoryItemType, { label: string; className: string }>
 
 export default function Inventory() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const ingredients = useInventoryStore((s) => s.ingredients);
+  const stockMovements = useInventoryStore((s) => s.stockMovements);
+  const loading = useInventoryStore((s) => s.isLoading);
+  const fetchInventory = useInventoryStore((s) => s.fetchInventory);
+  const fetchStockMovements = useInventoryStore((s) => s.fetchStockMovements);
+  const createItemRemote = useInventoryStore((s) => s.createItemRemote);
+  const updateItemRemote = useInventoryStore((s) => s.updateItemRemote);
+  const deleteItemRemote = useInventoryStore((s) => s.deleteItemRemote);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<InventoryItemType | "all">("all");
-  const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
-  const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
-  const [editItem, setEditItem] = useState<InventoryItemApi | null>(null);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        setLoading(true);
-        const data = await listIngredients({
+        const scopedParams = {
           tenantId: TENANT_ID,
           ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
-        });
-        setIngredients(data);
+          perPage: 200,
+        };
+        await Promise.all([
+          fetchInventory(scopedParams),
+          fetchStockMovements(scopedParams),
+        ]);
       } catch (error) {
         toast({
           title: "Failed to load inventory",
           description: error instanceof Error ? error.message : "Unknown error",
         });
-      } finally {
-        setLoading(false);
       }
     };
 
     void load();
-  }, [activeOutletId]);
+  }, [activeOutletId, fetchInventory, fetchStockMovements]);
 
   const filtered = ingredients
     .filter((i) => filterType === "all" || i.type === filterType)
@@ -66,15 +66,14 @@ export default function Inventory() {
 
   const lowCount = ingredients.filter((i) => i.type !== "asset" && i.stock < i.min).length;
 
-  const handleEdit = (item: InventoryItemApi) => {
+  const handleEdit = (item: InventoryItem) => {
     setEditItem(item);
     setFormOpen(true);
   };
 
-  const handleDelete = async (item: InventoryItemApi) => {
+  const handleDelete = async (item: InventoryItem) => {
     try {
-      await deleteIngredient(item.id);
-      setIngredients((prev) => prev.filter((i) => i.id !== item.id));
+      await deleteItemRemote(item.id);
       toast({ title: "Deleted", description: `${item.name} removed from inventory.` });
     } catch (error) {
       toast({
@@ -100,13 +99,11 @@ export default function Inventory() {
     const outletContext =
       typeof activeOutletId === "number" && activeOutletId >= 1 ? { tenantId: TENANT_ID, outletId: activeOutletId } : { tenantId: TENANT_ID };
     if (id) {
-      const updated = await updateIngredient(id, { ...payload, ...outletContext });
-      setIngredients((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      await updateItemRemote(id, { ...payload, ...outletContext });
       return;
     }
 
-    const created = await createIngredient({ ...payload, ...outletContext });
-    setIngredients((prev) => [created, ...prev]);
+    await createItemRemote({ ...payload, ...outletContext });
   };
 
   return (
@@ -241,6 +238,34 @@ export default function Inventory() {
           <p className="text-sm">No items found</p>
         </div>
       )}
+
+      <div className="mt-6">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-foreground">Movement Ledger</h2>
+          <p className="text-xs text-muted-foreground">Recent stock movements for current scope</p>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border/60">
+            <span className="col-span-3">Item</span>
+            <span className="col-span-2">Type</span>
+            <span className="col-span-2 text-right">Qty</span>
+            <span className="col-span-2">Source</span>
+            <span className="col-span-3">Created</span>
+          </div>
+          {stockMovements.slice(0, 8).map((movement: StockMovement) => (
+            <div key={movement.id} className="grid grid-cols-12 gap-2 px-4 py-2 text-sm border-b border-border/40 last:border-b-0">
+              <span className="col-span-3 truncate">{movement.inventoryItemName ?? movement.inventoryItemId}</span>
+              <span className="col-span-2 capitalize">{movement.type}</span>
+              <span className="col-span-2 text-right font-medium">{movement.quantity}</span>
+              <span className="col-span-2 truncate">{movement.sourceType}</span>
+              <span className="col-span-3 text-muted-foreground">{movement.createdAt ? new Date(movement.createdAt).toLocaleString() : "-"}</span>
+            </div>
+          ))}
+          {stockMovements.length === 0 && (
+            <div className="px-4 py-6 text-sm text-muted-foreground">No movement records for this outlet scope.</div>
+          )}
+        </div>
+      </div>
 
       <InventoryFormModal
         open={formOpen}
