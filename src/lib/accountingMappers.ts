@@ -1,4 +1,4 @@
-import type { AccountApiRow, JournalApiRow } from "@/lib/api-integration/accountingEndpoints";
+import type { AccountApiRow, JournalApiRow, TrialBalanceReportRow } from "@/lib/api-integration/accountingEndpoints";
 import type { Account, AccountSubtype, AccountType, JournalEntry, JournalLine } from "@/stores/accountingStore";
 
 function coerceSubtype(raw: string, type: AccountType): AccountSubtype {
@@ -58,5 +58,21 @@ export function journalFromApi(row: JournalApiRow): JournalEntry {
     outlet: row.outlet,
     status: row.status,
     lines,
+  };
+}
+
+export function trialBalanceRowFromApi(row: TrialBalanceReportRow): TrialBalanceReportRow {
+  return {
+    accountId: row.accountId,
+    code: row.code,
+    name: row.name,
+    debit: Number(row.debit ?? 0),
+    credit: Number(row.credit ?? 0),
+    openingDebit: Number(row.openingDebit ?? 0),
+    openingCredit: Number(row.openingCredit ?? 0),
+    movementDebit: Number(row.movementDebit ?? 0),
+    movementCredit: Number(row.movementCredit ?? 0),
+    closingDebit: Number(row.closingDebit ?? 0),
+    closingCredit: Number(row.closingCredit ?? 0),
   };
 }

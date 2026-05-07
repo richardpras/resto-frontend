@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { getProfitLossReport, type ProfitLossReportData } from "@/lib/api";
+import { useEffect, useState } from "react";
 import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,10 @@ import { Download, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ProfitLoss() {
-  const { outlets } = useAccountingStore();
+  const outlets = useAccountingStore((s) => s.outlets);
+  const current = useAccountingStore((s) => s.profitLossCurrent);
+  const previous = useAccountingStore((s) => s.profitLossPrevious);
+  const fetchProfitLossReport = useAccountingStore((s) => s.fetchProfitLossReport);
   const today = new Date();
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const endMonth = today.toISOString().slice(0, 10);
@@ -21,31 +23,12 @@ export default function ProfitLoss() {
   const [to, setTo] = useState(endMonth);
   const [outlet, setOutlet] = useState("all");
   const [compare, setCompare] = useState(true);
-  const [current, setCurrent] = useState<ProfitLossReportData>({
-    revenue: [], cogs: [], expenses: [], totalRevenue: 0, totalCOGS: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0,
-  });
-  const [previous, setPrevious] = useState<ProfitLossReportData>({
-    revenue: [], cogs: [], expenses: [], totalRevenue: 0, totalCOGS: 0, grossProfit: 0, totalExpenses: 0, netProfit: 0,
-  });
-
   useEffect(() => {
-    let active = true;
-    void Promise.all([
-      getProfitLossReport({ from, to, outlet }),
-      getProfitLossReport({ from: startPrev, to: endPrev, outlet }),
-    ])
-      .then(([curr, prev]) => {
-        if (!active) return;
-        setCurrent(curr);
-        setPrevious(prev);
-      })
+    void fetchProfitLossReport({ from, to, outlet, compareFrom: startPrev, compareTo: endPrev })
       .catch((e) => {
-        if (active) toast.error(e instanceof Error ? e.message : "Failed to load P&L report");
+        toast.error(e instanceof Error ? e.message : "Failed to load P&L report");
       });
-    return () => {
-      active = false;
-    };
-  }, [from, to, outlet, startPrev, endPrev]);
+  }, [from, to, outlet, startPrev, endPrev, fetchProfitLossReport]);
 
   const pct = (curr: number, prev: number) => {
     if (prev === 0) return curr === 0 ? 0 : 100;

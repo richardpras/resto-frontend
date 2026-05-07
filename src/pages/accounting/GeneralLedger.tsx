@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getLedgerReport, type LedgerReportData } from "@/lib/api";
 import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11,14 +10,16 @@ import { Download } from "lucide-react";
 import { toast } from "sonner";
 
 export default function GeneralLedger() {
-  const { accounts, outlets } = useAccountingStore();
+  const accounts = useAccountingStore((s) => s.accounts);
+  const outlets = useAccountingStore((s) => s.outlets);
+  const ledger = useAccountingStore((s) => s.ledgerReport);
+  const fetchLedgerReport = useAccountingStore((s) => s.fetchLedgerReport);
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
   const [from, setFrom] = useState(monthAgo.toISOString().slice(0, 10));
   const [to, setTo] = useState(today);
   const [outlet, setOutlet] = useState("all");
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
-  const [ledger, setLedger] = useState<LedgerReportData>({ account: null, rows: [], opening: 0, closing: 0 });
 
   useEffect(() => {
     if (!accountId && accounts.length > 0) {
@@ -28,21 +29,13 @@ export default function GeneralLedger() {
 
   useEffect(() => {
     if (!accountId) {
-      setLedger({ account: null, rows: [], opening: 0, closing: 0 });
       return;
     }
-    let active = true;
-    void getLedgerReport({ accountId, from, to, outlet })
-      .then((res) => {
-        if (active) setLedger(res);
-      })
+    void fetchLedgerReport({ accountId, from, to, outlet })
       .catch((e) => {
-        if (active) toast.error(e instanceof Error ? e.message : "Failed to load ledger report");
+        toast.error(e instanceof Error ? e.message : "Failed to load ledger report");
       });
-    return () => {
-      active = false;
-    };
-  }, [accountId, from, to, outlet]);
+  }, [accountId, from, to, outlet, fetchLedgerReport]);
 
   const exportCSV = () => {
     const rows = [["Date", "Reference", "Description", "Debit", "Credit", "Balance"]];

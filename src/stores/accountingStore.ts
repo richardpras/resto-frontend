@@ -1,6 +1,38 @@
 import { create } from "zustand";
-import { listAccounts as listAccountsApi, listJournals as listJournalsApi, listOutlets as listOutletsApi } from "@/lib/api";
-import { accountFromApi, journalFromApi } from "@/lib/accountingMappers";
+import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  closeAccountingPeriod as closeAccountingPeriodApi,
+  createAccountingPeriod as createAccountingPeriodApi,
+  createAccount as createAccountApi,
+  createJournal as createJournalApi,
+  deleteAccount as deleteAccountApi,
+  deleteJournal as deleteJournalApi,
+  getBalanceSheetReport as getBalanceSheetReportApi,
+  getLedgerReport as getLedgerReportApi,
+  getProfitLossReport as getProfitLossReportApi,
+  getTrialBalanceReport as getTrialBalanceReportApi,
+  listAccountingPeriods as listAccountingPeriodsApi,
+  listAccountsWithMeta as listAccountsWithMetaApi,
+  listJournalsWithMeta as listJournalsWithMetaApi,
+  listOutlets as listOutletsApi,
+  openAccountingPeriod as openAccountingPeriodApi,
+  postJournal as postJournalApi,
+  updateAccount as updateAccountApi,
+  updateJournal as updateJournalApi,
+  type AccountCreatePayload,
+  type AccountingPeriodApiRow,
+  type AccountingPeriodCreatePayload,
+  type AccountUpdatePayload,
+  type AccountingListMeta,
+  type BalanceSheetReportData,
+  type JournalCreatePayload,
+  type JournalUpdatePayload,
+  type LedgerReportData,
+  type ProfitLossReportData,
+  type TrialBalanceReportData,
+  type TrialBalanceReportRow,
+} from "@/lib/api";
+import { accountFromApi, journalFromApi, trialBalanceRowFromApi } from "@/lib/accountingMappers";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 export type AccountSubtype =
@@ -41,25 +73,433 @@ export interface JournalEntry {
   lines: JournalLine[];
 }
 
+export interface AccountingPeriod {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "open" | "closed";
+  outletId?: string | null;
+  closedAt?: string | null;
+  closedByUserId?: string | null;
+}
+
 interface AccountingState {
   accounts: Account[];
   journals: JournalEntry[];
   outlets: string[];
+  isLoading: boolean;
+  isSubmitting: boolean;
+  error: string | null;
+  lastSyncAt: string | null;
+  pagination: {
+    accounts: AccountingListMeta | null;
+    journals: AccountingListMeta | null;
+    trialBalance: AccountingListMeta | null;
+  } | null;
+  trialBalanceRows: TrialBalanceReportRow[];
+  accountingPeriods: AccountingPeriod[];
+  accountingPeriodsLoading: boolean;
+  accountingPeriodsSubmitting: boolean;
+  accountingPeriodsError: string | null;
+  accountingPeriodsPagination: AccountingListMeta | null;
+  lastPeriodSyncAt: string | null;
+  trialBalanceSummary: {
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+  } | null;
+  trialBalanceParams: TrialBalanceQuery | null;
+  ledgerReport: LedgerReportData;
+  ledgerParams: LedgerQuery | null;
+  profitLossCurrent: ProfitLossReportData;
+  profitLossPrevious: ProfitLossReportData;
+  profitLossParams: ProfitLossQuery | null;
+  balanceSheetReport: BalanceSheetReportData;
+  balanceSheetParams: BalanceSheetQuery | null;
   /** Loads chart of accounts and journals from the Laravel API (`/accounts`, `/journals`). */
   refreshFromApi: () => Promise<void>;
+  revalidateBaseData: () => Promise<void>;
+  fetchTrialBalanceReport: (params: TrialBalanceQuery) => Promise<TrialBalanceReportData>;
+  fetchLedgerReport: (params: LedgerQuery) => Promise<LedgerReportData>;
+  fetchProfitLossReport: (params: ProfitLossQuery) => Promise<{ current: ProfitLossReportData; previous: ProfitLossReportData }>;
+  fetchBalanceSheetReport: (params: BalanceSheetQuery) => Promise<BalanceSheetReportData>;
+  createAccountRemote: (payload: AccountCreatePayload) => Promise<void>;
+  updateAccountRemote: (id: string, payload: AccountUpdatePayload) => Promise<void>;
+  deleteAccountRemote: (id: string) => Promise<void>;
+  createJournalRemote: (payload: JournalCreatePayload) => Promise<void>;
+  updateJournalRemote: (id: string, payload: JournalUpdatePayload) => Promise<void>;
+  deleteJournalRemote: (id: string) => Promise<void>;
+  postJournalRemote: (id: string) => Promise<void>;
+  fetchAccountingPeriods: (params?: { page?: number; perPage?: number }) => Promise<void>;
+  createAccountingPeriod: (payload: AccountingPeriodCreatePayload) => Promise<void>;
+  closeAccountingPeriod: (periodId: string) => Promise<void>;
+  openAccountingPeriod: (periodId: string) => Promise<void>;
 }
 
-export const useAccountingStore = create<AccountingState>((set) => ({
+export type TrialBalanceQuery = {
+  from?: string;
+  to?: string;
+  outlet?: string;
+  page?: number;
+  perPage?: number;
+};
+
+export type LedgerQuery = {
+  accountId: string;
+  from?: string;
+  to?: string;
+  outlet?: string;
+};
+
+export type ProfitLossQuery = {
+  from?: string;
+  to?: string;
+  outlet?: string;
+  compareFrom?: string;
+  compareTo?: string;
+};
+
+export type BalanceSheetQuery = {
+  to?: string;
+  outlet?: string;
+};
+
+const EMPTY_LEDGER: LedgerReportData = { account: null, rows: [], opening: 0, closing: 0 };
+const EMPTY_PL: ProfitLossReportData = {
+  revenue: [],
+  cogs: [],
+  expenses: [],
+  totalRevenue: 0,
+  totalCOGS: 0,
+  grossProfit: 0,
+  totalExpenses: 0,
+  netProfit: 0,
+};
+const EMPTY_BS: BalanceSheetReportData = {
+  currentAssets: [],
+  fixedAssets: [],
+  shortLiab: [],
+  longLiab: [],
+  equity: [],
+  totalAssets: 0,
+  totalLiabilities: 0,
+  totalEquity: 0,
+  netProfit: 0,
+  balanced: true,
+};
+
+function mapApiError(error: unknown): string {
+  if (error instanceof ApiHttpError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Accounting request failed";
+}
+
+function accountingPeriodFromApi(row: AccountingPeriodApiRow): AccountingPeriod {
+  return {
+    id: row.id,
+    name: row.name,
+    startDate: row.startDate,
+    endDate: row.endDate,
+    status: row.status,
+    outletId: row.outletId ?? null,
+    closedAt: row.closedAt ?? null,
+    closedByUserId: row.closedByUserId ?? null,
+  };
+}
+
+export const useAccountingStore = create<AccountingState>((set, get) => ({
   accounts: [],
   journals: [],
   outlets: [],
+  isLoading: false,
+  isSubmitting: false,
+  error: null,
+  lastSyncAt: null,
+  pagination: {
+    accounts: null,
+    journals: null,
+    trialBalance: null,
+  },
+  trialBalanceRows: [],
+  accountingPeriods: [],
+  accountingPeriodsLoading: false,
+  accountingPeriodsSubmitting: false,
+  accountingPeriodsError: null,
+  accountingPeriodsPagination: null,
+  lastPeriodSyncAt: null,
+  trialBalanceSummary: null,
+  trialBalanceParams: null,
+  ledgerReport: EMPTY_LEDGER,
+  ledgerParams: null,
+  profitLossCurrent: EMPTY_PL,
+  profitLossPrevious: EMPTY_PL,
+  profitLossParams: null,
+  balanceSheetReport: EMPTY_BS,
+  balanceSheetParams: null,
   refreshFromApi: async () => {
-    const [accRows, jourRows, outletRows] = await Promise.all([listAccountsApi(), listJournalsApi(), listOutletsApi()]);
-    set({
-      accounts: accRows.map(accountFromApi),
-      journals: jourRows.map(journalFromApi),
-      outlets: outletRows.map((outlet) => outlet.name),
-    });
+    set({ isLoading: true, error: null });
+    try {
+      const [accRows, jourRows, outletRows] = await Promise.all([
+        listAccountsWithMetaApi(),
+        listJournalsWithMetaApi(),
+        listOutletsApi(),
+      ]);
+      set((state) => ({
+        accounts: accRows.items.map(accountFromApi),
+        journals: jourRows.items.map(journalFromApi),
+        outlets: outletRows.map((outlet) => outlet.name),
+        lastSyncAt: new Date().toISOString(),
+        pagination: {
+          accounts: accRows.meta,
+          journals: jourRows.meta,
+          trialBalance: state.pagination?.trialBalance ?? null,
+        },
+      }));
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  revalidateBaseData: async () => {
+    await get().refreshFromApi();
+  },
+  fetchTrialBalanceReport: async (params) => {
+    set({ isLoading: true, error: null, trialBalanceParams: params });
+    try {
+      const data = await getTrialBalanceReportApi(params);
+      const rows = data.rows.map(trialBalanceRowFromApi);
+      set((state) => ({
+        trialBalanceRows: rows,
+        trialBalanceSummary: {
+          totalDebit: data.totalDebit,
+          totalCredit: data.totalCredit,
+          balanced: data.balanced,
+        },
+        lastSyncAt: new Date().toISOString(),
+        pagination: {
+          accounts: state.pagination?.accounts ?? null,
+          journals: state.pagination?.journals ?? null,
+          trialBalance: {
+            currentPage: params.page ?? 1,
+            perPage: params.perPage ?? rows.length,
+            total: rows.length,
+            lastPage: 1,
+          },
+        },
+      }));
+      return data;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  fetchLedgerReport: async (params) => {
+    set({ isLoading: true, error: null, ledgerParams: params });
+    try {
+      const data = await getLedgerReportApi(params);
+      set({
+        ledgerReport: data,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return data;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  fetchProfitLossReport: async (params) => {
+    set({ isLoading: true, error: null, profitLossParams: params });
+    try {
+      const [current, previous] = await Promise.all([
+        getProfitLossReportApi({ from: params.from, to: params.to, outlet: params.outlet }),
+        getProfitLossReportApi({ from: params.compareFrom, to: params.compareTo, outlet: params.outlet }),
+      ]);
+      set({
+        profitLossCurrent: current,
+        profitLossPrevious: previous,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return { current, previous };
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  fetchBalanceSheetReport: async (params) => {
+    set({ isLoading: true, error: null, balanceSheetParams: params });
+    try {
+      const data = await getBalanceSheetReportApi(params);
+      set({
+        balanceSheetReport: data,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return data;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  createAccountRemote: async (payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await createAccountApi(payload);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  updateAccountRemote: async (id, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await updateAccountApi(id, payload);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  deleteAccountRemote: async (id) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await deleteAccountApi(id);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  createJournalRemote: async (payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await createJournalApi(payload);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  updateJournalRemote: async (id, payload) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await updateJournalApi(id, payload);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  deleteJournalRemote: async (id) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await deleteJournalApi(id);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  postJournalRemote: async (id) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      await postJournalApi(id);
+      await get().refreshFromApi();
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+  fetchAccountingPeriods: async (params) => {
+    const previousMeta = get().accountingPeriodsPagination;
+    const page = params?.page ?? previousMeta?.currentPage ?? 1;
+    const perPage = params?.perPage ?? previousMeta?.perPage ?? 10;
+    set({ accountingPeriodsLoading: true, accountingPeriodsError: null });
+    try {
+      const response = await listAccountingPeriodsApi({ page, perPage });
+      set({
+        accountingPeriods: response.items.map(accountingPeriodFromApi),
+        accountingPeriodsPagination: response.meta,
+        lastPeriodSyncAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      set({ accountingPeriodsError: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ accountingPeriodsLoading: false });
+    }
+  },
+  createAccountingPeriod: async (payload) => {
+    set({ accountingPeriodsSubmitting: true, accountingPeriodsError: null });
+    try {
+      await createAccountingPeriodApi(payload);
+      const currentMeta = get().accountingPeriodsPagination;
+      await get().fetchAccountingPeriods({
+        page: currentMeta?.currentPage ?? 1,
+        perPage: currentMeta?.perPage ?? 10,
+      });
+    } catch (error) {
+      set({ accountingPeriodsError: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ accountingPeriodsSubmitting: false });
+    }
+  },
+  closeAccountingPeriod: async (periodId) => {
+    set({ accountingPeriodsSubmitting: true, accountingPeriodsError: null });
+    try {
+      await closeAccountingPeriodApi(periodId);
+      const currentMeta = get().accountingPeriodsPagination;
+      await get().fetchAccountingPeriods({
+        page: currentMeta?.currentPage ?? 1,
+        perPage: currentMeta?.perPage ?? 10,
+      });
+    } catch (error) {
+      set({ accountingPeriodsError: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ accountingPeriodsSubmitting: false });
+    }
+  },
+  openAccountingPeriod: async (periodId) => {
+    set({ accountingPeriodsSubmitting: true, accountingPeriodsError: null });
+    try {
+      await openAccountingPeriodApi(periodId);
+      const currentMeta = get().accountingPeriodsPagination;
+      await get().fetchAccountingPeriods({
+        page: currentMeta?.currentPage ?? 1,
+        perPage: currentMeta?.perPage ?? 10,
+      });
+    } catch (error) {
+      set({ accountingPeriodsError: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ accountingPeriodsSubmitting: false });
+    }
   },
 }));
 
@@ -185,4 +625,16 @@ export function buildLedger(accountId: string, accounts: Account[], journals: Jo
       }),
   );
   return { account, rows, opening, closing: running };
+}
+
+export function computeTrialBalanceTotals(rows: TrialBalanceReportRow[]) {
+  const totalDebit = rows.reduce((sum, row) => sum + row.debit, 0);
+  const totalCredit = rows.reduce((sum, row) => sum + row.credit, 0);
+  const delta = totalDebit - totalCredit;
+  return {
+    totalDebit,
+    totalCredit,
+    delta,
+    balanced: Math.abs(delta) < 0.000001,
+  };
 }

@@ -1,10 +1,5 @@
 import { useState } from "react";
 import { useAccountingStore, Account, AccountType, AccountSubtype } from "@/stores/accountingStore";
-import {
-  createAccount as createAccountApi,
-  updateAccount as updateAccountApi,
-  deleteAccount as deleteAccountApi,
-} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +40,11 @@ const typeColor: Record<AccountType, string> = {
 };
 
 export default function ChartOfAccounts() {
-  const { accounts, refreshFromApi } = useAccountingStore();
+  const accounts = useAccountingStore((s) => s.accounts);
+  const createAccountRemote = useAccountingStore((s) => s.createAccountRemote);
+  const updateAccountRemote = useAccountingStore((s) => s.updateAccountRemote);
+  const deleteAccountRemote = useAccountingStore((s) => s.deleteAccountRemote);
+  const revalidateBaseData = useAccountingStore((s) => s.revalidateBaseData);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
@@ -68,7 +67,7 @@ export default function ChartOfAccounts() {
     }
     try {
       if (editing) {
-        await updateAccountApi(editing.id, {
+        await updateAccountRemote(editing.id, {
           code: form.code,
           name: form.name,
           type: form.type,
@@ -79,7 +78,7 @@ export default function ChartOfAccounts() {
         });
         toast.success("Account updated");
       } else {
-        await createAccountApi({
+        await createAccountRemote({
           code: form.code,
           name: form.name,
           type: form.type,
@@ -90,7 +89,7 @@ export default function ChartOfAccounts() {
         });
         toast.success("Account created");
       }
-      await refreshFromApi();
+      await revalidateBaseData();
       setOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Request failed");
@@ -155,8 +154,8 @@ export default function ChartOfAccounts() {
                     onClick={() => {
                       void (async () => {
                         try {
-                          await deleteAccountApi(a.id);
-                          await refreshFromApi();
+                          await deleteAccountRemote(a.id);
+                          await revalidateBaseData();
                           toast.success("Deleted");
                         } catch (e) {
                           toast.error(e instanceof Error ? e.message : "Delete failed");

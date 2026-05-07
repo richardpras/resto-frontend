@@ -1,6 +1,26 @@
 import { apiRequest as request } from "./client";
 
 type ApiListEnvelope<T> = { data: T[] };
+type ApiListEnvelopeWithMeta<T> = {
+  data: T[];
+  meta?: {
+    current_page?: number;
+    currentPage?: number;
+    per_page?: number;
+    perPage?: number;
+    total?: number;
+    last_page?: number;
+    lastPage?: number;
+  };
+};
+type ApiSingleEnvelope<T> = { data: T };
+
+export type AccountingListMeta = {
+  currentPage: number;
+  perPage: number;
+  total: number;
+  lastPage: number;
+};
 
 export type AccountApiRow = {
   id: string;
@@ -11,6 +31,9 @@ export type AccountApiRow = {
   parentId?: string | null;
   description?: string | null;
   active: boolean;
+  normalBalance?: "debit" | "credit" | null;
+  currencyCode?: string | null;
+  tags?: string[] | null;
 };
 
 export type AccountCreatePayload = {
@@ -22,6 +45,10 @@ export type AccountCreatePayload = {
   parentId?: string | null;
   description?: string;
   active?: boolean;
+  normalBalance?: "debit" | "credit";
+  currencyCode?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type AccountUpdatePayload = Partial<AccountCreatePayload>;
@@ -32,6 +59,9 @@ export type JournalLineApi = {
   debit: number;
   credit: number;
   memo?: string | null;
+  exchangeRate?: number | null;
+  baseDebit?: number | null;
+  baseCredit?: number | null;
 };
 
 export type JournalApiRow = {
@@ -43,6 +73,10 @@ export type JournalApiRow = {
   outlet: string;
   status: "draft" | "posted";
   lines: JournalLineApi[];
+  postedAt?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | number | null;
+  externalRef?: string | null;
 };
 
 export type JournalCreatePayload = {
@@ -52,6 +86,10 @@ export type JournalCreatePayload = {
   description?: string;
   outlet?: string;
   status?: "draft" | "posted";
+  sourceType?: string;
+  sourceId?: string | number;
+  externalRef?: string;
+  postedAt?: string;
   lines: { accountId: string; debit: number; credit: number; memo?: string }[];
 };
 
@@ -64,6 +102,20 @@ export type JournalUpdatePayload = Partial<
 export async function listAccounts(): Promise<AccountApiRow[]> {
   const res = await request<ApiListEnvelope<AccountApiRow>>("/accounts");
   return res.data;
+}
+
+export async function listAccountsWithMeta(): Promise<{ items: AccountApiRow[]; meta: AccountingListMeta }> {
+  const res = await request<ApiListEnvelopeWithMeta<AccountApiRow>>("/accounts");
+  const meta = res.meta ?? {};
+  return {
+    items: res.data,
+    meta: {
+      currentPage: Number(meta.currentPage ?? meta.current_page ?? 1),
+      perPage: Number(meta.perPage ?? meta.per_page ?? res.data.length),
+      total: Number(meta.total ?? res.data.length),
+      lastPage: Number(meta.lastPage ?? meta.last_page ?? 1),
+    },
+  };
 }
 
 export async function createAccount(payload: AccountCreatePayload): Promise<AccountApiRow> {
@@ -91,6 +143,20 @@ export async function deleteAccount(id: string): Promise<void> {
 export async function listJournals(): Promise<JournalApiRow[]> {
   const res = await request<ApiListEnvelope<JournalApiRow>>("/journals");
   return res.data;
+}
+
+export async function listJournalsWithMeta(): Promise<{ items: JournalApiRow[]; meta: AccountingListMeta }> {
+  const res = await request<ApiListEnvelopeWithMeta<JournalApiRow>>("/journals");
+  const meta = res.meta ?? {};
+  return {
+    items: res.data,
+    meta: {
+      currentPage: Number(meta.currentPage ?? meta.current_page ?? 1),
+      perPage: Number(meta.perPage ?? meta.per_page ?? res.data.length),
+      total: Number(meta.total ?? res.data.length),
+      lastPage: Number(meta.lastPage ?? meta.last_page ?? 1),
+    },
+  };
 }
 
 export async function createJournal(payload: JournalCreatePayload): Promise<JournalApiRow> {
@@ -173,8 +239,45 @@ export type BalanceSheetReportData = {
   netProfit: number;
   balanced: boolean;
 };
+export type TrialBalanceReportRow = {
+  accountId: string;
+  code: string;
+  name: string;
+  debit: number;
+  credit: number;
+  openingDebit?: number;
+  openingCredit?: number;
+  movementDebit?: number;
+  movementCredit?: number;
+  closingDebit?: number;
+  closingCredit?: number;
+};
 
-type ApiSingleEnvelope<T> = { data: T };
+export type TrialBalanceReportData = {
+  rows: TrialBalanceReportRow[];
+  totalDebit: number;
+  totalCredit: number;
+  balanced: boolean;
+};
+
+export type AccountingPeriodApiRow = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "open" | "closed";
+  outletId?: string | null;
+  closedAt?: string | null;
+  closedByUserId?: string | null;
+};
+
+export type AccountingPeriodCreatePayload = {
+  name?: string;
+  tenantId?: number;
+  outletId?: number;
+  startDate: string;
+  endDate: string;
+};
 
 export async function getLedgerReport(params: {
   accountId: string;
@@ -214,5 +317,72 @@ export async function getBalanceSheetReport(params: {
   if (params.outlet) qs.set("outlet", params.outlet);
   const suffix = qs.toString();
   const res = await request<ApiSingleEnvelope<BalanceSheetReportData>>(`/reports/balance-sheet${suffix ? `?${suffix}` : ""}`);
+  return res.data;
+}
+
+export async function getTrialBalanceReport(params: {
+  from?: string;
+  to?: string;
+  outlet?: string;
+  page?: number;
+  perPage?: number;
+}): Promise<TrialBalanceReportData> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.outlet) qs.set("outlet", params.outlet);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.perPage !== undefined) qs.set("perPage", String(params.perPage));
+  const suffix = qs.toString();
+  const res = await request<ApiSingleEnvelope<TrialBalanceReportData>>(`/reports/trial-balance${suffix ? `?${suffix}` : ""}`);
+  return res.data;
+}
+
+export async function listAccountingPeriods(params?: {
+  page?: number;
+  perPage?: number;
+}): Promise<{ items: AccountingPeriodApiRow[]; meta: AccountingListMeta }> {
+  const qs = new URLSearchParams();
+  if (params?.page !== undefined) qs.set("page", String(params.page));
+  if (params?.perPage !== undefined) qs.set("perPage", String(params.perPage));
+  const suffix = qs.toString();
+  const res = await request<
+    { data: AccountingPeriodApiRow[]; meta?: ApiListEnvelopeWithMeta<unknown>["meta"] } | ApiListEnvelopeWithMeta<AccountingPeriodApiRow>
+  >(`/accounting-periods${suffix ? `?${suffix}` : ""}`);
+
+  const data = Array.isArray((res as ApiListEnvelopeWithMeta<AccountingPeriodApiRow>).data)
+    ? (res as ApiListEnvelopeWithMeta<AccountingPeriodApiRow>).data
+    : [];
+  const meta = (res as { meta?: ApiListEnvelopeWithMeta<unknown>["meta"] }).meta ?? {};
+  return {
+    items: data,
+    meta: {
+      currentPage: Number(meta.currentPage ?? meta.current_page ?? params?.page ?? 1),
+      perPage: Number(meta.perPage ?? meta.per_page ?? params?.perPage ?? data.length),
+      total: Number(meta.total ?? data.length),
+      lastPage: Number(meta.lastPage ?? meta.last_page ?? 1),
+    },
+  };
+}
+
+export async function createAccountingPeriod(payload: AccountingPeriodCreatePayload): Promise<AccountingPeriodApiRow> {
+  const res = await request<{ data: AccountingPeriodApiRow }>("/accounting-periods", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function closeAccountingPeriod(periodId: string): Promise<AccountingPeriodApiRow> {
+  const res = await request<{ data: AccountingPeriodApiRow }>(`/accounting-periods/${periodId}/close`, {
+    method: "POST",
+  });
+  return res.data;
+}
+
+export async function openAccountingPeriod(periodId: string): Promise<AccountingPeriodApiRow> {
+  const res = await request<{ data: AccountingPeriodApiRow }>(`/accounting-periods/${periodId}/open`, {
+    method: "POST",
+  });
   return res.data;
 }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getBalanceSheetReport, type BalanceSheetReportData } from "@/lib/api";
 import { useAccountingStore, formatIDR } from "@/stores/accountingStore";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11,35 +10,18 @@ import { Download } from "lucide-react";
 import { toast } from "sonner";
 
 export default function BalanceSheet() {
-  const { outlets } = useAccountingStore();
+  const outlets = useAccountingStore((s) => s.outlets);
+  const bs = useAccountingStore((s) => s.balanceSheetReport);
+  const fetchBalanceSheetReport = useAccountingStore((s) => s.fetchBalanceSheetReport);
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
   const [outlet, setOutlet] = useState("all");
-  const [bs, setBs] = useState<BalanceSheetReportData>({
-    currentAssets: [],
-    fixedAssets: [],
-    shortLiab: [],
-    longLiab: [],
-    equity: [],
-    totalAssets: 0,
-    totalLiabilities: 0,
-    totalEquity: 0,
-    netProfit: 0,
-    balanced: true,
-  });
 
   useEffect(() => {
-    let active = true;
-    void getBalanceSheetReport({ to: asOf, outlet })
-      .then((res) => {
-        if (active) setBs(res);
-      })
+    void fetchBalanceSheetReport({ to: asOf, outlet })
       .catch((e) => {
-        if (active) toast.error(e instanceof Error ? e.message : "Failed to load balance sheet report");
+        toast.error(e instanceof Error ? e.message : "Failed to load balance sheet report");
       });
-    return () => {
-      active = false;
-    };
-  }, [asOf, outlet]);
+  }, [asOf, outlet, fetchBalanceSheetReport]);
 
   const Section = ({ title, items, total }: { title: string; items: { account: { id: string; name: string }; amount: number }[]; total?: boolean }) => (
     <div>

@@ -1,11 +1,5 @@
 import { useMemo, useState } from "react";
 import { useAccountingStore, JournalEntry, JournalLine, formatIDR } from "@/stores/accountingStore";
-import {
-  createJournal as createJournalApi,
-  updateJournal as updateJournalApi,
-  deleteJournal as deleteJournalApi,
-  postJournal as postJournalApi,
-} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +15,14 @@ import { toast } from "sonner";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function JournalEntries() {
-  const { journals, accounts, outlets, refreshFromApi } = useAccountingStore();
+  const journals = useAccountingStore((s) => s.journals);
+  const accounts = useAccountingStore((s) => s.accounts);
+  const outlets = useAccountingStore((s) => s.outlets);
+  const createJournalRemote = useAccountingStore((s) => s.createJournalRemote);
+  const updateJournalRemote = useAccountingStore((s) => s.updateJournalRemote);
+  const deleteJournalRemote = useAccountingStore((s) => s.deleteJournalRemote);
+  const postJournalRemote = useAccountingStore((s) => s.postJournalRemote);
+  const revalidateBaseData = useAccountingStore((s) => s.revalidateBaseData);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<JournalEntry | null>(null);
@@ -76,17 +77,17 @@ export default function JournalEntries() {
     }));
     try {
       if (editingId) {
-        await updateJournalApi(editingId, {
+        await updateJournalRemote(editingId, {
           journalDate: date,
           description,
           outlet,
           lines: linePayload,
         });
         if (post) {
-          await postJournalApi(editingId);
+          await postJournalRemote(editingId);
         }
       } else {
-        const created = await createJournalApi({
+        await createJournalRemote({
           journalDate: date,
           description,
           outlet,
@@ -94,11 +95,8 @@ export default function JournalEntries() {
           status: post ? "posted" : "draft",
           lines: linePayload,
         });
-        if (post && created.status === "draft") {
-          await postJournalApi(created.id);
-        }
       }
-      await refreshFromApi();
+      await revalidateBaseData();
       toast.success(post ? "Journal posted" : "Draft saved");
       setOpen(false);
       reset();
@@ -159,8 +157,8 @@ export default function JournalEntries() {
                           onClick={() => {
                             void (async () => {
                               try {
-                                await postJournalApi(j.id);
-                                await refreshFromApi();
+                                await postJournalRemote(j.id);
+                                await revalidateBaseData();
                                 toast.success("Posted");
                               } catch (e) {
                                 toast.error(e instanceof Error ? e.message : "Post failed");
@@ -176,8 +174,8 @@ export default function JournalEntries() {
                           onClick={() => {
                             void (async () => {
                               try {
-                                await deleteJournalApi(j.id);
-                                await refreshFromApi();
+                                await deleteJournalRemote(j.id);
+                                await revalidateBaseData();
                                 toast.success("Deleted");
                               } catch (e) {
                                 toast.error(e instanceof Error ? e.message : "Delete failed");
