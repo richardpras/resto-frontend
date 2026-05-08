@@ -57,8 +57,14 @@ export type ListKitchenTicketsResult = {
   meta: KitchenTicketListMeta;
 };
 
+type KitchenRequestOptions = {
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+};
+
 export async function listKitchenTickets(
   params?: ListKitchenTicketsParams,
+  options: KitchenRequestOptions = {},
 ): Promise<ListKitchenTicketsResult> {
   const query = new URLSearchParams();
   if (typeof params?.outletId === "number" && params.outletId > 0) {
@@ -68,7 +74,10 @@ export async function listKitchenTickets(
   if (typeof params?.perPage === "number") query.set("perPage", String(params.perPage));
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await request<ApiListResponse<KitchenTicketApi>>(`/kitchen/tickets${suffix}`);
+  const response = await request<ApiListResponse<KitchenTicketApi>>(`/kitchen/tickets${suffix}`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
   const meta = response.meta ?? {};
   return {
     tickets: response.data,
@@ -84,12 +93,15 @@ export async function listKitchenTickets(
 export async function updateKitchenTicketStatus(
   ticketId: string,
   status: KitchenTicketStatus,
+  options: KitchenRequestOptions = {},
 ): Promise<KitchenTicketApi> {
   const response = await request<{ message: string; data: KitchenTicketApi }>(
     `/kitchen/tickets/${ticketId}/status`,
     {
       method: "PATCH",
       body: JSON.stringify({ status }),
+      signal: options.signal,
+      headers: options.headers,
     },
   );
   return response.data;

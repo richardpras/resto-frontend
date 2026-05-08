@@ -74,15 +74,28 @@ export type ListQrOrdersResult = {
   meta: ListQrOrdersMeta;
 };
 
-export async function createQrOrder(payload: CreateQrOrderPayload): Promise<QrOrderRequestApi> {
+type QrOrderRequestOptions = {
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+};
+
+export async function createQrOrder(
+  payload: CreateQrOrderPayload,
+  options: QrOrderRequestOptions = {},
+): Promise<QrOrderRequestApi> {
   const response = await request<{ message: string; data: QrOrderRequestApi }>("/qr-orders", {
     method: "POST",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
 
-export async function listQrOrdersWithMeta(params?: ListQrOrdersParams): Promise<ListQrOrdersResult> {
+export async function listQrOrdersWithMeta(
+  params?: ListQrOrdersParams,
+  options: QrOrderRequestOptions = {},
+): Promise<ListQrOrdersResult> {
   const query = new URLSearchParams();
   if (params?.outletId !== undefined && params.outletId > 0) query.set("outletId", String(params.outletId));
   if (params?.status) query.set("status", params.status);
@@ -90,7 +103,10 @@ export async function listQrOrdersWithMeta(params?: ListQrOrdersParams): Promise
   if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await request<ApiListResponse<QrOrderRequestApi>>(`/qr-orders${suffix}`);
+  const response = await request<ApiListResponse<QrOrderRequestApi>>(`/qr-orders${suffix}`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
   const meta = response.meta ?? {};
   return {
     requests: response.data,
@@ -103,10 +119,13 @@ export async function listQrOrdersWithMeta(params?: ListQrOrdersParams): Promise
   };
 }
 
-export async function confirmQrOrder(requestId: number | string): Promise<QrOrderRequestApi> {
+export async function confirmQrOrder(
+  requestId: number | string,
+  options: QrOrderRequestOptions = {},
+): Promise<QrOrderRequestApi> {
   const response = await request<{ message: string; data: QrOrderRequestApi }>(
     `/qr-orders/${requestId}/confirm`,
-    { method: "POST" },
+    { method: "POST", signal: options.signal, headers: options.headers },
   );
   return response.data;
 }
@@ -114,12 +133,15 @@ export async function confirmQrOrder(requestId: number | string): Promise<QrOrde
 export async function rejectQrOrder(
   requestId: number | string,
   payload?: { reason?: string },
+  options: QrOrderRequestOptions = {},
 ): Promise<QrOrderRequestApi> {
   const response = await request<{ message: string; data: QrOrderRequestApi }>(
     `/qr-orders/${requestId}/reject`,
     {
       method: "POST",
       body: JSON.stringify(payload ?? {}),
+      signal: options.signal,
+      headers: options.headers,
     },
   );
   return response.data;

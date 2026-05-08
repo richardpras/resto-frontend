@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, X, Store, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
 import { usePaymentStore } from "@/stores/paymentStore";
+import { useCustomerStore } from "@/stores/customerStore";
+import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { toast } from "sonner";
 
 type MenuItem = {
@@ -49,6 +51,7 @@ export default function QROrder() {
   const paymentCreate = usePaymentStore((s) => s.createPaymentTransaction);
   const paymentPoll = usePaymentStore((s) => s.pollTransactionStatus);
   const paymentRetry = usePaymentStore((s) => s.retryPayment);
+  const paymentResetAsync = usePaymentStore((s) => s.resetAsync);
 
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");
@@ -56,12 +59,44 @@ export default function QROrder() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notesItem, setNotesItem] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [redeemPointsInput, setRedeemPointsInput] = useState("");
+  const [giftCardInput, setGiftCardInput] = useState("");
+  const [appliedPoints, setAppliedPoints] = useState(0);
+  const [appliedGiftCard, setAppliedGiftCard] = useState(0);
   const outletIdParam = Number(searchParams.get("outletId"));
   const tableIdParam = Number(searchParams.get("tableId"));
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
   const [paymentChoice, setPaymentChoice] = useState<"cashier" | "online">("cashier");
   const [orderCode, setOrderCode] = useState(() => "QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
+  const customers = useCustomerStore((s) => s.customers);
+  const fetchCustomers = useCustomerStore((s) => s.fetchCustomers);
+  const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
+  const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
+  const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
+  const startLoyaltyRealtime = useLoyaltyStore((s) => s.startRealtime);
+  const stopLoyaltyRealtime = useLoyaltyStore((s) => s.stopRealtime);
+  const startLoyaltyPolling = useLoyaltyStore((s) => s.startPollingFallback);
+  const stopLoyaltyPolling = useLoyaltyStore((s) => s.stopPollingFallback);
+
+  useEffect(() => {
+    return () => {
+      paymentResetAsync();
+    };
+  }, [paymentResetAsync]);
+
+  useEffect(() => {
+    if (!Number.isFinite(outletIdParam) || outletIdParam < 1) return;
+    void fetchCustomers({ outletId: outletIdParam, page: 1, perPage: 50 });
+    void refreshLoyalty(outletIdParam);
+    startLoyaltyRealtime();
+    startLoyaltyPolling(12000);
+    return () => {
+      stopLoyaltyPolling();
+      stopLoyaltyRealtime();
+    };
+  }, [outletIdParam, fetchCustomers, refreshLoyalty, startLoyaltyPolling, startLoyaltyRealtime, stopLoyaltyPolling, stopLoyaltyRealtime]);
 
   const filtered = useMemo(() =>
     menuItems.filter(
@@ -85,8 +120,12 @@ export default function QROrder() {
 
   const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
   const tax = Math.round(subtotal * 0.1);
-  const total = subtotal + tax;
+  const baseTotal = subtotal + tax;
+  const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
+  const selectedCustomer = customers.find((customer) => customer.phone && customer.phone === customerPhone.trim());
+  const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
+  const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
 
   const submitOrder = async () => {
     if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) {
@@ -112,6 +151,14 @@ export default function QROrder() {
           amount: total,
         });
         paymentPoll(tx.id);
+      }
+      if (selectedCustomer && appliedPoints > 0) {
+        await enqueueRedemption({
+          customerId: selectedCustomer.id,
+          pointsUsed: appliedPoints,
+          amountValue: Math.round(appliedPoints / 10),
+          replayFingerprint: `qr-${created.id}-${selectedCustomer.id}-${appliedPoints}`,
+        });
       }
       setOrderCode(created.requestCode);
       setView("success");
@@ -197,10 +244,43 @@ export default function QROrder() {
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Phone (for rewards)</label>
+              <input type="text" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx"
+                className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div>
               <label className="text-xs text-muted-foreground mb-1 block">Table Number</label>
               <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
+            {selectedCustomer && (
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Points: <span className="font-semibold text-foreground">{availablePoints}</span>
+                  {" • "}Gift Card/Store Credit: <span className="font-semibold text-foreground">{formatRp(availableGiftCard)}</span>
+                </p>
+                <div className="flex gap-2">
+                  <input value={redeemPointsInput} onChange={(e) => setRedeemPointsInput(e.target.value)} placeholder="Redeem points"
+                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs" />
+                  <button
+                    onClick={() => setAppliedPoints(Math.min(Math.max(0, Number(redeemPointsInput || 0)), availablePoints))}
+                    className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input value={giftCardInput} onChange={(e) => setGiftCardInput(e.target.value)} placeholder="Use gift card amount"
+                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs" />
+                  <button
+                    onClick={() => setAppliedGiftCard(Math.min(Math.max(0, Number(giftCardInput || 0)), availableGiftCard, baseTotal))}
+                    className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="bg-card rounded-2xl p-4 border border-border">
             <h3 className="text-sm font-semibold text-foreground mb-3">Order Summary</h3>
@@ -214,6 +294,8 @@ export default function QROrder() {
             </div>
             <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-sm">
               <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
+              {appliedPoints > 0 && <div className="flex justify-between text-primary"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>}
+              {appliedGiftCard > 0 && <div className="flex justify-between text-primary"><span>Gift Card / Store Credit</span><span>-{formatRp(appliedGiftCard)}</span></div>}
               <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
               <div className="flex justify-between font-bold text-foreground text-base pt-1"><span>Total</span><span>{formatRp(total)}</span></div>
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X, CreditCard, Banknote, QrCode, Smartphone,
@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
 import { useMemberStore, type Member } from "@/stores/memberStore";
+import { useCustomerStore } from "@/stores/customerStore";
+import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
@@ -20,6 +22,7 @@ import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
+import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -144,6 +147,10 @@ export default function POS() {
   const [selectedTable, setSelectedTable] = useState("");
   const { members, fetchMembers } = useMemberStore();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [redeemPointsInput, setRedeemPointsInput] = useState("");
+  const [giftCardInput, setGiftCardInput] = useState("");
+  const [appliedPoints, setAppliedPoints] = useState(0);
+  const [appliedGiftCard, setAppliedGiftCard] = useState(0);
   const [memberSearch, setMemberSearch] = useState("");
   const [showMemberPicker, setShowMemberPicker] = useState(false);
 
@@ -175,12 +182,34 @@ export default function POS() {
   const paymentExpire = usePaymentStore((s) => s.expireTransaction);
   const paymentReconcile = usePaymentStore((s) => s.reconcileTransaction);
   const paymentResetAsync = usePaymentStore((s) => s.resetAsync);
+  const previousOutletIdRef = useRef<number | null>(null);
+  const customers = useCustomerStore((s) => s.customers);
+  const fetchCustomers = useCustomerStore((s) => s.fetchCustomers);
+  const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
+  const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
+  const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
+  const startLoyaltyRealtime = useLoyaltyStore((s) => s.startRealtime);
+  const stopLoyaltyRealtime = useLoyaltyStore((s) => s.stopRealtime);
+  const startLoyaltyPolling = useLoyaltyStore((s) => s.startPollingFallback);
+  const stopLoyaltyPolling = useLoyaltyStore((s) => s.stopPollingFallback);
 
   useEffect(() => {
     void fetchMembers().catch((e) => {
       if (e instanceof ApiHttpError) toast.error(e.message);
     });
   }, [fetchMembers]);
+
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    void fetchCustomers({ outletId: activeOutletId, page: 1, perPage: 50 });
+    void refreshLoyalty(activeOutletId);
+    startLoyaltyRealtime();
+    startLoyaltyPolling(12000);
+    return () => {
+      stopLoyaltyPolling();
+      stopLoyaltyRealtime();
+    };
+  }, [activeOutletId, fetchCustomers, refreshLoyalty, startLoyaltyPolling, startLoyaltyRealtime, stopLoyaltyPolling, stopLoyaltyRealtime]);
 
   const { data: floorMasters } = useQuery({
     queryKey: ["floor-tables", activeOutletId ?? 0],
@@ -210,6 +239,36 @@ export default function POS() {
     if (showPayment) return;
     paymentResetAsync();
   }, [showPayment, paymentResetAsync]);
+
+  // Prevent outlet context leaks (cart, split/payment modal state) across outlet switch.
+  useEffect(() => {
+    const nextOutletId = typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null;
+    const previousOutletId = previousOutletIdRef.current;
+    const didOutletSwitch =
+      previousOutletId !== null &&
+      nextOutletId !== null &&
+      previousOutletId !== nextOutletId;
+
+    if (didOutletSwitch) {
+      resetCart();
+      setShowPayment(false);
+      setShowSplit(false);
+      setShowConfirmSent(false);
+      setSelectedPayment(null);
+      setCurrentOrderId(null);
+      setPendingGatewayPayments([]);
+      setPayingPersonIdx(null);
+      setSplitPayMethod(null);
+      paymentResetAsync();
+    }
+    previousOutletIdRef.current = nextOutletId;
+  }, [activeOutletId, paymentResetAsync]);
+
+  useEffect(() => {
+    return () => {
+      paymentResetAsync();
+    };
+  }, [paymentResetAsync]);
 
   const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
     queryKey: ["menu-items", POS_TENANT_ID, activeOutletId ?? 0],
@@ -266,8 +325,16 @@ export default function POS() {
   const discount = appliedPromo?.discountAmount || 0;
   const applicablePromos = getApplicablePromos(cartForPromo, subtotal);
   const tax = Math.round((subtotal - discount) * 0.1);
-  const total = subtotal - discount + tax;
+  const baseTotal = subtotal - discount + tax;
+  const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
+  const selectedCustomer = customers.find(
+    (customer) =>
+      selectedMember &&
+      (customer.phone === selectedMember.phone || customer.name.toLowerCase() === selectedMember.name.toLowerCase()),
+  );
+  const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
+  const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
 
   const availableTables = tables.filter((t) => t.status === "available");
 
@@ -364,6 +431,14 @@ export default function POS() {
       }
       setCurrentOrderId(storedOrder.id);
       if (selectedPayment === "Cash") {
+        if (selectedCustomer && appliedPoints > 0) {
+          await enqueueRedemption({
+            customerId: selectedCustomer.id,
+            pointsUsed: appliedPoints,
+            amountValue: Math.round(appliedPoints / 10),
+            replayFingerprint: `pos-${storedOrder.id}-${selectedCustomer.id}-${appliedPoints}`,
+          });
+        }
         resetCart();
         setShowPayment(false);
         setSelectedPayment(null);
@@ -398,6 +473,30 @@ export default function POS() {
     setCustomerPhone("");
     setSelectedTable("");
     setManualPromo(null);
+    setAppliedPoints(0);
+    setAppliedGiftCard(0);
+    setRedeemPointsInput("");
+    setGiftCardInput("");
+  };
+
+  const applyPointsRedemption = () => {
+    if (!selectedCustomer) {
+      toast.error("Select a member linked to CRM customer first.");
+      return;
+    }
+    const requested = Math.max(0, Number(redeemPointsInput || 0));
+    const capped = Math.min(requested, availablePoints);
+    setAppliedPoints(capped);
+  };
+
+  const applyGiftCardRedemption = () => {
+    if (!selectedCustomer) {
+      toast.error("Select a member linked to CRM customer first.");
+      return;
+    }
+    const requested = Math.max(0, Number(giftCardInput || 0));
+    const capped = Math.min(requested, availableGiftCard, baseTotal);
+    setAppliedGiftCard(capped);
   };
 
   // Split bill helpers
@@ -542,6 +641,14 @@ export default function POS() {
       setPendingGatewayPayments([]);
       try {
         await addOrderPaymentsRemote(currentOrderId, paymentsToCommit);
+        if (selectedCustomer && appliedPoints > 0) {
+          await enqueueRedemption({
+            customerId: selectedCustomer.id,
+            pointsUsed: appliedPoints,
+            amountValue: Math.round(appliedPoints / 10),
+            replayFingerprint: `pos-${currentOrderId}-${selectedCustomer.id}-${appliedPoints}`,
+          });
+        }
         resetCart();
         setShowPayment(false);
         setShowSplit(false);
@@ -552,10 +659,12 @@ export default function POS() {
         toastApiError(error);
       }
     })();
-  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote]);
+  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, selectedCustomer, appliedPoints, enqueueRedemption]);
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      <ConnectivitySyncRibbon outletId={activeOutletId} />
+      <div className="flex flex-1 min-h-0">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -668,6 +777,36 @@ export default function POS() {
                 + Select member (optional)
               </button>
             )}
+            {selectedMember && (
+              <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
+                <p className="text-[11px] text-muted-foreground">
+                  Points: <span className="font-semibold text-foreground">{availablePoints}</span>
+                  {" • "}Gift Card/Store Credit: <span className="font-semibold text-foreground">{formatRp(availableGiftCard)}</span>
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={redeemPointsInput}
+                    onChange={(e) => setRedeemPointsInput(e.target.value)}
+                    placeholder="Redeem points"
+                    className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
+                  />
+                  <button onClick={applyPointsRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
+                    Apply
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={giftCardInput}
+                    onChange={(e) => setGiftCardInput(e.target.value)}
+                    placeholder="Use gift card amount"
+                    className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
+                  />
+                  <button onClick={applyGiftCardRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
             {orderType === "Dine-in" && (
               <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
@@ -765,6 +904,12 @@ export default function POS() {
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
             {discount > 0 && (
               <div className="flex justify-between text-emerald-600 font-medium"><span>Discount</span><span>-{formatRp(discount)}</span></div>
+            )}
+            {appliedPoints > 0 && (
+              <div className="flex justify-between text-primary font-medium"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
+            )}
+            {appliedGiftCard > 0 && (
+              <div className="flex justify-between text-primary font-medium"><span>Gift Card / Store Credit</span><span>-{formatRp(appliedGiftCard)}</span></div>
             )}
             <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
             <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50"><span>Total</span><span>{formatRp(total)}</span></div>
@@ -1081,6 +1226,7 @@ export default function POS() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

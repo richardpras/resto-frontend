@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PaymentStatus from "./PaymentStatus";
 
 const mockUsePaymentStore = vi.fn();
 const mockPollTransactionStatus = vi.fn();
 const mockRetryPayment = vi.fn();
+const mockStopPolling = vi.fn();
 let search = "transaction=tx-1001&provider=xendit";
 
 vi.mock("react-router-dom", async () => {
@@ -25,6 +26,7 @@ describe("PaymentStatus page", () => {
     search = "transaction=tx-1001&provider=xendit";
     mockPollTransactionStatus.mockReset();
     mockRetryPayment.mockReset();
+    mockStopPolling.mockReset();
     mockUsePaymentStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
       selector({
         currentTransaction: {
@@ -50,7 +52,7 @@ describe("PaymentStatus page", () => {
         retryPayment: mockRetryPayment,
         reconcileTransaction: vi.fn(),
         expireTransaction: vi.fn(),
-        stopPolling: vi.fn(),
+        stopPolling: mockStopPolling,
       }),
     );
   });
@@ -70,6 +72,20 @@ describe("PaymentStatus page", () => {
     render(<PaymentStatus />);
 
     expect(mockPollTransactionStatus).toHaveBeenCalledWith("tx-1001");
+  });
+
+  it("cleans polling on unmount to avoid stale recovery loops", () => {
+    const { unmount } = render(<PaymentStatus />);
+    unmount();
+
+    expect(mockStopPolling).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes retry action through payment store only", () => {
+    render(<PaymentStatus />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Retry payment/i }));
+    expect(mockRetryPayment).toHaveBeenCalledWith("tx-1001");
   });
 
   it("renders expired payment UX with retry flow", () => {
@@ -93,7 +109,7 @@ describe("PaymentStatus page", () => {
         retryPayment: mockRetryPayment,
         reconcileTransaction: vi.fn(),
         expireTransaction: vi.fn(),
-        stopPolling: vi.fn(),
+        stopPolling: mockStopPolling,
       }),
     );
 
@@ -124,7 +140,7 @@ describe("PaymentStatus page", () => {
         retryPayment: mockRetryPayment,
         reconcileTransaction: vi.fn(),
         expireTransaction: vi.fn(),
-        stopPolling: vi.fn(),
+        stopPolling: mockStopPolling,
       }),
     );
 
@@ -132,5 +148,35 @@ describe("PaymentStatus page", () => {
 
     expect(screen.getByText(/Payment completed/i)).toBeInTheDocument();
     expect(screen.getByText(/Refreshing order status/i)).toBeInTheDocument();
+  });
+
+  it("renders fallback-safe recovery state when transaction payload is missing", () => {
+    search = "";
+    mockUsePaymentStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
+      selector({
+        currentTransaction: null,
+        isLoading: false,
+        isSubmitting: false,
+        error: null,
+        paymentStatus: null,
+        checkoutUrl: "",
+        qrString: "",
+        deeplinkUrl: "",
+        lastSyncAt: null,
+        expiryCountdown: 0,
+        pollTransactionStatus: mockPollTransactionStatus,
+        retryPayment: mockRetryPayment,
+        reconcileTransaction: vi.fn(),
+        expireTransaction: vi.fn(),
+        stopPolling: mockStopPolling,
+      }),
+    );
+
+    render(<PaymentStatus />);
+
+    expect(screen.getByText(/Transaction: -/i)).toBeInTheDocument();
+    expect(screen.getByText(/Status:/i)).toBeInTheDocument();
+    expect(mockPollTransactionStatus).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Retry payment/i })).toBeDisabled();
   });
 });

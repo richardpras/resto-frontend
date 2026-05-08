@@ -57,6 +57,7 @@ export type CreatePaymentTransactionPayload = {
 
 type PaymentRequestOptions = {
   signal?: AbortSignal;
+  headers?: HeadersInit;
 };
 
 export async function createPaymentTransaction(
@@ -77,6 +78,7 @@ export async function createPaymentTransaction(
         ...(payload.splitPayments ? { splitPayments: payload.splitPayments } : {}),
       }),
       signal: options.signal,
+      headers: options.headers,
     },
   );
   return response.data;
@@ -88,6 +90,7 @@ export async function getPaymentTransaction(
 ): Promise<PaymentTransactionApi> {
   const response = await request<{ data: PaymentTransactionApi }>(`/payment-transactions/${id}`, {
     signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
@@ -105,6 +108,7 @@ export async function reconcilePaymentTransaction(
     method: "POST",
     body: JSON.stringify({ transactionId: id }),
     signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
@@ -118,6 +122,7 @@ export async function postPaymentWebhook(
     method: "POST",
     body: JSON.stringify(payload),
     signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }

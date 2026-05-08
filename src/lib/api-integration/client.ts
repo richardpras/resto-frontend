@@ -30,6 +30,31 @@ export class ApiHttpError extends Error {
   }
 }
 
+export type RequestObservabilityMetadata = {
+  scope: string;
+  action: string;
+  requestId?: number;
+  retryCount?: number;
+  recovery?: boolean;
+};
+
+export function createObservabilityHeaders(
+  metadata?: RequestObservabilityMetadata,
+): Record<string, string> {
+  if (!metadata) return {};
+  return {
+    "X-Client-Scope": metadata.scope,
+    "X-Client-Action": metadata.action,
+    ...(typeof metadata.requestId === "number"
+      ? { "X-Client-Request-Id": String(metadata.requestId) }
+      : {}),
+    ...(typeof metadata.retryCount === "number"
+      ? { "X-Client-Retry-Count": String(metadata.retryCount) }
+      : {}),
+    ...(metadata.recovery ? { "X-Client-Recovery": "1" } : {}),
+  };
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getApiAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {

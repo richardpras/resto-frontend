@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  ApiHttpError,
+  createObservabilityHeaders,
+  type RequestObservabilityMetadata,
+} from "@/lib/api-integration/client";
 import {
   createPaymentTransaction as apiCreatePaymentTransaction,
   expirePaymentTransaction as apiExpirePaymentTransaction,
@@ -8,6 +12,11 @@ import {
   type PaymentTransactionStatus,
 } from "@/lib/api-integration/paymentEndpoints";
 import { mapPaymentTransactionApiToModel, type PaymentTransaction } from "@/domain/paymentAdapters";
+import {
+  getRealtimeAdapter,
+  type RealtimeConnectionState,
+  type RealtimeEnvelope,
+} from "@/domain/realtimeAdapter";
 
 const DEFAULT_POLLING_MS = 3000;
 
@@ -34,6 +43,14 @@ type PaymentStore = {
   expiryTimer: ReturnType<typeof setInterval> | null;
   activeRequestId: number;
   activeAbortController: AbortController | null;
+  lastRequestMeta: RequestObservabilityMetadata | null;
+  realtimeConnected: boolean;
+  realtimeState: RealtimeConnectionState;
+  realtimeTransport: "polling" | "websocket";
+  lastRealtimeMeta: Record<string, unknown> | null;
+  lastRealtimeSeq: number;
+  realtimeUnsubscribe: (() => void) | null;
+  realtimeConnectionUnsubscribe: (() => void) | null;
   createPaymentTransaction: (payload: {
     orderId: string | number;
     outletId?: number;
@@ -51,6 +68,8 @@ type PaymentStore = {
   expireTransaction: (id?: string) => Promise<PaymentTransaction>;
   reconcileTransaction: (id?: string) => Promise<PaymentTransaction>;
   retryPayment: (id?: string) => Promise<PaymentTransaction>;
+  startRealtime: () => void;
+  stopRealtime: () => void;
   stopPolling: () => void;
   resetAsync: () => void;
 };
@@ -82,6 +101,10 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+function extractRealtimeSeq(event: RealtimeEnvelope): number {
+  return event.sequence ?? event.seq ?? event.version ?? 0;
+}
+
 export const usePaymentStore = create<PaymentStore>((set, get) => ({
   isLoading: false,
   isSubmitting: false,
@@ -99,16 +122,32 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
   expiryTimer: null,
   activeRequestId: 0,
   activeAbortController: null,
+  lastRequestMeta: null,
+  realtimeConnected: false,
+  realtimeState: "idle",
+  realtimeTransport: "polling",
+  lastRealtimeMeta: null,
+  lastRealtimeSeq: 0,
+  realtimeUnsubscribe: null,
+  realtimeConnectionUnsubscribe: null,
 
   createPaymentTransaction: async (payload) => {
     get().stopPolling();
     const requestId = get().activeRequestId + 1;
     const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "payment-store",
+      action: "create-payment-transaction",
+      requestId,
+    };
     set({ isSubmitting: true, error: null });
-    set({ activeRequestId: requestId, activeAbortController: controller });
+    set({ activeRequestId: requestId, activeAbortController: controller, lastRequestMeta: requestMeta });
     try {
       const created = mapPaymentTransactionApiToModel(
-        await apiCreatePaymentTransaction(payload, { signal: controller.signal }),
+        await apiCreatePaymentTransaction(payload, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
       );
       if (get().activeRequestId !== requestId) return created;
       set(nextTransactionState(created));
@@ -129,16 +168,28 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     get().stopPolling();
     const requestId = get().activeRequestId + 1;
     const controller = new AbortController();
-    set({ activeRequestId: requestId, activeAbortController: controller });
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "payment-store",
+      action: "poll-transaction-status",
+      requestId,
+      recovery: true,
+    };
+    set({ activeRequestId: requestId, activeAbortController: controller, lastRequestMeta: requestMeta });
+    let latestRefreshSeq = 0;
 
     const refresh = async () => {
       if (get().activeRequestId !== requestId) return;
+      const refreshSeq = latestRefreshSeq + 1;
+      latestRefreshSeq = refreshSeq;
       set({ isLoading: true, error: null });
       try {
         const current = mapPaymentTransactionApiToModel(
-          await apiGetPaymentTransaction(id, { signal: controller.signal }),
+          await apiGetPaymentTransaction(id, {
+            signal: controller.signal,
+            headers: createObservabilityHeaders({ ...requestMeta, requestId: refreshSeq }),
+          }),
         );
-        if (get().activeRequestId !== requestId) return;
+        if (get().activeRequestId !== requestId || refreshSeq !== latestRefreshSeq) return;
         set(nextTransactionState(current));
         if (isTerminalStatus(current.status)) {
           set({ isLoading: false });
@@ -166,7 +217,9 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
       pollingActive: true,
       pollingTimer,
       expiryTimer,
+      realtimeTransport: get().realtimeConnected ? "websocket" : "polling",
     });
+    get().startRealtime();
     void refresh();
   },
 
@@ -199,13 +252,22 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     if (!txId) throw new Error("No payment transaction selected");
     const requestId = get().activeRequestId + 1;
     const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "payment-store",
+      action: "reconcile-transaction",
+      requestId,
+      recovery: true,
+    };
     const previousPolling = get().pollingActive;
     get().stopPolling();
     set({ isSubmitting: true, error: null });
-    set({ activeRequestId: requestId, activeAbortController: controller });
+    set({ activeRequestId: requestId, activeAbortController: controller, lastRequestMeta: requestMeta });
     try {
       const updated = mapPaymentTransactionApiToModel(
-        await apiReconcilePaymentTransaction(txId, { signal: controller.signal }),
+        await apiReconcilePaymentTransaction(txId, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
       );
       if (get().activeRequestId !== requestId) return updated;
       set(nextTransactionState(updated));
@@ -244,6 +306,60 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     return updated;
   },
 
+  startRealtime: () => {
+    if (get().realtimeUnsubscribe) return;
+    const adapter = getRealtimeAdapter("payment");
+    const updateConnectionState = adapter.onConnectionStateChange((state) => {
+      set({
+        realtimeState: state,
+        realtimeConnected: state === "connected",
+        realtimeTransport: state === "connected" ? "websocket" : "polling",
+      });
+    });
+    const unsubscribe = adapter.subscribe({
+      channel: "payment",
+      onEvent: (event) => {
+        const state = get();
+        const tx = state.currentTransaction;
+        const payload = (event.payload ?? event.data) as Partial<PaymentTransaction> | undefined;
+        if (!tx || !payload) return;
+        const payloadId = payload.id ? String(payload.id) : undefined;
+        if (payloadId && payloadId !== tx.id) return;
+        const incomingSeq = extractRealtimeSeq(event);
+        if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;
+        const nextTx: PaymentTransaction = {
+          ...tx,
+          ...payload,
+          id: payloadId ?? tx.id,
+        };
+        set({
+          ...nextTransactionState(nextTx),
+          lastRealtimeMeta: event.meta ?? null,
+          lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
+        });
+        if (isTerminalStatus(nextTx.status)) {
+          get().stopPolling();
+        }
+      },
+    });
+    set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: updateConnectionState });
+    adapter.connect();
+  },
+
+  stopRealtime: () => {
+    get().realtimeUnsubscribe?.();
+    get().realtimeConnectionUnsubscribe?.();
+    set({
+      realtimeUnsubscribe: null,
+      realtimeConnectionUnsubscribe: null,
+      realtimeConnected: false,
+      realtimeState: "disconnected",
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
+    });
+  },
+
   stopPolling: () => {
     const { pollingTimer, expiryTimer, activeAbortController } = get();
     if (pollingTimer) clearInterval(pollingTimer);
@@ -255,10 +371,13 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
       pollingActive: false,
       activeAbortController: null,
       activeRequestId: get().activeRequestId + 1,
+      lastRequestMeta: null,
+      realtimeTransport: get().realtimeConnected ? "websocket" : "polling",
     });
   },
 
   resetAsync: () => {
+    get().stopRealtime();
     get().stopPolling();
     set({
       isLoading: false,
@@ -272,6 +391,12 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
       lastSyncAt: null,
       currentTransaction: null,
       expiryCountdown: 0,
+      lastRequestMeta: null,
+      realtimeState: "idle",
+      realtimeConnected: false,
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
     });
   },
 }));

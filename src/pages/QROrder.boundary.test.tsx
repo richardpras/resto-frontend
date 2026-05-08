@@ -8,6 +8,7 @@ const mockCreateRequest = vi.fn();
 const mockUseQrOrderStore = vi.fn();
 const mockUsePaymentStore = vi.fn();
 const mockCreatePaymentTransaction = vi.fn();
+const mockResetPaymentAsync = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
@@ -35,6 +36,7 @@ describe("QROrder page store boundary", () => {
     mockCreateRequest.mockReset();
     mockCreatePaymentTransaction.mockReset();
     mockPaymentEndpointCreate.mockReset();
+    mockResetPaymentAsync.mockReset();
     mockUseQrOrderStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
       selector({
         createRequest: mockCreateRequest,
@@ -48,6 +50,7 @@ describe("QROrder page store boundary", () => {
         createPaymentTransaction: mockCreatePaymentTransaction,
         pollTransactionStatus: vi.fn(),
         retryPayment: vi.fn(),
+        resetAsync: mockResetPaymentAsync,
       }),
     );
   });

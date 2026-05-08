@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  ApiHttpError,
+  createObservabilityHeaders,
+  type RequestObservabilityMetadata,
+} from "@/lib/api-integration/client";
 import {
   addOrderPayments as apiAddOrderPayments,
   createOrderSplit as apiCreateOrderSplit,
@@ -17,6 +21,11 @@ import {
   type OrderSplitPayload,
   type UpdateOrderPayload,
 } from "@/lib/api-integration/endpoints";
+import {
+  getRealtimeAdapter,
+  type RealtimeConnectionState,
+  type RealtimeEnvelope,
+} from "@/domain/realtimeAdapter";
 import { useInventoryStore } from "./inventoryStore";
 
 export type OrderItem = {
@@ -175,6 +184,17 @@ type OrderStore = {
   pagination: ListOrdersMeta | null;
   lastSyncAt: string | null;
   lastListParams: ListOrdersParams | null;
+  activeListRequestId: number;
+  activeMutationRequestId: number;
+  activeMutationAbortController: AbortController | null;
+  lastRequestMeta: RequestObservabilityMetadata | null;
+  realtimeConnected: boolean;
+  realtimeState: RealtimeConnectionState;
+  realtimeTransport: "polling" | "websocket";
+  lastRealtimeMeta: Record<string, unknown> | null;
+  lastRealtimeSeq: number;
+  realtimeUnsubscribe: (() => void) | null;
+  realtimeConnectionUnsubscribe: (() => void) | null;
   splitDrafts: Record<string, OrderSplitPayload>;
   paymentDrafts: Record<string, { method: string; amount: number }[]>;
 
@@ -214,6 +234,8 @@ type OrderStore = {
     remainingBalance: number;
   };
   revalidateOrders: () => Promise<Order[] | null>;
+  startRealtime: () => void;
+  stopRealtime: () => void;
   resetAsync: () => void;
 };
 
@@ -238,6 +260,10 @@ function upsertOrder(orders: Order[], next: Order): Order[] {
   return copy;
 }
 
+function extractRealtimeSeq(event: RealtimeEnvelope): number {
+  return event.sequence ?? event.seq ?? event.version ?? 0;
+}
+
 export const useOrderStore = create<OrderStore>((set, get) => ({
   orders: [],
   tables: [],
@@ -247,6 +273,17 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   pagination: null,
   lastSyncAt: null,
   lastListParams: null,
+  activeListRequestId: 0,
+  activeMutationRequestId: 0,
+  activeMutationAbortController: null,
+  lastRequestMeta: null,
+  realtimeConnected: false,
+  realtimeState: "idle",
+  realtimeTransport: "polling",
+  lastRealtimeMeta: null,
+  lastRealtimeSeq: 0,
+  realtimeUnsubscribe: null,
+  realtimeConnectionUnsubscribe: null,
   splitDrafts: {},
   paymentDrafts: {},
 
@@ -315,10 +352,27 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     })),
 
   fetchOrders: async (params) => {
-    set({ isLoading: true, error: null, lastListParams: params ?? null });
+    get().startRealtime();
+    const requestId = get().activeListRequestId + 1;
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "fetch-orders",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isLoading: true,
+      error: null,
+      lastListParams: params ?? null,
+      activeListRequestId: requestId,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const result = await apiListOrdersWithMeta(params);
+      const result = await apiListOrdersWithMeta(params, {
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = result.orders.map(orderApiToStoreOrder);
+      if (get().activeListRequestId !== requestId) return mapped;
       set({
         orders: mapped,
         pagination: result.meta,
@@ -326,19 +380,39 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       });
       return mapped;
     } catch (error) {
+      if (get().activeListRequestId !== requestId) throw error;
       const message = mapApiError(error);
       set({ error: message });
       throw error;
     } finally {
-      set({ isLoading: false });
+      if (get().activeListRequestId === requestId) {
+        set({ isLoading: false });
+      }
     }
   },
 
   fetchOrder: async (id) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "fetch-order",
+      requestId,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const apiOrder = await apiGetOrder(id);
+      const apiOrder = await apiGetOrder(id, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -349,15 +423,34 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   createOrderRemote: async (payload) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "create-order",
+      requestId,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const apiOrder = await apiCreateOrder(payload);
+      const apiOrder = await apiCreateOrder(payload, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -368,15 +461,34 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   updateOrderRemote: async (id, payload) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "update-order",
+      requestId,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const apiOrder = await apiUpdateOrder(id, payload);
+      const apiOrder = await apiUpdateOrder(id, payload, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -387,19 +499,39 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   addOrderPaymentsRemote: async (id, payments, extra) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "add-order-payments",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
       const apiOrder = await apiAddOrderPayments(id, {
         payments,
         ...(extra?.cashAccountCode ? { cashAccountCode: extra.cashAccountCode } : {}),
         ...(extra?.revenueAccountCode ? { revenueAccountCode: extra.revenueAccountCode } : {}),
+      }, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
       });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -411,16 +543,39 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   createOrderSplitRemote: async (orderId, payload) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "create-order-split",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      await apiCreateOrderSplit(orderId, payload);
-      const apiOrder = await apiGetOrder(orderId);
+      await apiCreateOrderSplit(orderId, payload, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
+      const apiOrder = await apiGetOrder(orderId, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -433,16 +588,39 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   updateOrderSplitRemote: async (orderId, splitId, payload) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "update-order-split",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      await apiUpdateOrderSplit(orderId, splitId, payload);
-      const apiOrder = await apiGetOrder(orderId);
+      await apiUpdateOrderSplit(orderId, splitId, payload, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
+      const apiOrder = await apiGetOrder(orderId, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = orderApiToStoreOrder(apiOrder);
+      if (get().activeMutationRequestId !== requestId) return mapped;
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
@@ -460,14 +638,36 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
   listOrderPaymentsRemote: async (orderId) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeMutationRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "list-order-payments",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeMutationRequestId: requestId,
+      activeMutationAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const payments = await apiListOrderPayments(orderId);
+      const payments = await apiListOrderPayments(orderId, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
+      if (get().activeMutationRequestId !== requestId) {
+        return get().orders.find((o) => o.id === orderId)?.payments ?? [];
+      }
       set((s) => ({
         orders: s.orders.map((o) =>
           o.id === orderId
@@ -494,7 +694,9 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeMutationRequestId === requestId) {
+        set({ isSubmitting: false, activeMutationAbortController: null });
+      }
     }
   },
 
@@ -523,7 +725,54 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     return get().fetchOrders(params);
   },
 
-  resetAsync: () =>
+  startRealtime: () => {
+    if (get().realtimeUnsubscribe) return;
+    const adapter = getRealtimeAdapter("order");
+    const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
+      set({
+        realtimeState: state,
+        realtimeConnected: state === "connected",
+        realtimeTransport: state === "connected" ? "websocket" : "polling",
+      });
+      if (state === "connected") {
+        void get().revalidateOrders();
+      }
+    });
+    const unsubscribe = adapter.subscribe({
+      channel: "order",
+      onEvent: (event) => {
+        const payload = (event.payload ?? event.data) as Partial<OrderApi> | undefined;
+        if (!payload || payload.id == null) return;
+        const state = get();
+        const incomingSeq = extractRealtimeSeq(event);
+        if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;
+        set({
+          lastRealtimeMeta: event.meta ?? null,
+          lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
+        });
+        void get().fetchOrder(String(payload.id));
+      },
+    });
+    set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
+    adapter.connect();
+  },
+
+  stopRealtime: () => {
+    get().realtimeUnsubscribe?.();
+    get().realtimeConnectionUnsubscribe?.();
+    set({
+      realtimeUnsubscribe: null,
+      realtimeConnectionUnsubscribe: null,
+      realtimeConnected: false,
+      realtimeState: "disconnected",
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
+    });
+  },
+
+  resetAsync: () => {
+    get().stopRealtime();
     set({
       isLoading: false,
       isSubmitting: false,
@@ -531,7 +780,17 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       pagination: null,
       lastSyncAt: null,
       lastListParams: null,
+      activeListRequestId: 0,
+      activeMutationRequestId: 0,
+      activeMutationAbortController: null,
+      lastRequestMeta: null,
+      realtimeConnected: false,
+      realtimeState: "idle",
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
       splitDrafts: {},
       paymentDrafts: {},
-    }),
+    });
+  },
 }));

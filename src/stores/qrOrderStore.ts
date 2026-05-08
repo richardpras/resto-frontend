@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { ApiHttpError } from "@/lib/api-integration/client";
+import {
+  ApiHttpError,
+  createObservabilityHeaders,
+  type RequestObservabilityMetadata,
+} from "@/lib/api-integration/client";
 import {
   confirmQrOrder as apiConfirmQrOrder,
   createQrOrder as apiCreateQrOrder,
@@ -11,6 +15,11 @@ import {
   type QrOrderRequestApi,
   type QrOrderRequestStatus,
 } from "@/lib/api-integration/qrOrderEndpoints";
+import {
+  getRealtimeAdapter,
+  type RealtimeConnectionState,
+  type RealtimeEnvelope,
+} from "@/domain/realtimeAdapter";
 
 export type QrOrderRequest = {
   id: string;
@@ -72,6 +81,10 @@ function upsertRequest(rows: QrOrderRequest[], next: QrOrderRequest): QrOrderReq
   return copy;
 }
 
+function extractRealtimeSeq(event: RealtimeEnvelope): number {
+  return event.sequence ?? event.seq ?? event.version ?? 0;
+}
+
 type QrOrderStore = {
   requests: QrOrderRequest[];
   isLoading: boolean;
@@ -82,11 +95,23 @@ type QrOrderStore = {
   lastListParams: ListQrOrdersParams | null;
   pollingMs: number;
   pollingTimer: ReturnType<typeof setInterval> | null;
+  activeRequestId: number;
+  activeAbortController: AbortController | null;
+  lastRequestMeta: RequestObservabilityMetadata | null;
+  realtimeConnected: boolean;
+  realtimeState: RealtimeConnectionState;
+  realtimeTransport: "polling" | "websocket";
+  lastRealtimeMeta: Record<string, unknown> | null;
+  lastRealtimeSeq: number;
+  realtimeUnsubscribe: (() => void) | null;
+  realtimeConnectionUnsubscribe: (() => void) | null;
   fetchRequests: (params?: ListQrOrdersParams) => Promise<QrOrderRequest[]>;
   revalidateRequests: () => Promise<QrOrderRequest[] | null>;
   createRequest: (payload: CreateQrOrderPayload) => Promise<QrOrderRequest>;
   confirmRequest: (id: string) => Promise<QrOrderRequest>;
   rejectRequest: (id: string, reason?: string) => Promise<QrOrderRequest>;
+  startRealtime: () => void;
+  stopRealtime: () => void;
   startPolling: (params: ListQrOrdersParams, intervalMs?: number) => void;
   stopPolling: () => void;
   resetAsync: () => void;
@@ -102,12 +127,40 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   lastListParams: null,
   pollingMs: 10000,
   pollingTimer: null,
+  activeRequestId: 0,
+  activeAbortController: null,
+  lastRequestMeta: null,
+  realtimeConnected: false,
+  realtimeState: "idle",
+  realtimeTransport: "polling",
+  lastRealtimeMeta: null,
+  lastRealtimeSeq: 0,
+  realtimeUnsubscribe: null,
+  realtimeConnectionUnsubscribe: null,
 
   fetchRequests: async (params) => {
-    set({ isLoading: true, error: null, lastListParams: params ?? null });
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "fetch-requests",
+      requestId,
+    };
+    set({
+      isLoading: true,
+      error: null,
+      lastListParams: params ?? null,
+      activeRequestId: requestId,
+      activeAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const response = await apiListQrOrdersWithMeta(params);
+      const response = await apiListQrOrdersWithMeta(params, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
       const mapped = response.requests.map(qrOrderApiToStore);
+      if (get().activeRequestId !== requestId) return mapped;
       set({
         requests: mapped,
         pagination: response.meta,
@@ -119,7 +172,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isLoading: false });
+      if (get().activeRequestId === requestId) {
+        set({ isLoading: false, activeAbortController: null });
+      }
     }
   },
 
@@ -130,9 +185,28 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   },
 
   createRequest: async (payload) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "create-request",
+      requestId,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeRequestId: requestId,
+      activeAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const created = qrOrderApiToStore(await apiCreateQrOrder(payload));
+      const created = qrOrderApiToStore(
+        await apiCreateQrOrder(payload, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return created;
       set((state) => ({
         requests: upsertRequest(state.requests, created),
         lastSyncAt: new Date().toISOString(),
@@ -143,14 +217,36 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeRequestId === requestId) {
+        set({ isSubmitting: false, activeAbortController: null });
+      }
     }
   },
 
   confirmRequest: async (id) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "confirm-request",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeRequestId: requestId,
+      activeAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const updated = qrOrderApiToStore(await apiConfirmQrOrder(id));
+      const updated = qrOrderApiToStore(
+        await apiConfirmQrOrder(id, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return updated;
       set((state) => ({
         requests: upsertRequest(state.requests, updated),
         lastSyncAt: new Date().toISOString(),
@@ -161,14 +257,36 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeRequestId === requestId) {
+        set({ isSubmitting: false, activeAbortController: null });
+      }
     }
   },
 
   rejectRequest: async (id, reason) => {
-    set({ isSubmitting: true, error: null });
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "reject-request",
+      requestId,
+      recovery: true,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeRequestId: requestId,
+      activeAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
     try {
-      const updated = qrOrderApiToStore(await apiRejectQrOrder(id, reason ? { reason } : undefined));
+      const updated = qrOrderApiToStore(
+        await apiRejectQrOrder(id, reason ? { reason } : undefined, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return updated;
       set((state) => ({
         requests: upsertRequest(state.requests, updated),
         lastSyncAt: new Date().toISOString(),
@@ -179,14 +297,65 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      set({ isSubmitting: false });
+      if (get().activeRequestId === requestId) {
+        set({ isSubmitting: false, activeAbortController: null });
+      }
     }
+  },
+
+  startRealtime: () => {
+    if (get().realtimeUnsubscribe) return;
+    const adapter = getRealtimeAdapter("qr");
+    const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
+      set({
+        realtimeState: state,
+        realtimeConnected: state === "connected",
+        realtimeTransport: state === "connected" ? "websocket" : "polling",
+      });
+    });
+    const unsubscribe = adapter.subscribe({
+      channel: "qr",
+      onEvent: (event) => {
+        const payload = (event.payload ?? event.data) as Partial<QrOrderRequest> | undefined;
+        if (!payload || payload.id == null) return;
+        const incomingSeq = extractRealtimeSeq(event);
+        const state = get();
+        if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;
+        set((current) => ({
+          requests: upsertRequest(current.requests, {
+            ...(current.requests.find((r) => r.id === String(payload.id)) ?? ({} as QrOrderRequest)),
+            ...(payload as QrOrderRequest),
+            id: String(payload.id),
+          }),
+          lastSyncAt: new Date().toISOString(),
+          lastRealtimeMeta: event.meta ?? null,
+          lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : current.lastRealtimeSeq,
+        }));
+      },
+    });
+    set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
+    adapter.connect();
+  },
+
+  stopRealtime: () => {
+    get().realtimeUnsubscribe?.();
+    get().realtimeConnectionUnsubscribe?.();
+    set({
+      realtimeUnsubscribe: null,
+      realtimeConnectionUnsubscribe: null,
+      realtimeConnected: false,
+      realtimeState: "disconnected",
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
+    });
   },
 
   startPolling: (params, intervalMs = 10000) => {
     const state = get();
     if (state.pollingTimer) clearInterval(state.pollingTimer);
     set({ pollingMs: intervalMs, lastListParams: params });
+    get().startRealtime();
     void get().fetchRequests(params);
     const timer = setInterval(() => {
       void get().fetchRequests(params);
@@ -195,12 +364,20 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   },
 
   stopPolling: () => {
-    const timer = get().pollingTimer;
+    const { pollingTimer, activeAbortController } = get();
+    const timer = pollingTimer;
     if (timer) clearInterval(timer);
-    set({ pollingTimer: null });
+    activeAbortController?.abort();
+    set({
+      pollingTimer: null,
+      activeAbortController: null,
+      activeRequestId: get().activeRequestId + 1,
+      lastRequestMeta: null,
+    });
   },
 
   resetAsync: () => {
+    get().stopRealtime();
     get().stopPolling();
     set({
       isLoading: false,
@@ -209,6 +386,13 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       pagination: null,
       lastSyncAt: null,
       lastListParams: null,
+      activeAbortController: null,
+      lastRequestMeta: null,
+      realtimeConnected: false,
+      realtimeState: "idle",
+      realtimeTransport: "polling",
+      lastRealtimeMeta: null,
+      lastRealtimeSeq: 0,
     });
   },
 }));

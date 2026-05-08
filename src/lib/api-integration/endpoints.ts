@@ -13,6 +13,11 @@ type ApiListResponse<T> = {
   };
 };
 
+type EndpointRequestOptions = {
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+};
+
 export type InventoryItemApi = {
   id: string;
   name: string;
@@ -318,16 +323,24 @@ export type ListOrdersParams = {
   kitchenStatus?: KitchenStatus | string;
 };
 
-export async function createOrder(payload: CreateOrderPayload): Promise<OrderApi> {
+export async function createOrder(
+  payload: CreateOrderPayload,
+  options: EndpointRequestOptions = {},
+): Promise<OrderApi> {
   const response = await request<{ data: OrderApi }>("/orders", {
     method: "POST",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
 
-export async function getOrder(id: string): Promise<OrderApi> {
-  const response = await request<{ data: OrderApi }>(`/orders/${id}`);
+export async function getOrder(id: string, options: EndpointRequestOptions = {}): Promise<OrderApi> {
+  const response = await request<{ data: OrderApi }>(`/orders/${id}`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
   return response.data;
 }
 
@@ -336,7 +349,10 @@ export async function listOrders(params?: ListOrdersParams): Promise<OrderApi[]>
   return result.orders;
 }
 
-export async function listOrdersWithMeta(params?: ListOrdersParams): Promise<ListOrdersResult> {
+export async function listOrdersWithMeta(
+  params?: ListOrdersParams,
+  options: EndpointRequestOptions = {},
+): Promise<ListOrdersResult> {
   const query = new URLSearchParams();
   if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
   if (params?.outletId !== undefined && params.outletId > 0) query.set("outletId", String(params.outletId));
@@ -350,7 +366,10 @@ export async function listOrdersWithMeta(params?: ListOrdersParams): Promise<Lis
   if (params?.kitchenStatus) query.set("kitchenStatus", String(params.kitchenStatus));
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await request<ApiListResponse<OrderApi>>(`/orders${suffix}`);
+  const response = await request<ApiListResponse<OrderApi>>(`/orders${suffix}`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
   const meta = response.meta ?? {};
   return {
     orders: response.data,
@@ -363,10 +382,16 @@ export async function listOrdersWithMeta(params?: ListOrdersParams): Promise<Lis
   };
 }
 
-export async function updateOrder(id: string, payload: UpdateOrderPayload): Promise<OrderApi> {
+export async function updateOrder(
+  id: string,
+  payload: UpdateOrderPayload,
+  options: EndpointRequestOptions = {},
+): Promise<OrderApi> {
   const response = await request<{ data: OrderApi }>(`/orders/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
@@ -389,10 +414,13 @@ export async function addOrderPayments(
     cashAccountCode?: string;
     revenueAccountCode?: string;
   },
+  options: EndpointRequestOptions = {},
 ): Promise<OrderApi> {
   const response = await request<{ data: OrderApi }>(`/orders/${id}/payments`, {
     method: "POST",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
@@ -400,10 +428,13 @@ export async function addOrderPayments(
 export async function createOrderSplit(
   orderId: string,
   payload: OrderSplitPayload,
+  options: EndpointRequestOptions = {},
 ): Promise<OrderSplitApi> {
   const response = await request<{ data: OrderSplitApi }>(`/orders/${orderId}/splits`, {
     method: "POST",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
@@ -412,15 +443,24 @@ export async function updateOrderSplit(
   orderId: string,
   splitId: number,
   payload: Partial<OrderSplitPayload>,
+  options: EndpointRequestOptions = {},
 ): Promise<OrderSplitApi> {
   const response = await request<{ data: OrderSplitApi }>(`/orders/${orderId}/splits/${splitId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+    signal: options.signal,
+    headers: options.headers,
   });
   return response.data;
 }
 
-export async function listOrderPayments(orderId: string): Promise<OrderApi["payments"]> {
-  const response = await request<{ data: OrderApi["payments"] }>(`/orders/${orderId}/payments`);
+export async function listOrderPayments(
+  orderId: string,
+  options: EndpointRequestOptions = {},
+): Promise<OrderApi["payments"]> {
+  const response = await request<{ data: OrderApi["payments"] }>(`/orders/${orderId}/payments`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
   return response.data;
 }
