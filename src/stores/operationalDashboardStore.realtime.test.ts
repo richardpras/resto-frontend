@@ -4,10 +4,23 @@ const mockGetOperationalMetrics = vi.fn();
 const mockAdapterConnect = vi.fn();
 const mockAdapterSubscribe = vi.fn();
 let realtimeHandler: ((event: Record<string, unknown>) => void) | null = null;
-
-vi.mock("@/lib/api-integration/monitoringEndpoints", () => ({
-  getOperationalMetrics: (...args: unknown[]) => mockGetOperationalMetrics(...args),
+const mockCapabilities = vi.fn(() => ({
+  settings: true,
+  crm: true,
+  monitoring: true,
+  hardwareBridge: true,
+  printerAdmin: true,
 }));
+
+vi.mock("@/lib/api-integration/monitoringEndpoints", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api-integration/monitoringEndpoints")>(
+    "@/lib/api-integration/monitoringEndpoints",
+  );
+  return {
+    ...actual,
+    getOperationalMetrics: (...args: unknown[]) => mockGetOperationalMetrics(...args),
+  };
+});
 
 vi.mock("@/domain/realtimeAdapter", () => ({
   getRealtimeAdapter: () => ({
@@ -26,6 +39,10 @@ vi.mock("@/domain/realtimeAdapter", () => ({
   }),
 }));
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => mockCapabilities(),
+}));
+
 import { EMPTY_OFFLINE_RESILIENCE } from "@/domain/operationsTypes";
 import { useOperationalDashboardStore } from "./operationalDashboardStore";
 
@@ -36,7 +53,27 @@ describe("operationalDashboardStore realtime updates", () => {
     mockAdapterConnect.mockReset();
     mockAdapterSubscribe.mockReset();
     realtimeHandler = null;
+    mockCapabilities.mockReturnValue({
+      settings: true,
+      crm: true,
+      monitoring: true,
+      hardwareBridge: true,
+      printerAdmin: true,
+    });
     useOperationalDashboardStore.getState().reset();
+  });
+
+  it("skips monitoring orchestration when role lacks permission", async () => {
+    mockCapabilities.mockReturnValue({
+      settings: false,
+      crm: false,
+      monitoring: false,
+      hardwareBridge: false,
+      printerAdmin: false,
+    });
+    await useOperationalDashboardStore.getState().startMonitoring(1000);
+    expect(mockAdapterConnect).not.toHaveBeenCalled();
+    expect(mockGetOperationalMetrics).not.toHaveBeenCalled();
   });
 
   it("keeps polling fallback active when websocket is disconnected", async () => {
@@ -44,7 +81,7 @@ describe("operationalDashboardStore realtime updates", () => {
       kitchen: { queued: 3, inProgress: 2, ready: 1 },
       pendingPayments: 4,
       activeSessions: 5,
-      qrQueue: 2,
+      qrQueue: { pendingConfirmation: 2, expired: 0 },
       printerQueue: { pending: 1, failed: 0, printing: 1 },
       reconciliationWarnings: [{ id: "rw-1", message: "Mismatch detected", severity: "warning" }],
       updatedAt: new Date().toISOString(),
@@ -67,7 +104,7 @@ describe("operationalDashboardStore realtime updates", () => {
         kitchen: { queued: 1, inProgress: 1, ready: 0 },
         pendingPayments: 2,
         activeSessions: 3,
-        qrQueue: 1,
+        qrQueue: { pendingConfirmation: 1, expired: 0 },
         printerQueue: { pending: 1, failed: 0, printing: 0 },
         reconciliationWarnings: [],
         updatedAt: null,

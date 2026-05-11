@@ -6,6 +6,8 @@ import { useOutletStore } from "@/stores/outletStore";
 import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
 import type { QrOrderRequest } from "@/stores/qrOrderStore";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
+import { QrOrderCardStackSkeleton } from "@/components/skeletons/list/QrOrderCardStackSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 const statusConfig: Record<QrOrderRequest["status"], { label: string; color: string; icon: typeof Clock }> = {
   pending_cashier_confirmation: { label: "Pending", color: "bg-warning/10 text-warning", icon: Clock },
@@ -18,7 +20,8 @@ export default function QROrders() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const requests = useQrOrderStore((s) => s.requests);
-  const isLoading = useQrOrderStore((s) => s.isLoading);
+  const initialLoading = useQrOrderStore((s) => s.initialLoading);
+  const backgroundRefreshing = useQrOrderStore((s) => s.backgroundRefreshing);
   const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
   const error = useQrOrderStore((s) => s.error);
   const lastSyncAt = useQrOrderStore((s) => s.lastSyncAt);
@@ -30,13 +33,17 @@ export default function QROrders() {
   const canManage = hasPermission(PERMISSIONS.QR_ORDERS);
 
   useEffect(() => {
+    if (!canManage) {
+      stopPolling();
+      return;
+    }
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
       stopPolling();
       return;
     }
     startPolling({ outletId: activeOutletId, status: "pending_cashier_confirmation", perPage: 100 }, 10000);
     return () => stopPolling();
-  }, [activeOutletId, startPolling, stopPolling]);
+  }, [activeOutletId, canManage, startPolling, stopPolling]);
 
   useEffect(() => {
     if (!error) return;
@@ -87,9 +94,10 @@ export default function QROrders() {
           Last refresh: {new Date(lastSyncAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </p>
       )}
-      {isLoading && pendingRequests.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">Loading QR requests...</div>
-      ) : pendingRequests.length === 0 ? (
+      <SkeletonBusyRegion busy={initialLoading && pendingRequests.length === 0} label="Loading QR requests">
+        {initialLoading && pendingRequests.length === 0 ? (
+          <QrOrderCardStackSkeleton cards={3} />
+        ) : pendingRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <Package className="h-12 w-12 mb-3 opacity-30" />
           <p className="text-sm font-medium">No pending QR requests</p>
@@ -157,6 +165,10 @@ export default function QROrders() {
           </AnimatePresence>
         </div>
       )}
+      {backgroundRefreshing && pendingRequests.length > 0 && (
+        <p className="text-xs text-muted-foreground">Refreshing queue...</p>
+      )}
+      </SkeletonBusyRegion>
 
       {/* Order Detail Modal */}
       <AnimatePresence>

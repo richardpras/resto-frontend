@@ -8,6 +8,8 @@ interface OutletContextState {
   activeOutletCode: string | null;
   hydrateFromApiOutlets: (outlets: Outlet[]) => void;
   setActiveOutlet: (o: Outlet) => void;
+  setActiveOutletContext: (id: number, code?: string | null) => void;
+  clearActiveOutlet: () => void;
 }
 
 export const useOutletStore = create<OutletContextState>()(
@@ -29,6 +31,18 @@ export const useOutletStore = create<OutletContextState>()(
         set({
           activeOutletId: o.id,
           activeOutletCode: o.code || null,
+        });
+      },
+      setActiveOutletContext: (id, code) => {
+        set({
+          activeOutletId: id,
+          activeOutletCode: code ?? null,
+        });
+      },
+      clearActiveOutlet: () => {
+        set({
+          activeOutletId: null,
+          activeOutletCode: null,
         });
       },
     }),

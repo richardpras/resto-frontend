@@ -66,6 +66,9 @@ type BridgeStoreFixture = {
   realtimeState: RealtimeConnectionState;
   devices: unknown[];
   isLoading: boolean;
+  initialLoading: boolean;
+  backgroundRefreshing: boolean;
+  hasLoadedOnce: boolean;
   error: string | null;
   fetchSnapshot: typeof fetchBridgeSnapshotMock;
   startMonitoring: typeof startBridgeMonitoringMock;
@@ -140,6 +143,9 @@ const bridgeStoreState: BridgeStoreFixture = {
     },
   ],
   isLoading: false,
+  initialLoading: false,
+  backgroundRefreshing: false,
+  hasLoadedOnce: true,
   error: null,
   fetchSnapshot: fetchBridgeSnapshotMock,
   startMonitoring: startBridgeMonitoringMock,
@@ -196,6 +202,21 @@ vi.mock("@/stores/receiptDocumentStore", () => ({
 vi.mock("@/stores/hardwareBridgeStore", () => ({
   useHardwareBridgeStore: (selector: (s: unknown) => unknown) =>
     selector(bridgeStoreState),
+}));
+
+vi.mock("@/stores/authStore", () => ({
+  PERMISSIONS: {
+    SETTINGS: "settings.view",
+  },
+  useAuthStore: (selector: (s: unknown) => unknown) =>
+    selector({
+      user: {
+        id: 1,
+        name: "Owner",
+        email: "owner@resto.local",
+        permissions: ["settings.view", "settings.update"],
+      },
+    }),
 }));
 
 vi.mock("@/components/receipts/ReceiptPreviewModal", () => ({

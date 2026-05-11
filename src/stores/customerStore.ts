@@ -3,6 +3,7 @@ import { mapCustomer, mapPaginationMeta } from "@/domain/crmAdapters";
 import type { AsyncState, Customer, PaginationMeta, ReplayQueueStatus } from "@/domain/crmTypes";
 import { getRealtimeAdapter, type RealtimeConnectionState, type RealtimeEnvelope } from "@/domain/realtimeAdapter";
 import { getCustomerById, listCustomers } from "@/lib/api-integration/crmEndpoints";
+import { selectUserCapabilities } from "@/domain/accessControl";
 
 const DEFAULT_META: PaginationMeta = { currentPage: 1, perPage: 20, total: 0, lastPage: 1 };
 
@@ -19,6 +20,10 @@ type CustomerStoreState = {
   lifecycle: AsyncState;
   error: string | null;
   lastSyncAt: string | null;
+  inFlightFetchKey: string | null;
+  inFlightFetchPromise: Promise<void> | null;
+  lastFetchKey: string | null;
+  lastFetchedAt: number;
   pollTimer: ReturnType<typeof setInterval> | null;
   pollingActive: boolean;
   realtimeState: RealtimeConnectionState;
@@ -46,6 +51,10 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
   lifecycle: "idle",
   error: null,
   lastSyncAt: null,
+  inFlightFetchKey: null,
+  inFlightFetchPromise: null,
+  lastFetchKey: null,
+  lastFetchedAt: 0,
   pollTimer: null,
   pollingActive: false,
   realtimeState: "idle",
@@ -56,12 +65,30 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
   realtimeConnectionUnsubscribe: null,
 
   fetchCustomers: async (params = {}) => {
+    if (!selectUserCapabilities().crm) return;
     const outletId = params.outletId ?? get().activeOutletId;
     if (!outletId || outletId < 1) {
       set({ customers: [], pagination: DEFAULT_META, activeOutletId: null, lifecycle: "success", error: null });
       return;
     }
-    set({ lifecycle: "loading", error: null, activeOutletId: outletId, search: params.search ?? get().search });
+    const queryKey = JSON.stringify({
+      outletId,
+      page: params.page ?? get().pagination.currentPage,
+      perPage: params.perPage ?? get().pagination.perPage,
+      search: params.search ?? get().search,
+    });
+    const state = get();
+    const isFresh = state.lastFetchKey === queryKey && Date.now() - state.lastFetchedAt < 30_000 && state.customers.length > 0;
+    if (isFresh) {
+      set({ lifecycle: "success", activeOutletId: outletId });
+      return;
+    }
+    if (state.inFlightFetchKey === queryKey && state.inFlightFetchPromise) {
+      return state.inFlightFetchPromise;
+    }
+
+    set({ lifecycle: "loading", error: null, activeOutletId: outletId, search: params.search ?? get().search, inFlightFetchKey: queryKey });
+    const fetchJob = (async () => {
     try {
       const response = await listCustomers({
         outletId,
@@ -75,13 +102,22 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
         lifecycle: "success",
         error: null,
         lastSyncAt: new Date().toISOString(),
+        lastFetchKey: queryKey,
+        lastFetchedAt: Date.now(),
+        inFlightFetchKey: null,
+        inFlightFetchPromise: null,
       });
     } catch (error) {
       set({
         lifecycle: "error",
         error: error instanceof Error ? error.message : "Failed to fetch customers",
+        inFlightFetchKey: null,
+        inFlightFetchPromise: null,
       });
     }
+    })();
+    set({ inFlightFetchPromise: fetchJob });
+    return fetchJob;
   },
 
   refreshForOutlet: async (outletId) => {
@@ -106,6 +142,7 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
   },
 
   startRealtime: () => {
+    if (!selectUserCapabilities().crm) return;
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("crm-customer");
     const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
@@ -148,6 +185,7 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
   },
 
   startPollingFallback: (intervalMs = 10000) => {
+    if (!selectUserCapabilities().crm) return;
     if (get().pollTimer) return;
     const timer = setInterval(() => {
       if (get().realtimeState === "connected") return;
@@ -174,6 +212,10 @@ export const useCustomerStore = create<CustomerStoreState>((set, get) => ({
       error: null,
       lastSyncAt: null,
       replayStatus: null,
+      inFlightFetchKey: null,
+      inFlightFetchPromise: null,
+      lastFetchKey: null,
+      lastFetchedAt: 0,
     });
   },
 }));

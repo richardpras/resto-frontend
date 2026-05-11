@@ -15,14 +15,22 @@ import { usePrinterManagementStore } from "@/stores/printerManagementStore";
 import { useReceiptDocumentStore } from "@/stores/receiptDocumentStore";
 import { ReceiptPreviewModal } from "@/components/receipts/ReceiptPreviewModal";
 import { useHardwareBridgeStore } from "@/stores/hardwareBridgeStore";
+import { ShadcnTableSkeletonBody } from "@/components/skeletons/table/ShadcnTableSkeletonBody";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
+import { PrinterQueuePanelSkeleton } from "@/components/skeletons/list/PrinterQueuePanelSkeleton";
+import { BridgeDeviceListSkeleton } from "@/components/skeletons/list/BridgeDeviceListSkeleton";
+import { useAuthStore } from "@/stores/authStore";
+import { getUserCapabilities } from "@/domain/accessControl";
 
 const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: 0 };
 
 export default function PrinterSettings() {
+  const authUser = useAuthStore((s) => s.user);
+  const capabilities = getUserCapabilities(authUser);
   const printers = useSettingsStore((s) => s.printers);
   const outlets = useSettingsStore((s) => s.outlets);
   const upsertPrinter = useSettingsStore((s) => s.upsertPrinter);
-  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
+  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const queueByPrinter = usePrinterManagementStore((s) => s.queueByPrinter);
   const fetchQueueStatus = usePrinterManagementStore((s) => s.fetchQueueStatus);
   const saveProfile = usePrinterManagementStore((s) => s.saveProfile);
@@ -40,7 +48,8 @@ export default function PrinterSettings() {
   const heartbeatState = useHardwareBridgeStore((s) => s.heartbeatState);
   const reconnectState = useHardwareBridgeStore((s) => s.reconnectState);
   const bridgeDevices = useHardwareBridgeStore((s) => s.devices);
-  const bridgeIsLoading = useHardwareBridgeStore((s) => s.isLoading);
+  const bridgeInitialLoading = useHardwareBridgeStore((s) => s.initialLoading);
+  const bridgeBackgroundRefreshing = useHardwareBridgeStore((s) => s.backgroundRefreshing);
   const bridgeError = useHardwareBridgeStore((s) => s.error);
   const bridgeRealtimeState = useHardwareBridgeStore((s) => s.realtimeState);
   const bridgeTransport = useHardwareBridgeStore((s) => s.realtimeTransport);
@@ -57,8 +66,9 @@ export default function PrinterSettings() {
   const [form, setForm] = useState<Printer>(empty);
 
   useEffect(() => {
+    if (!capabilities.printerAdmin) return;
     void fetchQueueStatus();
-  }, [fetchQueueStatus]);
+  }, [fetchQueueStatus, capabilities.printerAdmin]);
 
   useEffect(() => {
     const first = outlets[0]?.id;
@@ -68,13 +78,14 @@ export default function PrinterSettings() {
   }, [outlets, historyOutletId, setHistoryOutletId]);
 
   useEffect(() => {
+    if (!capabilities.hardwareBridge) return;
     const outletId = historyOutletId && historyOutletId > 0 ? historyOutletId : outlets[0]?.id;
     if (!outletId || outletId < 1) return;
     void startBridgeMonitoring(outletId, 5000);
     return () => {
       stopBridgeMonitoring();
     };
-  }, [historyOutletId, outlets, startBridgeMonitoring, stopBridgeMonitoring]);
+  }, [historyOutletId, outlets, startBridgeMonitoring, stopBridgeMonitoring, capabilities.hardwareBridge]);
 
   const save = async () => {
     if (!form.name.trim()) return toast.error("Printer name required");
@@ -88,7 +99,7 @@ export default function PrinterSettings() {
         routeRules: form.assignedCategories ?? [],
       };
       await saveProfile(payload);
-      await refreshFromApi();
+      await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
       toast.success("Printer saved");
       setOpen(false);
     } catch (e) {
@@ -143,7 +154,7 @@ export default function PrinterSettings() {
                         void (async () => {
                           try {
                             await removePrinterCascade(p.id);
-                            if (getApiAccessToken()) await refreshFromApi();
+                            if (getApiAccessToken()) await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
                           } catch (e) {
                             toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
                           }
@@ -193,7 +204,21 @@ export default function PrinterSettings() {
             </Button>
           </div>
           {receiptHistoryError ? <p className="text-sm text-destructive">{receiptHistoryError}</p> : null}
-          {historyRows.length === 0 && !isLoadingReceiptHistory ? (
+          {isLoadingReceiptHistory ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Id</TableHead>
+                  <TableHead>Kind</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Flags</TableHead>
+                  <TableHead className="w-28" />
+                </TableRow>
+              </TableHeader>
+              <ShadcnTableSkeletonBody columns={6} rows={6} />
+            </Table>
+          ) : historyRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No rows loaded. Choose an outlet and load history.</p>
           ) : (
             <Table>
@@ -331,12 +356,16 @@ export default function PrinterSettings() {
             <p className="text-xs text-destructive">Bridge runtime is {bridgeRuntimeState}; queue monitoring may be delayed.</p>
           ) : null}
           {bridgeError ? <p className="text-sm text-destructive">{bridgeError}</p> : null}
-          {bridgeIsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading hardware bridge devices…</p>
-          ) : bridgeDevices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hardware bridge devices connected for the selected outlet.</p>
-          ) : (
-            <div className="space-y-2">
+          {bridgeBackgroundRefreshing ? (
+            <p className="text-xs text-muted-foreground">Refreshing hardware bridge devices...</p>
+          ) : null}
+          <SkeletonBusyRegion busy={bridgeInitialLoading} label="Loading hardware bridge devices">
+            {bridgeInitialLoading ? (
+              <BridgeDeviceListSkeleton />
+            ) : bridgeDevices.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hardware bridge devices connected for the selected outlet.</p>
+            ) : (
+              <div className="space-y-2">
               {bridgeDevices.map((device) => (
                 <div key={device.id} className="border rounded-lg p-3 space-y-1">
                   {(() => {
@@ -377,17 +406,19 @@ export default function PrinterSettings() {
                 </div>
               ))}
             </div>
-          )}
+            )}
+          </SkeletonBusyRegion>
         </div>
 
         <div className="space-y-3">
           <h3 className="font-medium">Queue Status</h3>
-          {isLoadingQueue ? (
-            <p className="text-sm text-muted-foreground">Loading printer queues…</p>
-          ) : queueByPrinter.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No queue data available.</p>
-          ) : (
-            <div className="space-y-2">
+          <SkeletonBusyRegion busy={isLoadingQueue} label="Loading printer queues">
+            {isLoadingQueue ? (
+              <PrinterQueuePanelSkeleton panels={3} />
+            ) : queueByPrinter.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No queue data available.</p>
+            ) : (
+              <div className="space-y-2">
               {queueByPrinter.map((queue) => (
                 <div key={queue.printerId} className="border rounded-lg p-3 space-y-2">
                   <p className="font-medium">{queue.printerName}</p>
@@ -416,7 +447,8 @@ export default function PrinterSettings() {
                 </div>
               ))}
             </div>
-          )}
+            )}
+          </SkeletonBusyRegion>
         </div>
 
         <ReceiptPreviewModal />

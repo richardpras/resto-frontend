@@ -15,8 +15,11 @@ import {
   listPointsLedger,
   redeemLoyaltyPoints,
 } from "@/lib/api-integration/crmEndpoints";
+import { ApiHttpError } from "@/lib/api-integration/client";
+import { selectUserCapabilities } from "@/domain/accessControl";
 
 const EMPTY_META: PaginationMeta = { currentPage: 1, perPage: 20, total: 0, lastPage: 1 };
+const REALTIME_REFRESH_COOLDOWN_MS = 5000;
 
 function extractRealtimeSeq(event: RealtimeEnvelope): number {
   return event.sequence ?? event.seq ?? event.version ?? 0;
@@ -44,6 +47,8 @@ type LoyaltyStoreState = {
   realtimeState: RealtimeConnectionState;
   realtimeTransport: "polling" | "websocket";
   lastRealtimeSeq: number;
+  lastRealtimeRefreshAt: number;
+  realtimeRefreshInFlight: boolean;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
   refreshForOutlet: (outletId: number | null) => Promise<void>;
@@ -82,10 +87,13 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
   realtimeState: "idle",
   realtimeTransport: "polling",
   lastRealtimeSeq: 0,
+  lastRealtimeRefreshAt: 0,
+  realtimeRefreshInFlight: false,
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
   refreshForOutlet: async (outletId) => {
+    if (!selectUserCapabilities().crm) return;
     if (!outletId || outletId < 1) {
       set({
         outletId: null,
@@ -122,6 +130,10 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
         lastSyncAt: new Date().toISOString(),
       });
     } catch (error) {
+      if (error instanceof ApiHttpError && error.status === 403) {
+        set({ lifecycle: "success" });
+        return;
+      }
       set({
         lifecycle: "error",
         error: error instanceof Error ? error.message : "Failed to refresh loyalty data",
@@ -269,6 +281,7 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
   },
 
   startRealtime: () => {
+    if (!selectUserCapabilities().crm) return;
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("crm-loyalty");
     const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
@@ -286,9 +299,18 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
         if (incomingSeq > 0 && incomingSeq <= get().lastRealtimeSeq) return;
         const eventOutlet = Number(payload.outletId ?? payload.outlet_id ?? 0);
         if (eventOutlet > 0 && get().outletId && eventOutlet !== get().outletId) return;
-        set({ lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : get().lastRealtimeSeq });
-        void get().fetchPointsLedger({ page: 1, perPage: get().pointsLedgerMeta.perPage || 20 });
-        void get().fetchRedemptions({ page: 1, perPage: get().redemptionsMeta.perPage || 20 });
+        const state = get();
+        const now = Date.now();
+        const isCooldown = now - state.lastRealtimeRefreshAt < REALTIME_REFRESH_COOLDOWN_MS;
+        set({ lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq });
+        if (state.realtimeRefreshInFlight || isCooldown) return;
+        set({ realtimeRefreshInFlight: true, lastRealtimeRefreshAt: now });
+        void Promise.all([
+          get().fetchPointsLedger({ page: 1, perPage: get().pointsLedgerMeta.perPage || 20 }),
+          get().fetchRedemptions({ page: 1, perPage: get().redemptionsMeta.perPage || 20 }),
+        ]).finally(() => {
+          set({ realtimeRefreshInFlight: false });
+        });
       },
     });
     set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
@@ -304,10 +326,13 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
       realtimeState: "disconnected",
       realtimeTransport: "polling",
       lastRealtimeSeq: 0,
+      lastRealtimeRefreshAt: 0,
+      realtimeRefreshInFlight: false,
     });
   },
 
   startPollingFallback: (intervalMs = 12000) => {
+    if (!selectUserCapabilities().crm) return;
     if (get().pollTimer) return;
     const timer = setInterval(() => {
       if (get().realtimeState === "connected") return;
@@ -339,6 +364,8 @@ export const useLoyaltyStore = create<LoyaltyStoreState>((set, get) => ({
       processingQueue: false,
       error: null,
       lastSyncAt: null,
+      lastRealtimeRefreshAt: 0,
+      realtimeRefreshInFlight: false,
     });
   },
 }));

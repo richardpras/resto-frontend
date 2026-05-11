@@ -2,10 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockListCustomers = vi.fn();
 const mockGetCustomerById = vi.fn();
+const mockCapabilities = vi.fn(() => ({
+  settings: true,
+  crm: true,
+  monitoring: true,
+  hardwareBridge: true,
+  printerAdmin: true,
+}));
 
 vi.mock("@/lib/api-integration/crmEndpoints", () => ({
   listCustomers: (...args: unknown[]) => mockListCustomers(...args),
   getCustomerById: (...args: unknown[]) => mockGetCustomerById(...args),
+}));
+
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => mockCapabilities(),
 }));
 
 import { useCustomerStore } from "./customerStore";
@@ -15,6 +26,13 @@ describe("customerStore orchestration", () => {
     mockListCustomers.mockReset();
     mockGetCustomerById.mockReset();
     useCustomerStore.getState().reset();
+    mockCapabilities.mockReturnValue({
+      settings: true,
+      crm: true,
+      monitoring: true,
+      hardwareBridge: true,
+      printerAdmin: true,
+    });
   });
 
   it("handles pagination meta and outlet-scoped refresh", async () => {
@@ -35,5 +53,17 @@ describe("customerStore orchestration", () => {
     expect(state.pagination.currentPage).toBe(2);
     expect(state.pagination.lastPage).toBe(4);
     expect(mockListCustomers).toHaveBeenCalledWith(expect.objectContaining({ outletId: 10, page: 1 }));
+  });
+
+  it("skips crm requests when role lacks crm capability", async () => {
+    mockCapabilities.mockReturnValue({
+      settings: false,
+      crm: false,
+      monitoring: true,
+      hardwareBridge: false,
+      printerAdmin: false,
+    });
+    await useCustomerStore.getState().refreshForOutlet(10);
+    expect(mockListCustomers).not.toHaveBeenCalled();
   });
 });

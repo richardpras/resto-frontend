@@ -5,8 +5,10 @@ import { useInventoryStore, type InventoryItemType } from "@/stores/inventorySto
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import InventoryFormModal from "@/components/InventoryFormModal";
-import { toast } from "@/hooks/use-toast";
+import { InventoryCardGridSkeleton } from "@/components/skeletons/card/InventoryCardGridSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { type InventoryItem, type InventoryPayload, type StockMovement } from "@/stores/inventoryStore";
+import { toast } from "@/hooks/use-toast";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -118,7 +120,7 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{ingredients.length} items tracked</p>
         </div>
-        <Button onClick={handleCreate} className="gap-2">
+        <Button onClick={handleCreate} className="gap-2" disabled={!activeOutletId || activeOutletId < 1}>
           <Plus className="h-4 w-4" /> Add Item
         </Button>
       </div>
@@ -161,12 +163,12 @@ export default function Inventory() {
         />
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm">Loading inventory...</p>
-        </div>
-      ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <SkeletonBusyRegion busy={loading} className="min-h-[200px]" label="Loading inventory">
+        {loading ? (
+          <InventoryCardGridSkeleton cards={6} />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {filtered.map((item) => {
           const isLow = item.type !== "asset" && item.stock < item.min;
           const tb = typeBadge[item.type];
@@ -230,14 +232,16 @@ export default function Inventory() {
           );
         })}
       </div>
-      )}
 
-      {filtered.length === 0 && (
+            {!loading && filtered.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
           <p className="text-sm">No items found</p>
         </div>
       )}
+          </>
+        )}
+      </SkeletonBusyRegion>
 
       <div className="mt-6">
         <div className="mb-3">

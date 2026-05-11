@@ -18,7 +18,7 @@ const empty: PaymentMethod = { id: "", name: "", type: "cash", status: "active" 
 export default function PaymentMethodSettings() {
   const paymentMethods = useSettingsStore((s) => s.paymentMethods);
   const upsertPayment = useSettingsStore((s) => s.upsertPayment);
-  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
+  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PaymentMethod>(empty);
   const [saving, setSaving] = useState(false);
@@ -36,7 +36,7 @@ export default function PaymentMethodSettings() {
       }
       const saved = wasInList ? await patchPaymentMethod(form.id, form) : await postPaymentMethod(form);
       upsertPayment(saved);
-      await refreshFromApi();
+      await ensureSectionsLoaded(["paymentMethods"], { force: true, staleMs: 0 });
       toast.success("Payment method saved");
       setOpen(false);
     } catch (e) {
@@ -80,7 +80,7 @@ export default function PaymentMethodSettings() {
                         void (async () => {
                           try {
                             await removePaymentCascade(p.id);
-                            if (getApiAccessToken()) await refreshFromApi();
+                            if (getApiAccessToken()) await ensureSectionsLoaded(["paymentMethods"], { force: true, staleMs: 0 });
                           } catch (e) {
                             toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
                           }

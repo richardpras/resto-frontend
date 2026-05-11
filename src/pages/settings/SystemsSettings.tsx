@@ -24,7 +24,7 @@ export default function SystemSettings() {
       toast.success(`${label}`);
     } catch (e) {
       toast.error(e instanceof ApiHttpError ? e.message : "Could not save system settings");
-      await useSettingsStore.getState().refreshFromApi().catch(() => {});
+      await useSettingsStore.getState().ensureSectionsLoaded(["system"], { force: true, staleMs: 0 }).catch(() => {});
     }
   };
 

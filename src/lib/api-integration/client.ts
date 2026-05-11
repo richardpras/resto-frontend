@@ -8,13 +8,26 @@ const envToken =
 
 let accessTokenOverride: string | undefined = undefined;
 
+function getPersistedAccessToken(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem("resto-auth");
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { state?: { accessToken?: unknown } } | null;
+    const token = parsed?.state?.accessToken;
+    return typeof token === "string" && token.trim() !== "" ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Passport / Sanctum bearer token for `auth:api` routes (e.g. HR). Also reads `VITE_API_ACCESS_TOKEN` from env. */
 export function setApiAccessToken(token: string | undefined): void {
   accessTokenOverride = token;
 }
 
 export function getApiAccessToken(): string | undefined {
-  return accessTokenOverride ?? envToken;
+  return accessTokenOverride ?? envToken ?? getPersistedAccessToken();
 }
 
 export class ApiHttpError extends Error {
@@ -57,13 +70,16 @@ export function createObservabilityHeaders(
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getApiAccessToken();
+  const mergedHeaders = new Headers(init?.headers ?? {});
+  if (!mergedHeaders.has("Content-Type")) {
+    mergedHeaders.set("Content-Type", "application/json");
+  }
+  if (token && !mergedHeaders.has("Authorization")) {
+    mergedHeaders.set("Authorization", `Bearer ${token}`);
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
     ...init,
+    headers: mergedHeaders,
   });
 
   const body = await response.json().catch(() => null);

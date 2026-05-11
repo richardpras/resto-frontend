@@ -88,6 +88,9 @@ function extractRealtimeSeq(event: RealtimeEnvelope): number {
 type QrOrderStore = {
   requests: QrOrderRequest[];
   isLoading: boolean;
+  initialLoading: boolean;
+  backgroundRefreshing: boolean;
+  hasLoadedOnce: boolean;
   isSubmitting: boolean;
   error: string | null;
   pagination: ListQrOrdersMeta | null;
@@ -105,7 +108,10 @@ type QrOrderStore = {
   lastRealtimeSeq: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchRequests: (params?: ListQrOrdersParams) => Promise<QrOrderRequest[]>;
+  fetchRequests: (
+    params?: ListQrOrdersParams,
+    options?: { mode?: "initial" | "background" },
+  ) => Promise<QrOrderRequest[]>;
   revalidateRequests: () => Promise<QrOrderRequest[] | null>;
   createRequest: (payload: CreateQrOrderPayload) => Promise<QrOrderRequest>;
   confirmRequest: (id: string) => Promise<QrOrderRequest>;
@@ -120,6 +126,9 @@ type QrOrderStore = {
 export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   requests: [],
   isLoading: false,
+  initialLoading: false,
+  backgroundRefreshing: false,
+  hasLoadedOnce: false,
   isSubmitting: false,
   error: null,
   pagination: null,
@@ -138,8 +147,10 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
-  fetchRequests: async (params) => {
+  fetchRequests: async (params, options = {}) => {
     const requestId = get().activeRequestId + 1;
+    const mode = options.mode ?? "initial";
+    const isInitialLike = mode === "initial" && !get().hasLoadedOnce;
     const controller = new AbortController();
     const requestMeta: RequestObservabilityMetadata = {
       scope: "qr-order-store",
@@ -147,7 +158,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       requestId,
     };
     set({
-      isLoading: true,
+      isLoading: isInitialLike,
+      initialLoading: isInitialLike,
+      backgroundRefreshing: mode === "background" || !isInitialLike,
       error: null,
       lastListParams: params ?? null,
       activeRequestId: requestId,
@@ -165,6 +178,7 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
         requests: mapped,
         pagination: response.meta,
         lastSyncAt: new Date().toISOString(),
+        hasLoadedOnce: true,
       });
       return mapped;
     } catch (error) {
@@ -173,7 +187,12 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       throw error;
     } finally {
       if (get().activeRequestId === requestId) {
-        set({ isLoading: false, activeAbortController: null });
+        set({
+          isLoading: false,
+          initialLoading: false,
+          backgroundRefreshing: false,
+          activeAbortController: null,
+        });
       }
     }
   },
@@ -181,7 +200,7 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   revalidateRequests: async () => {
     const params = get().lastListParams;
     if (params === null) return null;
-    return get().fetchRequests(params);
+    return get().fetchRequests(params, { mode: "background" });
   },
 
   createRequest: async (payload) => {
@@ -356,9 +375,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     if (state.pollingTimer) clearInterval(state.pollingTimer);
     set({ pollingMs: intervalMs, lastListParams: params });
     get().startRealtime();
-    void get().fetchRequests(params);
+    void get().fetchRequests(params, { mode: "initial" });
     const timer = setInterval(() => {
-      void get().fetchRequests(params);
+      void get().fetchRequests(params, { mode: "background" });
     }, intervalMs);
     set({ pollingTimer: timer });
   },
@@ -381,6 +400,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     get().stopPolling();
     set({
       isLoading: false,
+      initialLoading: false,
+      backgroundRefreshing: false,
+      hasLoadedOnce: false,
       isSubmitting: false,
       error: null,
       pagination: null,

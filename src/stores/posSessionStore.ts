@@ -9,10 +9,13 @@ import {
 
 type PosSessionState = {
   currentSession: PosSessionApi | null;
+  activeOutletId: number | null;
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
   lastSyncAt: string | null;
+  inFlightOutletId: number | null;
+  inFlightFetch: Promise<PosSessionApi | null> | null;
   fetchCurrent: (outletId: number) => Promise<PosSessionApi | null>;
   open: (outletId: number, openingCash: number, notes?: string) => Promise<PosSessionApi>;
   close: (sessionId: number, closingCash: number, notes?: string) => Promise<PosSessionApi>;
@@ -27,27 +30,41 @@ function mapError(error: unknown): string {
 
 export const usePosSessionStore = create<PosSessionState>((set) => ({
   currentSession: null,
+  activeOutletId: null,
   isLoading: false,
   isSubmitting: false,
   error: null,
   lastSyncAt: null,
+  inFlightOutletId: null,
+  inFlightFetch: null,
 
   fetchCurrent: async (outletId: number) => {
+    const state = usePosSessionStore.getState();
+    if (state.currentSession && state.activeOutletId === outletId) return state.currentSession;
+    if (state.inFlightFetch && state.inFlightOutletId === outletId) return state.inFlightFetch;
+
     set({ isLoading: true, error: null });
+    const job = (async () => {
     try {
       const currentSession = await getCurrentPosSession(outletId);
       set({
         currentSession,
+        activeOutletId: outletId,
         lastSyncAt: new Date().toISOString(),
+        inFlightOutletId: null,
+        inFlightFetch: null,
       });
       return currentSession;
     } catch (error) {
       const message = mapError(error);
-      set({ error: message });
+      set({ error: message, inFlightOutletId: null, inFlightFetch: null });
       throw error;
     } finally {
       set({ isLoading: false });
     }
+    })();
+    set({ inFlightOutletId: outletId, inFlightFetch: job });
+    return job;
   },
 
   open: async (outletId: number, openingCash: number, notes?: string) => {
@@ -89,9 +106,12 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
   reset: () =>
     set({
       currentSession: null,
+      activeOutletId: null,
       isLoading: false,
       isSubmitting: false,
       error: null,
       lastSyncAt: null,
+      inFlightOutletId: null,
+      inFlightFetch: null,
     }),
 }));

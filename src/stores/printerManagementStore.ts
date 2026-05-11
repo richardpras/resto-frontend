@@ -2,8 +2,9 @@ import { create } from "zustand";
 import type { PrinterProfileInput, PrinterQueueSummary } from "@/domain/operationsTypes";
 import { listPrinterQueues, retryPrinterQueueJob } from "@/lib/api-integration/printerManagementEndpoints";
 import { patchPrinter, postPrinter } from "@/lib/api-integration/settingsDomainEndpoints";
-import { getApiAccessToken } from "@/lib/api-integration/client";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { useSettingsStore, type Printer } from "@/stores/settingsStore";
+import { selectUserCapabilities } from "@/domain/accessControl";
 
 type PrinterManagementStore = {
   queueByPrinter: PrinterQueueSummary[];
@@ -36,11 +37,16 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
   error: null,
 
   fetchQueueStatus: async () => {
+    if (!selectUserCapabilities().printerAdmin) return;
     set({ isLoadingQueue: true, error: null });
     try {
       const queueByPrinter = await listPrinterQueues();
       set({ queueByPrinter });
     } catch (error) {
+      if (error instanceof ApiHttpError && error.status === 403) {
+        set({ isLoadingQueue: false });
+        return;
+      }
       set({ error: error instanceof Error ? error.message : "Failed to load printer queue" });
     } finally {
       set({ isLoadingQueue: false });
@@ -48,6 +54,7 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
   },
 
   saveProfile: async (profile) => {
+    if (!selectUserCapabilities().printerAdmin) return;
     set({ isSavingProfile: true, error: null });
     try {
       const state = useSettingsStore.getState();
@@ -68,6 +75,7 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
   },
 
   retryFailedJob: async (printerId, jobId) => {
+    if (!selectUserCapabilities().printerAdmin) return;
     set({ error: null });
     try {
       const updated = await retryPrinterQueueJob(printerId, jobId);

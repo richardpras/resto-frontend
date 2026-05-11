@@ -2,6 +2,15 @@ import { apiRequest } from "./client";
 
 type ListEnvelope<T> = { data: T[] };
 type MessageItemEnvelope<T> = { message?: string; data: T };
+type PurchaseScopeQuery = { tenantId?: number; outletId?: number };
+
+function toQuery(params?: PurchaseScopeQuery): string {
+  const query = new URLSearchParams();
+  if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
+  if (params?.outletId !== undefined) query.set("outletId", String(params.outletId));
+  const queryString = query.toString();
+  return queryString.length > 0 ? `?${queryString}` : "";
+}
 
 export type PurchaseRequestApiRow = {
   id: string;
@@ -95,8 +104,8 @@ export type PurchaseInvoiceApiRow = {
   createdAt: string;
 };
 
-export async function listPurchaseRequests(): Promise<PurchaseRequestApiRow[]> {
-  const res = await apiRequest<ListEnvelope<PurchaseRequestApiRow>>("/purchase-requests");
+export async function listPurchaseRequests(params?: PurchaseScopeQuery): Promise<PurchaseRequestApiRow[]> {
+  const res = await apiRequest<ListEnvelope<PurchaseRequestApiRow>>(`/purchase-requests${toQuery(params)}`);
   return res.data;
 }
 
@@ -133,8 +142,8 @@ export async function updatePurchaseRequest(
   return res.data;
 }
 
-export async function listPurchaseOrders(): Promise<PurchaseOrderApiRow[]> {
-  const res = await apiRequest<ListEnvelope<PurchaseOrderApiRow>>("/purchase-orders");
+export async function listPurchaseOrders(params?: PurchaseScopeQuery): Promise<PurchaseOrderApiRow[]> {
+  const res = await apiRequest<ListEnvelope<PurchaseOrderApiRow>>(`/purchase-orders${toQuery(params)}`);
   return res.data;
 }
 
@@ -187,8 +196,8 @@ export async function updatePurchaseOrder(
   return res.data;
 }
 
-export async function listGoodsReceipts(): Promise<GoodsReceiptApiRow[]> {
-  const res = await apiRequest<ListEnvelope<GoodsReceiptApiRow>>("/goods-receipts");
+export async function listGoodsReceipts(params?: PurchaseScopeQuery): Promise<GoodsReceiptApiRow[]> {
+  const res = await apiRequest<ListEnvelope<GoodsReceiptApiRow>>(`/goods-receipts${toQuery(params)}`);
   return res.data;
 }
 
@@ -208,8 +217,8 @@ export async function createGoodsReceipt(payload: {
   return res.data;
 }
 
-export async function listPurchaseInvoices(): Promise<PurchaseInvoiceApiRow[]> {
-  const res = await apiRequest<ListEnvelope<PurchaseInvoiceApiRow>>("/purchase-invoices");
+export async function listPurchaseInvoices(params?: PurchaseScopeQuery): Promise<PurchaseInvoiceApiRow[]> {
+  const res = await apiRequest<ListEnvelope<PurchaseInvoiceApiRow>>(`/purchase-invoices${toQuery(params)}`);
   return res.data;
 }
 

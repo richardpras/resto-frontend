@@ -1,14 +1,16 @@
 import { create } from "zustand";
-import { getOperationalMetrics } from "@/lib/api-integration/monitoringEndpoints";
+import { getOperationalMetrics, normalizeQrQueueMetrics } from "@/lib/api-integration/monitoringEndpoints";
 import { getRealtimeAdapter, type RealtimeEnvelope, type RealtimeConnectionState } from "@/domain/realtimeAdapter";
 import type { OperationalMetrics } from "@/domain/operationsTypes";
-import { EMPTY_OFFLINE_RESILIENCE } from "@/domain/operationsTypes";
+import { EMPTY_OFFLINE_RESILIENCE, EMPTY_QR_QUEUE } from "@/domain/operationsTypes";
+import { selectUserCapabilities } from "@/domain/accessControl";
+import { ApiHttpError } from "@/lib/api-integration/client";
 
 const EMPTY_METRICS: OperationalMetrics = {
   kitchen: { queued: 0, inProgress: 0, ready: 0 },
   pendingPayments: 0,
   activeSessions: 0,
-  qrQueue: 0,
+  qrQueue: EMPTY_QR_QUEUE,
   printerQueue: { pending: 0, failed: 0, printing: 0 },
   reconciliationWarnings: [],
   updatedAt: null,
@@ -18,8 +20,16 @@ const EMPTY_METRICS: OperationalMetrics = {
 type OperationalDashboardStore = {
   metrics: OperationalMetrics;
   isLoading: boolean;
+  initialLoading: boolean;
+  switchingOutlet: boolean;
+  backgroundRefreshing: boolean;
+  realtimeRefreshing: boolean;
   error: string | null;
   lastSyncAt: string | null;
+  lastSuccessfulSyncAt: string | null;
+  activeOutletId: number | null;
+  activeRequestId: number;
+  isFetchInFlight: boolean;
   pollingActive: boolean;
   pollTimer: ReturnType<typeof setInterval> | null;
   realtimeState: RealtimeConnectionState;
@@ -27,10 +37,10 @@ type OperationalDashboardStore = {
   lastRealtimeSeq: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchMetrics: () => Promise<void>;
+  fetchMetrics: (mode?: "initial" | "outlet-switch" | "background" | "realtime", outletId?: number | null) => Promise<void>;
   startRealtime: () => void;
   stopRealtime: () => void;
-  startMonitoring: (intervalMs?: number) => Promise<void>;
+  startMonitoring: (intervalMs?: number, outletId?: number | null) => Promise<void>;
   stopMonitoring: () => void;
   reset: () => void;
 };
@@ -42,8 +52,16 @@ function extractRealtimeSeq(event: RealtimeEnvelope): number {
 export const useOperationalDashboardStore = create<OperationalDashboardStore>((set, get) => ({
   metrics: EMPTY_METRICS,
   isLoading: false,
+  initialLoading: false,
+  switchingOutlet: false,
+  backgroundRefreshing: false,
+  realtimeRefreshing: false,
   error: null,
   lastSyncAt: null,
+  lastSuccessfulSyncAt: null,
+  activeOutletId: null,
+  activeRequestId: 0,
+  isFetchInFlight: false,
   pollingActive: false,
   pollTimer: null,
   realtimeState: "idle",
@@ -52,19 +70,67 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
-  fetchMetrics: async () => {
-    set({ isLoading: true, error: null });
+  fetchMetrics: async (mode = "background", outletId) => {
+    if (!selectUserCapabilities().monitoring) return;
+    if (get().isFetchInFlight && mode !== "realtime") return;
+    const requestId = get().activeRequestId + 1;
+    const targetOutletId = typeof outletId === "number" && outletId >= 1 ? outletId : get().activeOutletId;
+    const isInitial = mode === "initial";
+    const isOutletSwitch = mode === "outlet-switch";
+    set((state) => ({
+      activeRequestId: requestId,
+      activeOutletId: targetOutletId ?? null,
+      isFetchInFlight: true,
+      error: null,
+      initialLoading: isInitial,
+      switchingOutlet: isOutletSwitch,
+      backgroundRefreshing: mode === "background" && !state.initialLoading && !state.switchingOutlet,
+      realtimeRefreshing: mode === "realtime",
+      isLoading: isInitial || isOutletSwitch,
+    }));
     try {
-      const metrics = await getOperationalMetrics();
-      set({ metrics, lastSyncAt: new Date().toISOString() });
+      const metrics = await getOperationalMetrics(targetOutletId);
+      set((state) => {
+        if (state.activeRequestId !== requestId) return state;
+        return {
+          metrics,
+          lastSyncAt: new Date().toISOString(),
+          lastSuccessfulSyncAt: new Date().toISOString(),
+        };
+      });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to load operational metrics" });
+      if (error instanceof ApiHttpError && error.status === 403) {
+        set({
+          isLoading: false,
+          isFetchInFlight: false,
+          initialLoading: false,
+          switchingOutlet: false,
+          backgroundRefreshing: false,
+          realtimeRefreshing: false,
+        });
+        return;
+      }
+      set((state) => {
+        if (state.activeRequestId !== requestId) return state;
+        return { error: error instanceof Error ? error.message : "Failed to load operational metrics" };
+      });
     } finally {
-      set({ isLoading: false });
+      set((state) => {
+        if (state.activeRequestId !== requestId) return state;
+        return {
+          isLoading: false,
+          isFetchInFlight: false,
+          initialLoading: false,
+          switchingOutlet: false,
+          backgroundRefreshing: false,
+          realtimeRefreshing: false,
+        };
+      });
     }
   },
 
   startRealtime: () => {
+    if (!selectUserCapabilities().monitoring) return;
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("operations");
     const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
@@ -86,6 +152,10 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
             ...payload,
             kitchen: { ...state.metrics.kitchen, ...(payload.kitchen ?? {}) },
             printerQueue: { ...state.metrics.printerQueue, ...(payload.printerQueue ?? {}) },
+            qrQueue:
+              payload.qrQueue !== undefined
+                ? normalizeQrQueueMetrics(payload.qrQueue)
+                : state.metrics.qrQueue,
             reconciliationWarnings: payload.reconciliationWarnings ?? state.metrics.reconciliationWarnings,
             offlineResilience: payload.offlineResilience
               ? {
@@ -98,6 +168,8 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
           lastSyncAt: new Date().toISOString(),
         }));
+        set({ realtimeRefreshing: true });
+        queueMicrotask(() => set({ realtimeRefreshing: false }));
       },
     });
     set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
@@ -116,12 +188,14 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
     });
   },
 
-  startMonitoring: async (intervalMs = 5000) => {
+  startMonitoring: async (intervalMs = 5000, outletId = null) => {
+    if (!selectUserCapabilities().monitoring) return;
     get().stopMonitoring();
+    set({ activeOutletId: outletId });
     get().startRealtime();
-    await get().fetchMetrics();
+    await get().fetchMetrics(get().lastSuccessfulSyncAt ? "outlet-switch" : "initial", outletId);
     const timer = setInterval(() => {
-      void get().fetchMetrics();
+      void get().fetchMetrics("background", get().activeOutletId);
     }, intervalMs);
     set({ pollTimer: timer, pollingActive: true });
   },
@@ -137,8 +211,16 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
     set({
       metrics: EMPTY_METRICS,
       isLoading: false,
+      initialLoading: false,
+      switchingOutlet: false,
+      backgroundRefreshing: false,
+      realtimeRefreshing: false,
       error: null,
       lastSyncAt: null,
+      lastSuccessfulSyncAt: null,
+      activeOutletId: null,
+      activeRequestId: 0,
+      isFetchInFlight: false,
       pollingActive: false,
       pollTimer: null,
       realtimeState: "idle",

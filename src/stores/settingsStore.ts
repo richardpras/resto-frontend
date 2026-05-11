@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getApiAccessToken } from "@/lib/api-integration/client";
+import { selectUserCapabilities } from "@/domain/accessControl";
 import {
   deleteBankAccountApi,
   deleteOutletApi,
@@ -77,6 +78,27 @@ const EMPTY_INTEGRATION: IntegrationSettings = {
   thirdPartyNotes: "",
 };
 
+const SETTINGS_SECTION_STALE_MS = 90_000;
+const sectionCacheTimestamps: Partial<Record<SettingsSection, number>> = {};
+const sectionInFlightRequests: Partial<Record<SettingsSection, Promise<void>>> = {};
+
+type SettingsSection =
+  | "merchant"
+  | "outlets"
+  | "taxes"
+  | "printers"
+  | "paymentMethods"
+  | "banks"
+  | "system"
+  | "integration"
+  | "numbering"
+  | "outletReceiptRows";
+
+interface SectionLoadOptions {
+  force?: boolean;
+  staleMs?: number;
+}
+
 interface SettingsStore {
   merchant: Merchant;
   outlets: Outlet[];
@@ -119,6 +141,7 @@ interface SettingsStore {
   saveOutlet: (outlet: Outlet) => Promise<Outlet>;
   deleteOutletById: (id: number) => Promise<void>;
 
+  ensureSectionsLoaded: (sections: SettingsSection[], options?: SectionLoadOptions) => Promise<void>;
   refreshFromApi: () => Promise<void>;
 }
 
@@ -185,6 +208,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       outletReceiptRows: s.outletReceiptRows.map((r) => (r.outletId === outletId ? { ...r, ...patch } : r)),
     })),
   fetchOutlets: async (query) => {
+    if (!selectUserCapabilities().settings) return;
     set({ outletsLoading: true, outletsError: null });
     try {
       const current = useSettingsStore.getState().outletsPagination;
@@ -286,53 +310,115 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     }
   },
 
-  refreshFromApi: async () => {
+  ensureSectionsLoaded: async (sections, options) => {
+    if (!selectUserCapabilities().settings) return;
     if (!getApiAccessToken()) return;
-    const [
-      merchant,
-      outlets,
-      taxes,
-      printers,
-      paymentMethods,
-      banks,
-      system,
-      integration,
-      numbering,
-      outletReceiptRows,
-    ] = await Promise.all([
-      getMerchantSettings(),
-      listOutlets(),
-      listTaxes(),
-      listPrinters(),
-      listPaymentMethods(),
-      listBankAccounts(),
-      getSystemSettings(),
-      getIntegrationSettings(),
-      getNumberingSettings(),
-      listOutletReceiptSettings(),
-    ]);
-    set({
-      merchant,
-      outlets,
-      taxes,
-      printers,
-      paymentMethods,
-      banks,
-      system,
-      integration,
-      numbering,
-      outletReceiptRows,
-      outletsPagination: {
-        page: 1,
-        perPage: 10,
-        total: outlets.length,
-        lastPage: Math.max(1, Math.ceil(outlets.length / 10)),
+
+    const staleMs = options?.staleMs ?? SETTINGS_SECTION_STALE_MS;
+    const force = options?.force === true;
+
+    const now = Date.now();
+
+    const loaders: Partial<Record<SettingsSection, () => Promise<void>>> = {
+      merchant: async () => {
+        const merchant = await getMerchantSettings();
+        set({ merchant });
       },
-    });
+      outlets: async () => {
+        const outlets = await listOutlets();
+        set({
+          outlets,
+          outletsPagination: {
+            page: 1,
+            perPage: 10,
+            total: outlets.length,
+            lastPage: Math.max(1, Math.ceil(outlets.length / 10)),
+          },
+        });
+      },
+      taxes: async () => {
+        const taxes = await listTaxes();
+        set({ taxes });
+      },
+      printers: async () => {
+        const printers = await listPrinters();
+        set({ printers });
+      },
+      paymentMethods: async () => {
+        const paymentMethods = await listPaymentMethods();
+        set({ paymentMethods });
+      },
+      banks: async () => {
+        const banks = await listBankAccounts();
+        set({ banks });
+      },
+      system: async () => {
+        const system = await getSystemSettings();
+        set({ system });
+      },
+      integration: async () => {
+        const integration = await getIntegrationSettings();
+        set({ integration });
+      },
+      numbering: async () => {
+        const numbering = await getNumberingSettings();
+        set({ numbering });
+      },
+      outletReceiptRows: async () => {
+        const outletReceiptRows = await listOutletReceiptSettings();
+        set({ outletReceiptRows });
+      },
+    };
+
+    const requestedSections = Array.from(new Set(sections));
+    await Promise.all(
+      requestedSections.map(async (section) => {
+        const isFresh =
+          !force &&
+          typeof sectionCacheTimestamps[section] === "number" &&
+          now - (sectionCacheTimestamps[section] ?? 0) < staleMs;
+        if (isFresh) return;
+
+        if (sectionInFlightRequests[section]) {
+          await sectionInFlightRequests[section];
+          return;
+        }
+
+        const load = loaders[section];
+        if (!load) return;
+
+        const promise = (async () => {
+          await load();
+          sectionCacheTimestamps[section] = Date.now();
+        })()
+          .finally(() => {
+            delete sectionInFlightRequests[section];
+          });
+
+        sectionInFlightRequests[section] = promise;
+        await promise;
+      }),
+    );
+  },
+
+  refreshFromApi: async () => {
+    await useSettingsStore.getState().ensureSectionsLoaded(
+      ["merchant", "outlets", "taxes", "printers", "paymentMethods", "banks", "system", "integration", "numbering", "outletReceiptRows"],
+      { force: true, staleMs: 0 },
+    );
   },
 }));
 
 export const newId = uid;
+
+export function resetSettingsSectionRequestState(): void {
+  (Object.keys(sectionCacheTimestamps) as SettingsSection[]).forEach((key) => {
+    delete sectionCacheTimestamps[key];
+  });
+  (Object.keys(sectionInFlightRequests) as SettingsSection[]).forEach((key) => {
+    delete sectionInFlightRequests[key];
+  });
+}
 
 export async function persistOutletPrefixesFromStore(): Promise<void> {
   const { outlets } = useSettingsStore.getState();

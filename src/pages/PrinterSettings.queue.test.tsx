@@ -35,7 +35,8 @@ describe("PrinterSettings queue panel", () => {
     render(<PrinterSettings />);
     expect(screen.getByText(/Queue Status/i)).toBeTruthy();
     expect(screen.getAllByText(/Kitchen A/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Pending:/i).textContent).toContain("2");
-    expect(screen.getByText(/Pending:/i).textContent).toContain("Failed: 1");
+    // Avoid matching bridge "Retry pending:" — queue line uses "Pending: N • Failed:"
+    const queueStats = screen.getByText(/Pending: 2/i);
+    expect(queueStats.textContent).toContain("Failed: 1");
   });
 });

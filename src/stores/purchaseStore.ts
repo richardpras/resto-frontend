@@ -17,6 +17,7 @@ import {
   type PurchaseOrderApiRow,
   type PurchaseRequestApiRow,
 } from "@/lib/api-integration/purchaseEndpoints";
+import { useOutletStore } from "./outletStore";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -160,6 +161,15 @@ type PurchaseStore = {
 
 let nextId = 1;
 const uid = () => `pur-${nextId++}`;
+const PURCHASE_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
+
+function getActiveScope() {
+  const outletId = useOutletStore.getState().activeOutletId;
+  return {
+    tenantId: PURCHASE_TENANT_ID,
+    ...(typeof outletId === "number" && outletId >= 1 ? { outletId } : {}),
+  };
+}
 
 const defaultSuppliers: Supplier[] = [
   { id: "sup-1", name: "PT Sumber Pangan", contact: "08123456789", email: "info@sumberpangan.id" },
@@ -263,7 +273,7 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   fetchPurchaseRequests: async () => {
     set({ loading: true });
     try {
-      const rows = await listPurchaseRequests();
+      const rows = await listPurchaseRequests(getActiveScope());
       set({ purchaseRequests: rows.map(mapPurchaseRequest), loading: false });
     } catch (e) {
       set({ loading: false });
@@ -274,7 +284,7 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   fetchPurchaseOrders: async () => {
     set({ loading: true });
     try {
-      const rows = await listPurchaseOrders();
+      const rows = await listPurchaseOrders(getActiveScope());
       set({ purchaseOrders: rows.map(mapPurchaseOrder), loading: false });
     } catch (e) {
       set({ loading: false });
@@ -285,7 +295,7 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   fetchGoodsReceipts: async () => {
     set({ loading: true });
     try {
-      const rows = await listGoodsReceipts();
+      const rows = await listGoodsReceipts(getActiveScope());
       set({ goodsReceipts: rows.map(mapGoodsReceipt), loading: false });
     } catch (e) {
       set({ loading: false });
@@ -296,7 +306,7 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   fetchPurchaseInvoices: async () => {
     set({ loading: true });
     try {
-      const rows = await listPurchaseInvoices();
+      const rows = await listPurchaseInvoices(getActiveScope());
       set({ invoices: rows.map(mapPurchaseInvoice), loading: false });
     } catch (e) {
       set({ loading: false });

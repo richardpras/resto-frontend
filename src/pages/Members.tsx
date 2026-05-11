@@ -116,12 +116,9 @@ export default function Members() {
         <p className="text-sm text-muted-foreground mt-0.5">Loyalty members usable at checkout for points & promo eligibility.</p>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading members…</p>
-      ) : null}
-
       <DataTable
         data={filtered} columns={columns} rowKey={(r) => r.id}
+        loading={loading}
         searchPlaceholder="Search by name or phone..."
         searchKeys={["name", "phone", "email"]}
         emptyMessage="No members yet"

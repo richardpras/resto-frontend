@@ -9,7 +9,7 @@ describe("Payroll page", () => {
 
     expect(screen.getByRole("heading", { name: /Payroll Management/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Payroll/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Process Payroll/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Calculate Payroll/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Payroll List/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Generate Payroll/i })).toBeTruthy();
   });
 });

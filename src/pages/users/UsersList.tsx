@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Pencil, Loader2 } from "lucide-react";
+import { Plus, Search, Pencil } from "lucide-react";
+import { ShadcnTableSkeletonBody } from "@/components/skeletons/table/ShadcnTableSkeletonBody";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { listUsers, listRoles } from "@/lib/api-integration/userManagementEndpoints";
 import type { UserApiRow } from "@/lib/api-integration/userManagementEndpoints";
 import { UserFormModal } from "@/components/UserFormModal";
@@ -83,11 +85,7 @@ export default function UsersList() {
       </Card>
 
       <Card className="rounded-2xl overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading users…
-          </div>
-        ) : (
+        <SkeletonBusyRegion busy={loading} label="Loading users">
           <Table>
             <TableHeader>
               <TableRow>
@@ -98,32 +96,36 @@ export default function UsersList() {
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {filtered.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">No users found</TableCell></TableRow>
-              )}
-              {filtered.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                  <TableCell>
-                    {u.pinSet ? (
-                      <Badge variant="outline" className="font-normal">Set</Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{roleBadges(u)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button size="icon" variant="ghost" onClick={() => { setEditing(u); setOpen(true); }}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {loading ? (
+              <ShadcnTableSkeletonBody columns={5} rows={8} />
+            ) : (
+              <TableBody>
+                {filtered.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">No users found</TableCell></TableRow>
+                )}
+                {filtered.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-medium">{u.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                    <TableCell>
+                      {u.pinSet ? (
+                        <Badge variant="outline" className="font-normal">Set</Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{roleBadges(u)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="icon" variant="ghost" onClick={() => { setEditing(u); setOpen(true); }}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
           </Table>
-        )}
+        </SkeletonBusyRegion>
       </Card>
 
       <UserFormModal

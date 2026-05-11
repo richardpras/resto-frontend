@@ -28,6 +28,8 @@ vi.mock("@/stores/settingsStore", () => ({
           status: "active",
         },
       ],
+      outletsLoading: false,
+      outletsError: null,
       outletsSubmitting: false,
       saveOutlet: saveOutletMock,
       deleteOutletById: deleteOutletByIdMock,
@@ -39,6 +41,10 @@ vi.mock("@/stores/authStore", () => ({
     selector({
       canManageOutletSettings: canManageOutletSettingsMock,
     }),
+}));
+
+vi.mock("@/lib/api-integration/client", () => ({
+  getApiAccessToken: () => "mock-token",
 }));
 
 describe("OutletsSettings store boundary", () => {

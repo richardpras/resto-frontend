@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getPaymentTransactionIdFromSearchParams } from "@/domain/paymentAdapters";
 import { usePaymentStore } from "@/stores/paymentStore";
+import { PaymentStatusCardSkeleton } from "@/components/skeletons/payment/PaymentStatusCardSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 export default function PaymentStatus() {
   const [searchParams] = useSearchParams();
@@ -41,62 +43,74 @@ export default function PaymentStatus() {
       <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-5 space-y-3">
         <h1 className="text-lg font-bold text-foreground">Payment Status</h1>
         <p className="text-xs text-muted-foreground">Transaction: {transactionId || "-"}</p>
-        {isLoading && <p className="text-sm text-muted-foreground">Loading payment status...</p>}
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {status && (
-          <div className={`rounded-xl px-3 py-2 text-sm font-semibold ${statusTone}`}>
-            {status === "paid" && "Payment completed"}
-            {status === "expired" && "Payment expired"}
-            {status === "failed" && "Payment failed"}
-            {status === "pending" && "Payment pending"}
-            {status === "cancelled" && "Payment cancelled"}
-          </div>
-        )}
-        <div className="space-y-2 text-sm">
-          <p>Status: <span className="font-semibold">{status ?? "-"}</span></p>
-          <p>Method: {tx?.method ?? "-"}</p>
-          <p>Amount: {tx?.amount ?? 0}</p>
-          <p>Expires in: {expiryCountdown}s</p>
-          {tx?.vaNumber && <p>VA Number: {tx.vaNumber}</p>}
-          {checkoutUrl && (
-            <a className="text-primary underline block" href={checkoutUrl} target="_blank" rel="noreferrer">
-              Open Checkout URL
-            </a>
+        <SkeletonBusyRegion busy={!!isLoading && !error} label="Loading payment status">
+          {isLoading && !error ? (
+            <PaymentStatusCardSkeleton />
+          ) : (
+            <>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              {status && (
+                <div className={`rounded-xl px-3 py-2 text-sm font-semibold ${statusTone}`}>
+                  {status === "paid" && "Payment completed"}
+                  {status === "expired" && "Payment expired"}
+                  {status === "failed" && "Payment failed"}
+                  {status === "pending" && "Payment pending"}
+                  {status === "cancelled" && "Payment cancelled"}
+                </div>
+              )}
+              <div className="space-y-2 text-sm">
+                <p>
+                  Status: <span className="font-semibold">{status ?? "-"}</span>
+                </p>
+                <p>Method: {tx?.method ?? "-"}</p>
+                <p>Amount: {tx?.amount ?? 0}</p>
+                <p>Expires in: {expiryCountdown}s</p>
+                {tx?.vaNumber && <p>VA Number: {tx.vaNumber}</p>}
+                {checkoutUrl && (
+                  <a className="text-primary underline block" href={checkoutUrl} target="_blank" rel="noreferrer">
+                    Open Checkout URL
+                  </a>
+                )}
+                {deeplinkUrl && (
+                  <a className="text-primary underline block" href={deeplinkUrl} target="_blank" rel="noreferrer">
+                    Open App
+                  </a>
+                )}
+                {qrString && (
+                  <pre className="whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">{qrString}</pre>
+                )}
+                {status === "paid" && <p className="text-xs text-muted-foreground">Refreshing order status...</p>}
+                {lastSyncAt && <p className="text-xs text-muted-foreground">Last synced: {lastSyncAt}</p>}
+              </div>
+              <div className="flex gap-2 text-xs">
+                <button
+                  type="button"
+                  className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
+                  onClick={() => void retryPayment(transactionId)}
+                  disabled={isSubmitting || !transactionId}
+                >
+                  Retry payment
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
+                  onClick={() => void reconcileTransaction(transactionId)}
+                  disabled={isSubmitting || !transactionId}
+                >
+                  Reconcile
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
+                  onClick={() => void expireTransaction(transactionId)}
+                  disabled={isSubmitting || !transactionId || status === "paid"}
+                >
+                  Expire
+                </button>
+              </div>
+            </>
           )}
-          {deeplinkUrl && (
-            <a className="text-primary underline block" href={deeplinkUrl} target="_blank" rel="noreferrer">
-              Open App
-            </a>
-          )}
-          {qrString && (
-            <pre className="whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">{qrString}</pre>
-          )}
-          {status === "paid" && <p className="text-xs text-muted-foreground">Refreshing order status...</p>}
-          {lastSyncAt && <p className="text-xs text-muted-foreground">Last synced: {lastSyncAt}</p>}
-        </div>
-        <div className="flex gap-2 text-xs">
-          <button
-            className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
-            onClick={() => void retryPayment(transactionId)}
-            disabled={isSubmitting || !transactionId}
-          >
-            Retry payment
-          </button>
-          <button
-            className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
-            onClick={() => void reconcileTransaction(transactionId)}
-            disabled={isSubmitting || !transactionId}
-          >
-            Reconcile
-          </button>
-          <button
-            className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
-            onClick={() => void expireTransaction(transactionId)}
-            disabled={isSubmitting || !transactionId || status === "paid"}
-          >
-            Expire
-          </button>
-        </div>
+        </SkeletonBusyRegion>
       </div>
     </div>
   );

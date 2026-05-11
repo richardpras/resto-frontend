@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TablesBoardSkeleton } from "@/components/skeletons/dashboard/TablesBoardSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 function formatRp(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
@@ -180,7 +182,6 @@ export default function Tables() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {counts.available} of {masterRows.filter((r) => r.status === "active").length} active tables available
-            {isLoading ? " · Loading…" : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -198,7 +199,11 @@ export default function Tables() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+      <SkeletonBusyRegion busy={isLoading} label="Loading tables">
+        {isLoading ? (
+          <TablesBoardSkeleton tiles={12} />
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         {masterRows.map((table) => {
           const { key: runtimeKey, order: linkedOrder } = overlayStatusForOrders(String(table.id), orders);
           const cfg = statusConfig[runtimeKey];
@@ -299,7 +304,9 @@ export default function Tables() {
             </motion.div>
           );
         })}
-      </div>
+          </div>
+        )}
+      </SkeletonBusyRegion>
 
       {!isLoading && masterRows.length === 0 && (
         <p className="text-sm text-muted-foreground text-center mt-12">No tables defined for this outlet. Add one above.</p>

@@ -54,6 +54,8 @@ type InventoryStore = {
   recipes: Recipe[];
   blockOnInsufficient: boolean;
   isLoading: boolean;
+  isInventoryLoading: boolean;
+  isMovementLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
   pagination: InventoryListMeta | null;
@@ -105,6 +107,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   recipes: defaultRecipes,
   blockOnInsufficient: false,
   isLoading: false,
+  isInventoryLoading: false,
+  isMovementLoading: false,
   isSubmitting: false,
   error: null,
   pagination: null,
@@ -116,9 +120,12 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   setBlockOnInsufficient: (v) => set({ blockOnInsufficient: v }),
 
   fetchInventory: async (params) => {
-    set({ isLoading: true, error: null, lastListParams: params ?? null });
+    set({ isLoading: true, isInventoryLoading: true, error: null, lastListParams: params ?? null });
     try {
       const result = await apiListInventoryWithMeta(params);
+      if (get().lastListParams !== (params ?? null)) {
+        return get().ingredients;
+      }
       const mapped = result.items.map(mapInventoryItemApiToStore);
       set({
         ingredients: mapped,
@@ -130,7 +137,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       set({ error: mapApiError(error) });
       throw error;
     } finally {
-      set({ isLoading: false });
+      const nextMovementLoading = get().isMovementLoading;
+      set({ isInventoryLoading: false, isLoading: nextMovementLoading });
     }
   },
 
@@ -141,9 +149,12 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   },
 
   fetchStockMovements: async (params) => {
-    set({ isLoading: true, error: null, lastMovementListParams: params ?? null });
+    set({ isLoading: true, isMovementLoading: true, error: null, lastMovementListParams: params ?? null });
     try {
       const result = await apiListStockMovementsWithMeta(params);
+      if (get().lastMovementListParams !== (params ?? null)) {
+        return get().stockMovements;
+      }
       const mapped = result.movements.map(mapStockMovementApiToStore);
       set({
         stockMovements: mapped,
@@ -155,7 +166,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       set({ error: mapApiError(error) });
       throw error;
     } finally {
-      set({ isLoading: false });
+      const nextInventoryLoading = get().isInventoryLoading;
+      set({ isMovementLoading: false, isLoading: nextInventoryLoading });
     }
   },
 
@@ -297,6 +309,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   resetAsync: () =>
     set({
       isLoading: false,
+      isInventoryLoading: false,
+      isMovementLoading: false,
       isSubmitting: false,
       error: null,
       pagination: null,

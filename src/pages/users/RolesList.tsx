@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Shield, Loader2 } from "lucide-react";
+import { Plus, Shield } from "lucide-react";
+import { ShadcnTableSkeletonBody } from "@/components/skeletons/table/ShadcnTableSkeletonBody";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   listRoles,
@@ -113,11 +115,7 @@ export default function RolesList() {
       </div>
 
       <Card className="rounded-2xl overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading roles…
-          </div>
-        ) : (
+        <SkeletonBusyRegion busy={loading} label="Loading roles">
           <Table>
             <TableHeader>
               <TableRow>
@@ -128,25 +126,29 @@ export default function RolesList() {
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {roles.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{r.description ?? "—"}</TableCell>
-                  <TableCell>{userCountByRoleId[r.id] ?? 0}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{(r.permissions ?? []).length} perms</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => setPermsOpen(r)}>
-                      <Shield className="h-4 w-4" /> Permissions
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {loading ? (
+              <ShadcnTableSkeletonBody columns={5} rows={6} />
+            ) : (
+              <TableBody>
+                {roles.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{r.description ?? "—"}</TableCell>
+                    <TableCell>{userCountByRoleId[r.id] ?? 0}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{(r.permissions ?? []).length} perms</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => setPermsOpen(r)}>
+                        <Shield className="h-4 w-4" /> Permissions
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            )}
           </Table>
-        )}
+        </SkeletonBusyRegion>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>

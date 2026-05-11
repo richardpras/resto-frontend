@@ -19,7 +19,7 @@ const empty: Tax = { id: "", name: "", type: "percentage", value: 0, applyDineIn
 export default function TaxSettings() {
   const taxes = useSettingsStore((s) => s.taxes);
   const upsertTax = useSettingsStore((s) => s.upsertTax);
-  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
+  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Tax>(empty);
   const [saving, setSaving] = useState(false);
@@ -38,7 +38,7 @@ export default function TaxSettings() {
       }
       const saved = wasInList ? await patchTax(form.id, form) : await postTax(form);
       upsertTax(saved);
-      await refreshFromApi();
+      await ensureSectionsLoaded(["taxes"], { force: true, staleMs: 0 });
       toast.success("Tax saved");
       setOpen(false);
     } catch (e) {
@@ -85,7 +85,7 @@ export default function TaxSettings() {
                         void (async () => {
                           try {
                             await removeTaxCascade(t.id);
-                            if (getApiAccessToken()) await refreshFromApi();
+                            if (getApiAccessToken()) await ensureSectionsLoaded(["taxes"], { force: true, staleMs: 0 });
                           } catch (e) {
                             toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
                           }

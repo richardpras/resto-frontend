@@ -22,7 +22,11 @@ import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
+import { useAuthStore } from "@/stores/authStore";
+import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
+import { PosMenuGridSkeleton } from "@/components/skeletons/card/PosMenuGridSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -131,6 +135,8 @@ const paymentMethods = [
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
 export default function POS() {
+  const authUser = useAuthStore((s) => s.user);
+  const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { tables, orders, updateTableStatus, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
@@ -146,6 +152,7 @@ export default function POS() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
   const { members, fetchMembers } = useMemberStore();
+  const membersLoading = useMemberStore((s) => s.loading);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [giftCardInput, setGiftCardInput] = useState("");
@@ -188,28 +195,21 @@ export default function POS() {
   const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
   const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
   const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
-  const startLoyaltyRealtime = useLoyaltyStore((s) => s.startRealtime);
-  const stopLoyaltyRealtime = useLoyaltyStore((s) => s.stopRealtime);
-  const startLoyaltyPolling = useLoyaltyStore((s) => s.startPollingFallback);
-  const stopLoyaltyPolling = useLoyaltyStore((s) => s.stopPollingFallback);
+  const crmLazyFetchedRef = useRef<Record<number, boolean>>({});
 
   useEffect(() => {
+    if (!capabilities.crm || !showMemberPicker) return;
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    if (crmLazyFetchedRef.current[activeOutletId]) return;
+    crmLazyFetchedRef.current[activeOutletId] = true;
     void fetchMembers().catch((e) => {
       if (e instanceof ApiHttpError) toast.error(e.message);
     });
-  }, [fetchMembers]);
-
-  useEffect(() => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
-    void fetchCustomers({ outletId: activeOutletId, page: 1, perPage: 50 });
-    void refreshLoyalty(activeOutletId);
-    startLoyaltyRealtime();
-    startLoyaltyPolling(12000);
-    return () => {
-      stopLoyaltyPolling();
-      stopLoyaltyRealtime();
-    };
-  }, [activeOutletId, fetchCustomers, refreshLoyalty, startLoyaltyPolling, startLoyaltyRealtime, stopLoyaltyPolling, stopLoyaltyRealtime]);
+    void Promise.all([
+      fetchCustomers({ outletId: activeOutletId, page: 1, perPage: 50 }),
+      refreshLoyalty(activeOutletId),
+    ]);
+  }, [activeOutletId, capabilities.crm, fetchCustomers, fetchMembers, refreshLoyalty, showMemberPicker]);
 
   const { data: floorMasters } = useQuery({
     queryKey: ["floor-tables", activeOutletId ?? 0],
@@ -699,10 +699,9 @@ export default function POS() {
               Select an outlet in the header to load the menu for that location.
             </div>
           )}
-          {menuLoading && (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm">Loading menu…</div>
-          )}
-          {menuError && !menuLoading && (
+          <SkeletonBusyRegion busy={!!menuLoading} className="min-h-[12rem]" label="Loading menu">
+            {menuLoading && <PosMenuGridSkeleton items={8} />}
+            {menuError && !menuLoading && (
             <div className="flex flex-col items-center justify-center h-48 gap-2 text-center px-4">
               <p className="text-sm text-destructive">Could not load menu from the server.</p>
               <button
@@ -714,12 +713,12 @@ export default function POS() {
               </button>
             </div>
           )}
-          {!menuLoading && !menuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
+            {!menuLoading && !menuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm text-center px-4">
               No menu items mapped for this outlet (check Menu → Outlet Settings and menu_item_outlets).
             </div>
           )}
-          {!menuLoading && !menuError && menuItems.length > 0 && (
+            {!menuLoading && !menuError && menuItems.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {filtered.map((item) => {
               const inCart = cart.find((c) => c.id === item.id);
@@ -738,6 +737,7 @@ export default function POS() {
             })}
           </div>
           )}
+          </SkeletonBusyRegion>
         </div>
       </div>
 
@@ -773,7 +773,11 @@ export default function POS() {
                 <button onClick={() => setSelectedMember(null)} className="text-xs text-muted-foreground hover:text-destructive">×</button>
               </div>
             ) : (
-              <button onClick={() => setShowMemberPicker(true)} className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left">
+              <button
+                onClick={() => setShowMemberPicker(true)}
+                disabled={!capabilities.crm}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 + Select member (optional)
               </button>
             )}
@@ -1193,6 +1197,9 @@ export default function POS() {
                 className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm mb-3"
               />
               <div className="max-h-72 overflow-y-auto space-y-1">
+                {membersLoading && (
+                  <p className="text-xs text-muted-foreground px-1 py-1">Loading members...</p>
+                )}
                 {members
                   .filter((m) => m.status === "active" &&
                     (m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||

@@ -19,13 +19,34 @@ import { toast } from "sonner";
 
 export default function Settings() {
   const [syncing, setSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState("merchant");
+
+  const loadTabData = async (tab: string, force = false) => {
+    const sectionsByTab: Record<string, string[]> = {
+      merchant: ["merchant"],
+      outlets: ["outlets"],
+      taxes: ["taxes"],
+      printers: ["printers", "outlets"],
+      payments: ["paymentMethods"],
+      system: ["system"],
+      integration: ["integration"],
+      numbering: ["numbering", "outlets"],
+      banks: ["banks"],
+      receipt: ["outletReceiptRows"],
+    };
+    const sections = sectionsByTab[tab] ?? ["merchant"];
+    await useSettingsStore.getState().ensureSectionsLoaded(sections, {
+      force,
+      staleMs: force ? 0 : 90_000,
+    });
+  };
 
   useEffect(() => {
     if (!getApiAccessToken()) return;
     let cancelled = false;
     (async () => {
       try {
-        await useSettingsStore.getState().refreshFromApi();
+        await loadTabData(activeTab);
       } catch (e) {
         if (cancelled) return;
         if (e instanceof ApiHttpError) {
@@ -45,7 +66,7 @@ export default function Settings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeTab]);
 
   const reloadFromServer = async () => {
     if (!getApiAccessToken()) {
@@ -54,7 +75,7 @@ export default function Settings() {
     }
     setSyncing(true);
     try {
-      await useSettingsStore.getState().refreshFromApi();
+      await loadTabData(activeTab, true);
       toast.success("Settings reloaded from server");
     } catch (e) {
       toast.error(e instanceof ApiHttpError ? e.message : "Reload failed");
@@ -91,7 +112,13 @@ export default function Settings() {
         </div>
       </div>
 
-      <Tabs defaultValue="merchant" className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => {
+          setActiveTab(tab);
+        }}
+        className="w-full"
+      >
         <TabsList className="flex flex-wrap h-auto justify-start">
           <TabsTrigger value="merchant">Merchant</TabsTrigger>
           <TabsTrigger value="outlets">Outlets</TabsTrigger>
@@ -104,16 +131,16 @@ export default function Settings() {
           <TabsTrigger value="banks">Bank Accounts</TabsTrigger>
           <TabsTrigger value="receipt">Receipts</TabsTrigger>
         </TabsList>
-        <TabsContent value="merchant" className="mt-4"><MerchantSettings /></TabsContent>
-        <TabsContent value="outlets" className="mt-4"><OutletsSettings /></TabsContent>
-        <TabsContent value="taxes" className="mt-4"><TaxSettings /></TabsContent>
-        <TabsContent value="printers" className="mt-4"><PrinterSettings /></TabsContent>
-        <TabsContent value="payments" className="mt-4"><PaymentMethodSettings /></TabsContent>
-        <TabsContent value="system" className="mt-4"><SystemSettings /></TabsContent>
-        <TabsContent value="integration" className="mt-4"><IntegrationSettings /></TabsContent>
-        <TabsContent value="numbering" className="mt-4"><NumberingSettings /></TabsContent>
-        <TabsContent value="banks" className="mt-4"><BankSettings /></TabsContent>
-        <TabsContent value="receipt" className="mt-4"><ReceiptSettings /></TabsContent>
+        <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
+        <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>
+        <TabsContent value="taxes" className="mt-4">{activeTab === "taxes" ? <TaxSettings /> : null}</TabsContent>
+        <TabsContent value="printers" className="mt-4">{activeTab === "printers" ? <PrinterSettings /> : null}</TabsContent>
+        <TabsContent value="payments" className="mt-4">{activeTab === "payments" ? <PaymentMethodSettings /> : null}</TabsContent>
+        <TabsContent value="system" className="mt-4">{activeTab === "system" ? <SystemSettings /> : null}</TabsContent>
+        <TabsContent value="integration" className="mt-4">{activeTab === "integration" ? <IntegrationSettings /> : null}</TabsContent>
+        <TabsContent value="numbering" className="mt-4">{activeTab === "numbering" ? <NumberingSettings /> : null}</TabsContent>
+        <TabsContent value="banks" className="mt-4">{activeTab === "banks" ? <BankSettings /> : null}</TabsContent>
+        <TabsContent value="receipt" className="mt-4">{activeTab === "receipt" ? <ReceiptSettings /> : null}</TabsContent>
       </Tabs>
     </div>
   );

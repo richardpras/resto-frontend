@@ -8,6 +8,7 @@ import {
 } from "@/lib/api-integration/userManagementEndpoints";
 import type { MeResponse } from "@/lib/api-integration/userManagementEndpoints";
 import { ApiHttpError, setApiAccessToken } from "@/lib/api-integration/client";
+import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
 
 export type RoleName = "Owner" | "Manager" | "Cashier" | "Kitchen";
@@ -48,11 +49,11 @@ export const PERMISSIONS = {
 const allPermValues = new Set<string>(Object.values(PERMISSIONS));
 
 function resolveRole(roles: { name: string }[]): RoleName {
-  const names = roles.map((r) => r.name);
-  const order: RoleName[] = ["Owner", "Manager", "Cashier", "Kitchen"];
-  for (const r of order) {
-    if (names.includes(r)) return r;
-  }
+  const names = roles.map((r) => r.name.trim().toLowerCase());
+  if (names.some((name) => name.includes("owner"))) return "Owner";
+  if (names.some((name) => name.includes("manager"))) return "Manager";
+  if (names.some((name) => name.includes("cashier"))) return "Cashier";
+  if (names.some((name) => name.includes("kitchen"))) return "Kitchen";
   return "Manager";
 }
 
@@ -95,6 +96,23 @@ function mapMeToAuthUser(meData: MeResponse): AuthUser {
   };
 }
 
+function syncActiveOutletFromMe(meData: MeResponse): void {
+  const current = useOutletStore.getState().activeOutletId;
+  const allowed = Array.isArray(meData.outlets)
+    ? meData.outlets
+        .filter((o): o is { id: number; code: string; name: string } => typeof o.id === "number")
+    : [];
+  if (allowed.length === 0) {
+    useOutletStore.getState().clearActiveOutlet();
+    return;
+  }
+  if (typeof current === "number" && allowed.some((o) => o.id === current)) {
+    return;
+  }
+  const first = allowed[0];
+  useOutletStore.getState().setActiveOutletContext(first.id, first.code);
+}
+
 interface AuthStore {
   user: AuthUser | null;
   locked: boolean;
@@ -127,9 +145,11 @@ export const useAuthStore = create<AuthStore>()(
         setApiAccessToken(token);
         try {
           const meData = await fetchMe();
+          syncActiveOutletFromMe(meData);
           set({ user: mapMeToAuthUser(meData), locked: false });
         } catch {
           set({ user: null, locked: false, accessToken: null });
+          useOutletStore.getState().clearActiveOutlet();
           setApiAccessToken(undefined);
         }
       },
@@ -139,6 +159,7 @@ export const useAuthStore = create<AuthStore>()(
           const res = await apiLogin(email, password);
           setApiAccessToken(res.data.accessToken);
           const meData = await fetchMe();
+          syncActiveOutletFromMe(meData);
           const user = mapMeToAuthUser(meData);
           set({ user, locked: false, accessToken: res.data.accessToken });
           return { ok: true };
@@ -153,6 +174,7 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         const token = get().accessToken;
         set({ user: null, locked: false, accessToken: null });
+        useOutletStore.getState().clearActiveOutlet();
         setApiAccessToken(undefined);
         if (token) {
           void apiLogout().catch(() => undefined);
@@ -235,7 +257,7 @@ export const useAuthStore = create<AuthStore>()(
  */
 export const DEMO_CREDENTIALS: { email: string; password: string; role: RoleName }[] = [
   { email: "owner@resto.com", password: "owner", role: "Owner" },
-  { email: "manager@resto.com", password: "manager", role: "Manager" },
-  { email: "cashier@resto.com", password: "cashier", role: "Cashier" },
-  { email: "kitchen@resto.com", password: "kitchen", role: "Kitchen" },
+  { email: "manager@a.demo.resto.local", password: "demo123", role: "Manager" },
+  { email: "cashier1@a.demo.resto.local", password: "demo123", role: "Cashier" },
+  { email: "kitchen1@a.demo.resto.local", password: "demo123", role: "Kitchen" },
 ];

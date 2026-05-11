@@ -2,10 +2,16 @@ import { useEffect } from "react";
 import { useOutletStore } from "@/stores/outletStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { useCrmDashboardStore } from "@/stores/crmDashboardStore";
+import { useAuthStore } from "@/stores/authStore";
+import { getUserCapabilities } from "@/domain/accessControl";
 import { GiftCardStoreCreditPanel } from "@/components/crm/GiftCardStoreCreditPanel";
+import { LoyaltyTierListSkeleton } from "@/components/skeletons/list/LoyaltyTierListSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 export default function LoyaltyDashboard() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const authUser = useAuthStore((s) => s.user);
+  const capabilities = getUserCapabilities(authUser);
   const tiers = useLoyaltyStore((s) => s.tiers);
   const redemptions = useLoyaltyStore((s) => s.redemptions);
   const loyaltyLifecycle = useLoyaltyStore((s) => s.lifecycle);
@@ -22,6 +28,7 @@ export default function LoyaltyDashboard() {
   const stopCrmPolling = useCrmDashboardStore((s) => s.stopPollingFallback);
 
   useEffect(() => {
+    if (!capabilities.crm) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
     void refreshLoyalty(activeOutletId);
     void refreshCrm(activeOutletId);
@@ -47,7 +54,10 @@ export default function LoyaltyDashboard() {
     startCrmPolling,
     stopCrmPolling,
     stopCrmRealtime,
+    capabilities.crm,
   ]);
+
+  const showTierSkeleton = loyaltyLifecycle === "loading" && tiers.length === 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl">
@@ -76,16 +86,22 @@ export default function LoyaltyDashboard() {
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-border/50 bg-card p-4">
           <h3 className="text-sm font-semibold mb-2">Loyalty Tiers</h3>
-          <div className="space-y-1">
-            {tiers.map((tier) => (
-              <div key={tier.id} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                {tier.name} ({tier.code}) • min {tier.minPoints} pts • {tier.discountRate}% discount
+          <SkeletonBusyRegion busy={showTierSkeleton} label="Loading loyalty tiers" className="min-h-[120px]">
+            {showTierSkeleton ? (
+              <LoyaltyTierListSkeleton rows={4} />
+            ) : (
+              <div className="space-y-1">
+                {tiers.map((tier) => (
+                  <div key={tier.id} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                    {tier.name} ({tier.code}) • min {tier.minPoints} pts • {tier.discountRate}% discount
+                  </div>
+                ))}
+                {tiers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No tier configured.</p>
+                )}
               </div>
-            ))}
-            {tiers.length === 0 && (
-              <p className="text-sm text-muted-foreground">{loyaltyLifecycle === "loading" ? "Loading tiers..." : "No tier configured."}</p>
             )}
-          </div>
+          </SkeletonBusyRegion>
         </div>
         <div className="rounded-2xl border border-border/50 bg-card p-4">
           <h3 className="text-sm font-semibold mb-2">Latest Redemptions</h3>

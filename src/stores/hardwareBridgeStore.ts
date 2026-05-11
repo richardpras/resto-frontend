@@ -30,6 +30,8 @@ import {
   type RealtimeConnectionState,
   type RealtimeEnvelope,
 } from "@/domain/realtimeAdapter";
+import { selectUserCapabilities } from "@/domain/accessControl";
+import { ApiHttpError } from "@/lib/api-integration/client";
 
 const HEALTHY_HEARTBEAT_MS = 90_000;
 const STALE_HEARTBEAT_MS = 300_000;
@@ -43,6 +45,9 @@ type HardwareBridgeStore = {
   lastSessionStatus: string | null;
   lastCommandStatus: string | null;
   isLoading: boolean;
+  initialLoading: boolean;
+  backgroundRefreshing: boolean;
+  hasLoadedOnce: boolean;
   error: string | null;
   lastSyncAt: string | null;
   pollingActive: boolean;
@@ -67,7 +72,7 @@ type HardwareBridgeStore = {
   runtime: HardwareBridgeRuntimeDeploymentState;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchSnapshot: (outletId: number) => Promise<void>;
+  fetchSnapshot: (outletId: number, mode?: "initial" | "background") => Promise<void>;
   startRealtime: () => void;
   stopRealtime: () => void;
   startMonitoring: (outletId: number, intervalMs?: number) => Promise<void>;
@@ -322,6 +327,9 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
   lastSessionStatus: null,
   lastCommandStatus: null,
   isLoading: false,
+  initialLoading: false,
+  backgroundRefreshing: false,
+  hasLoadedOnce: false,
   error: null,
   lastSyncAt: null,
   pollingActive: false,
@@ -340,8 +348,19 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
-  fetchSnapshot: async (outletId) => {
-    set({ isLoading: true, error: null, monitoredOutletId: outletId });
+  fetchSnapshot: async (outletId, mode = "background") => {
+    if (!selectUserCapabilities().hardwareBridge) return;
+    const state = get();
+    const isFirstLoad = !state.hasLoadedOnce;
+    const isOutletSwitch = state.monitoredOutletId !== null && state.monitoredOutletId !== outletId;
+    const shouldUseInitialLoading = mode === "initial" || isFirstLoad || isOutletSwitch;
+    set({
+      isLoading: shouldUseInitialLoading,
+      initialLoading: shouldUseInitialLoading,
+      backgroundRefreshing: !shouldUseInitialLoading,
+      error: null,
+      monitoredOutletId: outletId,
+    });
     try {
       const devices = (await listHardwareBridgeDevices(outletId)).map(mapHardwareBridgeDeviceApiToModel);
       const health = deriveHealth(devices);
@@ -357,15 +376,21 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
         watchdog: metadataState.watchdog,
         runtime: metadataState.runtime,
         lastSyncAt: new Date().toISOString(),
+        hasLoadedOnce: true,
       });
     } catch (error) {
+      if (error instanceof ApiHttpError && error.status === 403) {
+        set({ isLoading: false, initialLoading: false, backgroundRefreshing: false });
+        return;
+      }
       set({ error: mapError(error) });
     } finally {
-      set({ isLoading: false });
+      set({ isLoading: false, initialLoading: false, backgroundRefreshing: false });
     }
   },
 
   startRealtime: () => {
+    if (!selectUserCapabilities().hardwareBridge) return;
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("printer-telemetry");
     const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
@@ -480,12 +505,13 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
   },
 
   startMonitoring: async (outletId, intervalMs = 5000) => {
+    if (!selectUserCapabilities().hardwareBridge) return;
     get().stopMonitoring();
     set({ monitoredOutletId: outletId });
     get().startRealtime();
-    await get().fetchSnapshot(outletId);
+    await get().fetchSnapshot(outletId, "initial");
     const pollingTimer = setInterval(() => {
-      void get().fetchSnapshot(outletId);
+      void get().fetchSnapshot(outletId, "background");
     }, intervalMs);
     set({ pollingTimer, pollingActive: true });
   },
@@ -566,6 +592,9 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
       lastSessionStatus: null,
       lastCommandStatus: null,
       isLoading: false,
+      initialLoading: false,
+      backgroundRefreshing: false,
+      hasLoadedOnce: false,
       error: null,
       lastSyncAt: null,
       pollingActive: false,

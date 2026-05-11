@@ -23,7 +23,7 @@ export default function BankSettings() {
   const banks = useSettingsStore((s) => s.banks);
   const upsertBank = useSettingsStore((s) => s.upsertBank);
   const setDefaultBank = useSettingsStore((s) => s.setDefaultBank);
-  const refreshFromApi = useSettingsStore((s) => s.refreshFromApi);
+  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<BankAccount>(empty);
   const [saving, setSaving] = useState(false);
@@ -47,7 +47,7 @@ export default function BankSettings() {
         await patchBankAccount(form.id, latest);
       }
       if (form.isDefault) await syncAllBanksToApi();
-      await refreshFromApi();
+      await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
       toast.success("Bank account saved");
       setOpen(false);
     } catch (e) {
@@ -91,7 +91,7 @@ export default function BankSettings() {
                             if (!getApiAccessToken()) return;
                             try {
                               await syncAllBanksToApi();
-                              await refreshFromApi();
+                              await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
                             } catch (e) {
                               toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
                             }
@@ -109,7 +109,7 @@ export default function BankSettings() {
                         void (async () => {
                           try {
                             await removeBankCascade(b.id);
-                            if (getApiAccessToken()) await refreshFromApi();
+                            if (getApiAccessToken()) await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
                           } catch (e) {
                             toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
                           }

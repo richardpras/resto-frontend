@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetCrmDashboardSnapshot = vi.fn();
 const mockAdapterConnect = vi.fn();
 let realtimeHandler: ((event: Record<string, unknown>) => void) | null = null;
+const mockCapabilities = vi.fn(() => ({
+  settings: true,
+  crm: true,
+  monitoring: true,
+  hardwareBridge: true,
+  printerAdmin: true,
+}));
 
 vi.mock("@/lib/api-integration/crmEndpoints", () => ({
   getCrmDashboardSnapshot: (...args: unknown[]) => mockGetCrmDashboardSnapshot(...args),
@@ -24,6 +31,10 @@ vi.mock("@/domain/realtimeAdapter", () => ({
   }),
 }));
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => mockCapabilities(),
+}));
+
 import { useCrmDashboardStore } from "./crmDashboardStore";
 
 describe("crmDashboardStore realtime fallback", () => {
@@ -32,7 +43,29 @@ describe("crmDashboardStore realtime fallback", () => {
     mockGetCrmDashboardSnapshot.mockReset();
     mockAdapterConnect.mockReset();
     realtimeHandler = null;
+    mockCapabilities.mockReturnValue({
+      settings: true,
+      crm: true,
+      monitoring: true,
+      hardwareBridge: true,
+      printerAdmin: true,
+    });
     useCrmDashboardStore.getState().reset();
+  });
+
+  it("does not start CRM realtime or polling when unauthorized", () => {
+    mockCapabilities.mockReturnValue({
+      settings: false,
+      crm: false,
+      monitoring: true,
+      hardwareBridge: false,
+      printerAdmin: false,
+    });
+    useCrmDashboardStore.getState().startRealtime();
+    useCrmDashboardStore.getState().startPollingFallback(1000);
+    const state = useCrmDashboardStore.getState();
+    expect(mockAdapterConnect).not.toHaveBeenCalled();
+    expect(state.pollingActive).toBe(false);
   });
 
   it("keeps polling fallback active when websocket is disconnected", async () => {

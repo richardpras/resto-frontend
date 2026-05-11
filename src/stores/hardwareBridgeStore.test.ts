@@ -7,6 +7,13 @@ const mockAdapterConnect = vi.fn();
 const mockAdapterDisconnect = vi.fn();
 let realtimeHandler: ((event: Record<string, unknown>) => void) | null = null;
 let connectionStateListener: ((state: "connected" | "disconnected" | "reconnecting") => void) | null = null;
+const mockCapabilities = vi.fn(() => ({
+  settings: true,
+  crm: true,
+  monitoring: true,
+  hardwareBridge: true,
+  printerAdmin: true,
+}));
 
 vi.mock("@/lib/api-integration/hardwareBridgeEndpoints", () => ({
   listHardwareBridgeDevices: (...args: unknown[]) => mockListDevices(...args),
@@ -32,6 +39,10 @@ vi.mock("@/domain/realtimeAdapter", () => ({
   }),
 }));
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => mockCapabilities(),
+}));
+
 import { useHardwareBridgeStore } from "./hardwareBridgeStore";
 
 describe("hardwareBridgeStore orchestration lifecycle", () => {
@@ -44,7 +55,27 @@ describe("hardwareBridgeStore orchestration lifecycle", () => {
     mockAdapterDisconnect.mockReset();
     realtimeHandler = null;
     connectionStateListener = null;
+    mockCapabilities.mockReturnValue({
+      settings: true,
+      crm: true,
+      monitoring: true,
+      hardwareBridge: true,
+      printerAdmin: true,
+    });
     useHardwareBridgeStore.getState().reset();
+  });
+
+  it("does not initialize bridge monitoring when unauthorized", async () => {
+    mockCapabilities.mockReturnValue({
+      settings: false,
+      crm: false,
+      monitoring: true,
+      hardwareBridge: false,
+      printerAdmin: false,
+    });
+    await useHardwareBridgeStore.getState().startMonitoring(7, 1000);
+    expect(mockAdapterConnect).not.toHaveBeenCalled();
+    expect(mockListDevices).not.toHaveBeenCalled();
   });
 
   it("keeps polling fallback active when websocket is unavailable", async () => {

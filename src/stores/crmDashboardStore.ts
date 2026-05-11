@@ -3,6 +3,8 @@ import { mapCrmDashboardMetrics } from "@/domain/crmAdapters";
 import type { AsyncState, CrmDashboardMetrics } from "@/domain/crmTypes";
 import { getRealtimeAdapter, type RealtimeConnectionState, type RealtimeEnvelope } from "@/domain/realtimeAdapter";
 import { getCrmDashboardSnapshot } from "@/lib/api-integration/crmEndpoints";
+import { ApiHttpError } from "@/lib/api-integration/client";
+import { selectUserCapabilities } from "@/domain/accessControl";
 
 const EMPTY_METRICS: CrmDashboardMetrics = {
   outletId: 0,
@@ -15,6 +17,7 @@ const EMPTY_METRICS: CrmDashboardMetrics = {
   pendingGiftCardSettlements: 0,
   updatedAt: null,
 };
+const REALTIME_REFRESH_COOLDOWN_MS = 5000;
 
 function extractRealtimeSeq(event: RealtimeEnvelope): number {
   return event.sequence ?? event.seq ?? event.version ?? 0;
@@ -31,6 +34,8 @@ type CrmDashboardStore = {
   realtimeState: RealtimeConnectionState;
   realtimeTransport: "polling" | "websocket";
   lastRealtimeSeq: number;
+  lastRealtimeRefreshAt: number;
+  realtimeRefreshInFlight: boolean;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
   refreshForOutlet: (outletId: number | null) => Promise<void>;
@@ -52,10 +57,13 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
   realtimeState: "idle",
   realtimeTransport: "polling",
   lastRealtimeSeq: 0,
+  lastRealtimeRefreshAt: 0,
+  realtimeRefreshInFlight: false,
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
   refreshForOutlet: async (outletId) => {
+    if (!selectUserCapabilities().crm) return;
     if (!outletId || outletId < 1) {
       set({ outletId: null, metrics: EMPTY_METRICS, lifecycle: "success", error: null });
       return;
@@ -70,6 +78,10 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
         lastSyncAt: new Date().toISOString(),
       });
     } catch (error) {
+      if (error instanceof ApiHttpError && error.status === 403) {
+        set({ lifecycle: "success" });
+        return;
+      }
       set({
         lifecycle: "error",
         error: error instanceof Error ? error.message : "Failed to fetch CRM dashboard",
@@ -78,6 +90,7 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
   },
 
   startRealtime: () => {
+    if (!selectUserCapabilities().crm) return;
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("crm-dashboard");
     const connectionUnsubscribe = adapter.onConnectionStateChange((state) => {
@@ -95,6 +108,9 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
         if (incomingSeq > 0 && incomingSeq <= get().lastRealtimeSeq) return;
         const eventOutletId = Number(payload.outletId ?? payload.outlet_id ?? get().outletId);
         if (eventOutletId !== get().outletId) return;
+        const state = get();
+        const now = Date.now();
+        const isCooldown = now - state.lastRealtimeRefreshAt < REALTIME_REFRESH_COOLDOWN_MS;
         set((state) => ({
           metrics: {
             ...state.metrics,
@@ -103,6 +119,11 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
           lastSyncAt: new Date().toISOString(),
         }));
+        if (state.realtimeRefreshInFlight || isCooldown) return;
+        set({ realtimeRefreshInFlight: true, lastRealtimeRefreshAt: now });
+        void get().refreshForOutlet(eventOutletId).finally(() => {
+          set({ realtimeRefreshInFlight: false });
+        });
       },
     });
     set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
@@ -118,10 +139,13 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
       realtimeState: "disconnected",
       realtimeTransport: "polling",
       lastRealtimeSeq: 0,
+      lastRealtimeRefreshAt: 0,
+      realtimeRefreshInFlight: false,
     });
   },
 
   startPollingFallback: (intervalMs = 15000) => {
+    if (!selectUserCapabilities().crm) return;
     if (get().pollTimer) return;
     const timer = setInterval(() => {
       if (get().realtimeState === "connected") return;
@@ -144,6 +168,8 @@ export const useCrmDashboardStore = create<CrmDashboardStore>((set, get) => ({
       lifecycle: "idle",
       error: null,
       lastSyncAt: null,
+      lastRealtimeRefreshAt: 0,
+      realtimeRefreshInFlight: false,
     });
   },
 }));

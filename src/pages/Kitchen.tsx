@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Clock, Check, ChefHat, AlertTriangle, XCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { useKitchenStore } from "@/stores/kitchenStore";
+import { KitchenTicketBoardSkeleton } from "@/components/skeletons/list/KitchenTicketBoardSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
 import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
 import type { KitchenTicket, KitchenTicketStatus } from "@/domain/kitchenAdapters";
 import type { KitchenTicketStatus as ApiKitchenTicketStatus } from "@/lib/api-integration/kitchenEndpoints";
+import { useKitchenStore } from "@/stores/kitchenStore";
 
 function elapsed(date: Date) {
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -108,7 +110,6 @@ export default function Kitchen() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {kitchenOrders.filter((o) => o.status !== "ready").length} active orders
-            {isLoading ? " · Loading..." : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -120,7 +121,10 @@ export default function Kitchen() {
         </div>
       </div>
 
-      {kitchenOrders.length === 0 ? (
+      <SkeletonBusyRegion busy={isLoading && kitchenOrders.length === 0} className="min-h-[240px]" label="Loading kitchen tickets">
+        {isLoading && kitchenOrders.length === 0 ? (
+          <KitchenTicketBoardSkeleton columns={8} />
+        ) : kitchenOrders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-32 text-muted-foreground">
           <ChefHat className="h-16 w-16 mb-4 opacity-20" />
           <p className="text-lg font-medium">No active orders</p>
@@ -196,6 +200,7 @@ export default function Kitchen() {
             })}
         </div>
       )}
+      </SkeletonBusyRegion>
     </div>
   );
 }

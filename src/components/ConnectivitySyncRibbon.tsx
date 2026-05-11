@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { CloudOff, Loader2, Radio, WifiOff } from "lucide-react";
+import { CloudOff, Radio, WifiOff } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { useOperationalDashboardStore } from "@/stores/operationalDashboardStore";
 
@@ -52,9 +53,10 @@ export function ConnectivitySyncRibbon({ outletId, enableReplay = true }: Props)
             </span>
           )}
           {syncPhase === "syncing" && (
-            <span className="inline-flex items-center gap-1 text-primary">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Syncing…
+            <span className="inline-flex items-center gap-1.5 text-primary" aria-busy>
+              <Skeleton className="h-3 w-3 rounded-full shrink-0" />
+              <Skeleton className="h-3 w-16 rounded-md" />
+              <span className="sr-only">Syncing</span>
             </span>
           )}
           {lastConflict > 0 && (

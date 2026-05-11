@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Search, Inbox, Plus } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
+import { SkeletonTableBodyRows } from "@/components/skeletons/table/SkeletonTableBodyRows";
 
 export type Column<T> = {
   key: string;
@@ -96,7 +97,7 @@ export function DataTable<T>({
   };
 
   return (
-    <div className="bg-card rounded-2xl border border-border/50 pos-shadow-md overflow-hidden">
+    <SkeletonBusyRegion busy={!!loading} className="bg-card rounded-2xl border border-border/50 pos-shadow-md overflow-hidden" label="Loading table">
       {(searchable || filterToolbar || rightToolbar) && (
         <div className="p-4 flex flex-wrap items-center gap-3 border-b border-border/50">
           {searchable && (
@@ -115,7 +116,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="overflow-auto max-h-[calc(100vh-280px)]">
+      <div className={cn("overflow-auto max-h-[calc(100vh-280px)]", loading && "min-h-[280px]")}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
             <tr className="border-b">
@@ -146,13 +147,7 @@ export function DataTable<T>({
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <tr key={`sk-${i}`} className="border-b border-border/50">
-                  {columns.map((c) => (
-                    <td key={c.key} className="p-4"><Skeleton className="h-4 w-3/4" /></td>
-                  ))}
-                </tr>
-              ))
+              <SkeletonTableBodyRows columnCount={columns.length} rowCount={6} />
             ) : paginated.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="py-16">
@@ -223,6 +218,6 @@ export function DataTable<T>({
           </div>
         </div>
       )}
-    </div>
+    </SkeletonBusyRegion>
   );
 }

@@ -64,6 +64,8 @@ describe("QROrdersList store boundary", () => {
           },
         ],
         isLoading: false,
+        initialLoading: false,
+        backgroundRefreshing: false,
         isSubmitting: false,
         error: null,
         lastSyncAt: null,

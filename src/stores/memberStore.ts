@@ -39,7 +39,9 @@ function mapMember(row: MemberApiRow): Member {
 interface MemberStore {
   members: Member[];
   loading: boolean;
-  fetchMembers: () => Promise<void>;
+  lastFetchedAt: number;
+  inFlightFetch: Promise<void> | null;
+  fetchMembers: (options?: { force?: boolean }) => Promise<void>;
   addMember: (
     m: Omit<Member, "id" | "createdAt" | "points"> & { points?: number },
   ) => Promise<void>;
@@ -52,16 +54,28 @@ interface MemberStore {
 export const useMemberStore = create<MemberStore>((set, get) => ({
   members: [],
   loading: false,
+  lastFetchedAt: 0,
+  inFlightFetch: null,
 
-  fetchMembers: async () => {
+  fetchMembers: async (options) => {
+    const state = get();
+    const now = Date.now();
+    const isFresh = now - state.lastFetchedAt < 60_000 && state.members.length > 0;
+    if (!options?.force && isFresh) return;
+    if (state.inFlightFetch) return state.inFlightFetch;
+
+    const job = (async () => {
     set({ loading: true });
     try {
       const rows = await listMembers();
-      set({ members: rows.map(mapMember), loading: false });
+      set({ members: rows.map(mapMember), loading: false, lastFetchedAt: Date.now(), inFlightFetch: null });
     } catch (e) {
-      set({ loading: false });
+      set({ loading: false, inFlightFetch: null });
       throw e;
     }
+    })();
+    set({ inFlightFetch: job });
+    return job;
   },
 
   addMember: async (m) => {
@@ -74,7 +88,7 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
       points: m.points ?? 0,
       status: m.status,
     });
-    await get().fetchMembers();
+    await get().fetchMembers({ force: true });
   },
 
   updateMember: async (id, m) => {
@@ -88,23 +102,23 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
     if (m.status !== undefined) payload.status = m.status;
 
     await apiUpdateMember(id, payload);
-    await get().fetchMembers();
+    await get().fetchMembers({ force: true });
   },
 
   toggleStatus: async (id) => {
     await apiToggleMemberStatus(id);
-    await get().fetchMembers();
+    await get().fetchMembers({ force: true });
   },
 
   removeMember: async (id) => {
     await deleteMember(id);
-    await get().fetchMembers();
+    await get().fetchMembers({ force: true });
   },
 
   addPoints: async (id, points) => {
     const m = get().members.find((x) => x.id === id);
     if (!m) return;
     await apiUpdateMember(id, { points: m.points + points });
-    await get().fetchMembers();
+    await get().fetchMembers({ force: true });
   },
 }));

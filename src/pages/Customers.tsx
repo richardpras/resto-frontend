@@ -4,6 +4,8 @@ import { useCustomerStore } from "@/stores/customerStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { CustomerRewardPanel } from "@/components/crm/CustomerRewardPanel";
+import { CustomerTableRowsSkeleton } from "@/components/skeletons/list/CustomerTableRowsSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 export default function Customers() {
   const navigate = useNavigate();
@@ -30,6 +32,8 @@ export default function Customers() {
     );
   }, [customers, keyword]);
 
+  const showListSkeleton = lifecycle === "loading" && customers.length === 0;
+
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl">
       <div>
@@ -53,26 +57,32 @@ export default function Customers() {
             <span>Points</span>
             <span>Gift Card</span>
           </div>
-          <div className="space-y-1">
-            {filtered.map((customer) => (
-              <button
-                key={customer.id}
-                onClick={() => navigate(`/customers/${customer.id}`)}
-                className="w-full grid grid-cols-5 gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted/40"
-              >
-                <span className="truncate">{customer.code}</span>
-                <span className="truncate">{customer.name}</span>
-                <span className="truncate">{customer.phone ?? "-"}</span>
-                <span>{pointsBalanceByCustomer[customer.id] ?? customer.pointsBalance}</span>
-                <span>Rp {customer.giftCardBalance.toLocaleString("id-ID")}</span>
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-sm text-muted-foreground py-6 text-center">
-                {lifecycle === "loading" ? "Loading customers..." : "No customer found for the current filter."}
-              </p>
+          <SkeletonBusyRegion busy={showListSkeleton} label="Loading customers" className="min-h-[200px]">
+            {showListSkeleton ? (
+              <CustomerTableRowsSkeleton />
+            ) : (
+              <div className="space-y-1">
+                {filtered.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => navigate(`/customers/${customer.id}`)}
+                    className="w-full grid grid-cols-5 gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted/40"
+                  >
+                    <span className="truncate">{customer.code}</span>
+                    <span className="truncate">{customer.name}</span>
+                    <span className="truncate">{customer.phone ?? "-"}</span>
+                    <span>{pointsBalanceByCustomer[customer.id] ?? customer.pointsBalance}</span>
+                    <span>Rp {customer.giftCardBalance.toLocaleString("id-ID")}</span>
+                  </button>
+                ))}
+                {filtered.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    {lifecycle === "loading" ? "Loading customers..." : "No customer found for the current filter."}
+                  </p>
+                )}
+              </div>
             )}
-          </div>
+          </SkeletonBusyRegion>
           {search && <p className="mt-3 text-xs text-muted-foreground">Store search keyword: {search}</p>}
         </div>
         <CustomerRewardPanel customer={filtered[0] ?? null} pointsBalance={filtered[0] ? (pointsBalanceByCustomer[filtered[0].id] ?? filtered[0].pointsBalance) : 0} />

@@ -117,12 +117,9 @@ export default function Suppliers() {
         </div>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading suppliers…</p>
-      ) : null}
-
       <DataTable
         data={filtered} columns={columns} rowKey={(r) => r.id}
+        loading={loading}
         searchPlaceholder="Search supplier..."
         searchKeys={["name", "contact", "email", "address"]}
         emptyMessage="No suppliers yet"

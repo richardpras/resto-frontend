@@ -25,11 +25,39 @@ describe("api-integration client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/protected`,
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer test-token-xyz",
-        }),
+        headers: expect.any(Headers),
       }),
     );
+    const requestHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(requestHeaders.get("Authorization")).toBe("Bearer test-token-xyz");
+  });
+
+  it("keeps Authorization header when custom request headers are provided", async () => {
+    setApiAccessToken("test-token-custom-123");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest("/qr-orders", {
+      headers: {
+        "X-Client-Scope": "qr-order-store",
+        "X-Client-Action": "fetch-requests",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE_URL}/qr-orders`,
+      expect.objectContaining({
+        headers: expect.any(Headers),
+      }),
+    );
+    const requestHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(requestHeaders.get("Authorization")).toBe("Bearer test-token-custom-123");
+    expect(requestHeaders.get("X-Client-Scope")).toBe("qr-order-store");
+    expect(requestHeaders.get("X-Client-Action")).toBe("fetch-requests");
   });
 
   it("returns parsed JSON when response is ok", async () => {
@@ -46,9 +74,11 @@ describe("api-integration client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/demo`,
       expect.objectContaining({
-        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        headers: expect.any(Headers),
       }),
     );
+    const requestHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(requestHeaders.get("Content-Type")).toBe("application/json");
   });
 
   it("throws ApiHttpError with status and Laravel-style message when response is not ok", async () => {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useSettingsStore, Outlet } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
+import { getApiAccessToken } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 const empty: Outlet = {
@@ -25,11 +27,17 @@ const empty: Outlet = {
 
 export default function OutletsSettings() {
   const outlets = useSettingsStore((s) => s.outlets);
+  const outletsLoading = useSettingsStore((s) => s.outletsLoading);
+  const outletsError = useSettingsStore((s) => s.outletsError);
   const outletsSubmitting = useSettingsStore((s) => s.outletsSubmitting);
   const saveOutlet = useSettingsStore((s) => s.saveOutlet);
   const deleteOutletById = useSettingsStore((s) => s.deleteOutletById);
   const canManageOutletSettings = useAuthStore((s) => s.canManageOutletSettings);
   const canCreateOutlet = canManageOutletSettings();
+  const hasToken = Boolean(getApiAccessToken());
+  const showEmptyScopeHint =
+    hasToken && !outletsLoading && !outletsError && outlets.length === 0;
+  const showSignInHint = !hasToken && !outletsLoading && outlets.length === 0;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Outlet>(empty);
 
@@ -75,6 +83,38 @@ export default function OutletsSettings() {
             </Button>
           )}
         </div>
+        {outletsLoading && (
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading outlets from server…
+          </p>
+        )}
+        {outletsError && (
+          <Alert variant="destructive">
+            <AlertTitle>Could not load outlets</AlertTitle>
+            <AlertDescription>{outletsError}</AlertDescription>
+          </Alert>
+        )}
+        {showSignInHint && (
+          <Alert>
+            <AlertTitle>Not signed in to the API</AlertTitle>
+            <AlertDescription>
+              Outlets are loaded from the server after authentication. Use <strong>Sign in</strong> or set{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">VITE_API_ACCESS_TOKEN</code> for local dev, then use
+              &quot;Reload from server&quot; on Settings.
+            </AlertDescription>
+          </Alert>
+        )}
+        {showEmptyScopeHint && (
+          <Alert>
+            <AlertTitle>No outlets in your access scope</AlertTitle>
+            <AlertDescription>
+              Rows in the <code className="rounded bg-muted px-1 py-0.5 text-xs">outlets</code> table only appear here if
+              this user is linked in <code className="rounded bg-muted px-1 py-0.5 text-xs">user_outlets</code>, or the
+              role has the <code className="rounded bg-muted px-1 py-0.5 text-xs">outlets.view_all</code> permission.
+              Ask an administrator to assign outlets (Users &amp; Permissions) or grant view-all.
+            </AlertDescription>
+          </Alert>
+        )}
         <Table>
           <TableHeader>
             <TableRow>

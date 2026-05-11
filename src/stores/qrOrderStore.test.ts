@@ -44,6 +44,9 @@ function resetState() {
   useQrOrderStore.setState({
     requests: [],
     isLoading: false,
+    initialLoading: false,
+    backgroundRefreshing: false,
+    hasLoadedOnce: false,
     isSubmitting: false,
     error: null,
     pagination: null,
@@ -110,5 +113,35 @@ describe("qrOrderStore", () => {
     );
     await useQrOrderStore.getState().rejectRequest("11", "Out of stock");
     expect(useQrOrderStore.getState().requests.some((r) => r.id === "11" && r.status === "rejected")).toBe(true);
+  });
+
+  it("does not toggle full loading during background refresh after initial sync", async () => {
+    let resolveFirst: ((value: { requests: ReturnType<typeof buildRequest>[]; meta: { currentPage: number; perPage: number; total: number; lastPage: number } }) => void) | null = null;
+    mockListQrOrdersWithMeta
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve as typeof resolveFirst;
+          }),
+      )
+      .mockResolvedValueOnce({
+        requests: [buildRequest({ id: 22 })],
+        meta: { currentPage: 1, perPage: 20, total: 1, lastPage: 1 },
+      });
+
+    const first = useQrOrderStore.getState().fetchRequests({ outletId: 2, perPage: 20 });
+    expect(useQrOrderStore.getState().isLoading).toBe(true);
+    resolveFirst?.({
+      requests: [buildRequest({ id: 21 })],
+      meta: { currentPage: 1, perPage: 20, total: 1, lastPage: 1 },
+    });
+    await first;
+
+    const second = useQrOrderStore.getState().fetchRequests(
+      { outletId: 2, perPage: 20 },
+      { mode: "background" },
+    );
+    expect(useQrOrderStore.getState().isLoading).toBe(false);
+    await second;
   });
 });

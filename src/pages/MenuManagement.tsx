@@ -1,9 +1,12 @@
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Trash2, ChefHat, Settings2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
+import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -36,9 +39,11 @@ type MenuItemOutletForm = {
 };
 
 export default function MenuManagement() {
+  const queryClient = useQueryClient();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<MenuItemApi[]>([]);
+  const [allOutletItems, setAllOutletItems] = useState<MenuItemApi[]>([]);
   const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
   const [outlets, setOutlets] = useState<OutletRow[]>([]);
   const [editingRecipe, setEditingRecipe] = useState<EditingRecipe | null>(null);
@@ -51,6 +56,7 @@ export default function MenuManagement() {
   const [createErrors, setCreateErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingCreate, setSavingCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const latestRequestIdRef = useRef(0);
 
   const [blockOnInsufficient, setBlockOnInsufficient] = useState(false);
 
@@ -70,6 +76,8 @@ export default function MenuManagement() {
   };
 
   const loadCatalog = useCallback(async () => {
+    latestRequestIdRef.current += 1;
+    const requestId = latestRequestIdRef.current;
     try {
       setLoading(true);
       const menuParams = {
@@ -80,12 +88,17 @@ export default function MenuManagement() {
         tenantId: TENANT_ID,
         ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
       };
-      const [menuItems, ingredientsData, outletsData] = await Promise.all([
+      const [menuItems, menuItemsAllOutlets, ingredientsData, outletsData] = await Promise.all([
         listMenuItems(menuParams),
+        listMenuItems({ tenantId: TENANT_ID, perPage: 500 }),
         listIngredients(ingredientParams),
         listOutlets(),
       ]);
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
       setItems(menuItems);
+      setAllOutletItems(menuItemsAllOutlets);
       setIngredients(ingredientsData);
       setOutlets(outletsData);
     } catch (error) {
@@ -106,6 +119,8 @@ export default function MenuManagement() {
     try {
       const updated = await updateMenuItem(id, { available: !current.available });
       setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      setAllOutletItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update menu");
     }
@@ -156,6 +171,8 @@ export default function MenuManagement() {
         recipes: valid,
       });
       setItems((prev) => prev.map((item) => (item.id === editingRecipe.menuItemId ? updated : item)));
+      setAllOutletItems((prev) => prev.map((item) => (item.id === editingRecipe.menuItemId ? updated : item)));
+      await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
       toast.success("Recipe saved");
       setEditingRecipe(null);
     } catch (error) {
@@ -169,13 +186,14 @@ export default function MenuManagement() {
   };
 
   const openItemEditor = (item: MenuItemApi) => {
+    const sourceItem = allOutletItems.find((row) => row.id === item.id) ?? item;
     setEditingItem(item);
     setEditForm({
-      name: item.name,
-      category: item.category,
-      price: String(item.price),
-      emoji: item.emoji,
-      menuItemOutlets: toOutletForms(outlets, item.menuItemOutlets),
+      name: sourceItem.name,
+      category: sourceItem.category,
+      price: String(sourceItem.price),
+      emoji: sourceItem.emoji,
+      menuItemOutlets: toOutletForms(outlets, sourceItem.menuItemOutlets),
     });
     setEditErrors({});
   };
@@ -246,6 +264,8 @@ export default function MenuManagement() {
         })),
       });
       setItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
+      setAllOutletItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
+      await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
       toast.success("Menu item updated");
       setEditingItem(null);
     } catch (error) {
@@ -276,6 +296,8 @@ export default function MenuManagement() {
         })),
       });
       setItems((prev) => [created, ...prev]);
+      setAllOutletItems((prev) => [created, ...prev]);
+      await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
       toast.success("Menu item created");
       setCreatingItem(false);
     } catch (error) {
@@ -324,11 +346,10 @@ export default function MenuManagement() {
         />
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm">Loading menu...</p>
-        </div>
-      ) : (
+      <SkeletonBusyRegion busy={loading} className="min-h-[320px]" label="Loading menu">
+        {loading ? (
+          <MenuManagementTableSkeleton />
+        ) : (
       <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -396,7 +417,8 @@ export default function MenuManagement() {
           </tbody>
         </table>
       </div>
-      )}
+        )}
+      </SkeletonBusyRegion>
 
       {/* Recipe Editor Modal */}
       <AnimatePresence>

@@ -26,15 +26,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, locked, lock } = useAuthStore();
   const location = useLocation();
   const outlets = useSettingsStore((s) => s.outlets);
-  const refreshSettings = useSettingsStore((s) => s.refreshFromApi);
+  const ensureSettingsSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const hydrateFromApiOutlets = useOutletStore((s) => s.hydrateFromApiOutlets);
   const setActiveOutlet = useOutletStore((s) => s.setActiveOutlet);
 
   useEffect(() => {
     if (!user || !getApiAccessToken()) return;
-    void refreshSettings().catch(() => {});
-  }, [user, refreshSettings]);
+    if (outlets.length > 0) return;
+    // Layout only needs outlet options for the header selector.
+    void ensureSettingsSectionsLoaded(["outlets"]).catch(() => {});
+  }, [user, outlets.length, ensureSettingsSectionsLoaded]);
 
   useEffect(() => {
     if (!user || outlets.length === 0) return;
@@ -47,8 +49,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, user?.pinSet, locked]);
 
-  // No chrome on login page
-  if (location.pathname === "/login" || location.pathname.startsWith("/qr-order")) {
+  // No chrome on login page and standalone public QR menu route only.
+  // NOTE: use exact-match (with optional trailing slash) so "/qr-orders" stays in admin shell.
+  const isStandalonePublicQr = /^\/qr-order\/?$/.test(location.pathname);
+  if (location.pathname === "/login" || isStandalonePublicQr) {
     return <>{children}</>;
   }
 
