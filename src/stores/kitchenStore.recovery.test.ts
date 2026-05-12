@@ -38,6 +38,7 @@ function resetState() {
     tickets: [],
     isLoading: false,
     isSubmitting: false,
+    recoverySubmitting: false,
     error: null,
     pagination: null,
     lastSyncAt: null,
@@ -47,6 +48,13 @@ function resetState() {
     activeRequestId: 0,
     activeAbortController: null,
     lastRequestMeta: null,
+    realtimeConnected: false,
+    realtimeState: "idle",
+    realtimeTransport: "polling",
+    lastRealtimeMeta: null,
+    lastRealtimeSeq: 0,
+    realtimeUnsubscribe: null,
+    realtimeConnectionUnsubscribe: null,
   });
 }
 

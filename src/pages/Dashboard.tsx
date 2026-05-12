@@ -26,13 +26,10 @@ export default function Dashboard() {
   const realtimeTransport = useOperationalDashboardStore((s) => s.realtimeTransport);
   const initialLoading = useOperationalDashboardStore((s) => s.initialLoading);
   const switchingOutlet = useOperationalDashboardStore((s) => s.switchingOutlet);
-  const backgroundRefreshing = useOperationalDashboardStore((s) => s.backgroundRefreshing);
-  const realtimeRefreshing = useOperationalDashboardStore((s) => s.realtimeRefreshing);
   const lastSyncAt = useOperationalDashboardStore((s) => s.lastSuccessfulSyncAt);
   const summary = useDashboardSummaryStore((s) => s.summary);
   const summaryInitialLoading = useDashboardSummaryStore((s) => s.initialLoading);
   const summarySwitchingOutlet = useDashboardSummaryStore((s) => s.switchingOutlet);
-  const summaryBackgroundRefreshing = useDashboardSummaryStore((s) => s.backgroundRefreshing);
   const summaryLastSyncAt = useDashboardSummaryStore((s) => s.lastSuccessfulSyncAt);
   const summaryHasLoadedOnce = useDashboardSummaryStore((s) => s.hasLoadedOnce);
   const refreshSummary = useDashboardSummaryStore((s) => s.refresh);
@@ -83,9 +80,7 @@ export default function Dashboard() {
               <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <s.icon className="h-5 w-5 text-primary" />
               </div>
-              <span className="text-xs font-medium text-muted-foreground">
-                {summaryBackgroundRefreshing || backgroundRefreshing || realtimeRefreshing ? "Syncing..." : "Live"}
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">Live</span>
             </div>
             <p className="text-lg md:text-xl font-bold text-foreground">{showDashboardSkeleton ? "..." : s.value}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
@@ -104,7 +99,6 @@ export default function Dashboard() {
               <>
                 Transport: {realtimeTransport}
                 {syncText ? ` • Updated ${new Date(syncText).toLocaleTimeString()}` : ""}
-                {backgroundRefreshing || summaryBackgroundRefreshing ? " • Background refresh" : ""}
               </>
             )}
           </div>

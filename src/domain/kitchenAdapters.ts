@@ -7,6 +7,8 @@ export type KitchenTicketItem = {
   qty: number;
   notes: string;
   status: string;
+  recoveryStatus?: string | null;
+  recoveryReason?: string | null;
 };
 
 export type KitchenTicket = {
@@ -48,6 +50,8 @@ export function mapKitchenTicketApiToStore(ticket: KitchenTicketApi): KitchenTic
       qty: item.qty,
       notes: item.notes ?? "",
       status: item.status,
+      recoveryStatus: item.recoveryStatus ?? null,
+      recoveryReason: item.recoveryReason ?? null,
     })),
     createdAt: toDate(ticket.createdAt) ?? new Date(),
     updatedAt: toDate(ticket.updatedAt) ?? new Date(),

@@ -11,6 +11,8 @@ import {
   getOrder as apiGetOrder,
   listOrderPayments as apiListOrderPayments,
   listOrdersWithMeta as apiListOrdersWithMeta,
+  reportOrderItemRecovery as apiReportOrderItemRecovery,
+  approveOrderItemRecovery as apiApproveOrderItemRecovery,
   updateOrderSplit as apiUpdateOrderSplit,
   updateOrder as apiUpdateOrder,
   type CreateOrderPayload,
@@ -27,6 +29,8 @@ import {
   type RealtimeEnvelope,
 } from "@/domain/realtimeAdapter";
 import { useInventoryStore } from "./inventoryStore";
+import { useOrderPaymentHistoryStore } from "./orderPaymentHistoryStore";
+import { useAuthStore } from "./authStore";
 
 export type OrderItem = {
   orderItemId?: string;
@@ -36,6 +40,9 @@ export type OrderItem = {
   qty: number;
   emoji: string;
   notes: string;
+  recoveryStatus?: string | null;
+  recoveryReason?: string | null;
+  recoveryApprovedAt?: string | null;
 };
 
 export type PaymentEntry = {
@@ -142,6 +149,9 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
       qty: it.qty,
       emoji: it.emoji ?? "",
       notes: typeof it.notes === "string" ? it.notes : "",
+      recoveryStatus: it.recoveryStatus ?? null,
+      recoveryReason: it.recoveryReason ?? null,
+      recoveryApprovedAt: it.recoveryApprovedAt ?? null,
     })),
     subtotal: o.subtotal,
     tax: o.tax,
@@ -180,6 +190,7 @@ type OrderStore = {
   // Async lifecycle state
   isLoading: boolean;
   isSubmitting: boolean;
+  recoverySubmitting: boolean;
   error: string | null;
   pagination: ListOrdersMeta | null;
   lastSyncAt: string | null;
@@ -211,7 +222,18 @@ type OrderStore = {
 
   // Phase 2 async actions — components call these instead of api-integration directly
   fetchOrders: (params?: ListOrdersParams) => Promise<Order[]>;
-  fetchOrder: (id: string) => Promise<Order>;
+  fetchOrder: (id: string, opts?: { quiet?: boolean }) => Promise<Order>;
+  reportOrderItemRecoveryRemote: (
+    orderId: string,
+    orderItemId: string,
+    targetStatus: string,
+    reason?: string | null,
+  ) => Promise<void>;
+  approveOrderItemRecoveryRemote: (
+    orderId: string,
+    orderItemId: string,
+    body: { resolution: string; notes?: string | null },
+  ) => Promise<void>;
   createOrderRemote: (payload: CreateOrderPayload) => Promise<Order>;
   updateOrderRemote: (id: string, payload: UpdateOrderPayload) => Promise<Order>;
   addOrderPaymentsRemote: (
@@ -269,6 +291,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   tables: [],
   isLoading: false,
   isSubmitting: false,
+  recoverySubmitting: false,
   error: null,
   pagination: null,
   lastSyncAt: null,
@@ -391,21 +414,30 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     }
   },
 
-  fetchOrder: async (id) => {
+  fetchOrder: async (id, opts) => {
+    const quiet = opts?.quiet === true;
     const requestId = get().activeMutationRequestId + 1;
     const controller = new AbortController();
     const requestMeta: RequestObservabilityMetadata = {
       scope: "order-store",
-      action: "fetch-order",
+      action: quiet ? "fetch-order-quiet" : "fetch-order",
       requestId,
     };
-    set({
-      isSubmitting: true,
-      error: null,
-      activeMutationRequestId: requestId,
-      activeMutationAbortController: controller,
-      lastRequestMeta: requestMeta,
-    });
+    if (!quiet) {
+      set({
+        isSubmitting: true,
+        error: null,
+        activeMutationRequestId: requestId,
+        activeMutationAbortController: controller,
+        lastRequestMeta: requestMeta,
+      });
+    } else {
+      set({
+        activeMutationRequestId: requestId,
+        activeMutationAbortController: controller,
+        lastRequestMeta: requestMeta,
+      });
+    }
     try {
       const apiOrder = await apiGetOrder(id, {
         signal: controller.signal,
@@ -417,6 +449,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
       }));
+      void useOrderPaymentHistoryStore.getState().onOrderUpstreamSnapshot(mapped.outletId ?? null, String(mapped.id));
       return mapped;
     } catch (error) {
       const message = mapApiError(error);
@@ -424,8 +457,60 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       throw error;
     } finally {
       if (get().activeMutationRequestId === requestId) {
-        set({ isSubmitting: false, activeMutationAbortController: null });
+        set({
+          ...(quiet ? {} : { isSubmitting: false }),
+          activeMutationAbortController: null,
+        });
       }
+    }
+  },
+
+  reportOrderItemRecoveryRemote: async (orderId, orderItemId, targetStatus, reason) => {
+    useAuthStore.getState().syncApiBearerForRequests();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "report-order-item-recovery",
+      requestId: get().activeMutationRequestId + 1,
+      recovery: true,
+    };
+    set({ recoverySubmitting: true, error: null, lastRequestMeta: requestMeta });
+    try {
+      await apiReportOrderItemRecovery(
+        orderId,
+        orderItemId,
+        { targetStatus, reason: reason ?? null },
+        { headers: createObservabilityHeaders(requestMeta) },
+      );
+      await get().fetchOrder(orderId, { quiet: true });
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ recoverySubmitting: false });
+    }
+  },
+
+  approveOrderItemRecoveryRemote: async (orderId, orderItemId, body) => {
+    useAuthStore.getState().syncApiBearerForRequests();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "order-store",
+      action: "approve-order-item-recovery",
+      requestId: get().activeMutationRequestId + 1,
+      recovery: true,
+    };
+    set({ recoverySubmitting: true, error: null, lastRequestMeta: requestMeta });
+    try {
+      await apiApproveOrderItemRecovery(orderId, orderItemId, body, {
+        headers: createObservabilityHeaders(requestMeta),
+      });
+      await get().fetchOrder(orderId, { quiet: true });
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ recoverySubmitting: false });
     }
   },
 
@@ -536,6 +621,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
       }));
+      void useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(mapped.outletId ?? null, String(mapped.id));
       void get().revalidateOrders();
       return mapped;
     } catch (error) {
@@ -776,6 +862,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     set({
       isLoading: false,
       isSubmitting: false,
+      recoverySubmitting: false,
       error: null,
       pagination: null,
       lastSyncAt: null,

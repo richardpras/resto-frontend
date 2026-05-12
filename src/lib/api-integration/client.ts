@@ -13,8 +13,13 @@ function getPersistedAccessToken(): string | undefined {
   try {
     const raw = window.localStorage.getItem("resto-auth");
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { state?: { accessToken?: unknown } } | null;
-    const token = parsed?.state?.accessToken;
+    const parsed = JSON.parse(raw) as {
+      state?: { accessToken?: unknown };
+      accessToken?: unknown;
+    } | null;
+    const fromState = parsed?.state?.accessToken;
+    const fromRoot = parsed?.accessToken;
+    const token = typeof fromState === "string" ? fromState : typeof fromRoot === "string" ? fromRoot : undefined;
     return typeof token === "string" && token.trim() !== "" ? token : undefined;
   } catch {
     return undefined;
@@ -73,6 +78,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const mergedHeaders = new Headers(init?.headers ?? {});
   if (!mergedHeaders.has("Content-Type")) {
     mergedHeaders.set("Content-Type", "application/json");
+  }
+  if (!mergedHeaders.has("Accept")) {
+    mergedHeaders.set("Accept", "application/json");
   }
   if (token && !mergedHeaders.has("Authorization")) {
     mergedHeaders.set("Authorization", `Bearer ${token}`);

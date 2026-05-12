@@ -75,7 +75,10 @@ describe("kitchenStore contracts", () => {
     await useKitchenStore.getState().fetchTickets({ outletId: 2, perPage: 20 });
 
     const state = useKitchenStore.getState();
-    expect(mockListKitchenTickets).toHaveBeenCalledWith({ outletId: 2, perPage: 20 });
+    expect(mockListKitchenTickets).toHaveBeenCalledWith(
+      { outletId: 2, perPage: 20 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(state.tickets[0].ticketNo).toBe("KT-001");
     expect(state.tickets[0].items[0].notes).toBe("No chili");
   });
@@ -92,7 +95,10 @@ describe("kitchenStore contracts", () => {
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(mockListKitchenTickets).toHaveBeenCalledTimes(2);
-    expect(mockListKitchenTickets).toHaveBeenLastCalledWith({ outletId: 3, perPage: 200 });
+    expect(mockListKitchenTickets).toHaveBeenLastCalledWith(
+      { outletId: 3, perPage: 200 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
 
     useKitchenStore.getState().stopPolling();
   });
@@ -107,7 +113,12 @@ describe("kitchenStore contracts", () => {
     await useKitchenStore.getState().fetchTickets({ outletId: 2, perPage: 200 });
     await useKitchenStore.getState().updateTicketStatus("1", "ready");
 
-    expect(mockUpdateKitchenTicketStatus).toHaveBeenCalledWith("1", "ready");
+    expect(mockUpdateKitchenTicketStatus).toHaveBeenCalledWith(
+      "1",
+      "ready",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(mockListKitchenTickets).toHaveBeenCalledTimes(2);
+    expect(useKitchenStore.getState().isSubmitting).toBe(false);
   });
 });

@@ -1,14 +1,24 @@
 import { useState, useEffect } from "react";
-import { Clock, Check, ChefHat, AlertTriangle, XCircle } from "lucide-react";
+import { Clock, Check, ChefHat, AlertTriangle, XCircle, MoreVertical } from "lucide-react";
 import { motion } from "framer-motion";
 import { KitchenTicketBoardSkeleton } from "@/components/skeletons/list/KitchenTicketBoardSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
 import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
-import type { KitchenTicket, KitchenTicketStatus } from "@/domain/kitchenAdapters";
+import type { KitchenTicketStatus } from "@/domain/kitchenAdapters";
 import type { KitchenTicketStatus as ApiKitchenTicketStatus } from "@/lib/api-integration/kitchenEndpoints";
 import { useKitchenStore } from "@/stores/kitchenStore";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { ORDER_RECOVERY_PRESETS } from "@/domain/orderRecoveryPresets";
 
 function elapsed(date: Date) {
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -32,18 +42,33 @@ const statusLabels: Record<KitchenTicketStatus, string> = {
   cancelled: "Cancelled",
 };
 
+const KITCHEN_RECOVERY_PRESETS = ORDER_RECOVERY_PRESETS.map((p) =>
+  p.targetStatus === "rejected" ? { ...p, hint: "Kitchen rejection" } : p,
+);
+
 export default function Kitchen() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canUseKitchen = hasPermission(PERMISSIONS.KITCHEN);
+  const canReportItemRecovery = hasPermission("orders.recovery.request");
   const tickets = useKitchenStore((s) => s.tickets);
   const error = useKitchenStore((s) => s.error);
   const isLoading = useKitchenStore((s) => s.isLoading);
   const isSubmitting = useKitchenStore((s) => s.isSubmitting);
+  const recoverySubmitting = useKitchenStore((s) => s.recoverySubmitting);
   const startPolling = useKitchenStore((s) => s.startPolling);
   const stopPolling = useKitchenStore((s) => s.stopPolling);
   const updateTicketStatus = useKitchenStore((s) => s.updateTicketStatus);
+  const reportItemRecovery = useKitchenStore((s) => s.reportItemRecovery);
   const [, setTick] = useState(0);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryCtx, setRecoveryCtx] = useState<{
+    orderId: string;
+    orderItemId: string;
+    itemName: string;
+  } | null>(null);
+  const [recoveryMode, setRecoveryMode] = useState<"preset" | "custom">("preset");
+  const [customReason, setCustomReason] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
@@ -74,6 +99,42 @@ export default function Kitchen() {
 
   const onCancelTicket = async (id: string) => {
     await onUpdateTicketStatus(id, "cancelled");
+  };
+
+  const openRecovery = (orderId: string, orderItemId: string, itemName: string) => {
+    setRecoveryCtx({ orderId, orderItemId, itemName });
+    setRecoveryMode("preset");
+    setCustomReason("");
+    setRecoveryOpen(true);
+  };
+
+  const submitRecoveryPreset = async (targetStatus: string, hint?: string) => {
+    if (!recoveryCtx) return;
+    try {
+      await reportItemRecovery(recoveryCtx.orderId, recoveryCtx.orderItemId, targetStatus, hint ?? null);
+      toast.success("Recovery recorded");
+      setRecoveryOpen(false);
+      setRecoveryCtx(null);
+    } catch {
+      // store surfaces error toast via effect
+    }
+  };
+
+  const submitRecoveryCustom = async () => {
+    if (!recoveryCtx) return;
+    const trimmed = customReason.trim();
+    if (!trimmed) {
+      toast.error("Enter a reason");
+      return;
+    }
+    try {
+      await reportItemRecovery(recoveryCtx.orderId, recoveryCtx.orderItemId, "custom_reason", trimmed);
+      toast.success("Recovery recorded");
+      setRecoveryOpen(false);
+      setRecoveryCtx(null);
+    } catch {
+      // error toast via store
+    }
   };
 
   // Only show queued/in-progress/ready tickets
@@ -167,10 +228,29 @@ export default function Kitchen() {
 
                     <div className="space-y-2">
                       {ticket.items.map((item) => (
-                        <div key={item.id} className="flex items-start gap-2">
+                        <div key={item.id} className="flex items-start gap-2 group/row">
                           <span className="text-xs font-bold text-primary bg-primary/10 rounded-md h-5 w-5 flex items-center justify-center shrink-0">{item.qty}</span>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{item.name}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-sm font-medium text-foreground">{item.name}</p>
+                              {canReportItemRecovery ? (
+                                <button
+                                  type="button"
+                                  aria-label="Item issue"
+                                  disabled={recoverySubmitting || isSubmitting}
+                                  className="shrink-0 p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground opacity-70 group-hover/row:opacity-100"
+                                  onClick={() => openRecovery(ticket.orderId, item.orderItemId, item.name)}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                              ) : null}
+                            </div>
+                            {item.recoveryStatus ? (
+                              <p className="text-[10px] text-amber-700 dark:text-amber-200 mt-0.5" data-testid="kitchen-item-recovery-badge">
+                                {String(item.recoveryStatus).replace(/_/g, " ")}
+                                {item.recoveryReason ? ` · ${item.recoveryReason}` : ""}
+                              </p>
+                            ) : null}
                             {item.notes && <p className="text-xs text-warning italic">⚠ {item.notes}</p>}
                           </div>
                         </div>
@@ -181,7 +261,7 @@ export default function Kitchen() {
                   <div className="px-4 pb-4 flex gap-2">
                     {next && (
                       <button onClick={() => void onUpdateTicketStatus(ticket.id, next)}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || recoverySubmitting}
                         className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                         {next === "in_progress" ? <ChefHat className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                         Mark as {statusLabels[next as KitchenTicketStatus]}
@@ -189,7 +269,7 @@ export default function Kitchen() {
                     )}
                     {ticket.status !== "served" && ticket.status !== "cancelled" && (
                       <button onClick={() => void onCancelTicket(ticket.id)}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || recoverySubmitting}
                         className="py-2.5 px-3 rounded-xl border border-destructive/20 text-destructive text-sm hover:bg-destructive/5 transition-colors">
                         <XCircle className="h-4 w-4" />
                       </button>
@@ -201,6 +281,63 @@ export default function Kitchen() {
         </div>
       )}
       </SkeletonBusyRegion>
+
+      <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+        <DialogContent className="max-w-md" data-testid="kitchen-recovery-dialog">
+          <DialogHeader>
+            <DialogTitle>Item issue</DialogTitle>
+            {recoveryCtx ? (
+              <p className="text-xs text-muted-foreground pt-1">
+                Order #{recoveryCtx.orderId} · {recoveryCtx.itemName}
+              </p>
+            ) : null}
+          </DialogHeader>
+          {recoveryMode === "preset" ? (
+            <div className="grid gap-2">
+              {KITCHEN_RECOVERY_PRESETS.map((p) => (
+                <Button
+                  key={p.targetStatus + p.label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="justify-start h-auto py-2 text-left"
+                  disabled={recoverySubmitting}
+                  onClick={() => void submitRecoveryPreset(p.targetStatus, p.hint)}
+                >
+                  {p.label}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={recoverySubmitting}
+                onClick={() => setRecoveryMode("custom")}
+              >
+                Custom reason…
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Textarea
+                value={customReason}
+                onChange={(e) => setCustomReason(e.target.value)}
+                placeholder="Describe the issue"
+                rows={3}
+                className="text-sm"
+              />
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" size="sm" onClick={() => setRecoveryMode("preset")}>
+                  Back
+                </Button>
+                <Button type="button" size="sm" disabled={recoverySubmitting} onClick={() => void submitRecoveryCustom()}>
+                  Submit
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -4,9 +4,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
+import { useAuthStore } from "@/stores/authStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
+import type { Outlet } from "@/domain/settingsDomainTypes";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -28,7 +31,44 @@ type EditMenuForm = {
   menuItemOutlets: MenuItemOutletForm[];
 };
 
-type OutletRow = Awaited<ReturnType<typeof listOutlets>>[number];
+type OutletRow = Outlet;
+
+function filterMenuItemsByActiveOutlet(all: MenuItemApi[], outletId: number | null): MenuItemApi[] {
+  if (typeof outletId !== "number" || outletId < 1) return all;
+  return all.filter((item) =>
+    (item.menuItemOutlets ?? []).some((m) => Number(m.outletId) === outletId && m.isActive),
+  );
+}
+
+function mapAssignedOutletsToRows(
+  rows: { id: number; name: string; code?: string | null }[] | undefined,
+): OutletRow[] {
+  if (!rows?.length) return [];
+  return rows.map((o) => ({
+    id: o.id,
+    code: o.code ?? "",
+    name: o.name,
+    address: "",
+    phone: "",
+    manager: "",
+    status: "active" as const,
+  }));
+}
+
+async function resolveOutletsForMenuEditor(): Promise<OutletRow[]> {
+  const fromSettings = useSettingsStore.getState().outlets;
+  if (fromSettings.length > 0) return fromSettings;
+
+  const assigned = useAuthStore.getState().user?.assignedOutlets;
+  const fromMe = mapAssignedOutletsToRows(assigned);
+  if (fromMe.length > 0) return fromMe;
+
+  try {
+    return await listOutlets();
+  } catch {
+    return [];
+  }
+}
 type MenuItemOutletForm = {
   outletId: number;
   outletName: string;
@@ -80,23 +120,22 @@ export default function MenuManagement() {
     const requestId = latestRequestIdRef.current;
     try {
       setLoading(true);
-      const menuParams = {
-        tenantId: TENANT_ID,
-        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
-      };
       const ingredientParams = {
         tenantId: TENANT_ID,
         ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
       };
-      const [menuItems, menuItemsAllOutlets, ingredientsData, outletsData] = await Promise.all([
-        listMenuItems(menuParams),
+      const [menuItemsAllOutlets, ingredientsData, outletsData] = await Promise.all([
         listMenuItems({ tenantId: TENANT_ID, perPage: 500 }),
         listIngredients(ingredientParams),
-        listOutlets(),
+        resolveOutletsForMenuEditor(),
       ]);
       if (requestId !== latestRequestIdRef.current) {
         return;
       }
+      const menuItems = filterMenuItemsByActiveOutlet(
+        menuItemsAllOutlets,
+        typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null,
+      );
       setItems(menuItems);
       setAllOutletItems(menuItemsAllOutlets);
       setIngredients(ingredientsData);

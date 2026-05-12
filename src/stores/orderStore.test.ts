@@ -179,7 +179,7 @@ describe("orderStore async lifecycle", () => {
     expect(result).not.toBeNull();
     expect(useOrderStore.getState().orders.length).toBe(2);
     expect(mockListOrdersWithMeta).toHaveBeenCalledTimes(2);
-    expect(mockListOrdersWithMeta).toHaveBeenLastCalledWith({ outletId: 5, perPage: 10 });
+    expect(mockListOrdersWithMeta.mock.calls[1]?.[0]).toEqual({ outletId: 5, perPage: 10 });
   });
 });
 

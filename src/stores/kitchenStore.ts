@@ -11,17 +11,20 @@ import {
   type KitchenTicketStatus,
   type ListKitchenTicketsParams,
 } from "@/lib/api-integration/kitchenEndpoints";
+import { reportOrderItemRecovery } from "@/lib/api-integration/endpoints";
 import { mapKitchenTicketApiToStore, type KitchenTicket } from "@/domain/kitchenAdapters";
 import {
   getRealtimeAdapter,
   type RealtimeConnectionState,
   type RealtimeEnvelope,
 } from "@/domain/realtimeAdapter";
+import { useAuthStore } from "@/stores/authStore";
 
 type KitchenStore = {
   tickets: KitchenTicket[];
   isLoading: boolean;
   isSubmitting: boolean;
+  recoverySubmitting: boolean;
   error: string | null;
   pagination: KitchenTicketListMeta | null;
   lastSyncAt: string | null;
@@ -38,8 +41,14 @@ type KitchenStore = {
   lastRealtimeSeq: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchTickets: (params?: ListKitchenTicketsParams) => Promise<KitchenTicket[]>;
+  fetchTickets: (params?: ListKitchenTicketsParams, opts?: { background?: boolean }) => Promise<KitchenTicket[]>;
   revalidateTickets: () => Promise<KitchenTicket[] | null>;
+  reportItemRecovery: (
+    orderId: string,
+    orderItemId: string,
+    targetStatus: string,
+    reason?: string | null,
+  ) => Promise<void>;
   updateTicketStatus: (ticketId: string, status: KitchenTicketStatus) => Promise<KitchenTicket>;
   startRealtime: () => void;
   stopRealtime: () => void;
@@ -70,6 +79,7 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
   tickets: [],
   isLoading: false,
   isSubmitting: false,
+  recoverySubmitting: false,
   error: null,
   pagination: null,
   lastSyncAt: null,
@@ -87,24 +97,38 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
-  fetchTickets: async (params) => {
+  fetchTickets: async (params, opts) => {
+    const resolvedParams = params ?? get().lastListParams;
+    if (resolvedParams === null) {
+      return get().tickets;
+    }
+    const background = opts?.background === true && get().tickets.length > 0;
     const requestId = get().activeRequestId + 1;
     const controller = new AbortController();
     const requestMeta: RequestObservabilityMetadata = {
       scope: "kitchen-store",
-      action: "fetch-tickets",
+      action: background ? "fetch-tickets-background" : "fetch-tickets",
       requestId,
     };
-    set({
-      isLoading: true,
-      error: null,
-      lastListParams: params ?? null,
-      activeRequestId: requestId,
-      activeAbortController: controller,
-      lastRequestMeta: requestMeta,
-    });
+    if (!background) {
+      set({
+        isLoading: true,
+        error: null,
+        lastListParams: resolvedParams,
+        activeRequestId: requestId,
+        activeAbortController: controller,
+        lastRequestMeta: requestMeta,
+      });
+    } else {
+      set({
+        lastListParams: resolvedParams,
+        activeRequestId: requestId,
+        activeAbortController: controller,
+        lastRequestMeta: requestMeta,
+      });
+    }
     try {
-      const result = await apiListKitchenTickets(params, {
+      const result = await apiListKitchenTickets(resolvedParams, {
         signal: controller.signal,
         headers: createObservabilityHeaders(requestMeta),
       });
@@ -122,7 +146,10 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
       throw error;
     } finally {
       if (get().activeRequestId === requestId) {
-        set({ isLoading: false, activeAbortController: null });
+        set({
+          ...(background ? {} : { isLoading: false }),
+          activeAbortController: null,
+        });
       }
     }
   },
@@ -130,7 +157,36 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
   revalidateTickets: async () => {
     const params = get().lastListParams;
     if (params === null) return null;
-    return get().fetchTickets(params);
+    return get().fetchTickets(params, { background: get().tickets.length > 0 });
+  },
+
+  reportItemRecovery: async (orderId, orderItemId, targetStatus, reason) => {
+    useAuthStore.getState().syncApiBearerForRequests();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "kitchen-store",
+      action: "report-item-recovery",
+      requestId: get().activeRequestId + 1,
+      recovery: true,
+    };
+    set({ recoverySubmitting: true, error: null, lastRequestMeta: requestMeta });
+    try {
+      await reportOrderItemRecovery(
+        orderId,
+        orderItemId,
+        { targetStatus, reason: reason ?? null },
+        { headers: createObservabilityHeaders(requestMeta) },
+      );
+      const p = get().lastListParams;
+      if (p !== null) {
+        await get().fetchTickets(p, { background: get().tickets.length > 0 });
+      }
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ recoverySubmitting: false });
+    }
   },
 
   updateTicketStatus: async (ticketId, status) => {
@@ -167,9 +223,14 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
       set({ error: message });
       throw error;
     } finally {
-      if (get().activeRequestId === requestId) {
-        set({ isSubmitting: false, activeAbortController: null });
-      }
+      // Always clear submitting. Do not gate on `activeRequestId === requestId`: `revalidateTickets()`
+      // calls `fetchTickets`, which bumps `activeRequestId` before this `finally` runs, which would
+      // otherwise leave `isSubmitting` stuck true and disable every KDS action until a full refresh.
+      const stillOwnsAbortSlot = get().activeRequestId === requestId;
+      set({
+        isSubmitting: false,
+        ...(stillOwnsAbortSlot ? { activeAbortController: null } : {}),
+      });
     }
   },
 
@@ -251,6 +312,7 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
     set({
       isLoading: false,
       isSubmitting: false,
+      recoverySubmitting: false,
       error: null,
       pagination: null,
       lastSyncAt: null,

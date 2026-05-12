@@ -22,6 +22,8 @@ export type KitchenTicketItemApi = {
   qty: number;
   notes?: string | null;
   status: string;
+  recoveryStatus?: string | null;
+  recoveryReason?: string | null;
 };
 
 export type KitchenTicketApi = {

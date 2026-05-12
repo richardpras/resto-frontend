@@ -21,6 +21,7 @@ const Purchases = lazy(() => import("./pages/Purchases"));
 const Promotions = lazy(() => import("./pages/Promotions"));
 const Payroll = lazy(() => import("./pages/Payroll"));
 const Cashier = lazy(() => import("./pages/Cashier"));
+const OrdersExplorer = lazy(() => import("./pages/OrdersExplorer"));
 const Users = lazy(() => import("./pages/Users"));
 const Accounting = lazy(() => import("./pages/Accounting"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -89,6 +90,7 @@ const App = () => (
             <Route path="/kitchen" element={guarded(PERMISSIONS.KITCHEN, <Kitchen />)} />
             <Route path="/qr-orders" element={guarded(PERMISSIONS.QR_ORDERS, <QROrdersList />)} />
             <Route path="/cashier" element={guarded(PERMISSIONS.POS, <Cashier />)} />
+            <Route path="/orders" element={guarded(PERMISSIONS.POS, <OrdersExplorer />)} />
             <Route path="/tables" element={guarded(PERMISSIONS.TABLES, <Tables />)} />
             <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />

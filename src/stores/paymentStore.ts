@@ -9,6 +9,8 @@ import {
   expirePaymentTransaction as apiExpirePaymentTransaction,
   getPaymentTransaction as apiGetPaymentTransaction,
   reconcilePaymentTransaction as apiReconcilePaymentTransaction,
+  simulateSandboxXenditPaidTransaction as apiSimulateSandboxXenditPaidTransaction,
+  simulateViaXenditProvider as apiSimulateViaXenditProvider,
   type PaymentTransactionStatus,
 } from "@/lib/api-integration/paymentEndpoints";
 import { mapPaymentTransactionApiToModel, type PaymentTransaction } from "@/domain/paymentAdapters";
@@ -19,6 +21,14 @@ import {
 } from "@/domain/realtimeAdapter";
 
 const DEFAULT_POLLING_MS = 3000;
+
+/** Clears checkout tab-visibility listener registered during payment polling. */
+let paymentVisibilityCleanup: (() => void) | null = null;
+
+function clearPaymentVisibilityCleanup(): void {
+  paymentVisibilityCleanup?.();
+  paymentVisibilityCleanup = null;
+}
 
 function mapApiError(error: unknown): string {
   if (error instanceof ApiHttpError) return error.message;
@@ -57,6 +67,9 @@ type PaymentStore = {
     method: string;
     amount: number;
     provider?: string;
+    externalReference?: string;
+    idempotencyKey?: string;
+    currency?: string;
     providerMetadata?: Record<string, unknown>;
     splitPayments?: {
       method: string;
@@ -68,6 +81,8 @@ type PaymentStore = {
   expireTransaction: (id?: string) => Promise<PaymentTransaction>;
   reconcileTransaction: (id?: string) => Promise<PaymentTransaction>;
   retryPayment: (id?: string) => Promise<PaymentTransaction>;
+  simulateSandboxPaid: (id?: string) => Promise<PaymentTransaction>;
+  simulateViaProvider: (id?: string) => Promise<PaymentTransaction>;
   startRealtime: () => void;
   stopRealtime: () => void;
   stopPolling: () => void;
@@ -204,6 +219,15 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
       }
     };
 
+    clearPaymentVisibilityCleanup();
+    if (typeof document !== "undefined") {
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") void refresh();
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      paymentVisibilityCleanup = () => document.removeEventListener("visibilitychange", onVisibility);
+    }
+
     const pollingTimer = setInterval(() => {
       void refresh();
     }, intervalMs);
@@ -306,6 +330,92 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     return updated;
   },
 
+  simulateSandboxPaid: async (id) => {
+    const txId = id ?? get().currentTransaction?.id;
+    if (!txId) throw new Error("No payment transaction selected");
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "payment-store",
+      action: "simulate-sandbox-paid",
+      requestId,
+      recovery: true,
+    };
+    const previousPolling = get().pollingActive;
+    set({ isSubmitting: true, error: null });
+    set({ activeRequestId: requestId, activeAbortController: controller, lastRequestMeta: requestMeta });
+    try {
+      const updated = mapPaymentTransactionApiToModel(
+        await apiSimulateSandboxXenditPaidTransaction(txId, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return updated;
+      set(nextTransactionState(updated));
+      if (isTerminalStatus(updated.status)) get().stopPolling();
+      else if (previousPolling) get().pollTransactionStatus(updated.id);
+      return updated;
+    } catch (error) {
+      if (!isAbortError(error) && get().activeRequestId === requestId) {
+        set({ error: mapApiError(error) });
+      }
+      throw error;
+    } finally {
+      if (get().activeRequestId === requestId) set({ isSubmitting: false, activeAbortController: null });
+    }
+  },
+
+  simulateViaProvider: async (id) => {
+    const txId = id ?? get().currentTransaction?.id;
+    if (!txId) throw new Error("No payment transaction selected");
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "payment-store",
+      action: "simulate-via-xendit-provider",
+      requestId,
+      recovery: true,
+    };
+    const previousPolling = get().pollingActive;
+    set({ isSubmitting: true, error: null });
+    set({ activeRequestId: requestId, activeAbortController: controller, lastRequestMeta: requestMeta });
+    try {
+      const dispatched = mapPaymentTransactionApiToModel(
+        await apiSimulateViaXenditProvider(txId, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return dispatched;
+      set(nextTransactionState(dispatched));
+      if (isTerminalStatus(dispatched.status)) {
+        get().stopPolling();
+        return dispatched;
+      }
+
+      // Non-optimistic fallback: immediately reconcile provider status in case webhook delivery is delayed/failed.
+      const reconciled = mapPaymentTransactionApiToModel(
+        await apiReconcilePaymentTransaction(dispatched.id, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders({ ...requestMeta, action: "simulate-via-xendit-provider-reconcile" }),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return reconciled;
+      set(nextTransactionState(reconciled));
+      if (isTerminalStatus(reconciled.status)) get().stopPolling();
+      else if (previousPolling) get().pollTransactionStatus(reconciled.id);
+      return reconciled;
+    } catch (error) {
+      if (!isAbortError(error) && get().activeRequestId === requestId) {
+        set({ error: mapApiError(error) });
+      }
+      throw error;
+    } finally {
+      if (get().activeRequestId === requestId) set({ isSubmitting: false, activeAbortController: null });
+    }
+  },
+
   startRealtime: () => {
     if (get().realtimeUnsubscribe) return;
     const adapter = getRealtimeAdapter("payment");
@@ -361,6 +471,7 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
   },
 
   stopPolling: () => {
+    clearPaymentVisibilityCleanup();
     const { pollingTimer, expiryTimer, activeAbortController } = get();
     if (pollingTimer) clearInterval(pollingTimer);
     if (expiryTimer) clearInterval(expiryTimer);

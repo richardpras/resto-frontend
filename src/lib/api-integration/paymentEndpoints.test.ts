@@ -5,6 +5,7 @@ import {
   getPaymentTransaction,
   postPaymentWebhook,
   reconcilePaymentTransaction,
+  simulateViaXenditProvider,
 } from "./paymentEndpoints";
 
 describe("payment endpoints", () => {
@@ -50,15 +51,20 @@ describe("payment endpoints", () => {
       `${API_BASE_URL}/payment-transactions`,
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({
-          orderId: "order-1",
-          outletId: 3,
-          method: "qris",
-          amount: 125000,
-          provider: "xendit",
-        }),
       }),
     );
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(init.body);
+    expect(body.orderId).toBe("order-1");
+    expect(body.outletId).toBe(3);
+    expect(body.provider).toBe("xendit");
+    expect(body.amount).toBe(125000);
+    expect(body.currency).toBe("IDR");
+    expect(body.paymentMethod).toBe("qris");
+    expect(typeof body.externalReference).toBe("string");
+    expect(body.externalReference.length).toBeGreaterThan(5);
+    expect(typeof body.idempotencyKey).toBe("string");
+    expect(body.idempotencyKey.length).toBeGreaterThan(5);
     expect(result.checkoutUrl).toBe("https://checkout.example/tx-10");
     expect(result.qrString).toBe("000201010212");
     expect(result.deeplinkUrl).toBe("gojek://pay/tx-10");
@@ -81,6 +87,7 @@ describe("payment endpoints", () => {
     await getPaymentTransaction("tx-10");
     await reconcilePaymentTransaction("tx-10");
     await postPaymentWebhook("xendit", { id: "evt-1" });
+    await simulateViaXenditProvider("tx-10");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -101,6 +108,13 @@ describe("payment endpoints", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ id: "evt-1" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      `${API_BASE_URL}/payments/xendit/simulate-provider/tx-10`,
+      expect.objectContaining({
+        method: "POST",
       }),
     );
   });

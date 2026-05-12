@@ -19,6 +19,8 @@ export interface AuthUser {
   email: string;
   role: RoleName;
   outletIds: number[];
+  /** Outlets from `/auth/me` (no `settings.view` required) — used for POS/Menu outlet matrices. */
+  assignedOutlets?: { id: number; name: string; code?: string | null }[];
   /** Whether a screen-unlock PIN is stored on the server (hashed); verify via API only. */
   pinSet: boolean;
   permissions: string[];
@@ -69,7 +71,13 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);
   if (has("settings.view", "settings.update")) out.add(PERMISSIONS.SETTINGS);
   if (codes.some((c) => c.startsWith("payroll."))) out.add(PERMISSIONS.PAYROLL);
-  if (codes.includes("tables.manage")) out.add(PERMISSIONS.TABLES_MANAGE);
+  if (codes.includes("tables.manage")) {
+    out.add(PERMISSIONS.TABLES);
+    out.add(PERMISSIONS.TABLES_MANAGE);
+  }
+  if (codes.includes("tables.manage") && codes.includes("pos.use")) {
+    out.add(PERMISSIONS.QR_ORDERS);
+  }
 
   for (const c of codes) {
     if (allPermValues.has(c)) out.add(c);
@@ -91,6 +99,13 @@ function mapMeToAuthUser(meData: MeResponse): AuthUser {
     email: meData.email,
     role,
     outletIds,
+    assignedOutlets: Array.isArray(meData.outlets)
+      ? meData.outlets.map((o) => ({
+          id: o.id,
+          name: typeof o.name === "string" && o.name.trim() !== "" ? o.name : `Outlet ${o.id}`,
+          code: o.code ?? null,
+        }))
+      : undefined,
     pinSet: meData.pinSet === true,
     permissions,
   };
@@ -128,6 +143,8 @@ interface AuthStore {
   hasPermission: (perm: string) => boolean;
   canManageOutletSettings: (outletId?: number) => boolean;
   restoreSessionFromApi: () => Promise<void>;
+  /** Ensures Passport bearer is on the HTTP client (call before API requests after rehydrate / navigation). */
+  syncApiBearerForRequests: () => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -151,6 +168,13 @@ export const useAuthStore = create<AuthStore>()(
           set({ user: null, locked: false, accessToken: null });
           useOutletStore.getState().clearActiveOutlet();
           setApiAccessToken(undefined);
+        }
+      },
+
+      syncApiBearerForRequests: () => {
+        const token = get().accessToken;
+        if (typeof token === "string" && token.trim() !== "") {
+          setApiAccessToken(token);
         }
       },
 

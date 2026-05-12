@@ -5,6 +5,7 @@ const mockCreatePaymentTransaction = vi.fn();
 const mockGetPaymentTransaction = vi.fn();
 const mockExpirePaymentTransaction = vi.fn();
 const mockReconcilePaymentTransaction = vi.fn();
+const mockSimulateViaXenditProvider = vi.fn();
 
 vi.mock("@/lib/api-integration/paymentEndpoints", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api-integration/paymentEndpoints")>(
@@ -16,6 +17,7 @@ vi.mock("@/lib/api-integration/paymentEndpoints", async () => {
     getPaymentTransaction: (...args: unknown[]) => mockGetPaymentTransaction(...args),
     expirePaymentTransaction: (...args: unknown[]) => mockExpirePaymentTransaction(...args),
     reconcilePaymentTransaction: (...args: unknown[]) => mockReconcilePaymentTransaction(...args),
+    simulateViaXenditProvider: (...args: unknown[]) => mockSimulateViaXenditProvider(...args),
   };
 });
 
@@ -66,6 +68,7 @@ describe("paymentStore", () => {
     mockGetPaymentTransaction.mockReset();
     mockExpirePaymentTransaction.mockReset();
     mockReconcilePaymentTransaction.mockReset();
+    mockSimulateViaXenditProvider.mockReset();
     resetState();
   });
 
@@ -182,5 +185,44 @@ describe("paymentStore", () => {
     await Promise.resolve();
 
     expect(usePaymentStore.getState().currentTransaction?.id).toBe("tx-new");
+  });
+
+  it("simulate via provider triggers reconcile fallback without optimistic paid", async () => {
+    usePaymentStore.setState({
+      currentTransaction: {
+        id: "tx-1",
+        orderId: "o-1",
+        outletId: 2,
+        method: "qris",
+        amount: 50000,
+        status: "pending",
+        checkoutUrl: "",
+        qrString: "000201010212",
+        deeplinkUrl: "",
+        vaNumber: "",
+        expiresAt: null,
+        expiryTime: null,
+        paidAt: null,
+        createdAt: null,
+        updatedAt: null,
+        providerMetadataSnapshot: { provider: "xendit" },
+        payloadSnapshot: null,
+      },
+    });
+    mockSimulateViaXenditProvider.mockResolvedValue(tx("pending"));
+    mockReconcilePaymentTransaction.mockResolvedValue(tx("paid", { paid_at: new Date().toISOString() }));
+
+    const updated = await usePaymentStore.getState().simulateViaProvider("tx-1");
+
+    expect(mockSimulateViaXenditProvider).toHaveBeenCalledWith(
+      "tx-1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(mockReconcilePaymentTransaction).toHaveBeenCalledWith(
+      "tx-1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(updated.status).toBe("paid");
+    expect(usePaymentStore.getState().currentTransaction?.status).toBe("paid");
   });
 });

@@ -177,6 +177,11 @@ export type OrderItemPayload = {
   qty: number;
   emoji?: string;
   notes?: string;
+  recoveryStatus?: string | null;
+  recoveryReason?: string | null;
+  recoveryApprovedAt?: string | null;
+  recoveryApprovedByUserId?: number | null;
+  replacedByOrderItemId?: number | null;
 };
 
 export type OrderPaymentPayload = {
@@ -263,6 +268,8 @@ export type OrderApi = {
     id: string;
     method: string;
     amount: number;
+    status?: string;
+    orderSplitId?: number | null;
     paidAt?: string;
     allocations?: { orderItemId: number; qty: number; amount: number }[];
   }[];
@@ -274,6 +281,56 @@ export type OrderApi = {
   createdAt?: string;
   confirmedAt?: string;
   splitBill?: unknown;
+  isPosted?: boolean;
+  splits?: {
+    id: number;
+    splitType: string;
+    label: string;
+    status: string;
+    items: { orderItemId: number; qty: number; amount: number }[];
+  }[];
+};
+
+/** Operational audit rows from `GET /orders/{id}/events` (PosEventLogResource). */
+export type PosEventLogApi = {
+  id: number;
+  outletId: number;
+  actorUserId: number | null;
+  eventType: string;
+  entityType: string;
+  entityId: number;
+  payload: Record<string, unknown> | null;
+  occurredAt?: string | null;
+};
+
+export type OrderItemRecoveryEventApi = {
+  id: number;
+  outletId: number | null;
+  orderId: number;
+  orderItemId: number;
+  eventCode: string;
+  recoveryStatus: string | null;
+  reason: string | null;
+  payload: Record<string, unknown> | null;
+  actorUserId: number | null;
+  managerUserId: number | null;
+  createdAt?: string | null;
+};
+
+/** Authoritative rows from `GET /orders/{id}/payments` (OrderPaymentResource). */
+export type OrderPaymentHistoryItem = {
+  id: number | string;
+  orderId: number;
+  orderSplitId: number | null;
+  method: string;
+  amount: number;
+  status: string;
+  paidAt?: string | null;
+  createdAt?: string | null;
+  splitBillLabel?: string | null;
+  splitBillGroup?: string | null;
+  splitLabel?: string | null;
+  allocations?: { orderItemId: number; qty: number; amount: number }[];
 };
 
 export type OrderSplitItemPayload = {
@@ -321,6 +378,12 @@ export type ListOrdersParams = {
   source?: "pos" | "qr";
   serviceMode?: ServiceMode;
   kitchenStatus?: KitchenStatus | string;
+  /** Invoice / order code contains (backend `LIKE`). */
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  /** When true, only orders that have at least one voided payment row. */
+  hasVoidedPayment?: boolean;
 };
 
 export async function createOrder(
@@ -364,6 +427,10 @@ export async function listOrdersWithMeta(
   if (params?.source) query.set("source", params.source);
   if (params?.serviceMode) query.set("serviceMode", params.serviceMode);
   if (params?.kitchenStatus) query.set("kitchenStatus", String(params.kitchenStatus));
+  if (params?.search !== undefined && params.search.trim() !== "") query.set("search", params.search.trim());
+  if (params?.dateFrom) query.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) query.set("dateTo", params.dateTo);
+  if (params?.hasVoidedPayment === true) query.set("hasVoidedPayment", "1");
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   const response = await request<ApiListResponse<OrderApi>>(`/orders${suffix}`, {
@@ -457,10 +524,144 @@ export async function updateOrderSplit(
 export async function listOrderPayments(
   orderId: string,
   options: EndpointRequestOptions = {},
-): Promise<OrderApi["payments"]> {
-  const response = await request<{ data: OrderApi["payments"] }>(`/orders/${orderId}/payments`, {
+): Promise<OrderPaymentHistoryItem[]> {
+  const response = await request<{ data: OrderPaymentHistoryItem[] }>(`/orders/${orderId}/payments`, {
     signal: options.signal,
     headers: options.headers,
   });
+  return response.data;
+}
+
+export async function listOrderPosEvents(
+  orderId: string,
+  options: EndpointRequestOptions = {},
+): Promise<PosEventLogApi[]> {
+  const response = await request<{ data: PosEventLogApi[] }>(`/orders/${orderId}/events`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
+}
+
+export async function listOrderRecoveryEvents(
+  orderId: string,
+  options: EndpointRequestOptions = {},
+): Promise<OrderItemRecoveryEventApi[]> {
+  const response = await request<{ data: OrderItemRecoveryEventApi[] }>(`/orders/${orderId}/recovery-events`, {
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
+}
+
+export type ReportOrderItemRecoveryBody = {
+  targetStatus: string;
+  reason?: string | null;
+};
+
+export type OrderItemRecoveryMutationResult = {
+  orderItemId: number;
+  recoveryStatus: string | null;
+  recoveryReason: string | null;
+  recoveryApprovedAt?: string | null;
+  recoveryApprovedByUserId?: number | null;
+  replacedByOrderItemId?: number | null;
+};
+
+export async function reportOrderItemRecovery(
+  orderId: string,
+  orderItemId: string | number,
+  body: ReportOrderItemRecoveryBody,
+  options: EndpointRequestOptions = {},
+): Promise<OrderItemRecoveryMutationResult> {
+  const response = await request<{ data: OrderItemRecoveryMutationResult }>(
+    `/orders/${orderId}/items/${orderItemId}/recovery/report`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
+export async function approveOrderItemRecovery(
+  orderId: string,
+  orderItemId: string | number,
+  body: {
+    resolution: string;
+    notes?: string | null;
+    payload?: { replacedByOrderItemId?: number } | null;
+  },
+  options: EndpointRequestOptions = {},
+): Promise<OrderItemRecoveryMutationResult> {
+  const response = await request<{ data: OrderItemRecoveryMutationResult }>(
+    `/orders/${orderId}/items/${orderItemId}/recovery/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
+export type RecoverySettlementPreviewBody = {
+  settlementKind?: string | null;
+  partialRefundAmount?: number | null;
+  storeCreditAmount?: number | null;
+  giftCardAmount?: number | null;
+  replacedByOrderItemId?: number | null;
+  loyaltyPointsAdjustment?: number | null;
+};
+
+export type RecoverySettlementPreviewApi = Record<string, unknown>;
+
+export async function previewOrderItemRecoverySettlement(
+  orderId: string,
+  orderItemId: string | number,
+  body: RecoverySettlementPreviewBody,
+  options: EndpointRequestOptions = {},
+): Promise<RecoverySettlementPreviewApi> {
+  const response = await request<{ data: RecoverySettlementPreviewApi }>(
+    `/orders/${orderId}/items/${orderItemId}/recovery/settlement/preview`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
+export type RecordRecoverySettlementBody = RecoverySettlementPreviewBody & {
+  idempotencyKey: string;
+  notes?: string | null;
+};
+
+export type RecordRecoverySettlementResultApi = {
+  idempotent: boolean;
+  eventId: number | null;
+  snapshot: RecoverySettlementPreviewApi;
+};
+
+export async function recordOrderItemRecoverySettlement(
+  orderId: string,
+  orderItemId: string | number,
+  body: RecordRecoverySettlementBody,
+  options: EndpointRequestOptions = {},
+): Promise<RecordRecoverySettlementResultApi> {
+  const response = await request<{ data: RecordRecoverySettlementResultApi }>(
+    `/orders/${orderId}/items/${orderItemId}/recovery/settlement/record`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
   return response.data;
 }

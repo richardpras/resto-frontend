@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, Package, UtensilsCrossed,
   ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings, Store,
-  LogOut, Lock, Truck, UserCircle,
+  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -15,6 +15,8 @@ type Item = { title: string; url: string; icon: any; perm?: string };
 const mainItems: Item[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "POS Cashier", url: "/pos", icon: ShoppingCart, perm: PERMISSIONS.POS },
+  { title: "Open bills", url: "/cashier", icon: Banknote, perm: PERMISSIONS.POS },
+  { title: "Orders", url: "/orders", icon: ListOrdered, perm: PERMISSIONS.POS },
   { title: "Kitchen Display", url: "/kitchen", icon: ChefHat, perm: PERMISSIONS.KITCHEN },
   { title: "QR Orders", url: "/qr-orders", icon: QrCode, perm: PERMISSIONS.QR_ORDERS },
   { title: "Tables", url: "/tables", icon: Armchair, perm: PERMISSIONS.TABLES },
