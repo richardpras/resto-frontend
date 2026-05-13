@@ -21,7 +21,26 @@ describe("QrisPaymentModal", () => {
     expect(screen.getByText("Scan QRIS")).toBeInTheDocument();
     expect(screen.getByText("Rp 123.400")).toBeInTheDocument();
     expect(screen.getByText(/expires in/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry QRIS Payment" })).toBeInTheDocument();
+  });
+
+  it("shows change payment method action when handler provided", () => {
+    render(
+      <QrisPaymentModal
+        open
+        qrString="000201010212TEST"
+        amount={123400}
+        expirySeconds={120}
+        status="pending"
+        onRequestClose={vi.fn()}
+        onRetry={vi.fn()}
+        onReconcile={vi.fn()}
+        onExpire={vi.fn()}
+        onChangePaymentMethod={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Change payment method" })).toBeInTheDocument();
   });
 
   it("asks confirmation before close while pending", () => {

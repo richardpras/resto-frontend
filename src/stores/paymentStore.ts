@@ -14,6 +14,7 @@ import {
   type PaymentTransactionStatus,
 } from "@/lib/api-integration/paymentEndpoints";
 import { mapPaymentTransactionApiToModel, type PaymentTransaction } from "@/domain/paymentAdapters";
+import { splitPaymentsFromTransactionSnapshot } from "@/features/pos/gatewayCheckoutUtils";
 import {
   getRealtimeAdapter,
   type RealtimeConnectionState,
@@ -80,7 +81,16 @@ type PaymentStore = {
   pollTransactionStatus: (id: string, intervalMs?: number) => void;
   expireTransaction: (id?: string) => Promise<PaymentTransaction>;
   reconcileTransaction: (id?: string) => Promise<PaymentTransaction>;
-  retryPayment: (id?: string) => Promise<PaymentTransaction>;
+  retryPayment: (
+    id?: string,
+    options?: {
+      splitPayments?: {
+        method: string;
+        amount: number;
+        allocations?: { orderItemId: string | number; qty: number; amount: number }[];
+      }[];
+    },
+  ) => Promise<PaymentTransaction>;
   simulateSandboxPaid: (id?: string) => Promise<PaymentTransaction>;
   simulateViaProvider: (id?: string) => Promise<PaymentTransaction>;
   startRealtime: () => void;
@@ -308,7 +318,7 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     }
   },
 
-  retryPayment: async (id) => {
+  retryPayment: async (id, options) => {
     let tx = get().currentTransaction;
     const txId = id ?? tx?.id;
     if (!txId) throw new Error("No payment transaction selected");
@@ -316,6 +326,8 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
       tx = mapPaymentTransactionApiToModel(await apiGetPaymentTransaction(txId));
     }
     if (!tx.orderId) throw new Error("Payment transaction is missing order context");
+    const splitPayments =
+      options?.splitPayments ?? splitPaymentsFromTransactionSnapshot(tx.payloadSnapshot);
     const updated = await get().createPaymentTransaction({
       orderId: tx.orderId,
       outletId: tx.outletId ?? undefined,
@@ -325,6 +337,7 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
         typeof tx.providerMetadataSnapshot?.provider === "string"
           ? tx.providerMetadataSnapshot.provider
           : undefined,
+      splitPayments,
     });
     get().pollTransactionStatus(updated.id);
     return updated;

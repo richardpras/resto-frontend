@@ -18,6 +18,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { listOrders, type OrderApi } from "@/lib/api";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import { toApiPaymentMethod, isGatewayPaymentMethod } from "@/features/pos/paymentMethodUtils";
+import {
+  gatewayRetryLabel,
+  isTerminalGatewayStatus,
+  pendingGatewayCheckoutTotal,
+  remapSettlementBatchMethod,
+  shouldBlockDuplicateGatewayAttempt,
+  splitPaymentsForGatewayCreate,
+} from "@/features/pos/gatewayCheckoutUtils";
 import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
@@ -233,6 +241,7 @@ export default function Cashier() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showQrisModal, setShowQrisModal] = useState(false);
+  const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<CashierOrder | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -299,11 +308,13 @@ export default function Cashier() {
 
   useEffect(() => {
     if (!showPaymentModal || !paymentTransaction) return;
+    if (paymentTransaction.status !== "pending") return;
+    if (qrisModalSuppressedTxId === paymentTransaction.id) return;
     const isQris = (selectedPayment ?? "").toLowerCase() === "qris" || paymentTransaction.method === "qris";
     if (isQris && paymentTransaction.qrString) {
       setShowQrisModal(true);
     }
-  }, [showPaymentModal, paymentTransaction, selectedPayment]);
+  }, [showPaymentModal, paymentTransaction, selectedPayment, qrisModalSuppressedTxId]);
 
   useEffect(() => {
     if (!activeOutletId || activeOutletId < 1) {
@@ -614,10 +625,69 @@ export default function Cashier() {
 
     const payload = buildBalancePaymentPayload(paymentModalOrder, selectedPayment, amount);
 
+    if (paymentTransaction?.status === "pending") {
+      if (
+        isGatewayPaymentMethod(payload.method) &&
+        shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, payload.method)
+      ) {
+        toast.error("A QR payment is still pending for this method. Use Retry, Expire, or Change payment method.");
+        return;
+      }
+      try {
+        await paymentExpire(paymentTransaction.id);
+        setShowQrisModal(false);
+        setQrisModalSuppressedTxId(paymentTransaction.id);
+        setPendingGatewayPayments([]);
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
+      } catch (error) {
+        toast.error(error instanceof ApiHttpError ? error.message : "Failed to cancel pending checkout");
+        return;
+      }
+    }
+
+    if (
+      isGatewayPaymentMethod(payload.method) &&
+      paymentTransaction &&
+      isTerminalGatewayStatus(paymentTransaction.status)
+    ) {
+      setSubmitting(true);
+      try {
+        const tx = await paymentRetry(paymentTransaction.id, {
+          splitPayments:
+            pendingGatewayPayments.length > 0
+              ? splitPaymentsForGatewayCreate(pendingGatewayPayments)
+              : undefined,
+        });
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
+        if (payload.method === "qris" && tx.qrString) {
+          setQrisModalSuppressedTxId(null);
+          setShowQrisModal(true);
+          toast.success("QRIS ready. Ask customer to scan the QR.");
+        } else {
+          toast.success("Payment checkout created. Ask customer to complete payment.");
+        }
+      } catch (error) {
+        toast.error(error instanceof ApiHttpError ? error.message : "Payment failed");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    const checkoutAmount =
+      pendingGatewayPayments.length > 0
+        ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+        : amount;
+
     setSubmitting(true);
     try {
       if (selectedPayment === "Cash") {
-        await addOrderPaymentsRemote(paymentModalOrder.id, [payload]);
+        const cashBatch =
+          pendingGatewayPayments.length > 0
+            ? remapSettlementBatchMethod(pendingGatewayPayments, payload.method)
+            : [payload];
+        await addOrderPaymentsRemote(paymentModalOrder.id, cashBatch);
+        setPendingGatewayPayments([]);
         toast.success("Payment recorded.");
         await loadOpenOrders();
         setSelectedOrderId(null);
@@ -631,15 +701,27 @@ export default function Cashier() {
       }
 
       setGatewayOrderId(paymentModalOrder.id);
-      setPendingGatewayPayments([payload]);
+      if (pendingGatewayPayments.length === 0) {
+        setPendingGatewayPayments([payload]);
+      }
+      const gatewayBatch =
+        pendingGatewayPayments.length > 0
+          ? remapSettlementBatchMethod(pendingGatewayPayments, payload.method)
+          : [payload];
       const tx = await paymentCreateTransaction({
         orderId: paymentModalOrder.id,
         outletId: activeOutletId,
         method: payload.method,
-        amount,
+        amount: checkoutAmount,
+        splitPayments:
+          gatewayBatch.length > 1 || pendingGatewayPayments.length > 0
+            ? splitPaymentsForGatewayCreate(gatewayBatch)
+            : undefined,
       });
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
       paymentPollTransactionStatus(tx.id);
       if (payload.method === "qris" && tx.qrString) {
+        setQrisModalSuppressedTxId(null);
         setShowQrisModal(true);
         toast.success("QRIS ready. Ask customer to scan the QR.");
       } else {
@@ -653,6 +735,94 @@ export default function Cashier() {
       setSubmitting(false);
     }
   };
+
+  const selectedApiMethod = selectedPayment ? toApiPaymentMethod(selectedPayment) : null;
+  const gatewayCheckoutPending =
+    Boolean(
+      selectedApiMethod &&
+        isGatewayPaymentMethod(selectedApiMethod) &&
+        paymentTransaction?.status === "pending" &&
+        shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, selectedApiMethod),
+    );
+
+  const abandonCashierPendingGateway = async () => {
+    if (!paymentTransaction || paymentTransaction.status !== "pending") {
+      setShowQrisModal(false);
+      return;
+    }
+    await paymentExpire(paymentTransaction.id);
+    setShowQrisModal(false);
+    setQrisModalSuppressedTxId(paymentTransaction.id);
+    if (paymentModalOrder && typeof activeOutletId === "number") {
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
+    }
+  };
+
+  const handleCashierSelectPaymentMethod = (label: string) => {
+    const nextApiMethod = toApiPaymentMethod(label);
+    const pending = paymentTransaction?.status === "pending" ? paymentTransaction : null;
+    if (pending && !shouldBlockDuplicateGatewayAttempt(pending.method, nextApiMethod)) {
+      void (async () => {
+        try {
+          await abandonCashierPendingGateway();
+          setSelectedPayment(label);
+          toast.success("Previous online checkout cancelled. You can complete payment with the new method.");
+        } catch (error) {
+          toast.error(error instanceof ApiHttpError ? error.message : "Failed to switch payment method");
+        }
+      })();
+      return;
+    }
+    setSelectedPayment(label);
+  };
+
+  const handleCashierChangePaymentMethodFromQris = () => {
+    void (async () => {
+      try {
+        await abandonCashierPendingGateway();
+        setSelectedPayment(null);
+        toast.success("Choose Cash, E-Wallet, or another method below.");
+      } catch (error) {
+        toast.error(error instanceof ApiHttpError ? error.message : "Failed to change payment method");
+      }
+    })();
+  };
+  const canRetryGatewayCheckout =
+    Boolean(
+      selectedApiMethod &&
+        isGatewayPaymentMethod(selectedApiMethod) &&
+        paymentTransaction &&
+        isTerminalGatewayStatus(paymentTransaction.status),
+    );
+  const primaryCashierPaymentLabel =
+    canRetryGatewayCheckout && selectedApiMethod
+      ? gatewayRetryLabel(selectedApiMethod)
+      : submitting || paymentIsSubmitting
+        ? "Processing…"
+        : "Complete Payment";
+
+  const handleCashierGatewayRetry = async (transactionId: string) => {
+    const tx = await paymentRetry(transactionId, {
+      splitPayments:
+        pendingGatewayPayments.length > 0
+          ? splitPaymentsForGatewayCreate(pendingGatewayPayments)
+          : undefined,
+    });
+    if (paymentModalOrder && typeof activeOutletId === "number") {
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
+    }
+    if (tx.method === "qris" && tx.qrString) {
+      setQrisModalSuppressedTxId(null);
+      setShowQrisModal(true);
+    }
+    return tx;
+  };
+
+  const paymentCheckoutAmount =
+    pendingGatewayPayments.length > 0
+      ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+      : paymentTransaction?.amount ?? paymentModalOrder?.balanceDue ?? 0;
+  const splitCheckoutActive = pendingGatewayPayments.length > 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -780,14 +950,17 @@ export default function Cashier() {
               </div>
               <div className="text-center mb-6">
                 <p className="text-sm text-muted-foreground">Balance due</p>
-                <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentModalOrder.balanceDue)}</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
+                {splitCheckoutActive ? (
+                  <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {paymentMethods.map((pm) => (
                   <button
                     key={pm.label}
                     type="button"
-                    onClick={() => setSelectedPayment(pm.label)}
+                    onClick={() => handleCashierSelectPaymentMethod(pm.label)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
                       selectedPayment === pm.label
                         ? "border-primary bg-primary/5 ring-1 ring-primary/20"
@@ -809,12 +982,12 @@ export default function Cashier() {
               <button
                 type="button"
                 onClick={() => void completeCashierPayment()}
-                disabled={!selectedPayment || submitting || paymentIsSubmitting}
+                disabled={!selectedPayment || submitting || paymentIsSubmitting || gatewayCheckoutPending}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3"
               >
                 <span className="flex items-center justify-center gap-2">
                   <CheckCircle2 className="h-4 w-4" />{" "}
-                  {submitting || paymentIsSubmitting ? "Processing…" : "Complete Payment"}
+                  {submitting || paymentIsSubmitting ? "Processing…" : primaryCashierPaymentLabel}
                 </span>
               </button>
               {paymentTransaction && selectedPayment !== "Cash" && (
@@ -830,12 +1003,17 @@ export default function Cashier() {
                   )}
                   {paymentTransaction.status === "expired" && (
                     <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">
-                      Payment expired. Retry to create a new checkout.
+                      Previous QR attempt expired. Use Retry QRIS Payment on the same order.
                     </p>
                   )}
                   {paymentTransaction.status === "failed" && (
                     <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">
-                      Payment failed. Retry or choose another method.
+                      Previous QR attempt failed. Retry on the same order or choose another method.
+                    </p>
+                  )}
+                  {paymentTransaction.status === "cancelled" && (
+                    <p className="rounded-lg bg-muted px-2 py-1 text-muted-foreground">
+                      Previous QR attempt was cancelled or superseded.
                     </p>
                   )}
                   {paymentTransaction.checkoutUrl && (
@@ -863,11 +1041,11 @@ export default function Cashier() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => void paymentRetry(paymentTransaction.id)}
+                      onClick={() => void handleCashierGatewayRetry(paymentTransaction.id)}
                       disabled={paymentIsSubmitting}
                       className="rounded-lg border border-border px-2 py-1"
                     >
-                      Retry
+                      {gatewayRetryLabel(paymentTransaction.method)}
                     </button>
                     <button
                       type="button"
@@ -910,15 +1088,26 @@ export default function Cashier() {
       <QrisPaymentModal
         open={showPaymentModal && showQrisModal && !!paymentTransaction?.qrString}
         qrString={paymentTransaction?.qrString ?? ""}
-        amount={paymentTransaction?.amount ?? paymentModalOrder?.balanceDue ?? 0}
+        amount={paymentTransaction?.amount ?? paymentCheckoutAmount}
         expirySeconds={paymentExpiryCountdown}
         status={paymentTransaction?.status ?? "pending"}
         orderLabel={paymentModalOrder?.code}
         outletLabel={typeof activeOutletId === "number" ? `Outlet ${activeOutletId}` : undefined}
         isSubmitting={paymentIsSubmitting}
         error={paymentError}
-        onRequestClose={() => setShowQrisModal(false)}
-        onRetry={() => void (paymentTransaction ? paymentRetry(paymentTransaction.id) : Promise.resolve())}
+        onRequestClose={() => {
+          setShowQrisModal(false);
+          if (paymentTransaction?.status === "pending") {
+            setQrisModalSuppressedTxId(paymentTransaction.id);
+          }
+        }}
+        onChangePaymentMethod={handleCashierChangePaymentMethodFromQris}
+        checkoutHint={
+          splitCheckoutActive
+            ? "Customer cancelled QR? Tap Change payment method, then complete the remaining split portion with Cash or another method."
+            : "Customer cancelled QR? Tap Change payment method or choose Cash below."
+        }
+        onRetry={() => void (paymentTransaction ? handleCashierGatewayRetry(paymentTransaction.id) : Promise.resolve())}
         onReconcile={() => void (paymentTransaction ? paymentReconcile(paymentTransaction.id) : Promise.resolve())}
         onExpire={() => void (paymentTransaction ? paymentExpire(paymentTransaction.id) : Promise.resolve())}
         showSandboxSimulate={allowSandboxSimulation}

@@ -173,9 +173,16 @@ export async function getPaymentTransaction(
   return response.data;
 }
 
-export async function expirePaymentTransaction(id: string): Promise<PaymentTransactionApi> {
-  const current = await getPaymentTransaction(id);
-  return { ...current, status: "expired" };
+export async function expirePaymentTransaction(
+  id: string,
+  options: PaymentRequestOptions = {},
+): Promise<PaymentTransactionApi> {
+  const response = await request<{ data: PaymentTransactionApi }>(`/payment-transactions/${id}/expire`, {
+    method: "POST",
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
 }
 
 export async function reconcilePaymentTransaction(

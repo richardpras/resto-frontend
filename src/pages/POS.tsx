@@ -41,6 +41,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toApiPaymentMethod, isGatewayPaymentMethod } from "@/features/pos/paymentMethodUtils";
+import {
+  canReuseCheckoutOrder,
+  gatewayRetryLabel,
+  isTerminalGatewayStatus,
+  pendingGatewayCheckoutTotal,
+  remapSettlementBatchMethod,
+  shouldBlockDuplicateGatewayAttempt,
+  splitPaymentsForGatewayCreate,
+} from "@/features/pos/gatewayCheckoutUtils";
 import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
@@ -133,6 +142,7 @@ export default function POS() {
   // Modal states
   const [showPayment, setShowPayment] = useState(false);
   const [showQrisModal, setShowQrisModal] = useState(false);
+  const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [showSplit, setShowSplit] = useState(false);
   const [showConfirmSent, setShowConfirmSent] = useState(false);
   const [showConfirmOrderDialog, setShowConfirmOrderDialog] = useState(false);
@@ -224,11 +234,13 @@ export default function POS() {
 
   useEffect(() => {
     if (!showPayment || !paymentTransaction) return;
+    if (paymentTransaction.status !== "pending") return;
+    if (qrisModalSuppressedTxId === paymentTransaction.id) return;
     const isQris = (selectedPayment ?? "").toLowerCase() === "qris" || paymentTransaction.method === "qris";
     if (isQris && paymentTransaction.qrString) {
       setShowQrisModal(true);
     }
-  }, [showPayment, paymentTransaction, selectedPayment]);
+  }, [showPayment, paymentTransaction, selectedPayment, qrisModalSuppressedTxId]);
 
   // Prevent outlet context leaks (cart, split/payment modal state) across outlet switch.
   useEffect(() => {
@@ -407,33 +419,96 @@ export default function POS() {
   const completeDirectPayment = async () => {
     if (!selectedPayment || submitting) return;
     if (!requireOutletOrderContext()) return;
+
+    const apiMethod = toApiPaymentMethod(selectedPayment);
+    const gatewayMethod = isGatewayPaymentMethod(apiMethod);
+
+    if (paymentTransaction?.status === "pending") {
+      if (gatewayMethod && shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, apiMethod)) {
+        toast.error("A QR payment is still pending for this method. Use Retry, Expire, or Change payment method.");
+        return;
+      }
+      try {
+        await paymentExpire(paymentTransaction.id);
+        setShowQrisModal(false);
+        setQrisModalSuppressedTxId(paymentTransaction.id);
+        setPendingGatewayPayments([]);
+        if (currentOrderId) {
+          useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+        }
+      } catch (e) {
+        toastApiError(e);
+        return;
+      }
+    }
+
+    if (gatewayMethod && paymentTransaction && isTerminalGatewayStatus(paymentTransaction.status) && currentOrderId) {
+      setSubmitting(true);
+      try {
+        const tx = await paymentRetry(paymentTransaction.id);
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+        if (apiMethod === "qris" && tx.qrString) {
+          setShowQrisModal(true);
+          toast.success("QRIS ready. Ask customer to scan the QR.");
+        } else {
+          toast.success("Payment checkout created. Ask customer to complete payment.");
+        }
+      } catch (e) {
+        toastApiError(e);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-      const payload: CreateOrderPayload = {
-        tenantId: POS_TENANT_ID,
-        ...outletOrderFields,
-        code,
-        source: "pos",
-        orderType,
-        status: "confirmed",
-        paymentStatus: selectedPayment === "Cash" ? "paid" : "unpaid",
-        payments: selectedPayment === "Cash" ? [
-          {
-            method: toApiPaymentMethod(selectedPayment),
-            amount: total,
-            paidAt: new Date().toISOString(),
-          },
-        ] : [],
-        confirmedAt: new Date().toISOString(),
-        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
-      };
-      const storedOrder = await createOrderRemote(payload);
-      if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", storedOrder.id);
+      let storedOrder: Awaited<ReturnType<typeof createOrderRemote>>;
+      const reusing = canReuseCheckoutOrder(currentOrderId, currentOpenOrder);
+      if (reusing && currentOrderId) {
+        storedOrder = await fetchOrderRemote(currentOrderId);
+      } else {
+        const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+        const payload: CreateOrderPayload = {
+          tenantId: POS_TENANT_ID,
+          ...outletOrderFields,
+          code,
+          source: "pos",
+          orderType,
+          status: "confirmed",
+          paymentStatus: selectedPayment === "Cash" ? "paid" : "unpaid",
+          payments: selectedPayment === "Cash" ? [
+            {
+              method: apiMethod,
+              amount: total,
+              paidAt: new Date().toISOString(),
+            },
+          ] : [],
+          confirmedAt: new Date().toISOString(),
+          ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+        };
+        storedOrder = await createOrderRemote(payload);
+        if (selectedTable) {
+          updateTableStatus(selectedTable, "occupied", storedOrder.id);
+        }
+        setCurrentOrderId(storedOrder.id);
+        resetCart();
       }
-      setCurrentOrderId(storedOrder.id);
+
+      const checkoutTotal =
+        pendingGatewayPayments.length > 0
+          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+          : storedOrder.total;
+
       if (selectedPayment === "Cash") {
+        if (reusing) {
+          const cashBatch =
+            pendingGatewayPayments.length > 0
+              ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
+              : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
+          await addOrderPaymentsRemote(storedOrder.id, cashBatch);
+          setPendingGatewayPayments([]);
+        }
         if (selectedCustomer && appliedPoints > 0) {
           await enqueueRedemption({
             customerId: selectedCustomer.id,
@@ -449,20 +524,29 @@ export default function POS() {
         toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
         return;
       }
+
       const gatewayPayment: OrderPaymentPayload = {
-        method: toApiPaymentMethod(selectedPayment),
-        amount: total,
+        method: apiMethod,
+        amount: checkoutTotal,
         paidAt: new Date().toISOString(),
       };
       const tx = await paymentCreateTransaction({
         orderId: storedOrder.id,
         outletId: activeOutletId ?? undefined,
         method: gatewayPayment.method,
-        amount: total,
+        amount: checkoutTotal,
+        splitPayments:
+          pendingGatewayPayments.length > 0
+            ? splitPaymentsForGatewayCreate(
+                remapSettlementBatchMethod(pendingGatewayPayments, gatewayPayment.method),
+              )
+            : undefined,
       });
       setPendingGatewayPayments([gatewayPayment]);
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, storedOrder.id);
       paymentPollTransactionStatus(tx.id);
       if (gatewayPayment.method === "qris" && tx.qrString) {
+        setQrisModalSuppressedTxId(null);
         setShowQrisModal(true);
         toast.success("QRIS ready. Ask customer to scan the QR.");
       } else {
@@ -706,6 +790,91 @@ export default function POS() {
       }
     })();
   }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, selectedCustomer, appliedPoints, enqueueRedemption]);
+
+  const selectedApiMethod = selectedPayment ? toApiPaymentMethod(selectedPayment) : null;
+  const gatewayCheckoutActive =
+    Boolean(selectedApiMethod && isGatewayPaymentMethod(selectedApiMethod) && paymentTransaction);
+  const canRetryGatewayCheckout =
+    gatewayCheckoutActive &&
+    paymentTransaction &&
+    isTerminalGatewayStatus(paymentTransaction.status);
+  const gatewayCheckoutPending =
+    gatewayCheckoutActive &&
+    paymentTransaction?.status === "pending" &&
+    selectedApiMethod !== null &&
+    shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, selectedApiMethod);
+
+  const abandonPendingGatewayCheckout = async () => {
+    if (!paymentTransaction || paymentTransaction.status !== "pending") {
+      setShowQrisModal(false);
+      return;
+    }
+    await paymentExpire(paymentTransaction.id);
+    setShowQrisModal(false);
+    setQrisModalSuppressedTxId(paymentTransaction.id);
+    if (currentOrderId) {
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+    }
+  };
+
+  const handleSelectPaymentMethod = (label: string) => {
+    const nextApiMethod = toApiPaymentMethod(label);
+    const pending = paymentTransaction?.status === "pending" ? paymentTransaction : null;
+    if (pending && !shouldBlockDuplicateGatewayAttempt(pending.method, nextApiMethod)) {
+      void (async () => {
+        try {
+          await abandonPendingGatewayCheckout();
+          setSelectedPayment(label);
+          toast.success("Previous online checkout cancelled. You can complete payment with the new method.");
+        } catch (error) {
+          toastApiError(error);
+        }
+      })();
+      return;
+    }
+    setSelectedPayment(label);
+  };
+
+  const handleChangePaymentMethodFromQris = () => {
+    void (async () => {
+      try {
+        await abandonPendingGatewayCheckout();
+        setSelectedPayment(null);
+        toast.success("Choose Cash, E-Wallet, or another method below.");
+      } catch (error) {
+        toastApiError(error);
+      }
+    })();
+  };
+  const primaryPaymentActionLabel =
+    canRetryGatewayCheckout && selectedApiMethod
+      ? gatewayRetryLabel(selectedApiMethod)
+      : submitting || paymentIsSubmitting
+        ? "Processing…"
+        : "Complete Payment";
+
+  const paymentCheckoutAmount =
+    pendingGatewayPayments.length > 0
+      ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+      : paymentTransaction?.amount ?? total;
+  const splitCheckoutActive = pendingGatewayPayments.length > 0;
+
+  const handleGatewayRetry = async (transactionId: string) => {
+    const tx = await paymentRetry(transactionId, {
+      splitPayments:
+        pendingGatewayPayments.length > 0
+          ? splitPaymentsForGatewayCreate(pendingGatewayPayments)
+          : undefined,
+    });
+    if (currentOrderId) {
+      useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+    }
+    if (tx.method === "qris" && tx.qrString) {
+      setQrisModalSuppressedTxId(null);
+      setShowQrisModal(true);
+    }
+    return tx;
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -1086,11 +1255,14 @@ export default function POS() {
               </div>
               <div className="text-center mb-6">
                 <p className="text-sm text-muted-foreground">Total Amount</p>
-                <p className="text-3xl font-bold text-foreground mt-1">{formatRp(total)}</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
+                {splitCheckoutActive ? (
+                  <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3 mb-6">
                 {paymentMethods.map((pm) => (
-                  <button key={pm.label} onClick={() => setSelectedPayment(pm.label)}
+                  <button key={pm.label} onClick={() => handleSelectPaymentMethod(pm.label)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${selectedPayment === pm.label ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/30 hover:bg-primary/5"}`}>
                     <pm.icon className="h-6 w-6 text-primary" />
                     <span className="text-sm font-medium text-foreground">{pm.label}</span>
@@ -1101,10 +1273,21 @@ export default function POS() {
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
                 <SplitSquareHorizontal className="h-4 w-4" /> Split Bill
               </button>
-              <button onClick={() => void completeDirectPayment()} disabled={!selectedPayment || submitting || paymentIsSubmitting}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3">
-                <span className="flex items-center justify-center gap-2"><CheckCircle2 className="h-4 w-4" /> {submitting || paymentIsSubmitting ? "Processing…" : "Complete Payment"}</span>
+              <button
+                onClick={() => void completeDirectPayment()}
+                disabled={!selectedPayment || submitting || paymentIsSubmitting || gatewayCheckoutPending}
+                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" /> {primaryPaymentActionLabel}
+                </span>
               </button>
+              {currentOrderId ? (
+                <p className="mb-3 text-[11px] text-muted-foreground text-center">
+                  Checkout order <span className="font-medium text-foreground">{currentOpenOrder?.code ?? currentOrderId}</span>
+                  {gatewayCheckoutPending ? " · QR payment pending" : ""}
+                </p>
+              ) : null}
               {paymentTransaction && selectedPayment !== "Cash" && (
                 <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
                   <p className="font-semibold text-foreground">Online Checkout</p>
@@ -1113,10 +1296,13 @@ export default function POS() {
                     <p className="rounded-lg bg-success/10 px-2 py-1 text-success">Payment completed. Refreshing order payment...</p>
                   )}
                   {paymentTransaction.status === "expired" && (
-                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Payment expired. Retry to create a new checkout.</p>
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Previous QR attempt expired. Use Retry QRIS Payment on the same order.</p>
                   )}
                   {paymentTransaction.status === "failed" && (
-                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Payment failed. Retry or choose another method.</p>
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Previous QR attempt failed. Retry on the same order or choose another method.</p>
+                  )}
+                  {paymentTransaction.status === "cancelled" && (
+                    <p className="rounded-lg bg-muted px-2 py-1 text-muted-foreground">Previous QR attempt was cancelled or superseded.</p>
                   )}
                   {paymentTransaction.checkoutUrl && (
                     <a href={paymentTransaction.checkoutUrl} target="_blank" rel="noreferrer" className="text-primary underline">
@@ -1137,7 +1323,7 @@ export default function POS() {
                   <p className="text-muted-foreground">Expires in: <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span></p>
                   {paymentError && <p className="text-destructive">{paymentError}</p>}
                   <div className="flex gap-2">
-                    <button onClick={() => void paymentRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Retry</button>
+                    <button onClick={() => void handleGatewayRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{gatewayRetryLabel(paymentTransaction.method)}</button>
                     <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Reconcile</button>
                     <button onClick={() => void paymentExpire(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Expire</button>
                     {allowSandboxSimulation && (
@@ -1159,15 +1345,26 @@ export default function POS() {
       <QrisPaymentModal
         open={showPayment && showQrisModal && !!paymentTransaction?.qrString}
         qrString={paymentTransaction?.qrString ?? ""}
-        amount={paymentTransaction?.amount ?? total}
+        amount={paymentTransaction?.amount ?? paymentCheckoutAmount}
         expirySeconds={paymentExpiryCountdown}
         status={paymentTransaction?.status ?? "pending"}
         orderLabel={currentOpenOrder?.code ?? currentOrderId ?? undefined}
         outletLabel={typeof activeOutletId === "number" ? `Outlet ${activeOutletId}` : undefined}
         isSubmitting={paymentIsSubmitting}
         error={paymentError}
-        onRequestClose={() => setShowQrisModal(false)}
-        onRetry={() => void (paymentTransaction ? paymentRetry(paymentTransaction.id) : Promise.resolve())}
+        onRequestClose={() => {
+          setShowQrisModal(false);
+          if (paymentTransaction?.status === "pending") {
+            setQrisModalSuppressedTxId(paymentTransaction.id);
+          }
+        }}
+        checkoutHint={
+          splitCheckoutActive
+            ? "Customer cancelled QR? Tap Change payment method, then complete the remaining split portion with Cash or another method."
+            : "Customer cancelled QR? Tap Change payment method or choose Cash below."
+        }
+        onChangePaymentMethod={handleChangePaymentMethodFromQris}
+        onRetry={() => void (paymentTransaction ? handleGatewayRetry(paymentTransaction.id) : Promise.resolve())}
         onReconcile={() => void (paymentTransaction ? paymentReconcile(paymentTransaction.id) : Promise.resolve())}
         onExpire={() => void (paymentTransaction ? paymentExpire(paymentTransaction.id) : Promise.resolve())}
         showSandboxSimulate={allowSandboxSimulation}

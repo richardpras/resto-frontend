@@ -28,6 +28,7 @@ function statusBadgeClass(status: string): string {
   if (s === "paid") return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
   if (s === "pending") return "bg-amber-500/15 text-amber-800 dark:text-amber-300";
   if (s === "failed") return "bg-destructive/15 text-destructive";
+  if (s === "expired" || s === "cancelled") return "bg-muted text-muted-foreground";
   if (s === "void" || s.includes("void")) return "bg-muted text-muted-foreground line-through";
   if (s.includes("refund")) return "bg-orange-500/15 text-orange-800 dark:text-orange-300";
   return "bg-muted text-foreground";
@@ -151,7 +152,9 @@ export function OrderPaymentHistoryPanel({ outletId, orderId, orderChannelLabel 
                   <span>Channel</span>
                   <span className="text-right text-foreground">{channel}</span>
                   <span>Reference</span>
-                  <span className="text-right">—</span>
+                  <span className="text-right text-foreground truncate">
+                    {row.providerReference ?? (row.source === "gateway_transaction" ? "Gateway" : "—")}
+                  </span>
                   <span>Cashier</span>
                   <span className="text-right">—</span>
                   <span>Settlement</span>

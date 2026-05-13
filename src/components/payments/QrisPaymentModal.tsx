@@ -13,8 +13,11 @@ type QrisPaymentModalProps = {
   error?: string | null;
   onRequestClose: () => void;
   onRetry: () => void;
+  retryLabel?: string;
   onReconcile: () => void;
   onExpire: () => void;
+  onChangePaymentMethod?: () => void;
+  checkoutHint?: string | null;
   onSimulateSandboxPaid?: () => void;
   showSandboxSimulate?: boolean;
   onSimulateViaXendit?: () => void;
@@ -42,8 +45,11 @@ export function QrisPaymentModal({
   error,
   onRequestClose,
   onRetry,
+  retryLabel = "Retry QRIS Payment",
   onReconcile,
   onExpire,
+  onChangePaymentMethod,
+  checkoutHint,
   onSimulateSandboxPaid,
   showSandboxSimulate = false,
   onSimulateViaXendit,
@@ -118,6 +124,9 @@ export function QrisPaymentModal({
               </p>
             </div>
 
+            {checkoutHint ? (
+              <p className="mt-3 text-xs rounded-lg bg-muted px-2 py-1 text-muted-foreground">{checkoutHint}</p>
+            ) : null}
             {pending && (
               <p className="mt-3 text-xs rounded-lg bg-amber-500/10 border border-amber-500/25 px-2 py-1 text-amber-700 dark:text-amber-200 flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5" /> Waiting for payment confirmation...
@@ -136,13 +145,23 @@ export function QrisPaymentModal({
             {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
 
             <div className="mt-4 flex flex-wrap gap-2">
+              {onChangePaymentMethod ? (
+                <button
+                  type="button"
+                  onClick={onChangePaymentMethod}
+                  disabled={isSubmitting}
+                  className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs text-primary"
+                >
+                  Change payment method
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onRetry}
                 disabled={isSubmitting}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs"
               >
-                Retry
+                {retryLabel}
               </button>
               <button
                 type="button"

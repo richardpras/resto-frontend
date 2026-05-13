@@ -331,6 +331,10 @@ export type OrderPaymentHistoryItem = {
   splitBillGroup?: string | null;
   splitLabel?: string | null;
   allocations?: { orderItemId: number; qty: number; amount: number }[];
+  source?: "order_payment" | "gateway_transaction";
+  gatewayTransactionId?: number | null;
+  provider?: string | null;
+  providerReference?: string | null;
 };
 
 export type OrderSplitItemPayload = {
