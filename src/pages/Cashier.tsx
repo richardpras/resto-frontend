@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Banknote,
-  CreditCard,
-  QrCode,
-  Smartphone,
   RefreshCw,
   X,
   CheckCircle2,
@@ -17,7 +13,19 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { listOrders, type OrderApi } from "@/lib/api";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
-import { toApiPaymentMethod, isGatewayPaymentMethod } from "@/features/pos/paymentMethodUtils";
+import {
+  apiMethodFromCheckoutMethod,
+  isGatewayPaymentMethod,
+  toApiPaymentMethod,
+} from "@/features/pos/paymentMethodUtils";
+import {
+  FALLBACK_CHECKOUT_METHODS,
+  iconForCheckoutMethod,
+  isCashCheckoutMethod,
+  isGatewayCheckoutMethod,
+  isManualQrisCheckoutMethod,
+} from "@/features/pos/paymentMethodCapabilities";
+import { findCheckoutMethod, useOutletCheckoutMethods } from "@/features/pos/useOutletCheckoutMethods";
 import {
   gatewayRetryLabel,
   isTerminalGatewayStatus,
@@ -38,15 +46,9 @@ import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
 import { QrisPaymentModal } from "@/components/payments/QrisPaymentModal";
+import { StaticQrisPaymentModal } from "@/components/payments/StaticQrisPaymentModal";
 
 const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
-
-const paymentMethods = [
-  { label: "Cash", icon: Banknote },
-  { label: "QRIS", icon: QrCode },
-  { label: "E-Wallet", icon: Smartphone },
-  { label: "Card", icon: CreditCard },
-];
 
 type CashierOrder = {
   id: string;
@@ -182,7 +184,7 @@ function buildSplitSettlementAllocations(order: CashierOrder): AllocationLine[] 
     .filter((line) => line.orderItemId > 0 && line.qty > 0 && line.amount > 0);
 }
 
-function buildBalancePaymentPayload(order: CashierOrder, paymentLabel: string, amount: number): OrderPaymentPayload {
+function buildBalancePaymentPayload(order: CashierOrder, apiMethod: string, amount: number): OrderPaymentPayload {
   const splitAllocations = buildSplitSettlementAllocations(order);
   const allocationPaidByItem = new Map<string, number>();
   for (const payment of order.payments) {
@@ -200,7 +202,7 @@ function buildBalancePaymentPayload(order: CashierOrder, paymentLabel: string, a
 
   const allocations = createPaymentAllocations(remainingSplitAllocations, amount);
   const base: OrderPaymentPayload = {
-    method: toApiPaymentMethod(paymentLabel),
+    method: apiMethod,
     amount,
     paidAt: new Date().toISOString(),
   };
@@ -243,7 +245,8 @@ export default function Cashier() {
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<CashierOrder | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
+  const [selectedCheckoutCode, setSelectedCheckoutCode] = useState<string | null>(null);
+  const [showStaticQrisModal, setShowStaticQrisModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
   const [gatewayOrderId, setGatewayOrderId] = useState<string | null>(null);
@@ -255,6 +258,14 @@ export default function Cashier() {
   const [splitCount, setSplitCount] = useState(2);
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
+  const { data: checkoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
+    enabled: showPaymentModal || showSplitModal,
+  });
+  const checkoutTiles = useMemo(
+    () => checkoutMethods.map((method) => ({ method, icon: iconForCheckoutMethod(method) })),
+    [checkoutMethods],
+  );
+  const selectedCheckoutMethod = findCheckoutMethod(checkoutMethods, selectedCheckoutCode);
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) ?? null,
@@ -310,17 +321,20 @@ export default function Cashier() {
     if (!showPaymentModal || !paymentTransaction) return;
     if (paymentTransaction.status !== "pending") return;
     if (qrisModalSuppressedTxId === paymentTransaction.id) return;
-    const isQris = (selectedPayment ?? "").toLowerCase() === "qris" || paymentTransaction.method === "qris";
-    if (isQris && paymentTransaction.qrString) {
+    const gatewayQris =
+      Boolean(selectedCheckoutMethod && isGatewayCheckoutMethod(selectedCheckoutMethod)) ||
+      paymentTransaction.method === "qris";
+    if (gatewayQris && paymentTransaction.qrString) {
       setShowQrisModal(true);
     }
-  }, [showPaymentModal, paymentTransaction, selectedPayment, qrisModalSuppressedTxId]);
+  }, [showPaymentModal, paymentTransaction, selectedCheckoutMethod, qrisModalSuppressedTxId]);
 
   useEffect(() => {
     if (!activeOutletId || activeOutletId < 1) {
       setShowPaymentModal(false);
       setPaymentModalOrder(null);
-      setSelectedPayment(null);
+      setSelectedCheckoutCode(null);
+      setShowStaticQrisModal(false);
       setPendingGatewayPayments([]);
       setGatewayOrderId(null);
       setShowSplitModal(false);
@@ -347,7 +361,8 @@ export default function Cashier() {
         setSplitPersons([]);
         setPaymentModalOrder(null);
         setGatewayOrderId(null);
-        setSelectedPayment(null);
+        setSelectedCheckoutCode(null);
+      setShowStaticQrisModal(false);
         setSelectedOrderId(null);
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
@@ -376,7 +391,8 @@ export default function Cashier() {
   const openPaymentModal = () => {
     if (!selectedOrder || selectedOrder.balanceDue <= 0) return;
     void paymentResetAsync();
-    setSelectedPayment(null);
+    setSelectedCheckoutCode(null);
+    setShowStaticQrisModal(false);
     setPendingGatewayPayments([]);
     setGatewayOrderId(null);
     setPaymentModalOrder(snapshotCashierOrder(selectedOrder));
@@ -388,14 +404,16 @@ export default function Cashier() {
     setShowQrisModal(false);
     setShowPaymentModal(false);
     setPaymentModalOrder(null);
-    setSelectedPayment(null);
+    setSelectedCheckoutCode(null);
+    setShowStaticQrisModal(false);
     setPendingGatewayPayments([]);
     setGatewayOrderId(null);
   };
 
   const beginSplitBill = (source: CashierOrder) => {
     void paymentResetAsync();
-    setSelectedPayment(null);
+    setSelectedCheckoutCode(null);
+    setShowStaticQrisModal(false);
     setPendingGatewayPayments([]);
     setGatewayOrderId(null);
     setShowPaymentModal(false);
@@ -576,8 +594,8 @@ export default function Cashier() {
         setSubmitting(false);
         return;
       }
-      const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method));
-      const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method));
+      const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method, checkoutMethods));
+      const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method, checkoutMethods));
       const paidOrder =
         immediatePayments.length > 0 ? await addOrderPaymentsRemote(fresh.id, immediatePayments) : fresh;
       if (gatewayPayments.length > 0) {
@@ -612,7 +630,7 @@ export default function Cashier() {
   };
 
   const completeCashierPayment = async () => {
-    if (!paymentModalOrder || !selectedPayment || submitting) return;
+    if (!paymentModalOrder || !selectedCheckoutMethod || submitting) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
       toast.error("Select an outlet in the header.");
       return;
@@ -623,11 +641,16 @@ export default function Cashier() {
       return;
     }
 
-    const payload = buildBalancePaymentPayload(paymentModalOrder, selectedPayment, amount);
+    const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
+    const payload = buildBalancePaymentPayload(paymentModalOrder, apiMethod, amount);
+    const cashMethod = isCashCheckoutMethod(selectedCheckoutMethod);
+    const manualQrisMethod = isManualQrisCheckoutMethod(selectedCheckoutMethod);
+    const gatewayMethod = isGatewayCheckoutMethod(selectedCheckoutMethod);
 
     if (paymentTransaction?.status === "pending") {
       if (
-        isGatewayPaymentMethod(payload.method) &&
+        gatewayMethod &&
+        isGatewayPaymentMethod(payload.method, checkoutMethods) &&
         shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, payload.method)
       ) {
         toast.error("A QR payment is still pending for this method. Use Retry, Expire, or Change payment method.");
@@ -646,7 +669,8 @@ export default function Cashier() {
     }
 
     if (
-      isGatewayPaymentMethod(payload.method) &&
+      gatewayMethod &&
+      isGatewayPaymentMethod(payload.method, checkoutMethods) &&
       paymentTransaction &&
       isTerminalGatewayStatus(paymentTransaction.status)
     ) {
@@ -681,7 +705,7 @@ export default function Cashier() {
 
     setSubmitting(true);
     try {
-      if (selectedPayment === "Cash") {
+      if (cashMethod) {
         const cashBatch =
           pendingGatewayPayments.length > 0
             ? remapSettlementBatchMethod(pendingGatewayPayments, payload.method)
@@ -695,7 +719,15 @@ export default function Cashier() {
         return;
       }
 
-      if (!isGatewayPaymentMethod(payload.method)) {
+      if (manualQrisMethod) {
+        setShowStaticQrisModal(true);
+        toast.message("Show outlet QRIS to customer", {
+          description: "Confirm payment only after you verify the transfer.",
+        });
+        return;
+      }
+
+      if (!gatewayMethod || !isGatewayPaymentMethod(payload.method, checkoutMethods)) {
         toast.error("Unsupported payment method.");
         return;
       }
@@ -736,11 +768,49 @@ export default function Cashier() {
     }
   };
 
-  const selectedApiMethod = selectedPayment ? toApiPaymentMethod(selectedPayment) : null;
+  const confirmCashierStaticQrisPayment = async () => {
+    if (!paymentModalOrder || !selectedCheckoutMethod || submitting) return;
+    const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
+    setSubmitting(true);
+    try {
+      if (paymentTransaction?.status === "pending") {
+        await paymentExpire(paymentTransaction.id);
+        setQrisModalSuppressedTxId(paymentTransaction.id);
+      }
+      const checkoutAmount =
+        pendingGatewayPayments.length > 0
+          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+          : paymentModalOrder.balanceDue;
+      const batch =
+        pendingGatewayPayments.length > 0
+          ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
+          : [
+              buildBalancePaymentPayload(paymentModalOrder, apiMethod, checkoutAmount),
+            ];
+      await addOrderPaymentsRemote(paymentModalOrder.id, batch);
+      setPendingGatewayPayments([]);
+      setShowStaticQrisModal(false);
+      if (typeof activeOutletId === "number") {
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
+      }
+      toast.success("Static QRIS payment recorded.");
+      await loadOpenOrders();
+      setSelectedOrderId(null);
+      closePaymentModal();
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : "Payment failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const selectedApiMethod = selectedCheckoutMethod
+    ? apiMethodFromCheckoutMethod(selectedCheckoutMethod)
+    : null;
   const gatewayCheckoutPending =
     Boolean(
       selectedApiMethod &&
-        isGatewayPaymentMethod(selectedApiMethod) &&
+        isGatewayPaymentMethod(selectedApiMethod, checkoutMethods) &&
         paymentTransaction?.status === "pending" &&
         shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, selectedApiMethod),
     );
@@ -758,14 +828,16 @@ export default function Cashier() {
     }
   };
 
-  const handleCashierSelectPaymentMethod = (label: string) => {
-    const nextApiMethod = toApiPaymentMethod(label);
+  const handleCashierSelectPaymentMethod = (code: string) => {
+    const nextMethod = findCheckoutMethod(checkoutMethods, code);
+    const nextApiMethod = nextMethod ? apiMethodFromCheckoutMethod(nextMethod) : toApiPaymentMethod(code);
     const pending = paymentTransaction?.status === "pending" ? paymentTransaction : null;
     if (pending && !shouldBlockDuplicateGatewayAttempt(pending.method, nextApiMethod)) {
       void (async () => {
         try {
           await abandonCashierPendingGateway();
-          setSelectedPayment(label);
+          setSelectedCheckoutCode(code);
+          setShowStaticQrisModal(false);
           toast.success("Previous online checkout cancelled. You can complete payment with the new method.");
         } catch (error) {
           toast.error(error instanceof ApiHttpError ? error.message : "Failed to switch payment method");
@@ -773,15 +845,17 @@ export default function Cashier() {
       })();
       return;
     }
-    setSelectedPayment(label);
+    setSelectedCheckoutCode(code);
+    setShowStaticQrisModal(false);
   };
 
   const handleCashierChangePaymentMethodFromQris = () => {
     void (async () => {
       try {
         await abandonCashierPendingGateway();
-        setSelectedPayment(null);
-        toast.success("Choose Cash, E-Wallet, or another method below.");
+        setSelectedCheckoutCode(null);
+        setShowStaticQrisModal(false);
+        toast.success("Choose Cash, static QRIS, or another enabled method below.");
       } catch (error) {
         toast.error(error instanceof ApiHttpError ? error.message : "Failed to change payment method");
       }
@@ -790,7 +864,7 @@ export default function Cashier() {
   const canRetryGatewayCheckout =
     Boolean(
       selectedApiMethod &&
-        isGatewayPaymentMethod(selectedApiMethod) &&
+        isGatewayPaymentMethod(selectedApiMethod, checkoutMethods) &&
         paymentTransaction &&
         isTerminalGatewayStatus(paymentTransaction.status),
     );
@@ -956,19 +1030,19 @@ export default function Cashier() {
                 ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
-                {paymentMethods.map((pm) => (
+                {checkoutTiles.map(({ method, icon: Icon }) => (
                   <button
-                    key={pm.label}
+                    key={method.paymentMethodCode}
                     type="button"
-                    onClick={() => handleCashierSelectPaymentMethod(pm.label)}
+                    onClick={() => handleCashierSelectPaymentMethod(method.paymentMethodCode)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
-                      selectedPayment === pm.label
+                      selectedCheckoutCode === method.paymentMethodCode
                         ? "border-primary bg-primary/5 ring-1 ring-primary/20"
                         : "border-border hover:border-primary/30 hover:bg-primary/5"
                     }`}
                   >
-                    <pm.icon className="h-6 w-6 text-primary" />
-                    <span className="text-sm font-medium text-foreground">{pm.label}</span>
+                    <Icon className="h-6 w-6 text-primary" />
+                    <span className="text-sm font-medium text-foreground">{method.label}</span>
                   </button>
                 ))}
               </div>
@@ -982,7 +1056,7 @@ export default function Cashier() {
               <button
                 type="button"
                 onClick={() => void completeCashierPayment()}
-                disabled={!selectedPayment || submitting || paymentIsSubmitting || gatewayCheckoutPending}
+                disabled={!selectedCheckoutCode || submitting || paymentIsSubmitting || gatewayCheckoutPending}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3"
               >
                 <span className="flex items-center justify-center gap-2">
@@ -990,7 +1064,7 @@ export default function Cashier() {
                   {submitting || paymentIsSubmitting ? "Processing…" : primaryCashierPaymentLabel}
                 </span>
               </button>
-              {paymentTransaction && selectedPayment !== "Cash" && (
+              {paymentTransaction && selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod) && (
                 <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
                   <p className="font-semibold text-foreground">Online Checkout</p>
                   <p className="text-muted-foreground">
@@ -1126,6 +1200,20 @@ export default function Cashier() {
             setProviderSimulating(false);
           }
         })()}
+      />
+      <StaticQrisPaymentModal
+        open={showPaymentModal && showStaticQrisModal}
+        imageUrl={String(selectedCheckoutMethod?.settings?.qr_image_url ?? "")}
+        instructions={String(selectedCheckoutMethod?.settings?.instructions ?? "")}
+        amount={paymentCheckoutAmount}
+        orderLabel={paymentModalOrder?.code}
+        isSubmitting={submitting}
+        onRequestClose={() => setShowStaticQrisModal(false)}
+        onChangePaymentMethod={() => {
+          setShowStaticQrisModal(false);
+          setSelectedCheckoutCode(null);
+        }}
+        onConfirmPaid={() => void confirmCashierStaticQrisPayment()}
       />
 
       <AnimatePresence>
@@ -1343,17 +1431,17 @@ export default function Cashier() {
                                 Pay for {person.label}: {formatRp(person.totalDue)}
                               </p>
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                                {paymentMethods.map((pm) => (
+                                {checkoutTiles.map(({ method, icon: Icon }) => (
                                   <button
-                                    key={pm.label}
+                                    key={method.paymentMethodCode}
                                     type="button"
-                                    onClick={() => setSplitPayMethod(pm.label)}
+                                    onClick={() => setSplitPayMethod(method.label)}
                                     className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border text-xs transition-all ${
-                                      splitPayMethod === pm.label ? "border-primary bg-primary/5" : "border-border"
+                                      splitPayMethod === method.label ? "border-primary bg-primary/5" : "border-border"
                                     }`}
                                   >
-                                    <pm.icon className="h-4 w-4 text-primary" />
-                                    {pm.label}
+                                    <Icon className="h-4 w-4 text-primary" />
+                                    {method.label}
                                   </button>
                                 ))}
                               </div>

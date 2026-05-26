@@ -5,6 +5,7 @@ import OutletsSettings from "./settings/OutletsSettings";
 import TaxSettings from "./settings/TaxSettings";
 import PrinterSettings from "./settings/PrinterSettings";
 import PaymentMethodSettings from "./settings/PaymentMethodSettings";
+import OutletPaymentMethodConfigSettings from "./settings/OutletPaymentMethodConfigSettings";
 import SystemSettings from "./settings/SystemsSettings";
 import IntegrationSettings from "./settings/IntegrationSettings";
 import NumberingSettings from "./settings/NumberingSettings";
@@ -27,7 +28,7 @@ export default function Settings() {
       outlets: ["outlets"],
       taxes: ["taxes"],
       printers: ["printers", "outlets"],
-      payments: ["paymentMethods"],
+      payments: ["paymentMethods", "outlets"],
       system: ["system"],
       integration: ["integration"],
       numbering: ["numbering", "outlets"],
@@ -135,7 +136,14 @@ export default function Settings() {
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>
         <TabsContent value="taxes" className="mt-4">{activeTab === "taxes" ? <TaxSettings /> : null}</TabsContent>
         <TabsContent value="printers" className="mt-4">{activeTab === "printers" ? <PrinterSettings /> : null}</TabsContent>
-        <TabsContent value="payments" className="mt-4">{activeTab === "payments" ? <PaymentMethodSettings /> : null}</TabsContent>
+        <TabsContent value="payments" className="mt-4">
+          {activeTab === "payments" ? (
+            <div className="space-y-6">
+              <OutletPaymentMethodConfigSettings />
+              <PaymentMethodSettings />
+            </div>
+          ) : null}
+        </TabsContent>
         <TabsContent value="system" className="mt-4">{activeTab === "system" ? <SystemSettings /> : null}</TabsContent>
         <TabsContent value="integration" className="mt-4">{activeTab === "integration" ? <IntegrationSettings /> : null}</TabsContent>
         <TabsContent value="numbering" className="mt-4">{activeTab === "numbering" ? <NumberingSettings /> : null}</TabsContent>
