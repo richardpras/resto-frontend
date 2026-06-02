@@ -98,30 +98,47 @@ export type Table = {
   id: string;
   name: string;
   seats: number;
-  status: "available" | "occupied" | "waiting-payment";
+  status: "available" | "occupied" | "reserved" | "cleaning" | "disabled";
   orderId?: string;
+  signals?: {
+    openBillCount?: number;
+    pendingQrRequestCount?: number;
+    hasReservation?: boolean;
+    isCleaning?: boolean;
+    isDisabled?: boolean;
+  };
 };
 
 /** Build POS/store table roster from master rows + active local orders */
 export function deriveRuntimeFloorTables(
-  masters: { id: number; name: string; capacity: number | null; status: string }[],
+  masters: {
+    id: number;
+    name: string;
+    capacity: number | null;
+    status: string;
+    tableOperationalStatus?: string;
+    tableOperationalSignals?: {
+      openBillCount?: number;
+      pendingQrRequestCount?: number;
+      hasReservation?: boolean;
+      isCleaning?: boolean;
+      isDisabled?: boolean;
+    };
+  }[],
   orders: Order[],
 ): Table[] {
   return masters
-    .filter((m) => m.status === "active")
+    .filter((m) => m.status === "active" || m.tableOperationalStatus === "disabled")
     .map((m) => {
+      const projected = m.tableOperationalStatus ?? (m.status === "active" ? "available" : "disabled");
       const open = orders.find(
         (o) =>
           o.tableId === String(m.id) && o.status !== "completed" && o.status !== "cancelled",
       );
-      let status: Table["status"] = "available";
+      const status: Table["status"] = projected as Table["status"];
       let orderId: string | undefined;
-      if (open) {
+      if (open && projected === "occupied") {
         orderId = open.id;
-        status =
-          open.paymentStatus === "paid" || open.paymentStatus === "partial"
-            ? "waiting-payment"
-            : "occupied";
       }
       return {
         id: String(m.id),
@@ -129,6 +146,7 @@ export function deriveRuntimeFloorTables(
         seats: m.capacity ?? 4,
         status,
         orderId,
+        signals: m.tableOperationalSignals,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -283,7 +301,9 @@ function upsertOrder(orders: Order[], next: Order): Order[] {
 }
 
 function extractRealtimeSeq(event: RealtimeEnvelope): number {
-  return event.sequence ?? event.seq ?? event.version ?? 0;
+  const metaSeq =
+    event.meta && typeof event.meta.sequence === "number" ? (event.meta.sequence as number) : undefined;
+  return event.sequence ?? event.seq ?? metaSeq ?? event.version ?? 0;
 }
 
 export const useOrderStore = create<OrderStore>((set, get) => ({
@@ -325,9 +345,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   cancelOrder: (id) =>
     set((s) => ({
       orders: s.orders.map((o) => (o.id === id ? { ...o, status: "cancelled" as const } : o)),
-      tables: s.tables.map((t) =>
-        t.orderId === id ? { ...t, status: "available" as const, orderId: undefined } : t,
-      ),
+      tables: s.tables.map((t) => (t.orderId === id ? { ...t, orderId: undefined } : t)),
     })),
   addPayment: (orderId, payment) =>
     set((s) => ({
@@ -367,10 +385,11 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         return updated;
       }),
     })),
-  updateTableStatus: (tableId, status, orderId) =>
+  updateTableStatus: (tableId, _status, orderId) =>
     set((s) => ({
+      // Projection from backend is authoritative; keep local mutations non-authoritative.
       tables: s.tables.map((t) =>
-        t.id === tableId ? { ...t, status, orderId: orderId ?? t.orderId } : t
+        t.id === tableId ? { ...t, orderId: orderId ?? t.orderId } : t
       ),
     })),
 
@@ -828,7 +847,9 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       channel: "order",
       onEvent: (event) => {
         const payload = (event.payload ?? event.data) as Partial<OrderApi> | undefined;
-        if (!payload || payload.id == null) return;
+        if (!payload) return;
+        const orderId = payload.id ?? payload.orderId ?? payload.order_id;
+        if (orderId == null) return;
         const state = get();
         const incomingSeq = extractRealtimeSeq(event);
         if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;
@@ -836,7 +857,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
           lastRealtimeMeta: event.meta ?? null,
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
         });
-        void get().fetchOrder(String(payload.id));
+        void get().fetchOrder(String(orderId));
       },
     });
     set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });

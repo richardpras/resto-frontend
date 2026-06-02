@@ -7,12 +7,14 @@ export type RealtimeChannel =
   | (string & {});
 
 export type RealtimeEnvelope<TPayload = unknown> = {
+  id?: string;
   channel?: RealtimeChannel;
   topic?: RealtimeChannel;
   event?: string;
   type?: string;
   payload?: TPayload;
   data?: TPayload;
+  occurredAt?: string;
   sequence?: number;
   seq?: number;
   version?: number;
@@ -46,19 +48,54 @@ function resolveWebsocketUrl(explicit?: string): string {
 function normalizeEnvelope(raw: unknown): RealtimeEnvelope {
   if (!raw || typeof raw !== "object") return {};
   const candidate = raw as Record<string, unknown>;
+  const rawChannel = (candidate.channel as RealtimeChannel) ?? (candidate.topic as RealtimeChannel);
+  const channel = normalizeChannelAlias(rawChannel);
+  const sequenceFromMeta =
+    candidate.meta && typeof candidate.meta === "object" && typeof (candidate.meta as Record<string, unknown>).sequence === "number"
+      ? ((candidate.meta as Record<string, unknown>).sequence as number)
+      : undefined;
   return {
-    channel: (candidate.channel as RealtimeChannel) ?? (candidate.topic as RealtimeChannel),
+    id: typeof candidate.id === "string" ? candidate.id : (candidate.event_id as string | undefined),
+    channel,
     topic: candidate.topic as RealtimeChannel | undefined,
     event: (candidate.event as string | undefined) ?? (candidate.type as string | undefined),
     type: candidate.type as string | undefined,
-    payload: candidate.payload,
-    data: candidate.data,
-    sequence: typeof candidate.sequence === "number" ? candidate.sequence : undefined,
+    payload: candidate.payload ?? candidate.data,
+    data: candidate.data ?? candidate.payload,
+    occurredAt: typeof candidate.occurredAt === "string" ? candidate.occurredAt : undefined,
+    sequence:
+      typeof candidate.sequence === "number"
+        ? candidate.sequence
+        : typeof candidate.seq === "number"
+          ? candidate.seq
+          : sequenceFromMeta,
     seq: typeof candidate.seq === "number" ? candidate.seq : undefined,
     version: typeof candidate.version === "number" ? candidate.version : undefined,
-    timestamp: typeof candidate.timestamp === "string" ? candidate.timestamp : undefined,
-    meta: candidate.meta as Record<string, unknown> | undefined,
+    timestamp:
+      typeof candidate.timestamp === "string"
+        ? candidate.timestamp
+        : typeof candidate.occurredAt === "string"
+          ? candidate.occurredAt
+          : typeof candidate.occurred_at === "string"
+            ? candidate.occurred_at
+            : undefined,
+    meta:
+      (candidate.meta as Record<string, unknown> | undefined) ??
+      (candidate.payload &&
+      typeof candidate.payload === "object" &&
+      typeof (candidate.payload as Record<string, unknown>).meta === "object"
+        ? ((candidate.payload as Record<string, unknown>).meta as Record<string, unknown>)
+        : undefined),
   };
+}
+
+function normalizeChannelAlias(channel: RealtimeChannel | undefined): RealtimeChannel | undefined {
+  if (typeof channel !== "string") return channel;
+  if (channel === "order" || channel.endsWith(".orders")) return "order";
+  if (channel === "payment" || channel.endsWith(".payments")) return "payment";
+  if (channel === "qr" || channel.endsWith(".qr-orders")) return "qr";
+  if (channel === "kitchen" || channel.endsWith(".kitchen")) return "kitchen";
+  return channel;
 }
 
 export class RealtimeAdapter {

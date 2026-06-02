@@ -11,7 +11,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { listOrders, type OrderApi } from "@/lib/api";
+import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import {
   apiMethodFromCheckoutMethod,
@@ -52,6 +52,8 @@ const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 type CashierOrder = {
   id: string;
+  outletId?: number;
+  tableId?: number;
   code: string;
   customerName: string;
   tableName: string;
@@ -97,6 +99,8 @@ function mapOrder(order: OrderApi): CashierOrder {
   const paidTotal = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
   return {
     id: order.id,
+    outletId: typeof order.outletId === "number" ? order.outletId : undefined,
+    tableId: typeof order.tableId === "number" ? order.tableId : undefined,
     code: order.code,
     customerName: order.customerName ?? "",
     tableName: order.tableName ?? "",
@@ -131,6 +135,8 @@ function storeOrderToCashier(order: Order): CashierOrder {
   }));
   return {
     id: order.id,
+    outletId: undefined,
+    tableId: Number.isFinite(Number(order.tableId)) ? Number(order.tableId) : undefined,
     code: order.code,
     customerName: order.customerName ?? "",
     tableName: order.tableName ?? "",
@@ -250,6 +256,11 @@ export default function Cashier() {
   const [submitting, setSubmitting] = useState(false);
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
   const [gatewayOrderId, setGatewayOrderId] = useState<string | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [openBill, setOpenBill] = useState<OpenBillByTableApi | null>(null);
+  const [openBillLoading, setOpenBillLoading] = useState(false);
+  const [selectedOpenBillOrderIds, setSelectedOpenBillOrderIds] = useState<Set<number>>(new Set());
+  const [openBillSettling, setOpenBillSettling] = useState(false);
 
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [splitSourceOrder, setSplitSourceOrder] = useState<CashierOrder | null>(null);
@@ -271,6 +282,22 @@ export default function Cashier() {
     () => orders.find((order) => order.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
   );
+  const openBillTableOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return orders
+      .filter((o) => typeof o.tableId === "number" && o.tableId > 0 && typeof o.outletId === "number")
+      .map((o) => ({
+        tableId: o.tableId as number,
+        outletId: o.outletId as number,
+        label: o.tableName?.trim() || o.tableNumber ? `${o.tableName?.trim() || o.tableNumber}` : `Table ${o.tableId}`,
+      }))
+      .filter((entry) => {
+        const key = `${entry.outletId}-${entry.tableId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [orders]);
 
   const splitAllowsByItem = (splitSourceOrder?.paidTotal ?? 0) <= 0;
 
@@ -285,7 +312,6 @@ export default function Cashier() {
       const baseFilters = {
         tenantId: POS_TENANT_ID,
         outletId: activeOutletId,
-        source: "pos" as const,
         orderType: "Dine-in" as const,
         status: "confirmed" as const,
         perPage: 200,
@@ -342,8 +368,46 @@ export default function Cashier() {
       setSplitPersons([]);
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
+      setSelectedTableId(null);
+      setOpenBill(null);
+      setSelectedOpenBillOrderIds(new Set());
     }
   }, [activeOutletId]);
+
+  useEffect(() => {
+    if (!selectedOrder || typeof selectedOrder.tableId !== "number" || selectedOrder.tableId < 1) return;
+    setSelectedTableId(selectedOrder.tableId);
+  }, [selectedOrder]);
+
+  const loadOpenBill = useCallback(async () => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || typeof selectedTableId !== "number" || selectedTableId < 1) {
+      setOpenBill(null);
+      setSelectedOpenBillOrderIds(new Set());
+      return;
+    }
+    setOpenBillLoading(true);
+    try {
+      const data = await getOpenBillByTable(activeOutletId, selectedTableId);
+      setOpenBill(data);
+      setSelectedOpenBillOrderIds((prev) => {
+        const next = new Set<number>();
+        for (const order of data.orders) {
+          if (prev.has(order.id)) next.add(order.id);
+        }
+        return next;
+      });
+    } catch (error) {
+      setOpenBill(null);
+      setSelectedOpenBillOrderIds(new Set());
+      toast.error(error instanceof Error ? error.message : "Failed to load table open bill.");
+    } finally {
+      setOpenBillLoading(false);
+    }
+  }, [activeOutletId, selectedTableId]);
+
+  useEffect(() => {
+    void loadOpenBill();
+  }, [loadOpenBill]);
 
   useEffect(() => {
     if (!showPaymentModal || !paymentTransaction || paymentTransaction.status !== "paid") return;
@@ -898,6 +962,44 @@ export default function Cashier() {
       : paymentTransaction?.amount ?? paymentModalOrder?.balanceDue ?? 0;
   const splitCheckoutActive = pendingGatewayPayments.length > 0;
 
+  const settleOpenBillOrders = async (mode: "selected" | "all") => {
+    if (!openBill || openBill.orders.length === 0) return;
+    const targetOrderIds =
+      mode === "all"
+        ? openBill.orders.map((o) => o.id)
+        : openBill.orders.filter((o) => selectedOpenBillOrderIds.has(o.id)).map((o) => o.id);
+    if (targetOrderIds.length === 0) {
+      toast.error("Choose at least one open-bill order.");
+      return;
+    }
+
+    const toPay = openBill.orders.filter((o) => targetOrderIds.includes(o.id) && o.remainingPayable > 0);
+    if (toPay.length === 0) {
+      toast.message("Selected orders are already settled.");
+      return;
+    }
+
+    setOpenBillSettling(true);
+    try {
+      for (const order of toPay) {
+        await addOrderPaymentsRemote(String(order.id), [
+          {
+            method: "cash",
+            amount: order.remainingPayable,
+            paidAt: new Date().toISOString(),
+          },
+        ]);
+      }
+      toast.success("Open bill payment recorded.");
+      await loadOpenOrders();
+      await loadOpenBill();
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : "Failed to settle open bill.");
+    } finally {
+      setOpenBillSettling(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       {(!activeOutletId || activeOutletId < 1) && (
@@ -952,7 +1054,84 @@ export default function Cashier() {
           )}
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
+          <div className="space-y-2 border-b border-border/60 pb-3">
+            <p className="text-xs text-muted-foreground">Open Bill (table projection)</p>
+            <select
+              value={selectedTableId ?? ""}
+              onChange={(e) => setSelectedTableId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select table</option>
+              {openBillTableOptions.map((table) => (
+                <option key={`${table.outletId}-${table.tableId}`} value={table.tableId}>
+                  {table.label}
+                </option>
+              ))}
+            </select>
+            {openBillLoading ? (
+              <p className="text-xs text-muted-foreground">Loading table open bill...</p>
+            ) : openBill ? (
+              <div className="space-y-2 rounded-xl border border-border/70 p-3 bg-background/70">
+                <p className="text-sm font-semibold text-foreground">
+                  Table {openBill.table.name} · {openBill.orderCount} order{openBill.orderCount === 1 ? "" : "s"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Subtotal {formatRp(openBill.subtotal)} · Tax {formatRp(openBill.tax)} · Service {formatRp(openBill.service)}
+                </p>
+                <p className="text-sm font-bold text-primary">Remaining {formatRp(openBill.remainingPayable)}</p>
+                <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                  {openBill.orders.map((order) => (
+                    <label key={order.id} className="flex items-center gap-2 rounded-lg border border-border/50 px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedOpenBillOrderIds.has(order.id)}
+                        onChange={(e) =>
+                          setSelectedOpenBillOrderIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(order.id);
+                            else next.delete(order.id);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="text-xs text-foreground flex-1">
+                        {order.code} · {order.source.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-semibold text-foreground">{formatRp(order.remainingPayable)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrderId(String(order.id))}
+                        className="text-[11px] px-2 py-0.5 rounded border border-border hover:bg-muted"
+                      >
+                        Open
+                      </button>
+                    </label>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void settleOpenBillOrders("selected")}
+                    disabled={openBillSettling}
+                    className="py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                  >
+                    Pay selected (cash)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void settleOpenBillOrders("all")}
+                    disabled={openBillSettling}
+                    className="py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    Pay full table (cash)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No open bill projection loaded.</p>
+            )}
+          </div>
           {!selectedOrder ? (
             <p className="text-sm text-muted-foreground">Select an order to collect payment.</p>
           ) : (

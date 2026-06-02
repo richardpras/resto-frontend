@@ -75,6 +75,14 @@ const App = () => (
               </Suspense>
             }
           />
+          <Route
+            path="/qr/:qrPublicId"
+            element={
+              <Suspense fallback={routeFallback}>
+                <QROrder />
+              </Suspense>
+            }
+          />
           <Route element={<AppShell />}>
             <Route
               path="/"

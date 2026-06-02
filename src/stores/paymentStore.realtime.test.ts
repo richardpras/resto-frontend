@@ -116,4 +116,42 @@ describe("paymentStore realtime fallback behavior", () => {
     expect(state.paymentStatus).toBe("paid");
     expect(state.lastRealtimeSeq).toBe(5);
   });
+
+  it("accepts snake_case transaction identifier payloads", async () => {
+    mockGetPaymentTransaction.mockResolvedValue(apiTx("pending"));
+    usePaymentStore.getState().pollTransactionStatus("tx-1", 1000);
+    usePaymentStore.setState({
+      currentTransaction: {
+        id: "tx-1",
+        orderId: "o-1",
+        outletId: 1,
+        method: "qris",
+        amount: 10000,
+        status: "pending",
+        checkoutUrl: "",
+        qrString: "",
+        deeplinkUrl: "",
+        vaNumber: "",
+        expiresAt: null,
+        expiryTime: null,
+        paidAt: null,
+        createdAt: null,
+        updatedAt: null,
+        providerMetadataSnapshot: null,
+        payloadSnapshot: null,
+      },
+      paymentStatus: "pending",
+    });
+    expect(realtimeHandler).toBeTypeOf("function");
+    realtimeHandler?.({
+      channel: "payment",
+      sequence: 11,
+      payload: { transaction_id: "tx-1", status: "paid" },
+      meta: { source: "ws" },
+    });
+
+    const state = usePaymentStore.getState();
+    expect(state.paymentStatus).toBe("paid");
+    expect(state.lastRealtimeSeq).toBe(11);
+  });
 });

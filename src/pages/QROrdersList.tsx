@@ -16,6 +16,24 @@ const statusConfig: Record<QrOrderRequest["status"], { label: string; color: str
   expired: { label: "Expired", color: "bg-muted text-muted-foreground", icon: X },
 };
 
+function formatAgo(date: Date | null): string {
+  if (!date) return "never";
+  const diffMs = Date.now() - date.getTime();
+  const sec = Math.max(0, Math.floor(diffMs / 1000));
+  if (sec < 60) return `${sec} sec ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hrs = Math.floor(min / 60);
+  return `${hrs} hr ago`;
+}
+
+function urgencyFor(order: QrOrderRequest): { label: string; className: string } {
+  const count = order.cashierCallCount ?? 0;
+  if (count >= 3) return { label: "Urgent", className: "bg-destructive/10 text-destructive" };
+  if (count >= 1) return { label: "Called", className: "bg-warning/10 text-warning" };
+  return { label: "Normal", className: "bg-muted text-muted-foreground" };
+}
+
 export default function QROrders() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -55,9 +73,26 @@ export default function QROrders() {
     [requests],
   );
 
-  const onConfirm = async (id: string) => {
+  const onConfirmOnly = async (id: string) => {
     try {
-      await confirmRequest(id);
+      await confirmRequest(id, { mode: "confirm_only" });
+      toast.success("Confirmed as open bill.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to confirm request");
+    }
+  };
+
+  const onPayAndConfirm = async (id: string, estimatedTotal: number) => {
+    if (!Number.isFinite(estimatedTotal) || estimatedTotal <= 0) {
+      toast.error("Estimated total unavailable for Pay & Confirm.");
+      return;
+    }
+    try {
+      await confirmRequest(id, {
+        mode: "pay_and_confirm",
+        payments: [{ method: "cash", amount: estimatedTotal }],
+      });
+      toast.success("Paid and confirmed.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to confirm request");
     }
@@ -109,6 +144,7 @@ export default function QROrders() {
             {pendingRequests.map((order) => {
               const sc = statusConfig[order.status];
               const Icon = sc.icon;
+              const urgency = urgencyFor(order);
               return (
                 <motion.div key={order.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
                   className="bg-card rounded-2xl p-4 border border-border">
@@ -125,6 +161,17 @@ export default function QROrders() {
                         {order.customerName && ` • ${order.customerName}`}
                         {" • "}{new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
                       </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-lg font-medium ${urgency.className}`}>
+                          {urgency.label}
+                        </span>
+                        <p className="text-xs text-warning">
+                          Called {order.cashierCallCount ?? 0}x
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Last called {formatAgo(order.cashierCalledAt)}
+                        </p>
+                      </div>
                     </div>
                     <span className="text-xs font-medium text-muted-foreground">{order.items.length} items</span>
                   </div>
@@ -144,12 +191,20 @@ export default function QROrders() {
                     </button>
                     <button
                       disabled={!canManage || isSubmitting}
-                      onClick={() => onConfirm(order.id)}
-                      aria-label={`Confirm ${order.requestCode}`}
+                      onClick={() => onPayAndConfirm(order.id, order.estimatedTotal)}
+                      aria-label={`Pay and confirm ${order.requestCode}`}
                       className="flex-1 py-2 rounded-xl text-xs font-medium bg-success text-success-foreground transition-colors flex items-center justify-center gap-1 disabled:opacity-60"
                     >
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Confirm
-                      </button>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Pay & Confirm
+                    </button>
+                    <button
+                      disabled={!canManage || isSubmitting}
+                      onClick={() => onConfirmOnly(order.id)}
+                      aria-label={`Confirm only ${order.requestCode}`}
+                      className="flex-1 py-2 rounded-xl text-xs font-medium border border-primary/40 text-primary transition-colors flex items-center justify-center gap-1 disabled:opacity-60"
+                    >
+                      Confirm Only
+                    </button>
                       <button
                         disabled={!canManage || isSubmitting}
                         onClick={() => onReject(order.id)}

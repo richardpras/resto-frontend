@@ -123,7 +123,7 @@ export default function POS() {
   const authUser = useAuthStore((s) => s.user);
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
-  const { tables, orders, updateTableStatus, replaceFloorTables } = useOrderStore();
+  const { tables, orders, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
@@ -361,7 +361,7 @@ export default function POS() {
   const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
   const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
 
-  const availableTables = tables.filter((t) => t.status === "available");
+  const selectableTables = tables.filter((t) => t.status === "available" || t.status === "occupied");
   const selectedTableLabel =
     selectedTable && tables.length > 0
       ? tables.find((t) => String(t.id) === String(selectedTable))?.name ?? `Table #${selectedTable}`
@@ -410,9 +410,6 @@ export default function POS() {
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
       };
       const storedOrder = await createOrderRemote(payload);
-      if (selectedTable) {
-        updateTableStatus(selectedTable, "occupied", storedOrder.id);
-      }
       setCurrentOrderId(storedOrder.id);
       resetCart();
       setShowConfirmSent(true);
@@ -509,9 +506,6 @@ export default function POS() {
           ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
         };
         storedOrder = await createOrderRemote(payload);
-        if (selectedTable) {
-          updateTableStatus(selectedTable, "occupied", storedOrder.id);
-        }
         setCurrentOrderId(storedOrder.id);
         resetCart();
       }
@@ -778,9 +772,6 @@ export default function POS() {
         ? await addOrderPaymentsRemote(created.id, immediatePayments)
         : fresh;
       const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
-      if (selectedTable) {
-        updateTableStatus(selectedTable, totalPaid >= total && gatewayPayments.length === 0 ? "available" : "waiting-payment", created.id);
-      }
       if (gatewayPayments.length > 0) {
         const gatewayTotal = gatewayPayments.reduce((sum, payment) => sum + payment.amount, 0);
         const tx = await paymentCreateTransaction({
@@ -1116,8 +1107,11 @@ export default function POS() {
               <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
                 <option value="">Select table...</option>
-                {availableTables.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name} ({t.seats} seats)</option>
+                {selectableTables.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.seats} seats)
+                    {((t.signals?.openBillCount ?? 0) > 0 || t.status === "occupied") ? " • Open bill" : ""}
+                  </option>
                 ))}
               </select>
             )}

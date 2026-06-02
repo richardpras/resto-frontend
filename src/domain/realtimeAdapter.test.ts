@@ -55,6 +55,32 @@ describe("RealtimeAdapter", () => {
     });
   });
 
+  it("normalizes outlet channel aliases and sequence from meta", () => {
+    const ws = new FakeWebSocket();
+    const adapter = new RealtimeAdapter({
+      name: "qr",
+      websocketUrl: "ws://example/ws",
+      wsFactory: () => ws as unknown as WebSocket,
+    });
+    const handler = vi.fn();
+    adapter.subscribe({ channel: "qr", onEvent: handler });
+    adapter.connect();
+    ws.emitOpen();
+    ws.emitMessage({
+      channel: "outlet.7.qr-orders",
+      type: "qr.order.cashier.called",
+      payload: { request_id: 10 },
+      meta: { sequence: 33 },
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0]).toMatchObject({
+      channel: "qr",
+      sequence: 33,
+      event: "qr.order.cashier.called",
+    });
+  });
+
   it("tracks connection state transitions and disconnect", () => {
     const ws = new FakeWebSocket();
     const adapter = new RealtimeAdapter({

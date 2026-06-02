@@ -26,6 +26,8 @@ export type QrOrderRequestItemApi = {
   notes?: string | null;
 };
 
+export type QrOrderConfirmMode = "confirm_only" | "pay_and_confirm";
+
 export type QrOrderRequestApi = {
   id: number | string;
   requestCode: string;
@@ -34,6 +36,11 @@ export type QrOrderRequestApi = {
   tableName: string;
   customerName?: string | null;
   status: QrOrderRequestStatus;
+  statusLabel?: string;
+  decisionMode?: QrOrderConfirmMode | null;
+  estimatedTotal?: number;
+  cashierCalledAt?: string | null;
+  cashierCallCount?: number;
   expiresAt?: string | null;
   confirmedAt?: string | null;
   rejectedAt?: string | null;
@@ -46,7 +53,7 @@ export type QrOrderRequestApi = {
 export type CreateQrOrderPayload = {
   outletId: number;
   tableId: number;
-  customerName?: string;
+  customerName: string;
   expiresInMinutes?: number;
   items: {
     menuItemId: number;
@@ -119,13 +126,41 @@ export async function listQrOrdersWithMeta(
   };
 }
 
+export type ConfirmQrOrderPayload = {
+  mode?: QrOrderConfirmMode;
+  payments?: { method: string; amount: number }[];
+};
+
 export async function confirmQrOrder(
   requestId: number | string,
+  payload: ConfirmQrOrderPayload = {},
   options: QrOrderRequestOptions = {},
 ): Promise<QrOrderRequestApi> {
   const response = await request<{ message: string; data: QrOrderRequestApi }>(
     `/qr-orders/${requestId}/confirm`,
-    { method: "POST", signal: options.signal, headers: options.headers },
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
+export async function callQrOrderCashier(
+  requestId: number | string,
+  payload: { outletId: number; tableId: number },
+  options: QrOrderRequestOptions = {},
+): Promise<QrOrderRequestApi> {
+  const response = await request<{ message: string; data: QrOrderRequestApi }>(
+    `/qr-orders/${requestId}/call-cashier`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal: options.signal,
+      headers: options.headers,
+    },
   );
   return response.data;
 }

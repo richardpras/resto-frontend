@@ -15,3 +15,4 @@ export * from "./terminalSyncEndpoints";
 export * from "./receiptDocumentEndpoints";
 export * from "./crmEndpoints";
 export * from "./hardwareBridgeEndpoints";
+export * from "./openBillEndpoints";

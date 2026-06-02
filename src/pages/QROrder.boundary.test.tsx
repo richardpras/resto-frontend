@@ -6,15 +6,13 @@ import QROrder from "./QROrder";
 
 const mockCreateRequest = vi.fn();
 const mockUseQrOrderStore = vi.fn();
-const mockUsePaymentStore = vi.fn();
-const mockCreatePaymentTransaction = vi.fn();
-const mockResetPaymentAsync = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
     ...actual,
     useSearchParams: () => [new URLSearchParams("outletId=2&tableId=7&tableName=T07")],
+    useParams: () => ({ qrPublicId: undefined }),
   };
 });
 
@@ -22,35 +20,20 @@ vi.mock("@/stores/qrOrderStore", () => ({
   useQrOrderStore: (selector: (state: Record<string, unknown>) => unknown) => mockUseQrOrderStore(selector),
 }));
 
-vi.mock("@/stores/paymentStore", () => ({
-  usePaymentStore: (selector: (state: Record<string, unknown>) => unknown) => mockUsePaymentStore(selector),
-}));
-
-const mockPaymentEndpointCreate = vi.fn();
-vi.mock("@/lib/api-integration/paymentEndpoints", () => ({
-  createPaymentTransaction: (...args: unknown[]) => mockPaymentEndpointCreate(...args),
+vi.mock("@/lib/api-integration/tableEndpoints", () => ({
+  listFloorTables: vi.fn().mockResolvedValue([{ id: 7, tableOperationalStatus: "available" }]),
+  resolveLegacyTableQr: vi.fn().mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" }),
+  resolveTableQrPublicId: vi.fn(),
 }));
 
 describe("QROrder page store boundary", () => {
   beforeEach(() => {
     mockCreateRequest.mockReset();
-    mockCreatePaymentTransaction.mockReset();
-    mockPaymentEndpointCreate.mockReset();
-    mockResetPaymentAsync.mockReset();
     mockUseQrOrderStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
       selector({
         createRequest: mockCreateRequest,
+        callCashier: vi.fn(),
         isSubmitting: false,
-      }),
-    );
-    mockUsePaymentStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
-      selector({
-        currentTransaction: null,
-        expiryCountdown: 0,
-        createPaymentTransaction: mockCreatePaymentTransaction,
-        pollTransactionStatus: vi.fn(),
-        retryPayment: vi.fn(),
-        resetAsync: mockResetPaymentAsync,
       }),
     );
   });
@@ -62,20 +45,20 @@ describe("QROrder page store boundary", () => {
     expect(container.firstChild).toHaveClass("bg-background");
   });
 
-  it("uses payment store action for online checkout", async () => {
+  it("submits QR order and shows awaiting cashier flow", async () => {
     mockCreateRequest.mockResolvedValue({ id: "req-1", requestCode: "QRR-001" });
-    mockCreatePaymentTransaction.mockResolvedValue({ id: "tx-1" });
     render(<QROrder />);
 
     fireEvent.click(screen.getByRole("button", { name: /nasi goreng special/i }));
     fireEvent.click(screen.getByRole("button", { name: /view cart/i }));
     fireEvent.click(screen.getByRole("button", { name: /checkout/i }));
-    fireEvent.click(screen.getByRole("button", { name: /pay online/i }));
+    fireEvent.change(screen.getByPlaceholderText(/enter your name/i), { target: { value: "Guest A" } });
     fireEvent.click(screen.getByRole("button", { name: /submit order/i }));
 
     await waitFor(() => {
-      expect(mockCreatePaymentTransaction).toHaveBeenCalled();
+      expect(mockCreateRequest).toHaveBeenCalled();
     });
-    expect(mockPaymentEndpointCreate).not.toHaveBeenCalled();
+    expect(screen.getByText(/status: awaiting cashier/i)).toBeInTheDocument();
+    expect(screen.getByText(/you cannot pay from this screen/i)).toBeInTheDocument();
   });
 });

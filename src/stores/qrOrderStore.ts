@@ -5,10 +5,12 @@ import {
   type RequestObservabilityMetadata,
 } from "@/lib/api-integration/client";
 import {
+  callQrOrderCashier as apiCallQrOrderCashier,
   confirmQrOrder as apiConfirmQrOrder,
   createQrOrder as apiCreateQrOrder,
   listQrOrdersWithMeta as apiListQrOrdersWithMeta,
   rejectQrOrder as apiRejectQrOrder,
+  type ConfirmQrOrderPayload,
   type CreateQrOrderPayload,
   type ListQrOrdersMeta,
   type ListQrOrdersParams,
@@ -29,6 +31,11 @@ export type QrOrderRequest = {
   tableName: string;
   customerName: string;
   status: QrOrderRequestStatus;
+  decisionMode: "confirm_only" | "pay_and_confirm" | null;
+  statusLabel: string;
+  estimatedTotal: number;
+  cashierCalledAt: Date | null;
+  cashierCallCount: number;
   expiresAt: Date | null;
   confirmedAt: Date | null;
   rejectedAt: Date | null;
@@ -52,6 +59,11 @@ export function qrOrderApiToStore(model: QrOrderRequestApi): QrOrderRequest {
     tableName: model.tableName,
     customerName: model.customerName ?? "",
     status: model.status,
+    decisionMode: model.decisionMode ?? null,
+    statusLabel: model.statusLabel ?? model.status,
+    estimatedTotal: model.estimatedTotal ?? 0,
+    cashierCalledAt: model.cashierCalledAt ? new Date(model.cashierCalledAt) : null,
+    cashierCallCount: model.cashierCallCount ?? 0,
     expiresAt: model.expiresAt ? new Date(model.expiresAt) : null,
     confirmedAt: model.confirmedAt ? new Date(model.confirmedAt) : null,
     rejectedAt: model.rejectedAt ? new Date(model.rejectedAt) : null,
@@ -82,7 +94,29 @@ function upsertRequest(rows: QrOrderRequest[], next: QrOrderRequest): QrOrderReq
 }
 
 function extractRealtimeSeq(event: RealtimeEnvelope): number {
-  return event.sequence ?? event.seq ?? event.version ?? 0;
+  const metaSeq =
+    event.meta && typeof event.meta.sequence === "number" ? (event.meta.sequence as number) : undefined;
+  return event.sequence ?? event.seq ?? metaSeq ?? event.version ?? 0;
+}
+
+function normalizeRealtimePayload(payload: Record<string, unknown>): Partial<QrOrderRequest> | null {
+  const id = payload.id ?? payload.request_id;
+  if (id == null) return null;
+  const normalized: Partial<QrOrderRequest> = {
+    id: String(id),
+  };
+  if (typeof payload.requestCode === "string") normalized.requestCode = payload.requestCode;
+  if (typeof payload.request_code === "string") normalized.requestCode = payload.request_code;
+  if (typeof payload.tableId === "number") normalized.tableId = payload.tableId;
+  if (typeof payload.table_id === "number") normalized.tableId = payload.table_id;
+  if (typeof payload.cashierCallCount === "number") normalized.cashierCallCount = payload.cashierCallCount;
+  if (typeof payload.cashier_call_count === "number") normalized.cashierCallCount = payload.cashier_call_count;
+  if (typeof payload.cashierCalledAt === "string") normalized.cashierCalledAt = new Date(payload.cashierCalledAt);
+  if (typeof payload.cashier_called_at === "string") normalized.cashierCalledAt = new Date(payload.cashier_called_at);
+  if (typeof payload.status === "string") normalized.status = payload.status as QrOrderRequestStatus;
+  if (typeof payload.statusLabel === "string") normalized.statusLabel = payload.statusLabel;
+  if (typeof payload.status_label === "string") normalized.statusLabel = payload.status_label;
+  return normalized;
 }
 
 type QrOrderStore = {
@@ -114,7 +148,8 @@ type QrOrderStore = {
   ) => Promise<QrOrderRequest[]>;
   revalidateRequests: () => Promise<QrOrderRequest[] | null>;
   createRequest: (payload: CreateQrOrderPayload) => Promise<QrOrderRequest>;
-  confirmRequest: (id: string) => Promise<QrOrderRequest>;
+  confirmRequest: (id: string, payload?: ConfirmQrOrderPayload) => Promise<QrOrderRequest>;
+  callCashier: (id: string, payload: { outletId: number; tableId: number }) => Promise<QrOrderRequest>;
   rejectRequest: (id: string, reason?: string) => Promise<QrOrderRequest>;
   startRealtime: () => void;
   stopRealtime: () => void;
@@ -242,7 +277,7 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     }
   },
 
-  confirmRequest: async (id) => {
+  confirmRequest: async (id, payload = {}) => {
     const requestId = get().activeRequestId + 1;
     const controller = new AbortController();
     const requestMeta: RequestObservabilityMetadata = {
@@ -260,7 +295,46 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     });
     try {
       const updated = qrOrderApiToStore(
-        await apiConfirmQrOrder(id, {
+        await apiConfirmQrOrder(id, payload, {
+          signal: controller.signal,
+          headers: createObservabilityHeaders(requestMeta),
+        }),
+      );
+      if (get().activeRequestId !== requestId) return updated;
+      set((state) => ({
+        requests: upsertRequest(state.requests, updated),
+        lastSyncAt: new Date().toISOString(),
+      }));
+      return updated;
+    } catch (error) {
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      if (get().activeRequestId === requestId) {
+        set({ isSubmitting: false, activeAbortController: null });
+      }
+    }
+  },
+
+  callCashier: async (id, payload) => {
+    const requestId = get().activeRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "call-cashier",
+      requestId,
+    };
+    set({
+      isSubmitting: true,
+      error: null,
+      activeRequestId: requestId,
+      activeAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
+    try {
+      const updated = qrOrderApiToStore(
+        await apiCallQrOrderCashier(id, payload, {
           signal: controller.signal,
           headers: createObservabilityHeaders(requestMeta),
         }),
@@ -335,7 +409,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     const unsubscribe = adapter.subscribe({
       channel: "qr",
       onEvent: (event) => {
-        const payload = (event.payload ?? event.data) as Partial<QrOrderRequest> | undefined;
+        const rawPayload = (event.payload ?? event.data) as Record<string, unknown> | undefined;
+        if (!rawPayload) return;
+        const payload = normalizeRealtimePayload(rawPayload);
         if (!payload || payload.id == null) return;
         const incomingSeq = extractRealtimeSeq(event);
         const state = get();

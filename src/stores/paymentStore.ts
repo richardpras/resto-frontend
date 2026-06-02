@@ -127,7 +127,9 @@ function isAbortError(error: unknown): boolean {
 }
 
 function extractRealtimeSeq(event: RealtimeEnvelope): number {
-  return event.sequence ?? event.seq ?? event.version ?? 0;
+  const metaSeq =
+    event.meta && typeof event.meta.sequence === "number" ? (event.meta.sequence as number) : undefined;
+  return event.sequence ?? event.seq ?? metaSeq ?? event.version ?? 0;
 }
 
 export const usePaymentStore = create<PaymentStore>((set, get) => ({
@@ -446,7 +448,8 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
         const tx = state.currentTransaction;
         const payload = (event.payload ?? event.data) as Partial<PaymentTransaction> | undefined;
         if (!tx || !payload) return;
-        const payloadId = payload.id ? String(payload.id) : undefined;
+        const payloadIdRaw = payload.id ?? payload.transaction_id ?? payload.transactionId;
+        const payloadId = payloadIdRaw ? String(payloadIdRaw) : undefined;
         if (payloadId && payloadId !== tx.id) return;
         const incomingSeq = extractRealtimeSeq(event);
         if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;

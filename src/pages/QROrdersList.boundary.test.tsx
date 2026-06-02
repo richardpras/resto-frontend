@@ -54,6 +54,8 @@ describe("QROrdersList store boundary", () => {
             tableName: "T03",
             customerName: "Ana",
             status: "pending_cashier_confirmation",
+            decisionMode: null,
+            estimatedTotal: 12000,
             expiresAt: null,
             confirmedAt: null,
             rejectedAt: null,
@@ -85,8 +87,14 @@ describe("QROrdersList store boundary", () => {
     );
     expect(container.firstChild).toHaveClass("p-4");
 
-    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    expect(mockConfirmRequest).toHaveBeenCalledWith("12");
+    fireEvent.click(screen.getByRole("button", { name: /confirm only/i }));
+    expect(mockConfirmRequest).toHaveBeenCalledWith("12", { mode: "confirm_only" });
+
+    fireEvent.click(screen.getByRole("button", { name: /pay and confirm/i }));
+    expect(mockConfirmRequest).toHaveBeenCalledWith("12", {
+      mode: "pay_and_confirm",
+      payments: [{ method: "cash", amount: 12000 }],
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /reject/i }));
     expect(mockRejectRequest).toHaveBeenCalledWith("12", "Rejected by cashier");

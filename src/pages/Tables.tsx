@@ -1,13 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Users, CheckCircle2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users, Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
   createFloorTable,
   deleteFloorTable,
+  disableTableQr,
+  enableTableQr,
+  generateTableQr,
   listFloorTables,
+  rotateTableQr,
   updateFloorTable,
   type FloorTableApi,
 } from "@/lib/api-integration/tableEndpoints";
@@ -29,29 +33,25 @@ function formatRp(n: number) {
 const statusConfig = {
   available: { label: "Available", color: "bg-success/10 text-success border-success/20", dot: "bg-success" },
   occupied: { label: "Occupied", color: "bg-info/10 text-info border-info/20", dot: "bg-info" },
-  "waiting-payment": { label: "Waiting Payment", color: "bg-warning/10 text-warning border-warning/20", dot: "bg-warning" },
+  reserved: { label: "Reserved", color: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20", dot: "bg-violet-500" },
+  cleaning: { label: "Cleaning", color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20", dot: "bg-amber-500" },
+  disabled: { label: "Disabled", color: "bg-muted text-muted-foreground border-border/40", dot: "bg-muted-foreground/50" },
 };
 
-function overlayStatusForOrders(tableIdStr: string, orders: Order[]) {
-  const open = orders.find(
-    (o) =>
-      o.tableId === tableIdStr &&
-      o.status !== "completed" &&
-      o.status !== "cancelled",
+function linkedOrderForTable(tableIdStr: string, orders: Order[]) {
+  return (
+    orders.find(
+      (o) =>
+        o.tableId === tableIdStr &&
+        o.status !== "completed" &&
+        o.status !== "cancelled",
+    ) ?? null
   );
-  if (!open) return { key: "available" as keyof typeof statusConfig, order: null as Order | null };
-  const payment = open.paymentStatus;
-  const key =
-    payment === "paid" || payment === "partial"
-      ? ("waiting-payment" as const)
-      : ("occupied" as const);
-  return { key, order: open };
 }
 
 export default function Tables() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const orders = useOrderStore((s) => s.orders);
-  const updateTableStatus = useOrderStore((s) => s.updateTableStatus);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canManage = hasPermission(PERMISSIONS.TABLES_MANAGE);
 
@@ -80,16 +80,19 @@ export default function Tables() {
   const counts = useMemo(() => {
     let available = 0;
     let occupied = 0;
-    let waiting = 0;
+    let reserved = 0;
+    let cleaning = 0;
+    let disabled = 0;
     for (const row of masterRows) {
-      if (row.status !== "active") continue;
-      const { key } = overlayStatusForOrders(String(row.id), orders);
+      const key = row.tableOperationalStatus;
       if (key === "available") available++;
       else if (key === "occupied") occupied++;
-      else waiting++;
+      else if (key === "reserved") reserved++;
+      else if (key === "cleaning") cleaning++;
+      else disabled++;
     }
-    return { available, occupied, waiting };
-  }, [masterRows, orders]);
+    return { available, occupied, reserved, cleaning, disabled };
+  }, [masterRows]);
 
   const openCreate = () => {
     setEditing(null);
@@ -157,6 +160,46 @@ export default function Tables() {
     }
   };
 
+  const copyQrUrl = async (row: FloorTableApi) => {
+    if (!row.qrUrl) {
+      toast.error("Generate QR first.");
+      return;
+    }
+    await navigator.clipboard.writeText(row.qrUrl);
+    toast.success("QR URL copied.");
+  };
+
+  const onGenerateQr = async (row: FloorTableApi) => {
+    try {
+      await generateTableQr(row.id);
+      invalidate();
+      toast.success("QR identity generated.");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to generate QR identity");
+    }
+  };
+
+  const onRotateQr = async (row: FloorTableApi) => {
+    try {
+      await rotateTableQr(row.id);
+      invalidate();
+      toast.success("QR identity regenerated.");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to regenerate QR identity");
+    }
+  };
+
+  const onToggleQr = async (row: FloorTableApi, enabled: boolean) => {
+    try {
+      if (enabled) await enableTableQr(row.id);
+      else await disableTableQr(row.id);
+      invalidate();
+      toast.success(enabled ? "QR enabled." : "QR disabled.");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to update QR status");
+    }
+  };
+
   if (!authed) {
     return (
       <div className="p-4 md:p-6 text-sm text-muted-foreground">
@@ -181,7 +224,7 @@ export default function Tables() {
             <Users className="h-6 w-6" /> Table Management
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {counts.available} of {masterRows.filter((r) => r.status === "active").length} active tables available
+            {counts.available} available tables from {masterRows.length} master tables
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -193,7 +236,15 @@ export default function Tables() {
           {(Object.entries(statusConfig) as [keyof typeof statusConfig, typeof statusConfig[keyof typeof statusConfig]][]).map(([key, cfg]) => (
             <span key={key} className={`px-3 py-1.5 rounded-xl text-xs font-medium border ${cfg.color}`}>
               {cfg.label}:{" "}
-              {key === "available" ? counts.available : key === "occupied" ? counts.occupied : counts.waiting}
+              {key === "available"
+                ? counts.available
+                : key === "occupied"
+                  ? counts.occupied
+                  : key === "reserved"
+                    ? counts.reserved
+                    : key === "cleaning"
+                      ? counts.cleaning
+                      : counts.disabled}
             </span>
           ))}
         </div>
@@ -205,9 +256,10 @@ export default function Tables() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         {masterRows.map((table) => {
-          const { key: runtimeKey, order: linkedOrder } = overlayStatusForOrders(String(table.id), orders);
+          const runtimeKey = table.tableOperationalStatus;
+          const linkedOrder = linkedOrderForTable(String(table.id), orders);
           const cfg = statusConfig[runtimeKey];
-          const inactive = table.status === "inactive";
+          const inactive = runtimeKey === "disabled";
 
           return (
             <motion.div
@@ -220,8 +272,12 @@ export default function Tables() {
                   : runtimeKey === "available"
                   ? "border-success/20"
                   : runtimeKey === "occupied"
-                  ? "border-info/20"
-                  : "border-warning/20"
+                    ? "border-info/20"
+                    : runtimeKey === "reserved"
+                      ? "border-violet-500/20"
+                      : runtimeKey === "cleaning"
+                        ? "border-amber-500/20"
+                        : "border-border/40"
               }`}
             >
               <div
@@ -231,8 +287,12 @@ export default function Tables() {
                     : runtimeKey === "available"
                     ? "bg-success/5"
                     : runtimeKey === "occupied"
-                    ? "bg-info/5"
-                    : "bg-warning/5"
+                      ? "bg-info/5"
+                      : runtimeKey === "reserved"
+                        ? "bg-violet-500/5"
+                        : runtimeKey === "cleaning"
+                          ? "bg-amber-500/5"
+                          : "bg-muted/40"
                 }`}
               >
                 <span className="font-bold text-sm text-foreground truncate">{table.name}</span>
@@ -268,6 +328,47 @@ export default function Tables() {
 
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
 
+                <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">QR Status</span>
+                    <span className={table.qrEnabled ? "text-success font-medium" : "text-muted-foreground"}>
+                      {table.qrEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground break-all">
+                    {table.qrUrl ?? "No QR URL generated"}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void onGenerateQr(table)}>
+                      Generate QR
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void onRotateQr(table)}>
+                      Regenerate QR
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-[11px]"
+                      onClick={() => void onToggleQr(table, !table.qrEnabled)}
+                    >
+                      {table.qrEnabled ? "Disable QR" : "Enable QR"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void copyQrUrl(table)}>
+                      Copy URL
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-full text-[11px]"
+                    onClick={() => toast.message("Print QR will be wired to print module in next phase.")}
+                  >
+                    Prepare Print QR
+                  </Button>
+                </div>
+
                 {linkedOrder && (
                   <div className="mt-3 pt-3 border-t border-border/30 space-y-1.5">
                     <p className="text-xs font-semibold text-foreground">{linkedOrder.code}</p>
@@ -291,14 +392,10 @@ export default function Tables() {
                   </div>
                 )}
 
-                {!inactive && runtimeKey !== "available" && (
-                  <button
-                    type="button"
-                    onClick={() => updateTableStatus(String(table.id), "available", undefined)}
-                    className="mt-3 w-full py-2 rounded-xl text-xs font-medium border border-border hover:bg-muted transition-colors flex items-center justify-center gap-1"
-                  >
-                    <CheckCircle2 className="h-3 w-3" /> Clear Table
-                  </button>
+                {!inactive && runtimeKey === "occupied" && (
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Table status is projection-based. Settle or close open bill from cashier flow.
+                  </p>
                 )}
               </div>
             </motion.div>

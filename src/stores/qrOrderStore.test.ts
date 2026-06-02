@@ -4,7 +4,12 @@ import { useQrOrderStore } from "./qrOrderStore";
 const mockListQrOrdersWithMeta = vi.fn();
 const mockCreateQrOrder = vi.fn();
 const mockConfirmQrOrder = vi.fn();
+const mockCallQrOrderCashier = vi.fn();
 const mockRejectQrOrder = vi.fn();
+const mockRealtimeSubscribe = vi.fn();
+const mockRealtimeConnect = vi.fn();
+const mockRealtimeOnConnectionStateChange = vi.fn();
+const mockRealtimeUnsubscribeAll = vi.fn();
 
 vi.mock("@/lib/api-integration/qrOrderEndpoints", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api-integration/qrOrderEndpoints")>(
@@ -15,9 +20,19 @@ vi.mock("@/lib/api-integration/qrOrderEndpoints", async () => {
     listQrOrdersWithMeta: (...args: unknown[]) => mockListQrOrdersWithMeta(...args),
     createQrOrder: (...args: unknown[]) => mockCreateQrOrder(...args),
     confirmQrOrder: (...args: unknown[]) => mockConfirmQrOrder(...args),
+    callQrOrderCashier: (...args: unknown[]) => mockCallQrOrderCashier(...args),
     rejectQrOrder: (...args: unknown[]) => mockRejectQrOrder(...args),
   };
 });
+
+vi.mock("@/domain/realtimeAdapter", () => ({
+  getRealtimeAdapter: () => ({
+    subscribe: (...args: unknown[]) => mockRealtimeSubscribe(...args),
+    connect: (...args: unknown[]) => mockRealtimeConnect(...args),
+    onConnectionStateChange: (...args: unknown[]) => mockRealtimeOnConnectionStateChange(...args),
+    unsubscribeAll: (...args: unknown[]) => mockRealtimeUnsubscribeAll(...args),
+  }),
+}));
 
 function buildRequest(overrides: Record<string, unknown> = {}) {
   return {
@@ -28,6 +43,7 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
     tableName: "T03",
     customerName: "Ana",
     status: "pending_cashier_confirmation",
+    decisionMode: null,
     expiresAt: "2026-05-07T08:10:00.000Z",
     confirmedAt: null,
     rejectedAt: null,
@@ -63,7 +79,12 @@ describe("qrOrderStore", () => {
     mockListQrOrdersWithMeta.mockReset();
     mockCreateQrOrder.mockReset();
     mockConfirmQrOrder.mockReset();
+    mockCallQrOrderCashier.mockReset();
     mockRejectQrOrder.mockReset();
+    mockRealtimeSubscribe.mockReset();
+    mockRealtimeConnect.mockReset();
+    mockRealtimeOnConnectionStateChange.mockReset();
+    mockRealtimeUnsubscribeAll.mockReset();
     resetState();
   });
 
@@ -94,6 +115,7 @@ describe("qrOrderStore", () => {
           tableName: "T03",
           customerName: "Ana",
           status: "pending_cashier_confirmation",
+          decisionMode: null,
           expiresAt: null,
           confirmedAt: null,
           rejectedAt: null,
@@ -143,5 +165,58 @@ describe("qrOrderStore", () => {
     );
     expect(useQrOrderStore.getState().isLoading).toBe(false);
     await second;
+  });
+
+  it("normalizes cashier called realtime payload and updates queue immediately", () => {
+    useQrOrderStore.setState({
+      requests: [
+        {
+          id: "10",
+          requestCode: "QRR-001",
+          outletId: 2,
+          tableId: 3,
+          tableName: "T03",
+          customerName: "Ana",
+          status: "pending_cashier_confirmation",
+          decisionMode: null,
+          statusLabel: "Awaiting Cashier",
+          estimatedTotal: 0,
+          cashierCalledAt: null,
+          cashierCallCount: 0,
+          expiresAt: null,
+          confirmedAt: null,
+          rejectedAt: null,
+          rejectionReason: "",
+          orderId: null,
+          items: [],
+          createdAt: new Date("2026-05-07T08:00:00.000Z"),
+        },
+      ],
+    });
+
+    let onEvent: ((event: Record<string, unknown>) => void) | null = null;
+    mockRealtimeOnConnectionStateChange.mockImplementation((listener: (s: string) => void) => {
+      listener("connected");
+      return () => undefined;
+    });
+    mockRealtimeSubscribe.mockImplementation((cfg: { onEvent: (event: Record<string, unknown>) => void }) => {
+      onEvent = cfg.onEvent;
+      return () => undefined;
+    });
+
+    useQrOrderStore.getState().startRealtime();
+    onEvent?.({
+      channel: "qr",
+      sequence: 22,
+      payload: {
+        request_id: 10,
+        cashier_call_count: 3,
+        cashier_called_at: "2026-05-07T08:09:00.000Z",
+      },
+    });
+
+    const row = useQrOrderStore.getState().requests.find((r) => r.id === "10");
+    expect(row?.cashierCallCount).toBe(3);
+    expect(row?.cashierCalledAt?.toISOString()).toBe("2026-05-07T08:09:00.000Z");
   });
 });

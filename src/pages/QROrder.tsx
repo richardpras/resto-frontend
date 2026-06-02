@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, X, Store, CreditCard } from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
-import { usePaymentStore } from "@/stores/paymentStore";
-import { useCustomerStore } from "@/stores/customerStore";
-import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { toast } from "sonner";
+import { getApiAccessToken } from "@/lib/api-integration/client";
+import { listFloorTables, resolveLegacyTableQr, resolveTableQrPublicId } from "@/lib/api-integration/tableEndpoints";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string; description: string;
@@ -43,15 +42,11 @@ type View = "menu" | "cart" | "confirm" | "success";
  * Staff monitors QR traffic at `/qr-orders` inside the app shell.
  */
 export default function QROrder() {
+  const { qrPublicId } = useParams<{ qrPublicId: string }>();
   const [searchParams] = useSearchParams();
   const createRequest = useQrOrderStore((s) => s.createRequest);
+  const callCashier = useQrOrderStore((s) => s.callCashier);
   const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
-  const paymentTx = usePaymentStore((s) => s.currentTransaction);
-  const paymentCountdown = usePaymentStore((s) => s.expiryCountdown);
-  const paymentCreate = usePaymentStore((s) => s.createPaymentTransaction);
-  const paymentPoll = usePaymentStore((s) => s.pollTransactionStatus);
-  const paymentRetry = usePaymentStore((s) => s.retryPayment);
-  const paymentResetAsync = usePaymentStore((s) => s.resetAsync);
 
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");
@@ -59,44 +54,56 @@ export default function QROrder() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notesItem, setNotesItem] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [redeemPointsInput, setRedeemPointsInput] = useState("");
-  const [giftCardInput, setGiftCardInput] = useState("");
-  const [appliedPoints, setAppliedPoints] = useState(0);
-  const [appliedGiftCard, setAppliedGiftCard] = useState(0);
+  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
+  const [projectionStatus, setProjectionStatus] = useState<
+    "unknown" | "checking" | "available" | "occupied" | "reserved" | "cleaning" | "disabled"
+  >("unknown");
   const outletIdParam = Number(searchParams.get("outletId"));
   const tableIdParam = Number(searchParams.get("tableId"));
+  const [resolvedOutletId, setResolvedOutletId] = useState<number | null>(null);
+  const [resolvedTableId, setResolvedTableId] = useState<number | null>(null);
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
-  const [paymentChoice, setPaymentChoice] = useState<"cashier" | "online">("cashier");
   const [orderCode, setOrderCode] = useState(() => "QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
-  const customers = useCustomerStore((s) => s.customers);
-  const fetchCustomers = useCustomerStore((s) => s.fetchCustomers);
-  const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
-  const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
-  const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
-  const startLoyaltyRealtime = useLoyaltyStore((s) => s.startRealtime);
-  const stopLoyaltyRealtime = useLoyaltyStore((s) => s.stopRealtime);
-  const startLoyaltyPolling = useLoyaltyStore((s) => s.startPollingFallback);
-  const stopLoyaltyPolling = useLoyaltyStore((s) => s.stopPollingFallback);
+  const activeOutletId = resolvedOutletId ?? (Number.isFinite(outletIdParam) ? outletIdParam : null);
+  const activeTableId = resolvedTableId ?? (Number.isFinite(tableIdParam) ? tableIdParam : null);
 
   useEffect(() => {
+    let active = true;
+    if (typeof qrPublicId !== "string" || qrPublicId.trim() === "") return;
+    void resolveTableQrPublicId(qrPublicId)
+      .then((resolved) => {
+        if (!active) return;
+        setResolvedOutletId(resolved.outletId);
+        setResolvedTableId(resolved.tableId);
+        setTableNumber(resolved.tableName);
+      })
+      .catch(() => {
+        if (!active) return;
+      });
     return () => {
-      paymentResetAsync();
+      active = false;
     };
-  }, [paymentResetAsync]);
+  }, [qrPublicId]);
 
   useEffect(() => {
-    if (!Number.isFinite(outletIdParam) || outletIdParam < 1) return;
-    void fetchCustomers({ outletId: outletIdParam, page: 1, perPage: 50 });
-    void refreshLoyalty(outletIdParam);
-    startLoyaltyRealtime();
-    startLoyaltyPolling(12000);
+    let active = true;
+    if (resolvedOutletId !== null || resolvedTableId !== null) return;
+    if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) return;
+    void resolveLegacyTableQr(outletIdParam, tableIdParam)
+      .then((resolved) => {
+        if (!active) return;
+        setResolvedOutletId(resolved.outletId);
+        setResolvedTableId(resolved.tableId);
+        setTableNumber(resolved.tableName);
+      })
+      .catch(() => {
+        if (!active) return;
+      });
     return () => {
-      stopLoyaltyPolling();
-      stopLoyaltyRealtime();
+      active = false;
     };
-  }, [outletIdParam, fetchCustomers, refreshLoyalty, startLoyaltyPolling, startLoyaltyRealtime, stopLoyaltyPolling, stopLoyaltyRealtime]);
+  }, [outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId]);
 
   const filtered = useMemo(() =>
     menuItems.filter(
@@ -121,49 +128,78 @@ export default function QROrder() {
   const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
   const tax = Math.round(subtotal * 0.1);
   const baseTotal = subtotal + tax;
-  const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
+  const total = baseTotal;
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
-  const selectedCustomer = customers.find((customer) => customer.phone && customer.phone === customerPhone.trim());
-  const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
-  const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
+
+  useEffect(() => {
+    let active = true;
+    const hasToken = Boolean(getApiAccessToken());
+    if (!hasToken || !Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {
+      return;
+    }
+    setProjectionStatus("checking");
+    void listFloorTables(activeOutletId)
+      .then((tables) => {
+        if (!active) return;
+        const table = tables.find((row) => row.id === activeTableId);
+        if (!table) {
+          setProjectionStatus("disabled");
+          return;
+        }
+        setProjectionStatus(table.tableOperationalStatus);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProjectionStatus("unknown");
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeOutletId, activeTableId]);
 
   const submitOrder = async () => {
-    if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) {
+    if (!Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {
       toast.error("QR link is invalid. Missing outletId/tableId.");
+      return;
+    }
+    if (!customerName.trim()) {
+      toast.error("Please enter your name before submitting.");
+      return;
+    }
+    if (projectionStatus === "checking") {
+      toast.error("Table availability is still loading. Please wait a moment.");
+      return;
+    }
+    if (projectionStatus === "reserved" || projectionStatus === "cleaning" || projectionStatus === "disabled") {
+      toast.error(`Table is currently ${projectionStatus}. Please ask staff for assistance.`);
       return;
     }
     try {
       const created = await createRequest({
-        outletId: outletIdParam,
-        tableId: tableIdParam,
-        customerName: customerName.trim() || undefined,
+        outletId: activeOutletId,
+        tableId: activeTableId,
+        customerName: customerName.trim(),
         items: cart.map((item) => ({
           menuItemId: Number(item.id),
           qty: item.qty,
           notes: item.notes || undefined,
         })),
       });
-      if (paymentChoice === "online") {
-        const tx = await paymentCreate({
-          orderId: created.id,
-          outletId: outletIdParam,
-          method: "qris",
-          amount: total,
-        });
-        paymentPoll(tx.id);
-      }
-      if (selectedCustomer && appliedPoints > 0) {
-        await enqueueRedemption({
-          customerId: selectedCustomer.id,
-          pointsUsed: appliedPoints,
-          amountValue: Math.round(appliedPoints / 10),
-          replayFingerprint: `qr-${created.id}-${selectedCustomer.id}-${appliedPoints}`,
-        });
-      }
       setOrderCode(created.requestCode);
+      setSubmittedRequestId(created.id);
       setView("success");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to submit QR order");
+    }
+  };
+
+  const onCallCashier = async () => {
+    if (!submittedRequestId) return;
+    try {
+      await callCashier(submittedRequestId, { outletId: activeOutletId ?? 0, tableId: activeTableId ?? 0 });
+      toast.success("Cashier notified — please wait at your table or visit the counter.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not call cashier");
     }
   };
 
@@ -175,7 +211,7 @@ export default function QROrder() {
           className="bg-card rounded-3xl p-8 max-w-sm w-full text-center shadow-lg border border-border">
           <div className="h-20 w-20 rounded-full bg-accent flex items-center justify-center mx-auto mb-5"><span className="text-4xl">✅</span></div>
           <h2 className="text-xl font-bold text-foreground mb-1">Order Submitted!</h2>
-          <p className="text-sm text-muted-foreground mb-6">Your order is being prepared</p>
+          <p className="text-sm text-muted-foreground mb-6">Status: Awaiting Cashier — kitchen starts after cashier confirms</p>
           <div className="bg-muted rounded-2xl p-4 mb-6">
             <p className="text-xs text-muted-foreground mb-1">Order Code</p>
             <p className="text-2xl font-bold text-primary tracking-wider">{orderCode}</p>
@@ -184,35 +220,21 @@ export default function QROrder() {
             <div className="flex justify-between"><span className="text-muted-foreground">Table</span><span className="font-medium text-foreground">#{tableNumber}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span className="font-medium text-foreground">{totalItems} items</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold text-foreground">{formatRp(total)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="font-medium text-foreground">{paymentChoice === "cashier" ? "Pay at Cashier" : "Online Payment"}</span></div>
           </div>
-          {paymentChoice === "online" && paymentTx && (
-            <div className="bg-muted rounded-2xl p-4 mb-4 text-left space-y-2">
-              <p className="text-xs text-muted-foreground">Online checkout status</p>
-              <p className="text-sm font-semibold text-foreground">{paymentTx.status}</p>
-              {paymentTx.status === "paid" && <p className="text-xs text-success">Payment completed.</p>}
-              {paymentTx.status === "expired" && <p className="text-xs text-destructive">Payment expired. Retry to get a new checkout.</p>}
-              {paymentTx.status === "failed" && <p className="text-xs text-destructive">Payment failed. Retry or pay at cashier.</p>}
-              {paymentTx.checkoutUrl && (
-                <a href={paymentTx.checkoutUrl} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
-                  Open Checkout
-                </a>
-              )}
-              {paymentTx.deeplinkUrl && (
-                <a href={paymentTx.deeplinkUrl} target="_blank" rel="noreferrer" className="block text-sm text-primary underline">
-                  Open Payment App
-                </a>
-              )}
-              {paymentTx.qrString && <pre className="text-[10px] bg-background rounded p-2 whitespace-pre-wrap break-all">{paymentTx.qrString}</pre>}
-              {paymentTx.vaNumber && <p className="text-xs text-muted-foreground">VA: <span className="text-foreground">{paymentTx.vaNumber}</span></p>}
-              <p className="text-xs text-muted-foreground">Expires in {paymentCountdown}s</p>
-              <button onClick={() => void paymentRetry(paymentTx.id)} className="text-xs underline text-primary">Retry Payment</button>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">Show this code to the cashier when picking up your order.</p>
+          <p className="text-xs text-muted-foreground mb-4">Pay at the cashier when ready — you cannot pay from this screen.</p>
+          <button
+            type="button"
+            disabled={isSubmitting || !submittedRequestId}
+            onClick={() => void onCallCashier()}
+            className="w-full py-3 rounded-2xl border border-primary text-primary font-semibold text-sm flex items-center justify-center gap-2 mb-3 disabled:opacity-60"
+          >
+            <Bell className="h-4 w-4" /> Call Cashier
+          </button>
+          <p className="text-xs text-muted-foreground">Show this code to the cashier when you pay or pick up.</p>
           <button
             onClick={() => {
               setCart([]);
+              setSubmittedRequestId(null);
               setOrderCode("QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
               setView("menu");
             }}
@@ -239,13 +261,8 @@ export default function QROrder() {
           <div className="bg-card rounded-2xl p-4 border border-border space-y-3">
             <h3 className="text-sm font-semibold text-foreground">Your Details</h3>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Name (optional)</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Name</label>
               <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Enter your name"
-                className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Phone (for rewards)</label>
-              <input type="text" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx"
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div>
@@ -253,34 +270,6 @@ export default function QROrder() {
               <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
-            {selectedCustomer && (
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Points: <span className="font-semibold text-foreground">{availablePoints}</span>
-                  {" • "}Gift Card/Store Credit: <span className="font-semibold text-foreground">{formatRp(availableGiftCard)}</span>
-                </p>
-                <div className="flex gap-2">
-                  <input value={redeemPointsInput} onChange={(e) => setRedeemPointsInput(e.target.value)} placeholder="Redeem points"
-                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs" />
-                  <button
-                    onClick={() => setAppliedPoints(Math.min(Math.max(0, Number(redeemPointsInput || 0)), availablePoints))}
-                    className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium"
-                  >
-                    Apply
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <input value={giftCardInput} onChange={(e) => setGiftCardInput(e.target.value)} placeholder="Use gift card amount"
-                    className="w-full rounded-lg border border-border px-2 py-1.5 text-xs" />
-                  <button
-                    onClick={() => setAppliedGiftCard(Math.min(Math.max(0, Number(giftCardInput || 0)), availableGiftCard, baseTotal))}
-                    className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
           <div className="bg-card rounded-2xl p-4 border border-border">
             <h3 className="text-sm font-semibold text-foreground mb-3">Order Summary</h3>
@@ -294,25 +283,18 @@ export default function QROrder() {
             </div>
             <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-sm">
               <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
-              {appliedPoints > 0 && <div className="flex justify-between text-primary"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>}
-              {appliedGiftCard > 0 && <div className="flex justify-between text-primary"><span>Gift Card / Store Credit</span><span>-{formatRp(appliedGiftCard)}</span></div>}
               <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
               <div className="flex justify-between font-bold text-foreground text-base pt-1"><span>Total</span><span>{formatRp(total)}</span></div>
             </div>
           </div>
-          <div className="bg-card rounded-2xl p-4 border border-border">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Payment Method</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setPaymentChoice("cashier")}
-                className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${paymentChoice === "cashier" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/30"}`}>
-                <Store className="h-6 w-6 text-primary" /><span className="text-xs font-medium text-foreground">Pay at Cashier</span>
-              </button>
-              <button onClick={() => setPaymentChoice("online")}
-                className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${paymentChoice === "online" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/30"}`}>
-                <CreditCard className="h-6 w-6 text-primary" /><span className="text-xs font-medium text-foreground">Pay Online</span>
-              </button>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground px-1">
+            Payment is handled by cashier only. You cannot pay from this screen.
+          </p>
+          {(projectionStatus === "reserved" || projectionStatus === "cleaning" || projectionStatus === "disabled") && (
+            <p className="text-xs text-destructive px-1">
+              This table is currently {projectionStatus}. New QR orders are temporarily blocked.
+            </p>
+          )}
         </div>
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">
           <div className="max-w-lg mx-auto">
