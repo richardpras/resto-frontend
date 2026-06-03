@@ -1,7 +1,7 @@
 import {
-  LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, Package, UtensilsCrossed,
+  LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
   ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings, Store,
-  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered,
+  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -20,6 +20,8 @@ const mainItems: Item[] = [
   { title: "Kitchen Display", url: "/kitchen", icon: ChefHat, perm: PERMISSIONS.KITCHEN },
   { title: "QR Orders", url: "/qr-orders", icon: QrCode, perm: PERMISSIONS.QR_ORDERS },
   { title: "Tables", url: "/tables", icon: Armchair, perm: PERMISSIONS.TABLES },
+  { title: "Reservations", url: "/reservations", icon: CalendarDays, perm: PERMISSIONS.POS },
+  { title: "Reservation Ops", url: "/reservations/operations", icon: BarChart3, perm: PERMISSIONS.POS },
 ];
 
 const managementItems: Item[] = [
@@ -27,6 +29,7 @@ const managementItems: Item[] = [
   { title: "Inventory", url: "/inventory", icon: Package, perm: PERMISSIONS.INVENTORY },
   { title: "Suppliers", url: "/suppliers", icon: Truck, perm: PERMISSIONS.SUPPLIERS },
   { title: "Members", url: "/members", icon: UserCircle, perm: PERMISSIONS.MEMBERS },
+  { title: "Loyalty Programs", url: "/loyalty-programs", icon: Gift, perm: PERMISSIONS.MEMBERS },
   { title: "Purchases", url: "/purchases", icon: ClipboardList, perm: PERMISSIONS.PURCHASE },
   { title: "Promotions", url: "/promotions", icon: Megaphone, perm: PERMISSIONS.PROMOTIONS },
 ];

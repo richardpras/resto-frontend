@@ -7,23 +7,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
+import { MemberProfileDialog } from "@/components/members/MemberProfileDialog";
+import { useOutletStore } from "@/stores/outletStore";
 import { useMemberStore, type Member, type MemberStatus } from "@/stores/memberStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function Members() {
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { members, loading, fetchMembers, addMember, updateMember, toggleStatus } = useMemberStore();
   const [open, setOpen] = useState(false);
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Member | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | MemberStatus>("all");
   const [form, setForm] = useState({ name: "", phone: "", email: "", birthday: "", notes: "", status: "active" as MemberStatus });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    void fetchMembers().catch((e) =>
+    void fetchMembers({ outletId: activeOutletId ?? undefined, force: true }).catch((e) =>
       toast.error(e instanceof ApiHttpError ? e.message : "Failed to load members"),
     );
-  }, [fetchMembers]);
+  }, [fetchMembers, activeOutletId]);
 
   const filtered = statusFilter === "all" ? members : members.filter((m) => m.status === statusFilter);
 
@@ -53,6 +57,7 @@ export default function Members() {
         toast.success("Member updated");
       } else {
         await addMember({
+          outletId: activeOutletId ?? undefined,
           name: form.name,
           phone: form.phone,
           email: form.email || undefined,
@@ -81,8 +86,8 @@ export default function Members() {
         </div>
       ) },
     { key: "phone", header: "Phone", sortable: true },
-    { key: "points", header: "Points", sortable: true,
-      render: (r) => <span className="font-semibold text-primary">{r.points.toLocaleString()}</span> },
+    { key: "memberNo", header: "Member No", sortable: true,
+      render: (r) => <span className="text-sm text-muted-foreground">{r.memberNo ?? "—"}</span> },
     { key: "status", header: "Status", sortable: true,
       render: (r) => (
         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -92,6 +97,7 @@ export default function Members() {
     { key: "actions", header: "", className: "w-28 text-right",
       render: (r) => (
         <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setProfileMemberId(r.id)}>Profile</Button>
           <Button variant="ghost" size="icon" onClick={() => openEdit(r)} className="h-8 w-8"><Pencil className="h-4 w-4" /></Button>
           <Button
             variant="ghost"
@@ -113,7 +119,7 @@ export default function Members() {
     <div className="p-4 md:p-6 space-y-5 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Members</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Loyalty members usable at checkout for points & promo eligibility.</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Customer membership master data and transaction history.</p>
       </div>
 
       <DataTable
@@ -167,6 +173,15 @@ export default function Members() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MemberProfileDialog
+        memberId={profileMemberId}
+        outletId={typeof activeOutletId === "number" ? activeOutletId : null}
+        open={profileMemberId !== null}
+        onOpenChange={(next) => {
+          if (!next) setProfileMemberId(null);
+        }}
+      />
     </div>
   );
 }

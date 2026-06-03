@@ -3,6 +3,7 @@ export type RealtimeChannel =
   | "order"
   | "kitchen"
   | "qr"
+  | "reservation"
   | "printer-telemetry"
   | (string & {});
 
@@ -94,6 +95,7 @@ function normalizeChannelAlias(channel: RealtimeChannel | undefined): RealtimeCh
   if (channel === "order" || channel.endsWith(".orders")) return "order";
   if (channel === "payment" || channel.endsWith(".payments")) return "payment";
   if (channel === "qr" || channel.endsWith(".qr-orders")) return "qr";
+  if (channel === "reservation" || channel.endsWith(".reservations")) return "reservation";
   if (channel === "kitchen" || channel.endsWith(".kitchen")) return "kitchen";
   return channel;
 }
@@ -252,4 +254,177 @@ export function getRealtimeAdapter(name: string): RealtimeAdapter {
 
 export function __clearRealtimeAdapterRegistryForTests(): void {
   adapterRegistry.clear();
+}
+
+export function extractRealtimeSeq(event: RealtimeEnvelope): number {
+  const metaSeq =
+    event.meta && typeof event.meta.sequence === "number" ? (event.meta.sequence as number) : undefined;
+  return event.sequence ?? event.seq ?? metaSeq ?? event.version ?? 0;
+}
+
+export function extractReservationId(payload: Record<string, unknown>): number | null {
+  const raw = payload.reservationId ?? payload.reservation_id ?? payload.id;
+  if (typeof raw === "number" && raw > 0) return raw;
+  if (typeof raw === "string" && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
+    return Number(raw);
+  }
+  return null;
+}
+
+export function normalizeReservationRealtimePayload(
+  payload: Record<string, unknown>,
+): Partial<{
+  id: number;
+  outletId: number;
+  status: string;
+  partySize: number;
+  reservationAt: string | null;
+  allocatedTableIds: number[];
+  linkedOrderId: number | null;
+}> | null {
+  const id = extractReservationId(payload);
+  if (id == null) return null;
+
+  const normalized: Partial<{
+    id: number;
+    outletId: number;
+    status: string;
+    partySize: number;
+    reservationAt: string | null;
+    allocatedTableIds: number[];
+    linkedOrderId: number | null;
+  }> = { id };
+
+  const outletRaw = payload.outletId ?? payload.outlet_id;
+  if (typeof outletRaw === "number") normalized.outletId = outletRaw;
+
+  if (typeof payload.status === "string") normalized.status = payload.status;
+
+  const partyRaw = payload.partySize ?? payload.party_size;
+  if (typeof partyRaw === "number") normalized.partySize = partyRaw;
+
+  const reservationAt = payload.reservationAt ?? payload.reservation_at;
+  if (typeof reservationAt === "string") normalized.reservationAt = reservationAt;
+
+  const tableIds = payload.allocatedTableIds ?? payload.allocated_table_ids;
+  if (Array.isArray(tableIds)) {
+    normalized.allocatedTableIds = tableIds
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+  }
+
+  const linkedRaw = payload.linkedOrderId ?? payload.linked_order_id;
+  if (linkedRaw === null) normalized.linkedOrderId = null;
+  else if (typeof linkedRaw === "number") normalized.linkedOrderId = linkedRaw;
+
+  return normalized;
+}
+
+export function extractKitchenTicketId(payload: Record<string, unknown>): number | null {
+  const raw = payload.ticketId ?? payload.ticket_id ?? payload.id;
+  if (typeof raw === "number" && raw > 0) return raw;
+  if (typeof raw === "string" && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
+    return Number(raw);
+  }
+  return null;
+}
+
+function mapKitchenRealtimeItem(raw: unknown): import("@/lib/api-integration/kitchenEndpoints").KitchenTicketItemApi | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = row.id;
+  const orderItemId = row.orderItemId ?? row.order_item_id;
+  const name = row.name;
+  if (
+    (typeof id !== "number" && typeof id !== "string") ||
+    (typeof orderItemId !== "number" && typeof orderItemId !== "string") ||
+    typeof name !== "string"
+  ) {
+    return null;
+  }
+  const qtyRaw = row.qty;
+  const qty = typeof qtyRaw === "number" ? qtyRaw : Number(qtyRaw);
+  if (!Number.isFinite(qty)) return null;
+
+  return {
+    id,
+    orderItemId,
+    name,
+    qty,
+    notes: typeof row.notes === "string" ? row.notes : row.notes == null ? null : String(row.notes),
+    status: typeof row.status === "string" ? row.status : "queued",
+    recoveryStatus:
+      typeof row.recoveryStatus === "string"
+        ? row.recoveryStatus
+        : typeof row.recovery_status === "string"
+          ? row.recovery_status
+          : null,
+    recoveryReason:
+      typeof row.recoveryReason === "string"
+        ? row.recoveryReason
+        : typeof row.recovery_reason === "string"
+          ? row.recovery_reason
+          : null,
+  };
+}
+
+/** Maps a kitchen realtime envelope payload to a list API ticket shape when snapshot fields are present. */
+export function kitchenRealtimePayloadToApiTicket(
+  payload: Record<string, unknown>,
+): import("@/lib/api-integration/kitchenEndpoints").KitchenTicketApi | null {
+  const id = extractKitchenTicketId(payload);
+  if (id == null) return null;
+
+  const outletRaw = payload.outletId ?? payload.outlet_id;
+  const orderRaw = payload.orderId ?? payload.order_id;
+  const ticketNoRaw = payload.ticketNo ?? payload.ticket_no;
+  const statusRaw = payload.status;
+  if (typeof outletRaw !== "number") {
+    return null;
+  }
+  const orderId =
+    typeof orderRaw === "number"
+      ? orderRaw
+      : typeof orderRaw === "string" && orderRaw.trim() !== "" && !Number.isNaN(Number(orderRaw))
+        ? Number(orderRaw)
+        : null;
+  if (orderId == null || typeof ticketNoRaw !== "string" || typeof statusRaw !== "string") {
+    return null;
+  }
+
+  const itemsRaw = payload.items;
+  if (!Array.isArray(itemsRaw)) {
+    return null;
+  }
+
+  const items = itemsRaw
+    .map((entry) => mapKitchenRealtimeItem(entry))
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  const str = (key: string, alt: string): string | null => {
+    const v = payload[key] ?? payload[alt];
+    return typeof v === "string" ? v : null;
+  };
+
+  const createdAt = str("createdAt", "created_at");
+  const updatedAt = str("updatedAt", "updated_at");
+
+  return {
+    id,
+    outletId: outletRaw,
+    orderId,
+    ticketNo: ticketNoRaw,
+    status: statusRaw as import("@/lib/api-integration/kitchenEndpoints").KitchenTicketStatus,
+    orderNumber: str("orderNumber", "order_number") ?? str("orderCode", "order_code") ?? undefined,
+    orderCode: str("orderCode", "order_code") ?? undefined,
+    tableNumber: str("tableNumber", "table_number") ?? undefined,
+    serviceMode: str("serviceMode", "service_mode") ?? undefined,
+    queuedAt: str("queuedAt", "queued_at"),
+    startedAt: str("startedAt", "started_at"),
+    readyAt: str("readyAt", "ready_at"),
+    servedAt: str("servedAt", "served_at"),
+    items,
+    createdAt: createdAt ?? updatedAt ?? new Date().toISOString(),
+    updatedAt: updatedAt ?? createdAt ?? new Date().toISOString(),
+  };
 }

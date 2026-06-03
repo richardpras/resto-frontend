@@ -55,6 +55,7 @@ function resetState() {
     lastListParams: null,
     pollingMs: 8000,
     pollTimer: null,
+    lastTicketsUpdateSource: null,
   });
 }
 

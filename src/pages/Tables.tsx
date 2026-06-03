@@ -15,6 +15,7 @@ import {
   updateFloorTable,
   type FloorTableApi,
 } from "@/lib/api-integration/tableEndpoints";
+import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { useAuthStore, PERMISSIONS } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { useOrderStore, type Order } from "@/stores/orderStore";
@@ -65,6 +66,8 @@ export default function Tables() {
 
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const authed = Boolean(getApiAccessToken());
+
+  useReservationTableProjectionSync();
 
   const { data: masterRows = [], isLoading } = useQuery({
     queryKey: ["tables-master", activeOutletId ?? 0],
@@ -327,6 +330,11 @@ export default function Tables() {
                 </div>
 
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
+                {table.tableOperationalSignals?.hasReservation && runtimeKey !== "reserved" && (
+                  <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full font-medium border border-violet-500/30 text-violet-700 dark:text-violet-300">
+                    Reservation
+                  </span>
+                )}
 
                 <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">

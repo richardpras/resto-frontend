@@ -17,6 +17,8 @@ const Inventory = lazy(() => import("./pages/Inventory"));
 const QROrder = lazy(() => import("./pages/QROrder"));
 const QROrdersList = lazy(() => import("./pages/QROrdersList"));
 const Tables = lazy(() => import("./pages/Tables"));
+const Reservations = lazy(() => import("./pages/Reservations"));
+const ReservationDashboard = lazy(() => import("./pages/ReservationDashboard"));
 const Purchases = lazy(() => import("./pages/Purchases"));
 const Promotions = lazy(() => import("./pages/Promotions"));
 const Payroll = lazy(() => import("./pages/Payroll"));
@@ -30,6 +32,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Members = lazy(() => import("./pages/Members"));
+const LoyaltyPrograms = lazy(() => import("./pages/LoyaltyPrograms"));
 
 const queryClient = new QueryClient();
 
@@ -100,10 +103,16 @@ const App = () => (
             <Route path="/cashier" element={guarded(PERMISSIONS.POS, <Cashier />)} />
             <Route path="/orders" element={guarded(PERMISSIONS.POS, <OrdersExplorer />)} />
             <Route path="/tables" element={guarded(PERMISSIONS.TABLES, <Tables />)} />
+            <Route path="/reservations" element={guarded(PERMISSIONS.POS, <Reservations />)} />
+            <Route
+              path="/reservations/operations"
+              element={guarded(PERMISSIONS.POS, <ReservationDashboard />)}
+            />
             <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
             <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
             <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />
+            <Route path="/loyalty-programs" element={guarded(PERMISSIONS.MEMBERS, <LoyaltyPrograms />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
             <Route path="/promotions" element={guarded(PERMISSIONS.PROMOTIONS, <Promotions />)} />
             <Route path="/payroll" element={guarded(PERMISSIONS.PAYROLL, <Payroll />)} />

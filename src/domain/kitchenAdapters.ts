@@ -15,6 +15,10 @@ export type KitchenTicket = {
   id: string;
   outletId: number;
   orderId: string;
+  orderNumber?: string | null;
+  orderCode?: string | null;
+  tableNumber?: string | null;
+  serviceMode?: string | null;
   ticketNo: string;
   status: "queued" | "in_progress" | "ready" | "served" | "cancelled";
   queuedAt?: Date;
@@ -37,6 +41,10 @@ export function mapKitchenTicketApiToStore(ticket: KitchenTicketApi): KitchenTic
     id: String(ticket.id),
     outletId: Number(ticket.outletId),
     orderId: String(ticket.orderId),
+    orderNumber: ticket.orderNumber ?? ticket.orderCode ?? null,
+    orderCode: ticket.orderCode ?? ticket.orderNumber ?? null,
+    tableNumber: ticket.tableNumber ?? null,
+    serviceMode: ticket.serviceMode ?? null,
     ticketNo: ticket.ticketNo,
     status: ticket.status,
     queuedAt: toDate(ticket.queuedAt),

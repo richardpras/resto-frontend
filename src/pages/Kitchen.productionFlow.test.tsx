@@ -19,6 +19,14 @@ vi.mock("@/stores/authStore", () => ({
     mockUseAuthStore(selector),
 }));
 
+vi.mock("@/hooks/useKitchenTicketSounds", () => ({
+  useKitchenTicketSounds: vi.fn(),
+}));
+
+vi.mock("@/hooks/useKitchenFullscreen", () => ({
+  useKitchenFullscreen: () => ({ isFullscreen: false, toggleFullscreen: vi.fn() }),
+}));
+
 vi.mock("@/stores/kitchenStore", () => ({
   useKitchenStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
@@ -26,9 +34,15 @@ vi.mock("@/stores/kitchenStore", () => ({
       error: null,
       isLoading: false,
       isSubmitting: false,
+      recoverySubmitting: false,
+      lastTicketsUpdateSource: null,
+      realtimeConnected: false,
+      pollTimer: 1,
+      consecutiveFetchFailures: 0,
       startPolling: mockStartPolling,
       stopPolling: mockStopPolling,
       updateTicketStatus: vi.fn(),
+      reportItemRecovery: vi.fn(),
     }),
 }));
 

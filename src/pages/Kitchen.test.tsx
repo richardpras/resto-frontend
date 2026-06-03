@@ -20,6 +20,14 @@ vi.mock("@/stores/authStore", () => ({
     mockUseAuthStore(selector),
 }));
 
+vi.mock("@/hooks/useKitchenTicketSounds", () => ({
+  useKitchenTicketSounds: vi.fn(),
+}));
+
+vi.mock("@/hooks/useKitchenFullscreen", () => ({
+  useKitchenFullscreen: () => ({ isFullscreen: false, toggleFullscreen: vi.fn() }),
+}));
+
 vi.mock("@/stores/kitchenStore", () => ({
   useKitchenStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
@@ -39,6 +47,12 @@ vi.mock("@/stores/kitchenStore", () => ({
       error: null,
       isLoading: false,
       isSubmitting: false,
+      recoverySubmitting: false,
+      lastTicketsUpdateSource: null,
+      realtimeConnected: false,
+      pollTimer: 1,
+      consecutiveFetchFailures: 0,
+      reportItemRecovery: vi.fn(),
       startPolling: mockStartPolling,
       stopPolling: mockStopPolling,
       updateTicketStatus: mockUpdateTicketStatus,
@@ -68,7 +82,7 @@ describe("Kitchen page store boundary", () => {
     render(<Kitchen />);
     expect(mockStartPolling).toHaveBeenCalledWith({ outletId: 2, perPage: 200 });
 
-    fireEvent.click(screen.getByRole("button", { name: /mark as cooking/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start cooking/i }));
     expect(mockUpdateTicketStatus).toHaveBeenCalledWith("1", "in_progress");
   });
 });

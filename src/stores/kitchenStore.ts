@@ -14,7 +14,9 @@ import {
 import { reportOrderItemRecovery } from "@/lib/api-integration/endpoints";
 import { mapKitchenTicketApiToStore, type KitchenTicket } from "@/domain/kitchenAdapters";
 import {
+  extractRealtimeSeq,
   getRealtimeAdapter,
+  kitchenRealtimePayloadToApiTicket,
   type RealtimeConnectionState,
   type RealtimeEnvelope,
 } from "@/domain/realtimeAdapter";
@@ -39,6 +41,8 @@ type KitchenStore = {
   realtimeTransport: "polling" | "websocket";
   lastRealtimeMeta: Record<string, unknown> | null;
   lastRealtimeSeq: number;
+  lastTicketsUpdateSource: "fetch" | "realtime" | "mutation" | null;
+  consecutiveFetchFailures: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
   fetchTickets: (params?: ListKitchenTicketsParams, opts?: { background?: boolean }) => Promise<KitchenTicket[]>;
@@ -71,10 +75,6 @@ function upsertTicket(tickets: KitchenTicket[], next: KitchenTicket): KitchenTic
   return copy;
 }
 
-function extractRealtimeSeq(event: RealtimeEnvelope): number {
-  return event.sequence ?? event.seq ?? event.version ?? 0;
-}
-
 export const useKitchenStore = create<KitchenStore>((set, get) => ({
   tickets: [],
   isLoading: false,
@@ -94,6 +94,8 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
   realtimeTransport: "polling",
   lastRealtimeMeta: null,
   lastRealtimeSeq: 0,
+  lastTicketsUpdateSource: null,
+  consecutiveFetchFailures: 0,
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
 
@@ -138,11 +140,17 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
         tickets: mapped,
         pagination: result.meta,
         lastSyncAt: new Date().toISOString(),
+        lastTicketsUpdateSource: "fetch",
+        consecutiveFetchFailures: 0,
+        error: null,
       });
       return mapped;
     } catch (error) {
       const message = mapApiError(error);
-      set({ error: message });
+      set((state) => ({
+        error: message,
+        consecutiveFetchFailures: state.consecutiveFetchFailures + 1,
+      }));
       throw error;
     } finally {
       if (get().activeRequestId === requestId) {
@@ -215,6 +223,7 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
       set((state) => ({
         tickets: upsertTicket(state.tickets, updated),
         lastSyncAt: new Date().toISOString(),
+        lastTicketsUpdateSource: "mutation",
       }));
       void get().revalidateTickets();
       return updated;
@@ -247,19 +256,22 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
     const unsubscribe = adapter.subscribe({
       channel: "kitchen",
       onEvent: (event) => {
-        const payload = (event.payload ?? event.data) as Partial<KitchenTicket> | undefined;
-        if (!payload || payload.id == null) return;
+        const raw = (event.payload ?? event.data) as Record<string, unknown> | undefined;
+        if (!raw || typeof raw !== "object") return;
+
+        const apiTicket = kitchenRealtimePayloadToApiTicket(raw);
+        if (apiTicket === null) return;
+
         const incomingSeq = extractRealtimeSeq(event);
         const state = get();
         if (incomingSeq > 0 && incomingSeq <= state.lastRealtimeSeq) return;
+
+        const row = mapKitchenTicketApiToStore(apiTicket);
         set((current) => ({
-          tickets: upsertTicket(current.tickets, {
-            ...(current.tickets.find((t) => t.id === String(payload.id)) ?? ({} as KitchenTicket)),
-            ...(payload as KitchenTicket),
-            id: String(payload.id),
-          }),
+          tickets: upsertTicket(current.tickets, row),
           lastSyncAt: new Date().toISOString(),
-          lastRealtimeMeta: event.meta ?? null,
+          lastTicketsUpdateSource: "realtime",
+          lastRealtimeMeta: (event.meta ?? raw.meta ?? null) as Record<string, unknown> | null,
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : current.lastRealtimeSeq,
         }));
       },
@@ -324,6 +336,8 @@ export const useKitchenStore = create<KitchenStore>((set, get) => ({
       realtimeTransport: "polling",
       lastRealtimeMeta: null,
       lastRealtimeSeq: 0,
+      lastTicketsUpdateSource: null,
+      consecutiveFetchFailures: 0,
     });
   },
 }));

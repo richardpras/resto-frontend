@@ -225,6 +225,7 @@ export type CreateOrderPayload = {
   payments: OrderPaymentPayload[];
   customerName?: string;
   customerPhone?: string;
+  memberId?: number;
   /** Floor master table PK; server fills `tableName` snapshot. */
   tableId?: number;
   createdAt?: string;
@@ -243,6 +244,7 @@ export type UpdateOrderPayload = Partial<{
   discountAmount: number;
   customerName: string | null;
   customerPhone: string | null;
+  memberId: number | null;
   tableId: number | null;
   notes: string | null;
 }>;
@@ -275,6 +277,7 @@ export type OrderApi = {
   }[];
   customerName: string;
   customerPhone: string;
+  memberId?: number | null;
   tableId?: number | null;
   tableName?: string | null;
   tableNumber: string;

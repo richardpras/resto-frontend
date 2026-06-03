@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
+import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
 import { useMemberStore, type Member } from "@/stores/memberStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
@@ -19,6 +20,7 @@ import {
   type OrderPaymentPayload,
 } from "@/lib/api-integration/endpoints";
 import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
+import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { useOutletStore } from "@/stores/outletStore";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
@@ -84,9 +86,10 @@ function buildCartPayload(
   customerName: string,
   customerPhone: string,
   selectedTable: string,
+  memberId?: number | null,
 ): Pick<
   CreateOrderPayload,
-  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableId" | "discountAmount"
+  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableId" | "discountAmount" | "memberId"
 > {
   return {
     items: cart.map((c) => ({
@@ -104,6 +107,7 @@ function buildCartPayload(
     ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
     ...(customerPhone.trim() ? { customerPhone: customerPhone.trim() } : {}),
     ...(selectedTable && /^\d+$/.test(selectedTable.trim()) ? { tableId: Number(selectedTable.trim()) } : {}),
+    ...(memberId ? { memberId } : {}),
   };
 }
 
@@ -123,6 +127,7 @@ export default function POS() {
   const authUser = useAuthStore((s) => s.user);
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  useReservationTableProjectionSync();
   const { tables, orders, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
@@ -136,8 +141,8 @@ export default function POS() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
-  const { members, fetchMembers } = useMemberStore();
-  const membersLoading = useMemberStore((s) => s.loading);
+  const { searchResults, fetchMembers, searchMembersForOutlet, quickCreateMember } = useMemberStore();
+  const membersLoading = useMemberStore((s) => s.searchLoading);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
   const [giftCardInput, setGiftCardInput] = useState("");
@@ -145,6 +150,10 @@ export default function POS() {
   const [appliedGiftCard, setAppliedGiftCard] = useState(0);
   const [memberSearch, setMemberSearch] = useState("");
   const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [quickMemberName, setQuickMemberName] = useState("");
+  const [quickMemberPhone, setQuickMemberPhone] = useState("");
+  const [quickMemberSaving, setQuickMemberSaving] = useState(false);
+  const updateOrderRemote = useOrderStore((s) => s.updateOrderRemote);
 
   // Modal states
   const [showPayment, setShowPayment] = useState(false);
@@ -206,11 +215,22 @@ export default function POS() {
   const crmLazyFetchedRef = useRef<Record<number, boolean>>({});
 
   useEffect(() => {
+    if (!showMemberPicker) return;
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    const timer = setTimeout(() => {
+      void searchMembersForOutlet(activeOutletId, memberSearch).catch((e) => {
+        if (e instanceof ApiHttpError) toast.error(e.message);
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeOutletId, memberSearch, searchMembersForOutlet, showMemberPicker]);
+
+  useEffect(() => {
     if (!capabilities.crm || !showMemberPicker) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
     if (crmLazyFetchedRef.current[activeOutletId]) return;
     crmLazyFetchedRef.current[activeOutletId] = true;
-    void fetchMembers().catch((e) => {
+    void fetchMembers({ outletId: activeOutletId }).catch((e) => {
       if (e instanceof ApiHttpError) toast.error(e.message);
     });
     void Promise.all([
@@ -361,7 +381,9 @@ export default function POS() {
   const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
   const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
 
-  const selectableTables = tables.filter((t) => t.status === "available" || t.status === "occupied");
+  const selectableTables = tables.filter(
+    (t) => t.status === "available" || t.status === "occupied" || t.status === "reserved",
+  );
   const selectedTableLabel =
     selectedTable && tables.length > 0
       ? tables.find((t) => String(t.id) === String(selectedTable))?.name ?? `Table #${selectedTable}`
@@ -390,6 +412,35 @@ export default function POS() {
     toast.error("Something went wrong. Try again.");
   }
 
+  const memberIdForPayload = selectedMember ? Number(selectedMember.id) : undefined;
+
+  async function attachMemberToOpenOrder(member: Member | null) {
+    if (!currentOrderId) return;
+    if (currentOpenOrder?.paymentStatus === "paid") {
+      toast.error("Member cannot be changed after payment is complete.");
+      return;
+    }
+    try {
+      await setOrderMember(currentOrderId, member ? Number(member.id) : null);
+      if (member) {
+        setCustomerName(member.name);
+        setCustomerPhone(member.phone);
+      }
+      await fetchOrderRemote(currentOrderId);
+    } catch (e) {
+      toastApiError(e);
+    }
+  }
+
+  async function selectMember(member: Member) {
+    setSelectedMember(member);
+    setCustomerName(member.name);
+    setCustomerPhone(member.phone);
+    setShowMemberPicker(false);
+    setMemberSearch("");
+    await attachMemberToOpenOrder(member);
+  }
+
   // FLOW 1: Confirm Order → Send to Kitchen (single POST: confirmed + unpaid → kitchen ticket)
   const handleConfirmOrder = async () => {
     if (cart.length === 0 || submitting) return;
@@ -407,7 +458,7 @@ export default function POS() {
         paymentStatus: "unpaid",
         payments: [],
         confirmedAt: new Date().toISOString(),
-        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
       };
       const storedOrder = await createOrderRemote(payload);
       setCurrentOrderId(storedOrder.id);
@@ -503,7 +554,7 @@ export default function POS() {
             },
           ] : [],
           confirmedAt: new Date().toISOString(),
-          ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+          ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
         };
         storedOrder = await createOrderRemote(payload);
         setCurrentOrderId(storedOrder.id);
@@ -762,7 +813,7 @@ export default function POS() {
         payments: [],
         confirmedAt: new Date().toISOString(),
         splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
-        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable),
+        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
       });
       const fresh = await fetchOrderRemote(created.id);
       const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
@@ -1060,14 +1111,24 @@ export default function POS() {
                 <Star className="h-3.5 w-3.5 text-primary fill-primary" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-foreground truncate">{selectedMember.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{selectedMember.points} pts</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {selectedMember.memberNo ?? selectedMember.phone}
+                  </p>
                 </div>
-                <button onClick={() => setSelectedMember(null)} className="text-xs text-muted-foreground hover:text-destructive">×</button>
+                <button
+                  onClick={() => {
+                    setSelectedMember(null);
+                    void attachMemberToOpenOrder(null);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-destructive"
+                >
+                  ×
+                </button>
               </div>
             ) : (
               <button
                 onClick={() => setShowMemberPicker(true)}
-                disabled={!capabilities.crm}
+                disabled={typeof activeOutletId !== "number" || activeOutletId < 1}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 + Select member (optional)
@@ -1110,6 +1171,8 @@ export default function POS() {
                 {selectableTables.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.seats} seats)
+                    {t.status === "reserved" ? " • Reserved" : ""}
+                    {t.signals?.hasReservation && t.status !== "reserved" ? " • Reservation" : ""}
                     {((t.signals?.openBillCount ?? 0) > 0 || t.status === "occupied") ? " • Open bill" : ""}
                   </option>
                 ))}
@@ -1699,26 +1762,57 @@ export default function POS() {
               <h3 className="font-semibold mb-3">Select member</h3>
               <input
                 autoFocus value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
-                placeholder="Search by name or phone..."
+                placeholder="Search phone, name, or member no..."
                 className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm mb-3"
               />
+              <div className="mb-3 rounded-xl border border-border/60 p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Quick create member</p>
+                <input
+                  value={quickMemberName}
+                  onChange={(e) => setQuickMemberName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                />
+                <input
+                  value={quickMemberPhone}
+                  onChange={(e) => setQuickMemberPhone(e.target.value)}
+                  placeholder="Phone"
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={quickMemberSaving || typeof activeOutletId !== "number"}
+                  onClick={() => {
+                    if (!quickMemberName.trim() || !quickMemberPhone.trim() || typeof activeOutletId !== "number") {
+                      toast.error("Name and phone are required");
+                      return;
+                    }
+                    setQuickMemberSaving(true);
+                    void quickCreateMember({
+                      outletId: activeOutletId,
+                      fullName: quickMemberName.trim(),
+                      phone: quickMemberPhone.trim(),
+                    })
+                      .then((member) => selectMember(member))
+                      .catch(toastApiError)
+                      .finally(() => {
+                        setQuickMemberSaving(false);
+                        setQuickMemberName("");
+                        setQuickMemberPhone("");
+                      });
+                  }}
+                  className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                >
+                  {quickMemberSaving ? "Saving..." : "Create & attach"}
+                </button>
+              </div>
               <div className="max-h-72 overflow-y-auto space-y-1">
                 {membersLoading && (
-                  <p className="text-xs text-muted-foreground px-1 py-1">Loading members...</p>
+                  <p className="text-xs text-muted-foreground px-1 py-1">Searching members...</p>
                 )}
-                {members
-                  .filter((m) => m.status === "active" &&
-                    (m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-                     m.phone.includes(memberSearch)))
-                  .map((m) => (
+                {searchResults.map((m) => (
                     <button key={m.id}
-                      onClick={() => {
-                        setSelectedMember(m);
-                        setCustomerName(m.name);
-                        setCustomerPhone(m.phone);
-                        setShowMemberPicker(false);
-                        setMemberSearch("");
-                      }}
+                      onClick={() => void selectMember(m)}
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted text-left">
                       <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                         <User className="h-4 w-4 text-primary" />
@@ -1727,7 +1821,9 @@ export default function POS() {
                         <p className="text-sm font-medium truncate">{m.name}</p>
                         <p className="text-xs text-muted-foreground">{m.phone}</p>
                       </div>
-                      <span className="text-xs font-semibold text-primary">{m.points} pts</span>
+                      {m.memberNo ? (
+                        <span className="text-[10px] font-medium text-muted-foreground">{m.memberNo}</span>
+                      ) : null}
                     </button>
                   ))}
               </div>

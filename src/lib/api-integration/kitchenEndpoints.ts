@@ -30,6 +30,10 @@ export type KitchenTicketApi = {
   id: string | number;
   outletId: number;
   orderId: string | number;
+  orderNumber?: string | null;
+  orderCode?: string | null;
+  tableNumber?: string | null;
+  serviceMode?: string | null;
   ticketNo: string;
   status: KitchenTicketStatus;
   queuedAt?: string | null;
