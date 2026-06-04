@@ -69,8 +69,11 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (has("users.view", "users.create", "users.assign_roles")) out.add(PERMISSIONS.USERS);
   if (has("roles.view", "roles.create", "roles.assign_permissions")) out.add(PERMISSIONS.USERS);
   if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);
+  if (has("employees.view", "employees.manage", "users.manage")) out.add(PERMISSIONS.USERS);
   if (has("settings.view", "settings.update")) out.add(PERMISSIONS.SETTINGS);
   if (codes.some((c) => c.startsWith("payroll."))) out.add(PERMISSIONS.PAYROLL);
+  if (has("shift.view", "shift.manage")) out.add(PERMISSIONS.PAYROLL);
+  if (has("schedule.view", "schedule.manage")) out.add(PERMISSIONS.PAYROLL);
   if (codes.includes("tables.manage")) {
     out.add(PERMISSIONS.TABLES);
     out.add(PERMISSIONS.TABLES_MANAGE);

@@ -25,6 +25,9 @@ const Payroll = lazy(() => import("./pages/Payroll"));
 const Cashier = lazy(() => import("./pages/Cashier"));
 const OrdersExplorer = lazy(() => import("./pages/OrdersExplorer"));
 const Users = lazy(() => import("./pages/Users"));
+const Employees = lazy(() => import("./pages/Employees"));
+const Departments = lazy(() => import("./pages/Departments"));
+const Positions = lazy(() => import("./pages/Positions"));
 const Accounting = lazy(() => import("./pages/Accounting"));
 const Settings = lazy(() => import("./pages/Settings"));
 const PlaceholderPage = lazy(() => import("./pages/PlaceholderPage"));
@@ -117,6 +120,9 @@ const App = () => (
             <Route path="/promotions" element={guarded(PERMISSIONS.PROMOTIONS, <Promotions />)} />
             <Route path="/payroll" element={guarded(PERMISSIONS.PAYROLL, <Payroll />)} />
             <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
+            <Route path="/employees" element={guarded(PERMISSIONS.USERS, <Employees />)} />
+            <Route path="/departments" element={guarded(PERMISSIONS.USERS, <Departments />)} />
+            <Route path="/positions" element={guarded(PERMISSIONS.USERS, <Positions />)} />
             <Route path="/accounting" element={guarded(PERMISSIONS.ACCOUNTING, <Accounting />)} />
             <Route
               path="/reports"

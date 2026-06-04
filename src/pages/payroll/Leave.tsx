@@ -20,21 +20,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import {
-  approveOvertimeRequest,
-  cancelOvertimeRequest,
-  createOvertimeRequest,
-  createOvertimeType,
-  listOvertimeRequests,
-  listOvertimeSummaries,
-  listOvertimeTypes,
-  rejectOvertimeRequest,
-  updateOvertimeType,
-  type OvertimeDailySummaryRow,
-  type OvertimeRequestRow,
-  type OvertimeTypeRow,
+  approveLeaveRequest,
+  cancelLeaveRequest,
+  createLeaveRequest,
+  createLeaveType,
+  listEmployeeLeaveBalances,
+  listLeaveRequests,
+  listLeaveTypes,
+  rejectLeaveRequest,
+  updateEmployeeLeaveBalances,
+  updateLeaveType,
+  type LeaveRequestRow,
+  type LeaveTypeRow,
+  type EmployeeLeaveBalanceRow,
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
@@ -48,15 +50,16 @@ function requestStatusVariant(status: string): "default" | "secondary" | "destru
   return "outline";
 }
 
-export default function Overtime() {
+export default function Leave() {
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
 
-  const [types, setTypes] = useState<OvertimeTypeRow[]>([]);
-  const [requests, setRequests] = useState<OvertimeRequestRow[]>([]);
-  const [summaries, setSummaries] = useState<OvertimeDailySummaryRow[]>([]);
+  const [types, setTypes] = useState<LeaveTypeRow[]>([]);
+  const [requests, setRequests] = useState<LeaveRequestRow[]>([]);
   const [employees, setEmployees] = useState<OrganizationEmployeeRow[]>([]);
+  const [balances, setBalances] = useState<EmployeeLeaveBalanceRow[]>([]);
+  const [balanceEmployeeId, setBalanceEmployeeId] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   const [requestOpen, setRequestOpen] = useState(false);
@@ -67,40 +70,56 @@ export default function Overtime() {
 
   const [reqForm, setReqForm] = useState({
     employeeId: "",
-    overtimeTypeId: "",
-    overtimeDate: "",
-    startTime: "18:00",
-    endTime: "21:00",
+    leaveTypeId: "",
+    startDate: "",
+    endDate: "",
     reason: "",
   });
 
   const [typeForm, setTypeForm] = useState({
     code: "",
     name: "",
-    multiplier: "1.5",
+    requiresAttachment: false,
+    deductLeaveBalance: true,
+    paidLeave: true,
     isActive: true,
   });
+
+  const [allocEdits, setAllocEdits] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
     if (!outletId) return;
     setLoading(true);
     try {
-      const [t, r, s, emps] = await Promise.all([
-        listOvertimeTypes(outletId),
-        listOvertimeRequests({ outletId }),
-        listOvertimeSummaries({ outletId }),
+      const [t, r, emps] = await Promise.all([
+        listLeaveTypes(outletId),
+        listLeaveRequests({ outletId }),
         listOrganizationEmployees(outletId),
       ]);
       setTypes(t);
       setRequests(r);
-      setSummaries(s);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load overtime data");
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load leave data");
     } finally {
       setLoading(false);
     }
   }, [outletId]);
+
+  const loadBalances = useCallback(async (empId: number) => {
+    try {
+      const rows = await listEmployeeLeaveBalances(empId);
+      setBalances(rows);
+      const edits: Record<number, string> = {};
+      for (const b of rows) edits[b.leaveTypeId] = String(b.allocatedDays);
+      for (const t of types) {
+        if (edits[t.id] === undefined) edits[t.id] = "0";
+      }
+      setAllocEdits(edits);
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load balances");
+    }
+  }, [types]);
 
   useEffect(() => {
     if (outletId === null && outlets[0]) setOutletId(outlets[0].id);
@@ -110,22 +129,26 @@ export default function Overtime() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (balanceEmployeeId) void loadBalances(Number(balanceEmployeeId));
+    else setBalances([]);
+  }, [balanceEmployeeId, loadBalances]);
+
   const activeTypes = useMemo(() => types.filter((t) => t.isActive), [types]);
 
   const submitRequest = async () => {
-    if (!reqForm.employeeId || !reqForm.overtimeTypeId || !reqForm.overtimeDate || !reqForm.startTime || !reqForm.endTime) {
+    if (!reqForm.employeeId || !reqForm.leaveTypeId || !reqForm.startDate || !reqForm.endDate) {
       return toast.error("Fill required fields");
     }
     try {
-      await createOvertimeRequest({
+      await createLeaveRequest({
         employeeId: Number(reqForm.employeeId),
-        overtimeTypeId: Number(reqForm.overtimeTypeId),
-        overtimeDate: reqForm.overtimeDate,
-        startTime: reqForm.startTime,
-        endTime: reqForm.endTime,
+        leaveTypeId: Number(reqForm.leaveTypeId),
+        startDate: reqForm.startDate,
+        endDate: reqForm.endDate,
         reason: reqForm.reason || undefined,
       });
-      toast.success("Overtime request created");
+      toast.success("Leave request created");
       setRequestOpen(false);
       await load();
     } catch (e) {
@@ -138,14 +161,16 @@ export default function Overtime() {
       return toast.error("Code and name required");
     }
     try {
-      await createOvertimeType({
+      await createLeaveType({
         outletId,
         code: typeForm.code.trim(),
         name: typeForm.name.trim(),
-        multiplier: Number(typeForm.multiplier) || 1,
+        requiresAttachment: typeForm.requiresAttachment,
+        deductLeaveBalance: typeForm.deductLeaveBalance,
+        paidLeave: typeForm.paidLeave,
         isActive: typeForm.isActive,
       });
-      toast.success("Overtime type created");
+      toast.success("Leave type created");
       setTypeOpen(false);
       await load();
     } catch (e) {
@@ -153,20 +178,39 @@ export default function Overtime() {
     }
   };
 
-  const requestColumns: Column<OvertimeRequestRow>[] = [
+  const saveBalances = async () => {
+    if (!balanceEmployeeId) return toast.error("Select an employee");
+    try {
+      const payload = Object.entries(allocEdits).map(([leaveTypeId, allocatedDays]) => ({
+        leaveTypeId: Number(leaveTypeId),
+        allocatedDays: Number(allocatedDays),
+      }));
+      await updateEmployeeLeaveBalances(Number(balanceEmployeeId), payload);
+      toast.success("Balances updated");
+      await loadBalances(Number(balanceEmployeeId));
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Failed to update balances");
+    }
+  };
+
+  const requestColumns: Column<LeaveRequestRow>[] = [
     {
       key: "employee",
       header: "Employee",
       sortable: true,
       render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
     },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.overtimeDate },
-    { key: "hours", header: "Hours", sortable: true, render: (r) => r.totalHours },
     {
       key: "type",
       header: "Type",
-      render: (r) => r.overtimeType?.name ?? "—",
+      render: (r) => r.leaveType?.name ?? "—",
     },
+    {
+      key: "range",
+      header: "Date Range",
+      render: (r) => `${r.startDate} → ${r.endDate}`,
+    },
+    { key: "days", header: "Days", render: (r) => r.totalDays },
     {
       key: "status",
       header: "Status",
@@ -188,7 +232,7 @@ export default function Overtime() {
               variant="ghost"
               size="icon"
               onClick={() =>
-                void approveOvertimeRequest(r.id)
+                void approveLeaveRequest(r.id)
                   .then(() => {
                     toast.success("Approved");
                     return load();
@@ -214,7 +258,7 @@ export default function Overtime() {
               size="sm"
               className="text-xs"
               onClick={() =>
-                void cancelOvertimeRequest(r.id)
+                void cancelLeaveRequest(r.id)
                   .then(() => {
                     toast.success("Cancelled");
                     return load();
@@ -225,42 +269,18 @@ export default function Overtime() {
               Cancel
             </Button>
           </div>
-        ) : r.status === "approved" ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={() =>
-              void cancelOvertimeRequest(r.id)
-                .then(() => {
-                  toast.success("Cancelled");
-                  return load();
-                })
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Cancel failed"))
-            }
-          >
-            Cancel
-          </Button>
         ) : null,
     },
   ];
 
-  const summaryColumns: Column<OvertimeDailySummaryRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.overtimeDate },
-    { key: "hours", header: "Approved Hours", sortable: true, render: (r) => r.approvedHours },
-    { key: "requests", header: "Requests", render: (r) => r.requestCount },
-  ];
-
-  const typeColumns: Column<OvertimeTypeRow>[] = [
+  const typeColumns: Column<LeaveTypeRow>[] = [
     { key: "code", header: "Code", sortable: true },
     { key: "name", header: "Name", sortable: true },
-    { key: "multiplier", header: "Multiplier", render: (t) => t.multiplier },
+    {
+      key: "deduct",
+      header: "Deduct balance",
+      render: (t) => (t.deductLeaveBalance ? "Yes" : "No"),
+    },
     {
       key: "active",
       header: "Active",
@@ -269,7 +289,7 @@ export default function Overtime() {
           variant="outline"
           size="sm"
           onClick={() =>
-            void updateOvertimeType(t.id, { isActive: !t.isActive })
+            void updateLeaveType(t.id, { isActive: !t.isActive })
               .then(() => load())
               .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Update failed"))
           }
@@ -283,8 +303,8 @@ export default function Overtime() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Overtime</h2>
-        <p className="text-sm text-muted-foreground">Overtime requests, daily summaries, and types.</p>
+        <h2 className="text-lg font-semibold">Leave</h2>
+        <p className="text-sm text-muted-foreground">Leave types, requests, and balances.</p>
       </div>
 
       <Card className="p-4">
@@ -309,9 +329,9 @@ export default function Overtime() {
 
       <Tabs defaultValue="requests">
         <TabsList>
-          <TabsTrigger value="requests">Overtime Requests</TabsTrigger>
-          <TabsTrigger value="summary">Overtime Summary</TabsTrigger>
-          <TabsTrigger value="types">Overtime Types</TabsTrigger>
+          <TabsTrigger value="requests">Leave Requests</TabsTrigger>
+          <TabsTrigger value="balances">Leave Balances</TabsTrigger>
+          <TabsTrigger value="types">Leave Types</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests" className="mt-4 space-y-3">
@@ -326,20 +346,60 @@ export default function Overtime() {
             columns={requestColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            emptyMessage="No overtime requests"
+            emptyMessage="No leave requests"
             defaultPageSize={25}
           />
         </TabsContent>
 
-        <TabsContent value="summary" className="mt-4">
-          <DataTable
-            data={summaries}
-            columns={summaryColumns}
-            rowKey={(r) => r.id}
-            loading={loading}
-            emptyMessage="No approved overtime summaries"
-            defaultPageSize={25}
-          />
+        <TabsContent value="balances" className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1 min-w-[200px]">
+              <Label className="text-xs">Employee</Label>
+              <Select value={balanceEmployeeId} onValueChange={setBalanceEmployeeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      {e.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => void saveBalances()} disabled={!balanceEmployeeId}>
+              Save allocations
+            </Button>
+          </div>
+          {balanceEmployeeId && (
+            <div className="space-y-3">
+              {types.map((t) => (
+                <div key={t.id} className="flex items-center gap-4 rounded-lg border p-3">
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{t.name}</p>
+                    <p className="text-xs text-muted-foreground">{t.code}</p>
+                  </div>
+                  <div className="w-28 space-y-1">
+                    <Label className="text-xs">Allocated</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={allocEdits[t.id] ?? "0"}
+                      onChange={(e) => setAllocEdits({ ...allocEdits, [t.id]: e.target.value })}
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground w-24">
+                    Used: {balances.find((b) => b.leaveTypeId === t.id)?.usedDays ?? 0}
+                  </div>
+                  <div className="text-sm w-24">
+                    Left: {balances.find((b) => b.leaveTypeId === t.id)?.remainingDays ?? allocEdits[t.id] ?? 0}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="types" className="mt-4 space-y-3">
@@ -349,14 +409,14 @@ export default function Overtime() {
               Add type
             </Button>
           </div>
-          <DataTable data={types} columns={typeColumns} rowKey={(t) => t.id} loading={loading} emptyMessage="No overtime types" />
+          <DataTable data={types} columns={typeColumns} rowKey={(t) => t.id} loading={loading} emptyMessage="No leave types" />
         </TabsContent>
       </Tabs>
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New overtime request</DialogTitle>
+            <DialogTitle>New leave request</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
@@ -375,32 +435,28 @@ export default function Overtime() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Overtime type</Label>
-              <Select value={reqForm.overtimeTypeId} onValueChange={(v) => setReqForm({ ...reqForm, overtimeTypeId: v })}>
+              <Label>Leave type</Label>
+              <Select value={reqForm.leaveTypeId} onValueChange={(v) => setReqForm({ ...reqForm, leaveTypeId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   {activeTypes.map((t) => (
                     <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name} ({t.multiplier}x)
+                      {t.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Date</Label>
-              <Input type="date" value={reqForm.overtimeDate} onChange={(e) => setReqForm({ ...reqForm, overtimeDate: e.target.value })} />
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Start time</Label>
-                <Input type="time" value={reqForm.startTime} onChange={(e) => setReqForm({ ...reqForm, startTime: e.target.value })} />
+                <Label>Start</Label>
+                <Input type="date" value={reqForm.startDate} onChange={(e) => setReqForm({ ...reqForm, startDate: e.target.value })} />
               </div>
               <div className="space-y-1">
-                <Label>End time</Label>
-                <Input type="time" value={reqForm.endTime} onChange={(e) => setReqForm({ ...reqForm, endTime: e.target.value })} />
+                <Label>End</Label>
+                <Input type="date" value={reqForm.endDate} onChange={(e) => setReqForm({ ...reqForm, endDate: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1">
@@ -420,27 +476,25 @@ export default function Overtime() {
       <Dialog open={typeOpen} onOpenChange={setTypeOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add overtime type</DialogTitle>
+            <DialogTitle>Add leave type</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
               <Label>Code</Label>
-              <Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="holiday" />
+              <Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="annual_leave" />
             </div>
             <div className="space-y-1">
               <Label>Name</Label>
               <Input value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} />
             </div>
-            <div className="space-y-1">
-              <Label>Multiplier</Label>
-              <Input
-                type="number"
-                min={0}
-                step={0.1}
-                value={typeForm.multiplier}
-                onChange={(e) => setTypeForm({ ...typeForm, multiplier: e.target.value })}
-              />
-            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={typeForm.deductLeaveBalance} onCheckedChange={(c) => setTypeForm({ ...typeForm, deductLeaveBalance: !!c })} />
+              Deduct leave balance
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={typeForm.requiresAttachment} onCheckedChange={(c) => setTypeForm({ ...typeForm, requiresAttachment: !!c })} />
+              Requires attachment
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTypeOpen(false)}>
@@ -454,7 +508,7 @@ export default function Overtime() {
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject overtime request</DialogTitle>
+            <DialogTitle>Reject leave request</DialogTitle>
           </DialogHeader>
           <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason (optional)" />
           <DialogFooter>
@@ -465,7 +519,7 @@ export default function Overtime() {
               variant="destructive"
               onClick={() => {
                 if (rejectId === null) return;
-                void rejectOvertimeRequest(rejectId, rejectReason || undefined)
+                void rejectLeaveRequest(rejectId, rejectReason || undefined)
                   .then(() => {
                     toast.success("Rejected");
                     setRejectOpen(false);

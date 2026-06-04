@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
   ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings, Store,
-  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift,
+  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -35,9 +35,12 @@ const managementItems: Item[] = [
 ];
 
 const adminItems: Item[] = [
+  { title: "Users & Roles", url: "/users", icon: UserCog, perm: PERMISSIONS.USERS },
+  { title: "Employees", url: "/employees", icon: Users, perm: PERMISSIONS.USERS },
+  { title: "Departments", url: "/departments", icon: Building2, perm: PERMISSIONS.USERS },
+  { title: "Positions", url: "/positions", icon: Briefcase, perm: PERMISSIONS.USERS },
   { title: "Payroll", url: "/payroll", icon: Users, perm: PERMISSIONS.PAYROLL },
   { title: "Accounting", url: "/accounting", icon: BookOpen, perm: PERMISSIONS.ACCOUNTING },
-  { title: "Users & Roles", url: "/users", icon: UserCog, perm: PERMISSIONS.USERS },
   { title: "Reports", url: "/reports", icon: BarChart3, perm: PERMISSIONS.REPORTS },
   { title: "Settings", url: "/settings", icon: Settings, perm: PERMISSIONS.SETTINGS },
 ];
