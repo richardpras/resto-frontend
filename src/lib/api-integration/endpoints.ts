@@ -292,6 +292,21 @@ export type OrderApi = {
     status: string;
     items: { orderItemId: number; qty: number; amount: number }[];
   }[];
+  voucher?: {
+    id: string;
+    memberVoucherId: string;
+    voucherCode: string;
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;
+    voucherName?: string | null;
+  } | null;
+  voucherDiscount?: number;
+  voucherPreview?: {
+    subtotal: number;
+    discount: number;
+    subtotalAfterDiscount: number;
+  };
 };
 
 /** Operational audit rows from `GET /orders/{id}/events` (PosEventLogResource). */

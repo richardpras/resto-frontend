@@ -28,6 +28,30 @@ function formatRp(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
 }
 
+function voucherStatusLabel(status: string): string {
+  switch (status) {
+    case "issued":
+      return "Issued";
+    case "claimed":
+      return "Claimed";
+    case "redeemed":
+      return "Redeemed";
+    case "expired":
+      return "Expired";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status;
+  }
+}
+
+function formatVoucherDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: Props) {
   const fetchProfile = useMemberStore((s) => s.fetchProfile);
   const redeemPoints = useMemberStore((s) => s.redeemPoints);
@@ -171,6 +195,31 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                   </Button>
                 </div>
               </div>
+              {profile.tier ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Membership tier</span>
+                  <span className="text-sm font-semibold border rounded-full px-3 py-1 bg-amber-50 text-amber-900 border-amber-200">
+                    {profile.tier.name}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No active membership tier.</p>
+              )}
+              {(profile.benefits ?? []).length > 0 ? (
+                <div className="rounded-xl border p-3 space-y-2">
+                  <p className="text-sm font-medium">Tier benefits</p>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.benefits.map((benefit) => (
+                      <span
+                        key={benefit.code}
+                        className="text-xs border rounded-full px-2 py-1 bg-emerald-50 text-emerald-900 border-emerald-200"
+                      >
+                        {benefit.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Visits</p>
@@ -187,6 +236,107 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                   </p>
                 </div>
               </div>
+            <div className="rounded-xl border p-3 mb-4 space-y-2">
+              <p className="text-sm font-medium">Member segments</p>
+              {(profile.memberSegments ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">Not in any active segment.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {profile.memberSegments.map((seg) => (
+                    <span key={seg.id} className="text-xs border rounded-full px-2 py-1 bg-muted">
+                      {seg.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border p-3 mb-4 space-y-2">
+              <p className="text-sm font-medium">Tier history</p>
+              {(profile.tierHistory ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No tier assignments yet.</p>
+              ) : (
+                <div className="max-h-32 overflow-y-auto space-y-2">
+                  {profile.tierHistory.map((row) => (
+                    <div key={row.id} className="flex justify-between text-sm border rounded-lg px-3 py-2 gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium">{row.tierName}</p>
+                        <p className="text-[10px] text-muted-foreground capitalize">
+                          {row.reason.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {row.assignedAt ? new Date(row.assignedAt).toLocaleString() : "—"}
+                          {row.removedAt ? ` → ${new Date(row.removedAt).toLocaleString()}` : " · Active"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border p-3 mb-4 space-y-2">
+              <p className="text-sm font-medium">Notifications</p>
+              {(profile.notifications ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No notifications yet.</p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto space-y-2">
+                  {profile.notifications.map((row) => (
+                    <div key={row.id} className="flex justify-between text-sm border rounded-lg px-3 py-2 gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium">{row.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{row.content}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {row.createdAt ? new Date(row.createdAt).toLocaleString() : "—"}
+                        </p>
+                      </div>
+                      <span className="text-xs capitalize shrink-0 text-muted-foreground">
+                        {row.readAt ? "Read" : row.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border p-3 mb-4 space-y-2">
+              <p className="text-sm font-medium">Available vouchers</p>
+              {(profile.availableVouchers ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No available vouchers.</p>
+              ) : (
+                <div className="space-y-2">
+                  {profile.availableVouchers.map((v) => (
+                    <div key={v.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
+                      <div>
+                        <p className="font-medium">{v.name}</p>
+                        <p className="text-xs text-muted-foreground">{v.voucherCode}</p>
+                      </div>
+                      <span className="text-xs capitalize text-muted-foreground">{voucherStatusLabel(v.status)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border p-3 mb-4 space-y-2">
+              <p className="text-sm font-medium">Voucher history</p>
+              {(profile.voucherHistory ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No voucher history.</p>
+              ) : (
+                <div className="max-h-32 overflow-y-auto space-y-2">
+                  {profile.voucherHistory.map((v) => (
+                    <div key={v.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
+                      <div>
+                        <p className="font-medium">{v.name}</p>
+                        <p className="text-xs text-muted-foreground">{v.voucherCode}</p>
+                        {v.redeemedAt ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            Redeemed {formatVoucherDate(v.redeemedAt)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className="text-xs">{voucherStatusLabel(v.status)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
               <p className="text-sm font-medium">Expiry policy</p>
               <p className="text-sm text-muted-foreground">

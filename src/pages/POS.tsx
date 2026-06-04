@@ -2,12 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X,
-  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag,
+  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
-import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
+import { setOrderMember, listMemberVouchers, type MemberVoucherListRow } from "@/lib/api-integration/membersEndpoints";
+import {
+  applyOrderVoucher,
+  removeOrderVoucher,
+  type VoucherPreview,
+} from "@/lib/api-integration/orderVoucherEndpoints";
 import { useMemberStore, type Member } from "@/stores/memberStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
@@ -168,6 +173,10 @@ export default function POS() {
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
   const [showPromoList, setShowPromoList] = useState(false);
   const [manualPromo, setManualPromo] = useState<AppliedPromo | null>(null);
+  const [memberVouchers, setMemberVouchers] = useState<MemberVoucherListRow[]>([]);
+  const [selectedMemberVoucherId, setSelectedMemberVoucherId] = useState("");
+  const [voucherPreview, setVoucherPreview] = useState<VoucherPreview | null>(null);
+  const [voucherLoading, setVoucherLoading] = useState(false);
 
   const currentOpenOrder = useMemo(
     () => (currentOrderId ? orders.find((o) => o.id === currentOrderId) ?? null : null),
@@ -239,6 +248,28 @@ export default function POS() {
     ]);
   }, [activeOutletId, capabilities.crm, fetchCustomers, fetchMembers, refreshLoyalty, showMemberPicker]);
 
+  useEffect(() => {
+    if (!selectedMember || typeof activeOutletId !== "number" || activeOutletId < 1) {
+      setMemberVouchers([]);
+      return;
+    }
+    void listMemberVouchers(selectedMember.id, activeOutletId)
+      .then((rows) =>
+        setMemberVouchers(rows.filter((row) => row.status === "issued" || row.status === "claimed")),
+      )
+      .catch(() => setMemberVouchers([]));
+  }, [selectedMember, activeOutletId]);
+
+  useEffect(() => {
+    if (!currentOpenOrder) {
+      setVoucherPreview(null);
+      setSelectedMemberVoucherId("");
+      return;
+    }
+    setVoucherPreview(currentOpenOrder.voucherPreview ?? null);
+    setSelectedMemberVoucherId(currentOpenOrder.voucher?.memberVoucherId ?? "");
+  }, [currentOpenOrder]);
+
   const { data: floorMasters } = useQuery({
     queryKey: ["floor-tables", activeOutletId ?? 0],
     queryFn: () => listFloorTables(activeOutletId!),
@@ -304,6 +335,9 @@ export default function POS() {
       setPendingGatewayPayments([]);
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
+      setMemberVouchers([]);
+      setSelectedMemberVoucherId("");
+      setVoucherPreview(null);
       paymentResetAsync();
     }
     previousOutletIdRef.current = nextOutletId;
@@ -368,9 +402,11 @@ export default function POS() {
   const autoPromo = getBestPromo(cartForPromo, subtotal);
   const appliedPromo = manualPromo || autoPromo;
   const discount = appliedPromo?.discountAmount || 0;
+  const voucherDiscount = voucherPreview?.discount ?? currentOpenOrder?.voucherPreview?.discount ?? 0;
   const applicablePromos = getApplicablePromos(cartForPromo, subtotal);
-  const tax = Math.round((subtotal - discount) * 0.1);
-  const baseTotal = subtotal - discount + tax;
+  const taxableBase = Math.max(0, subtotal - discount - voucherDiscount);
+  const tax = Math.round(taxableBase * 0.1);
+  const baseTotal = taxableBase + tax;
   const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
   const selectedCustomer = customers.find(
@@ -438,7 +474,56 @@ export default function POS() {
     setCustomerPhone(member.phone);
     setShowMemberPicker(false);
     setMemberSearch("");
+    setSelectedMemberVoucherId("");
+    setVoucherPreview(null);
     await attachMemberToOpenOrder(member);
+  }
+
+  async function applySelectedVoucher() {
+    if (!currentOrderId || !selectedMemberVoucherId) return;
+    if (currentOpenOrder?.paymentStatus === "paid") {
+      toast.error("Voucher cannot be changed after payment is complete.");
+      return;
+    }
+    setVoucherLoading(true);
+    try {
+      const result = await applyOrderVoucher(currentOrderId, Number(selectedMemberVoucherId));
+      setVoucherPreview(result.preview);
+      await fetchOrderRemote(currentOrderId);
+      toast.success("Voucher applied.");
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setVoucherLoading(false);
+    }
+  }
+
+  async function removeAppliedVoucher() {
+    if (!currentOrderId) return;
+    if (currentOpenOrder?.paymentStatus === "paid") {
+      toast.error("Voucher cannot be changed after payment is complete.");
+      return;
+    }
+    setVoucherLoading(true);
+    try {
+      const result = await removeOrderVoucher(currentOrderId);
+      setVoucherPreview(result.preview);
+      setSelectedMemberVoucherId("");
+      await fetchOrderRemote(currentOrderId);
+      toast.success("Voucher removed.");
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setVoucherLoading(false);
+    }
+  }
+
+  function formatVoucherDiscountPreview(row: MemberVoucherListRow): string {
+    const valueType = row.voucher?.valueType;
+    const value = row.voucher?.value ?? 0;
+    if (valueType === "percentage") return `${value}% off`;
+    if (valueType === "fixed_amount") return formatRp(value);
+    return "Preview at apply";
   }
 
   // FLOW 1: Confirm Order → Send to Kitchen (single POST: confirmed + unpaid → kitchen ticket)
@@ -1162,6 +1247,62 @@ export default function POS() {
                     Apply
                   </button>
                 </div>
+                <div className="space-y-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Gift className="h-3.5 w-3.5 text-primary" />
+                    <p className="text-[11px] font-semibold text-foreground">Member voucher</p>
+                  </div>
+                  {!currentOrderId ? (
+                    <p className="text-[10px] text-muted-foreground">
+                      Confirm or open an order before applying a voucher.
+                    </p>
+                  ) : currentOpenOrder?.voucher ? (
+                    <div className="space-y-2">
+                      <div className="rounded-lg bg-background px-2 py-1.5 text-[11px]">
+                        <p className="font-semibold text-foreground truncate">
+                          {currentOpenOrder.voucher.voucherName ?? currentOpenOrder.voucher.voucherCode}
+                        </p>
+                        <p className="text-muted-foreground">{currentOpenOrder.voucher.voucherCode}</p>
+                        <p className="text-emerald-600 font-medium">
+                          -{formatRp(voucherDiscount)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void removeAppliedVoucher()}
+                        disabled={voucherLoading || currentOpenOrder.paymentStatus === "paid"}
+                        className="w-full rounded-lg border border-border px-2 py-1.5 text-xs font-medium disabled:opacity-50"
+                      >
+                        Remove voucher
+                      </button>
+                    </div>
+                  ) : memberVouchers.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground">No usable vouchers for this member.</p>
+                  ) : (
+                    <>
+                      <select
+                        value={selectedMemberVoucherId}
+                        onChange={(e) => setSelectedMemberVoucherId(e.target.value)}
+                        className="w-full rounded-lg border border-border/60 bg-background px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Select voucher...</option>
+                        {memberVouchers.map((row) => (
+                          <option key={row.id} value={row.id}>
+                            {row.voucherCode} — {row.voucher?.name ?? "Voucher"} ({formatVoucherDiscountPreview(row)})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void applySelectedVoucher()}
+                        disabled={!selectedMemberVoucherId || voucherLoading || currentOpenOrder?.paymentStatus === "paid"}
+                        className="w-full rounded-lg bg-primary text-primary-foreground px-2 py-1.5 text-xs font-medium disabled:opacity-50"
+                      >
+                        Apply voucher
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
             {orderType === "Dine-in" && (
@@ -1272,6 +1413,12 @@ export default function POS() {
             {discount > 0 && (
               <div className="flex justify-between text-emerald-600 font-medium"><span>Discount</span><span>-{formatRp(discount)}</span></div>
             )}
+            {voucherDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>Voucher Discount</span>
+                <span>-{formatRp(voucherDiscount)}</span>
+              </div>
+            )}
             {appliedPoints > 0 && (
               <div className="flex justify-between text-primary font-medium"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
             )}
@@ -1279,7 +1426,10 @@ export default function POS() {
               <div className="flex justify-between text-primary font-medium"><span>Gift Card / Store Credit</span><span>-{formatRp(appliedGiftCard)}</span></div>
             )}
             <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
-            <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50"><span>Total</span><span>{formatRp(total)}</span></div>
+            <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50">
+              <span>Estimated Total</span>
+              <span>{formatRp(total)}</span>
+            </div>
           </div>
           <div className="flex gap-2">
             {orderType === "Dine-in" ? (

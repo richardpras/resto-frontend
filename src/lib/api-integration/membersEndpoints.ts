@@ -72,6 +72,59 @@ export type ExpiryPolicy = {
   days: number | null;
 };
 
+export type MemberSegmentMembership = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type MemberVoucherProfileRow = {
+  id: string;
+  voucherCode: string;
+  name: string;
+  status: string;
+  valueType?: string;
+  value?: number;
+  issuedAt?: string | null;
+  claimedAt?: string | null;
+  redeemedAt?: string | null;
+  expiredAt?: string | null;
+  cancelledAt?: string | null;
+};
+
+export type MemberTierMembership = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type MemberTierBenefit = {
+  code: string;
+  name: string;
+};
+
+export type MemberTierHistoryRow = {
+  id: string;
+  tierId: string;
+  tierCode: string;
+  tierName: string;
+  assignedAt?: string | null;
+  removedAt?: string | null;
+  reason: string;
+};
+
+export type MemberNotificationRow = {
+  id: string;
+  eventType: string;
+  channel: string;
+  title: string;
+  content: string;
+  status: string;
+  sentAt?: string | null;
+  readAt?: string | null;
+  createdAt?: string | null;
+};
+
 export type MemberProfileApi = {
   member: MemberApiRow;
   stats: MemberProfileStats;
@@ -82,6 +135,13 @@ export type MemberProfileApi = {
   expiryPolicy?: ExpiryPolicy;
   expiredPointsTotal?: number;
   expiryHistory?: LoyaltyHistoryRow[];
+  memberSegments?: MemberSegmentMembership[];
+  tier?: MemberTierMembership | null;
+  benefits?: MemberTierBenefit[];
+  tierHistory?: MemberTierHistoryRow[];
+  notifications?: MemberNotificationRow[];
+  availableVouchers?: MemberVoucherProfileRow[];
+  voucherHistory?: MemberVoucherProfileRow[];
   transactions: MemberTransactionRow[];
 };
 
@@ -103,6 +163,27 @@ export async function searchMembers(outletId: number, q: string, limit = 20): Pr
 
 export async function fetchMemberProfile(memberId: string | number, outletId: number): Promise<MemberProfileApi> {
   const res = await apiRequest<ItemEnvelope<MemberProfileApi>>(`/members/${memberId}/profile?outletId=${outletId}`);
+  return res.data;
+}
+
+export type MemberVoucherListRow = {
+  id: string;
+  voucherCode: string;
+  status: string;
+  voucher?: {
+    name?: string;
+    valueType?: string;
+    value?: number;
+  } | null;
+};
+
+export async function listMemberVouchers(
+  memberId: string | number,
+  outletId: number,
+): Promise<MemberVoucherListRow[]> {
+  const res = await apiRequest<ListEnvelope<MemberVoucherListRow>>(
+    `/members/${memberId}/vouchers?outletId=${outletId}`,
+  );
   return res.data;
 }
 
