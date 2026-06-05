@@ -1,14 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type InventoryItemType } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
 import { Package, Paperclip, Armchair } from "lucide-react";
 import { type InventoryItemApi, type InventoryPayload } from "@/lib/api-integration/inventoryEndpoints";
+import {
+  createProcurementSetting,
+  updateProcurementSetting,
+} from "@/lib/api-integration/procurementSettingsEndpoints";
+import InventoryProcurementFields, {
+  emptyProcurementForm,
+  type ProcurementFormState,
+} from "@/components/InventoryProcurementFields";
 
 const typeConfig: Record<InventoryItemType, { label: string; icon: React.ReactNode; units: string[]; color: string }> = {
   ingredient: { label: "Ingredient", icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },
@@ -32,13 +41,19 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editItem?: InventoryItemApi | null;
-  onSave: (payload: InventoryPayload, id?: string) => Promise<void>;
+  onSave: (payload: InventoryPayload, id?: string) => Promise<string | void>;
 };
 
 export default function InventoryFormModal({ open, onOpenChange, editItem, onSave }: Props) {
   const [form, setForm] = useState<FormData>(emptyForm);
+  const [procurementForm, setProcurementForm] = useState<ProcurementFormState>(emptyProcurementForm);
+  const [tab, setTab] = useState("details");
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [saving, setSaving] = useState(false);
+
+  const handleProcurementChange = useCallback((value: ProcurementFormState) => {
+    setProcurementForm(value);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -56,8 +71,35 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
         setForm(emptyForm);
       }
       setErrors({});
+      setTab("details");
+      setProcurementForm(emptyProcurementForm);
     }
   }, [open, editItem]);
+
+  const persistProcurementSettings = async (inventoryItemId: string) => {
+    const payload = {
+      preferredSupplierId: procurementForm.preferredSupplierId || undefined,
+      minimumOrderQty: procurementForm.minimumOrderQty !== "" ? Number(procurementForm.minimumOrderQty) : undefined,
+      reorderQty: procurementForm.reorderQty !== "" ? Number(procurementForm.reorderQty) : undefined,
+      leadTimeDays: procurementForm.leadTimeDays !== "" ? Number(procurementForm.leadTimeDays) : undefined,
+      lastPurchasePrice: procurementForm.lastPurchasePrice !== "" ? Number(procurementForm.lastPurchasePrice) : undefined,
+    };
+    const hasData = Object.values(payload).some((v) => v !== undefined);
+    if (!hasData && !procurementForm.settingId) return;
+
+    if (procurementForm.settingId) {
+      await updateProcurementSetting(procurementForm.settingId, {
+        preferredSupplierId: payload.preferredSupplierId ?? null,
+        minimumOrderQty: payload.minimumOrderQty ?? null,
+        reorderQty: payload.reorderQty ?? null,
+        leadTimeDays: payload.leadTimeDays ?? null,
+        lastPurchasePrice: payload.lastPurchasePrice ?? null,
+      });
+      return;
+    }
+    if (!hasData) return;
+    await createProcurementSetting({ inventoryItemId, ...payload });
+  };
 
   const handleTypeChange = (type: InventoryItemType) => {
     const defaultUnit = typeConfig[type].units[0];
@@ -93,7 +135,10 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
     };
 
     try {
-      await onSave(payload, editItem?.id);
+      const savedId = await onSave(payload, editItem?.id);
+      if (savedId) {
+        await persistProcurementSettings(savedId);
+      }
       toast({
         title: editItem ? "Item updated" : "Item created",
         description: editItem
@@ -120,7 +165,15 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
           <DialogTitle className="text-lg">{editItem ? "Edit Inventory Item" : "Add Inventory Item"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <Tabs value={tab} onValueChange={setTab} className="py-2">
+          {editItem && (
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="procurement">Procurement</TabsTrigger>
+            </TabsList>
+          )}
+
+          <TabsContent value="details" className="space-y-5 mt-0">
           {/* Type selector */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Type *</Label>
@@ -244,7 +297,18 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
               </div>
             )}
           </div>
-        </div>
+          </TabsContent>
+
+          {editItem && (
+            <TabsContent value="procurement" className="mt-0">
+              <InventoryProcurementFields
+                inventoryItemId={editItem.id}
+                value={procurementForm}
+                onChange={handleProcurementChange}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

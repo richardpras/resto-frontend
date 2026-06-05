@@ -102,10 +102,11 @@ export default function Inventory() {
       typeof activeOutletId === "number" && activeOutletId >= 1 ? { tenantId: TENANT_ID, outletId: activeOutletId } : { tenantId: TENANT_ID };
     if (id) {
       await updateItemRemote(id, { ...payload, ...outletContext });
-      return;
+      return id;
     }
 
-    await createItemRemote({ ...payload, ...outletContext });
+    const created = await createItemRemote({ ...payload, ...outletContext });
+    return created.id;
   };
 
   return (

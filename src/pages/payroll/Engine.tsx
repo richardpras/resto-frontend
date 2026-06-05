@@ -309,9 +309,24 @@ export default function Engine() {
       render: (r) => (r.adjustmentEarning > 0 ? formatIdr(r.adjustmentEarning) : "—"),
     },
     {
+      key: "reimb",
+      header: "Reimbursement",
+      render: (r) => ((r.reimbursementEarning ?? 0) > 0 ? formatIdr(r.reimbursementEarning ?? 0) : "—"),
+    },
+    {
       key: "adjDed",
       header: "Adj. Deduction",
       render: (r) => (r.adjustmentDeduction > 0 ? formatIdr(r.adjustmentDeduction) : "—"),
+    },
+    {
+      key: "pkp",
+      header: "PKP (annual)",
+      render: (r) => ((r.annualPkp ?? 0) > 0 ? formatIdr(r.annualPkp ?? 0) : "—"),
+    },
+    {
+      key: "pph21",
+      header: "PPh21",
+      render: (r) => ((r.pph21Amount ?? 0) > 0 ? formatIdr(r.pph21Amount ?? 0) : "—"),
     },
     { key: "gross", header: "Gross", render: (r) => formatIdr(r.grossSalary) },
     { key: "deductions", header: "Deductions", render: (r) => formatIdr(r.totalDeductions) },
@@ -323,7 +338,7 @@ export default function Engine() {
       <div>
         <h2 className="text-lg font-semibold">Payroll Engine</h2>
         <p className="text-sm text-muted-foreground">
-          Calculate gross and net salary from locked preparation snapshots. BPJS deductions apply when enrolled. No PPh21 or accounting.
+          Calculate gross and net salary from locked preparation snapshots. BPJS and PPh21 apply when configured. No accounting posting.
         </p>
       </div>
 
@@ -451,6 +466,30 @@ export default function Engine() {
                 </CardHeader>
                 <CardContent className="text-lg font-semibold text-destructive">
                   {formatIdr(detailSummary.totalAdjustmentDeduction ?? 0)}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total PPh21</CardTitle>
+                </CardHeader>
+                <CardContent className="text-lg font-semibold text-destructive">
+                  {formatIdr(detailSummary.totalPph21 ?? 0)}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Taxable Income</CardTitle>
+                </CardHeader>
+                <CardContent className="text-lg font-semibold">
+                  {formatIdr(detailSummary.totalTaxableIncome ?? 0)}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Reimbursements</CardTitle>
+                </CardHeader>
+                <CardContent className="text-lg font-semibold text-green-600">
+                  {formatIdr(detailSummary.totalReimbursements ?? 0)}
                 </CardContent>
               </Card>
             </div>

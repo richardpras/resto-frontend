@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Clock, Timer, Wallet, CalendarDays, Banknote, Calculator, CalendarRange, CalendarClock, ClipboardCheck, Palmtree, FileStack, Cog, HandCoins, FileText, Shield } from "lucide-react";
+import { Users, Clock, Timer, Wallet, CalendarDays, Banknote, Calculator, CalendarRange, CalendarClock, ClipboardCheck, Palmtree, FileStack, Cog, HandCoins, FileText, Shield, Receipt, ReceiptText, LockKeyhole, BookOpen } from "lucide-react";
 import Preparation from "./payroll/Preparation";
 import Engine from "./payroll/Engine";
 import Leave from "./payroll/Leave";
@@ -16,6 +16,10 @@ import Loans from "./payroll/Loans";
 import CashAdvances from "./payroll/CashAdvances";
 import Payslips from "./payroll/Payslips";
 import Bpjs from "./payroll/Bpjs";
+import Tax from "./payroll/Tax";
+import Reimbursements from "./payroll/Reimbursements";
+import Closing from "./payroll/Closing";
+import Posting from "./payroll/Posting";
 import ShiftAssignments from "./payroll/ShiftAssignments";
 import Scheduling from "./payroll/Scheduling";
 import PayrollRunPage from "./payroll/PayrollRun";
@@ -76,6 +80,10 @@ export default function Payroll() {
           <TabsTrigger value="cash-advances" className="gap-1.5 text-xs"><HandCoins className="h-3.5 w-3.5" />Cash Advances</TabsTrigger>
           <TabsTrigger value="payslips" className="gap-1.5 text-xs"><FileText className="h-3.5 w-3.5" />Payslips</TabsTrigger>
           <TabsTrigger value="bpjs" className="gap-1.5 text-xs"><Shield className="h-3.5 w-3.5" />BPJS</TabsTrigger>
+          <TabsTrigger value="tax" className="gap-1.5 text-xs"><Receipt className="h-3.5 w-3.5" />Tax</TabsTrigger>
+          <TabsTrigger value="reimbursements" className="gap-1.5 text-xs"><ReceiptText className="h-3.5 w-3.5" />Reimbursements</TabsTrigger>
+          <TabsTrigger value="closing" className="gap-1.5 text-xs"><LockKeyhole className="h-3.5 w-3.5" />Closing</TabsTrigger>
+          <TabsTrigger value="posting" className="gap-1.5 text-xs"><BookOpen className="h-3.5 w-3.5" />Posting</TabsTrigger>
         </TabsList>
         <TabsContent value="payroll" className="mt-6"><PayrollRunPage /></TabsContent>
         <TabsContent value="employees" className="mt-6"><Employees /></TabsContent>
@@ -93,6 +101,10 @@ export default function Payroll() {
         <TabsContent value="cash-advances" className="mt-6"><CashAdvances /></TabsContent>
         <TabsContent value="payslips" className="mt-6"><Payslips /></TabsContent>
         <TabsContent value="bpjs" className="mt-6"><Bpjs /></TabsContent>
+        <TabsContent value="tax" className="mt-6"><Tax /></TabsContent>
+        <TabsContent value="reimbursements" className="mt-6"><Reimbursements /></TabsContent>
+        <TabsContent value="closing" className="mt-6"><Closing /></TabsContent>
+        <TabsContent value="posting" className="mt-6"><Posting /></TabsContent>
       </Tabs>
     </div>
   );

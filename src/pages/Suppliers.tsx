@@ -16,7 +16,23 @@ export default function Suppliers() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | SupplierStatus>("all");
-  const [form, setForm] = useState({ name: "", contact: "", email: "", address: "", notes: "", status: "active" as SupplierStatus });
+  const emptyForm = () => ({
+    name: "",
+    contact: "",
+    email: "",
+    address: "",
+    notes: "",
+    status: "active" as SupplierStatus,
+    paymentTermDays: "" as string,
+    leadTimeDays: "" as string,
+    taxNumber: "",
+    taxName: "",
+    taxAddress: "",
+    contactPerson: "",
+    contactPhone: "",
+    contactEmail: "",
+  });
+  const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -29,16 +45,53 @@ export default function Suppliers() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", contact: "", email: "", address: "", notes: "", status: "active" });
+    setForm(emptyForm());
     setOpen(true);
   };
   const openEdit = (s: Supplier) => {
     setEditing(s);
-    setForm({ name: s.name, contact: s.contact, email: s.email, address: s.address, notes: s.notes ?? "", status: s.status });
+    setForm({
+      name: s.name,
+      contact: s.contact,
+      email: s.email,
+      address: s.address,
+      notes: s.notes ?? "",
+      status: s.status,
+      paymentTermDays: s.paymentTermDays != null ? String(s.paymentTermDays) : "",
+      leadTimeDays: s.leadTimeDays != null ? String(s.leadTimeDays) : "",
+      taxNumber: s.taxNumber ?? "",
+      taxName: s.taxName ?? "",
+      taxAddress: s.taxAddress ?? "",
+      contactPerson: s.contactPerson ?? "",
+      contactPhone: s.contactPhone ?? "",
+      contactEmail: s.contactEmail ?? "",
+    });
     setOpen(true);
+  };
+
+  const parseOptionalInt = (value: string): number | null | undefined => {
+    if (!value.trim()) return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
   };
   const handleSave = async () => {
     if (!form.name.trim()) return toast.error("Name is required");
+    const paymentTermDays = parseOptionalInt(form.paymentTermDays);
+    const leadTimeDays = parseOptionalInt(form.leadTimeDays);
+    if (form.paymentTermDays.trim() && paymentTermDays === undefined) return toast.error("Payment terms must be a valid number");
+    if (form.leadTimeDays.trim() && leadTimeDays === undefined) return toast.error("Lead time must be a valid number");
+
+    const extended = {
+      paymentTermDays: paymentTermDays ?? null,
+      leadTimeDays: leadTimeDays ?? null,
+      taxNumber: form.taxNumber.trim() || null,
+      taxName: form.taxName.trim() || null,
+      taxAddress: form.taxAddress.trim() || null,
+      contactPerson: form.contactPerson.trim() || null,
+      contactPhone: form.contactPhone.trim() || null,
+      contactEmail: form.contactEmail.trim() || null,
+    };
+
     setSaving(true);
     try {
       if (editing) {
@@ -49,6 +102,7 @@ export default function Suppliers() {
           address: form.address,
           notes: form.notes || undefined,
           status: form.status,
+          ...extended,
         });
         toast.success("Supplier updated");
       } else {
@@ -59,6 +113,7 @@ export default function Suppliers() {
           address: form.address,
           notes: form.notes || undefined,
           status: form.status,
+          ...extended,
         });
         toast.success("Supplier added");
       }
@@ -80,7 +135,17 @@ export default function Suppliers() {
           <div><p className="font-medium text-foreground">{r.name}</p><p className="text-xs text-muted-foreground">{r.email}</p></div>
         </div>
       ) },
-    { key: "contact", header: "Contact", sortable: true },
+    { key: "contact", header: "Contact", sortable: true,
+      render: (r) => (
+        <div>
+          <p className="text-sm">{r.contactPerson || r.contact || "—"}</p>
+          {(r.contactPhone || r.contactEmail) && (
+            <p className="text-xs text-muted-foreground">{[r.contactPhone, r.contactEmail].filter(Boolean).join(" · ")}</p>
+          )}
+        </div>
+      ) },
+    { key: "leadTimeDays", header: "Lead time", sortable: true,
+      render: (r) => (r.leadTimeDays != null ? `${r.leadTimeDays}d` : "—") },
     { key: "address", header: "Address", className: "max-w-[280px] truncate" },
     { key: "status", header: "Status", sortable: true,
       render: (r) => (
@@ -140,15 +205,31 @@ export default function Suppliers() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl">
+        <DialogContent className="rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Edit supplier" : "New supplier"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Payment terms (days)</Label><Input type="number" min={0} value={form.paymentTermDays} onChange={(e) => setForm({ ...form, paymentTermDays: e.target.value })} placeholder="e.g. 30" /></div>
+              <div><Label>Lead time (days)</Label><Input type="number" min={0} value={form.leadTimeDays} onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })} placeholder="e.g. 7" /></div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Phone</Label><Input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></div>
               <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
             </div>
             <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <p className="text-xs font-medium text-muted-foreground pt-1">Tax information</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Tax number (NPWP)</Label><Input value={form.taxNumber} onChange={(e) => setForm({ ...form, taxNumber: e.target.value })} /></div>
+              <div><Label>Tax name</Label><Input value={form.taxName} onChange={(e) => setForm({ ...form, taxName: e.target.value })} /></div>
+            </div>
+            <div><Label>Tax address</Label><Textarea value={form.taxAddress} onChange={(e) => setForm({ ...form, taxAddress: e.target.value })} rows={2} /></div>
+            <p className="text-xs font-medium text-muted-foreground pt-1">Primary contact</p>
+            <div><Label>Contact person</Label><Input value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Contact phone</Label><Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} /></div>
+              <div><Label>Contact email</Label><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></div>
+            </div>
             <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
             <div><Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as SupplierStatus })}>

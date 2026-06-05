@@ -1021,7 +1021,16 @@ export async function getPayrollPreparationSummary(periodId: number): Promise<Pa
 
 // --- Payroll engine v2 (PAYROLL-ENGINE-01, auth:api) ---
 
-export type PayrollRunV2Status = "draft" | "calculated" | "approved" | "finalized";
+export type PayrollRunV2Status =
+  | "draft"
+  | "calculated"
+  | "approved"
+  | "finalized"
+  | "processing_payment"
+  | "paid"
+  | "closed";
+
+export type PayrollPaymentStatus = "pending" | "processing" | "paid";
 
 export type OvertimeRateType = "fixed_hourly" | "multiplier_hourly_salary";
 
@@ -1044,8 +1053,13 @@ export type PayrollRunV2Row = {
   outletId: number;
   payrollPreparationPeriodId: number;
   status: PayrollRunV2Status;
+  paymentStatus?: PayrollPaymentStatus;
   approvedAt?: string | null;
   finalizedAt?: string | null;
+  paidAt?: string | null;
+  closedAt?: string | null;
+  closedNotes?: string | null;
+  isClosed?: boolean;
   itemCount?: number;
   preparationPeriod?: {
     id: number;
@@ -1053,6 +1067,46 @@ export type PayrollRunV2Row = {
     periodEnd: string;
     status: string;
   } | null;
+};
+
+export type PayrollRunAuditRow = {
+  id: number;
+  payrollRunId: number;
+  action: string;
+  performedBy?: { id: number; name: string } | null;
+  notes?: string | null;
+  createdAt?: string | null;
+};
+
+export type PayrollClosingSummaryTotals = {
+  employeeCount: number;
+  grossPayroll: number;
+  netPayroll: number;
+  totalBPJS: number;
+  totalBpjsEmployee?: number;
+  totalBpjsEmployer?: number;
+  totalPPh21: number;
+  totalLoans: number;
+  totalCashAdvance: number;
+  totalReimbursement: number;
+  totalAdjustments: number;
+  totalAdjustmentEarning?: number;
+  totalAdjustmentDeduction?: number;
+  paymentStatus?: PayrollPaymentStatus;
+  closedStatus: "closed" | "open";
+};
+
+export type PayrollClosingSummary = {
+  run: {
+    id: number;
+    status: PayrollRunV2Status;
+    paymentStatus: PayrollPaymentStatus;
+    closedStatus: "closed" | "open";
+    paidAt?: string | null;
+    closedAt?: string | null;
+  };
+  totals: PayrollClosingSummaryTotals;
+  auditTrail: PayrollRunAuditRow[];
 };
 
 export type PayrollRunItemV2Row = {
@@ -1074,6 +1128,12 @@ export type PayrollRunItemV2Row = {
   remainingCashAdvanceBalance: number;
   adjustmentEarning: number;
   adjustmentDeduction: number;
+  taxableIncome?: number;
+  annualTaxableIncome?: number;
+  annualPkp?: number;
+  pph21Amount?: number;
+  reimbursementEarning?: number;
+  remainingReimbursement?: number;
   grossSalary: number;
   totalDeductions: number;
   netSalary: number;
@@ -1089,6 +1149,11 @@ export type PayrollRunItemsV2Meta = {
   totalCashAdvanceDeduction: number;
   totalAdjustmentEarning: number;
   totalAdjustmentDeduction: number;
+  totalBpjsEmployeeDeduction?: number;
+  totalBpjsEmployerCost?: number;
+  totalPph21?: number;
+  totalTaxableIncome?: number;
+  totalReimbursements?: number;
   totalBonus: number;
   totalIncentive: number;
   totalGrossSalary: number;
@@ -1184,6 +1249,108 @@ export async function listPayrollRunItemsV2(
     `/payroll-runs-v2/${runId}/items`,
   );
   return { items: res.data, meta: res.meta };
+}
+
+export async function getPayrollClosingSummary(runId: number): Promise<PayrollClosingSummary> {
+  const res = await request<{ data: PayrollClosingSummary }>(`/payroll-runs-v2/${runId}/closing-summary`);
+  return res.data;
+}
+
+export async function listPayrollRunAudit(runId: number): Promise<PayrollRunAuditRow[]> {
+  const res = await request<ApiListEnvelope<PayrollRunAuditRow>>(`/payroll-runs-v2/${runId}/audit`);
+  return res.data;
+}
+
+export async function startPayrollPayment(runId: number): Promise<PayrollRunV2Row> {
+  const res = await request<{ data: PayrollRunV2Row }>(`/payroll-runs-v2/${runId}/start-payment`, { method: "POST" });
+  return res.data;
+}
+
+export async function markPayrollRunPaid(runId: number, paidAt?: string): Promise<PayrollRunV2Row> {
+  const res = await request<{ data: PayrollRunV2Row }>(`/payroll-runs-v2/${runId}/mark-paid`, {
+    method: "POST",
+    body: JSON.stringify(paidAt ? { paidAt } : {}),
+  });
+  return res.data;
+}
+
+export async function closePayrollRun(runId: number, notes?: string): Promise<PayrollRunV2Row> {
+  const res = await request<{ data: PayrollRunV2Row }>(`/payroll-runs-v2/${runId}/close`, {
+    method: "POST",
+    body: JSON.stringify(notes ? { notes } : {}),
+  });
+  return res.data;
+}
+
+export async function reopenPayrollRun(runId: number): Promise<PayrollRunV2Row> {
+  const res = await request<{ data: PayrollRunV2Row }>(`/payroll-runs-v2/${runId}/reopen`, { method: "POST" });
+  return res.data;
+}
+
+// --- Payroll posting (HRM PAYROLL-POSTING-01) ---
+
+export type PayrollPostingStatus = "draft" | "posted" | "reversed";
+
+export type PayrollPostingPreviewLine = {
+  accountId: number;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  memo: string;
+};
+
+export type PayrollPostingPreview = {
+  payrollRunId: number;
+  lines: PayrollPostingPreviewLine[];
+  totals: {
+    debit: number;
+    credit: number;
+    grossPayroll: number;
+    employerBpjs: number;
+    netPayroll: number;
+  };
+  balanced: boolean;
+  postingStatus: PayrollPostingStatus;
+};
+
+export type PayrollPostingRow = {
+  id: number;
+  payrollRunId: number;
+  journalEntryId?: number | null;
+  postingStatus: PayrollPostingStatus;
+  postedAt?: string | null;
+  reversedAt?: string | null;
+  notes?: string | null;
+  journal?: {
+    id: number;
+    journalNo: string;
+    status: string;
+    journalDate?: string | null;
+  } | null;
+};
+
+export async function getPayrollPostingPreview(runId: number): Promise<PayrollPostingPreview> {
+  const res = await request<{ data: PayrollPostingPreview }>(`/payroll-runs-v2/${runId}/posting-preview`);
+  return res.data;
+}
+
+export async function getPayrollPostingStatus(runId: number): Promise<PayrollPostingRow | null> {
+  const res = await request<{ data: PayrollPostingRow | null }>(`/payroll-runs-v2/${runId}/posting`);
+  return res.data;
+}
+
+export async function postPayrollToAccounting(runId: number): Promise<PayrollPostingRow> {
+  const res = await request<{ data: PayrollPostingRow }>(`/payroll-runs-v2/${runId}/post`, { method: "POST" });
+  return res.data;
+}
+
+export async function reversePayrollPosting(runId: number, notes?: string): Promise<PayrollPostingRow> {
+  const res = await request<{ data: PayrollPostingRow }>(`/payroll-runs-v2/${runId}/reverse-posting`, {
+    method: "POST",
+    body: JSON.stringify(notes ? { notes } : {}),
+  });
+  return res.data;
 }
 
 export async function listLockedPayrollPreparationPeriods(outletId: number): Promise<PayrollPreparationPeriodRow[]> {
@@ -1430,6 +1597,272 @@ export async function approvePayrollAdjustment(id: number): Promise<PayrollAdjus
 
 export async function cancelPayrollAdjustment(id: number): Promise<PayrollAdjustmentRow> {
   const res = await request<{ data: PayrollAdjustmentRow }>(`/payroll-adjustments/${id}/cancel`, { method: "PATCH" });
+  return res.data;
+}
+
+// --- Reimbursements (HRM REIMBURSEMENT-01) ---
+
+export type ReimbursementAttachmentRow = {
+  id: number;
+  reimbursementId: number;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType?: string | null;
+  createdAt?: string | null;
+};
+
+export type EmployeeReimbursementRow = {
+  id: number;
+  outletId: number;
+  employeeId: number;
+  claimNo: string;
+  category: string;
+  title: string;
+  description?: string | null;
+  claimAmount: number;
+  expenseDate: string;
+  status: string;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  paidAt?: string | null;
+  payrollRunItemId?: number | null;
+  notes?: string | null;
+  attachments?: ReimbursementAttachmentRow[];
+  employee?: { id: number; employeeNo: string; fullName: string } | null;
+};
+
+export const REIMBURSEMENT_CATEGORIES = [
+  "transport",
+  "fuel",
+  "meal",
+  "medical",
+  "communication",
+  "purchase",
+  "entertainment",
+  "training",
+  "other",
+] as const;
+
+export async function listReimbursements(params?: {
+  outletId?: number;
+  employeeId?: number;
+  status?: string;
+  category?: string;
+}): Promise<EmployeeReimbursementRow[]> {
+  const qs = new URLSearchParams();
+  if (params?.outletId) qs.set("outletId", String(params.outletId));
+  if (params?.employeeId) qs.set("employeeId", String(params.employeeId));
+  if (params?.status) qs.set("status", params.status);
+  if (params?.category) qs.set("category", params.category);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await request<ApiListEnvelope<EmployeeReimbursementRow>>(`/reimbursements${suffix}`);
+  return res.data;
+}
+
+export async function createReimbursement(payload: {
+  employeeId: number;
+  category: string;
+  title: string;
+  description?: string;
+  claimAmount: number;
+  expenseDate: string;
+  notes?: string;
+}): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>("/reimbursements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function updateReimbursement(
+  id: number,
+  payload: Partial<{
+    category: string;
+    title: string;
+    description: string;
+    claimAmount: number;
+    expenseDate: string;
+    notes: string;
+  }>,
+): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>(`/reimbursements/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function deleteReimbursement(id: number): Promise<void> {
+  await request<{ message: string }>(`/reimbursements/${id}`, { method: "DELETE" });
+}
+
+export async function submitReimbursement(id: number): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>(`/reimbursements/${id}/submit`, { method: "POST" });
+  return res.data;
+}
+
+export async function approveReimbursement(id: number, notes?: string): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>(`/reimbursements/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(notes ? { notes } : {}),
+  });
+  return res.data;
+}
+
+export async function rejectReimbursement(id: number, notes?: string): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>(`/reimbursements/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify(notes ? { notes } : {}),
+  });
+  return res.data;
+}
+
+export async function cancelReimbursement(id: number, notes?: string): Promise<EmployeeReimbursementRow> {
+  const res = await request<{ data: EmployeeReimbursementRow }>(`/reimbursements/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(notes ? { notes } : {}),
+  });
+  return res.data;
+}
+
+export async function uploadReimbursementAttachment(
+  reimbursementId: number,
+  file: File,
+): Promise<ReimbursementAttachmentRow> {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getApiAccessToken();
+  const response = await fetch(`${API_BASE_URL}/reimbursements/${reimbursementId}/attachments`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof body === "object" && body !== null && "message" in body && typeof body.message === "string"
+        ? body.message
+        : `Request failed (${response.status})`;
+    throw new ApiHttpError(response.status, message, body);
+  }
+  return (body as { data: ReimbursementAttachmentRow }).data;
+}
+
+export async function deleteReimbursementAttachment(attachmentId: number): Promise<void> {
+  await request<{ message: string }>(`/reimbursements/attachments/${attachmentId}`, { method: "DELETE" });
+}
+
+// --- PPh21 (HRM PPH21-01) ---
+
+export type Pph21BracketRow = {
+  id?: number;
+  incomeFrom: number;
+  incomeTo?: number | null;
+  taxRate: number;
+};
+
+export type Pph21ConfigRow = {
+  id: number;
+  effectiveDate: string;
+  ptkpTk0: number;
+  ptkpTk1: number;
+  ptkpTk2: number;
+  ptkpTk3: number;
+  ptkpK0: number;
+  ptkpK1: number;
+  ptkpK2: number;
+  ptkpK3: number;
+  isActive: boolean;
+  brackets?: Pph21BracketRow[];
+};
+
+export type Pph21ConfigCreatePayload = {
+  effectiveDate: string;
+  ptkpTk0?: number;
+  ptkpTk1?: number;
+  ptkpTk2?: number;
+  ptkpTk3?: number;
+  ptkpK0?: number;
+  ptkpK1?: number;
+  ptkpK2?: number;
+  ptkpK3?: number;
+  isActive?: boolean;
+  brackets?: Pph21BracketRow[];
+};
+
+export type EmployeeTaxProfileRow = {
+  id: number;
+  employeeId: number;
+  npwpNumber?: string | null;
+  ptkpStatus: string;
+  pph21Enabled: boolean;
+  employee?: { id: number; employeeNo: string; fullName: string } | null;
+};
+
+export type EmployeeTaxProfileUpsertPayload = {
+  employeeId: number;
+  npwpNumber?: string;
+  ptkpStatus?: string;
+  pph21Enabled?: boolean;
+};
+
+export const PTKP_STATUSES = ["TK0", "TK1", "TK2", "TK3", "K0", "K1", "K2", "K3"] as const;
+
+export async function listPph21Configs(): Promise<Pph21ConfigRow[]> {
+  const res = await request<ApiListEnvelope<Pph21ConfigRow>>("/pph21-configs");
+  return res.data;
+}
+
+export async function createPph21Config(payload: Pph21ConfigCreatePayload): Promise<Pph21ConfigRow> {
+  const res = await request<{ data: Pph21ConfigRow }>("/pph21-configs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function updatePph21Config(id: number, payload: Partial<Pph21ConfigCreatePayload>): Promise<Pph21ConfigRow> {
+  const res = await request<{ data: Pph21ConfigRow }>(`/pph21-configs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function listEmployeeTaxProfiles(params?: {
+  outletId?: number;
+  employeeId?: number;
+}): Promise<EmployeeTaxProfileRow[]> {
+  const qs = new URLSearchParams();
+  if (params?.outletId) qs.set("outletId", String(params.outletId));
+  if (params?.employeeId) qs.set("employeeId", String(params.employeeId));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await request<ApiListEnvelope<EmployeeTaxProfileRow>>(`/employee-tax-profiles${suffix}`);
+  return res.data;
+}
+
+export async function upsertEmployeeTaxProfile(payload: EmployeeTaxProfileUpsertPayload): Promise<EmployeeTaxProfileRow> {
+  const res = await request<{ data: EmployeeTaxProfileRow }>("/employee-tax-profiles", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function updateEmployeeTaxProfile(
+  id: number,
+  payload: Partial<EmployeeTaxProfileUpsertPayload>,
+): Promise<EmployeeTaxProfileRow> {
+  const res = await request<{ data: EmployeeTaxProfileRow }>(`/employee-tax-profiles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
   return res.data;
 }
 

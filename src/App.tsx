@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { RoutePageSkeleton } from "@/components/skeletons/route/RoutePageSkeleton";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { EmployeeLayout } from "./components/employee/EmployeeLayout";
+import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
 import { PERMISSIONS } from "@/stores/authStore";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -33,6 +35,9 @@ const Settings = lazy(() => import("./pages/Settings"));
 const PlaceholderPage = lazy(() => import("./pages/PlaceholderPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
+const EmployeeLogin = lazy(() => import("./pages/employee/Login"));
+const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
+const EmployeeProfile = lazy(() => import("./pages/employee/Profile"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Members = lazy(() => import("./pages/Members"));
 const LoyaltyPrograms = lazy(() => import("./pages/LoyaltyPrograms"));
@@ -72,6 +77,39 @@ const App = () => (
               </Suspense>
             }
           />
+          <Route
+            path="/employee/login"
+            element={
+              <Suspense fallback={routeFallback}>
+                <EmployeeLogin />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/employee"
+            element={
+              <EmployeeProtectedRoute>
+                <EmployeeLayout />
+              </EmployeeProtectedRoute>
+            }
+          >
+            <Route
+              index
+              element={
+                <Suspense fallback={routeFallback}>
+                  <EmployeeDashboard />
+                </Suspense>
+              }
+            />
+            <Route
+              path="profile"
+              element={
+                <Suspense fallback={routeFallback}>
+                  <EmployeeProfile />
+                </Suspense>
+              }
+            />
+          </Route>
           {/* Guest QR menu: full viewport, no sidebar (not a bug). Staff list: /qr-orders inside shell. */}
           <Route
             path="/qr-order"

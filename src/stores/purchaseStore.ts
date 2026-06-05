@@ -1,11 +1,32 @@
 import { create } from "zustand";
 import {
-  createPurchaseInvoicePayment,
+  approveSupplierPayment,
+  createSupplierPayment,
+  listSupplierPayments,
+  postSupplierPayment,
+  voidSupplierPayment,
+  cancelGoodsReceipt,
   createGoodsReceipt,
+  getGoodsReceiptProgress,
+  postGoodsReceipt,
+  receiveGoodsReceipt,
+  approvePurchaseInvoice,
   createPurchaseInvoice,
+  listSupplierPayables,
+  submitPurchaseInvoice,
+  voidPurchaseInvoice,
+  approvePurchaseOrder,
+  approvePurchaseRequest,
+  cancelPurchaseOrder,
+  closePurchaseOrder,
   createPurchaseOrder,
+  submitPurchaseOrder,
+  cancelPurchaseRequest,
+  convertPurchaseRequestToPo,
   createPurchaseRequest,
   listGoodsReceipts,
+  rejectPurchaseRequest,
+  submitPurchaseRequest,
   listPurchaseInvoices,
   listPurchaseOrders,
   listPurchaseRequests,
@@ -14,6 +35,7 @@ import {
   updatePurchaseRequest,
   type GoodsReceiptApiRow,
   type PurchaseInvoiceApiRow,
+  type SupplierPaymentApiRow,
   type PurchaseOrderApiRow,
   type PurchaseRequestApiRow,
 } from "@/lib/api-integration/purchaseEndpoints";
@@ -21,17 +43,17 @@ import { useOutletStore } from "./outletStore";
 
 // ── Types ──────────────────────────────────────────────
 
-export type Supplier = {
-  id: string;
-  name: string;
-  contact?: string;
-  email?: string;
-};
-
-export type PRStatus = "draft" | "submitted" | "approved" | "rejected";
-export type POStatus = "draft" | "sent" | "partial" | "completed";
-export type GRNStatus = "pending" | "received";
-export type InvoiceStatus = "unpaid" | "partial" | "paid";
+export type PRStatus = "draft" | "submitted" | "approved" | "rejected" | "converted" | "cancelled";
+export type POStatus =
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "partially_received"
+  | "received"
+  | "cancelled"
+  | "closed";
+export type GRNStatus = "draft" | "received" | "posted" | "cancelled";
+export type InvoiceStatus = "draft" | "submitted" | "approved" | "partial" | "paid" | "void";
 
 export type PRItem = {
   id?: string;
@@ -40,6 +62,7 @@ export type PRItem = {
   fulfilledQty?: number;
   remainingQty?: number;
   unit: string;
+  estimatedCost?: number;
   notes?: string;
 };
 
@@ -64,17 +87,25 @@ export type POItem = {
   unit: string;
   price: number;
   receivedQty: number;
+  remainingQty?: number;
 };
 
 export type PurchaseOrder = {
   id: string;
   poNumber: string;
   supplierId: string;
+  destinationWarehouseId?: string;
   date: string;
   referencePR?: string;
+  sourceType?: "PR" | "DIRECT";
   status: POStatus;
   notes?: string;
+  totalOrderedQty?: number;
+  totalReceivedQty?: number;
+  totalRemainingQty?: number;
+  completionPercentage?: number;
   items: POItem[];
+  goodsReceipts?: { id: string; grnNumber: string; date: string }[];
   createdAt: string;
 };
 
@@ -89,74 +120,137 @@ export type GoodsReceipt = {
   id: string;
   grnNumber: string;
   poReference: string;
+  purchaseOrderId?: string;
+  warehouseId?: string;
   date: string;
   status: GRNStatus;
+  notes?: string;
+  supplierDeliveryNo?: string;
+  supplierDeliveryDate?: string;
+  vehicleNo?: string;
+  driverName?: string;
+  receivedBy?: string;
+  receivedValue?: number;
+  relatedInvoiceCount?: number;
   items: GRNItem[];
+  createdAt: string;
+};
+
+export type SupplierPayment = {
+  id: string;
+  paymentNo: string;
+  supplierId: string;
+  supplierName?: string;
+  paymentDate: string;
+  paymentMethod: "cash" | "bank_transfer" | "giro" | "check" | "other";
+  referenceNo?: string;
+  notes?: string;
+  amount: number;
+  allocatedAmount: number;
+  unallocatedAmount: number;
+  status: "draft" | "approved" | "posted" | "void";
+  allocations: Array<{ id: string; invoiceId: string; invoiceNumber?: string; allocatedAmount: number }>;
   createdAt: string;
 };
 
 export type PurchaseInvoice = {
   id: string;
   invoiceNumber: string;
+  supplierInvoiceNo?: string;
   supplierId: string;
   poReference: string;
   grReference?: string;
+  purchaseOrderId?: string;
+  goodsReceiptId?: string;
   date: string;
+  dueDate?: string;
   status: InvoiceStatus;
+  subtotal?: number;
   total: number;
   paidAmount: number;
   remainingAmount: number;
+  outstandingAmount?: number;
   tax: number;
-  items: { inventoryItemId: string; qty: number; unit: string; price: number }[];
+  taxPercentage?: number;
+  discountAmount?: number;
+  notes?: string;
+  items: { inventoryItemId: string; qty: number; invoicedQty?: number; unit: string; price: number }[];
   payments: { id: string; date: string; amount: number; paymentMethod: "cash" | "bank"; referenceNo?: string; notes?: string }[];
   createdAt: string;
+  matchStatus?: "matched" | "matched_with_tolerance" | "mismatch" | "blocked" | null;
+  matchQtyDifference?: number | null;
+  matchPriceDifference?: number | null;
+  matchAmountDifference?: number | null;
 };
 
 // ── Store ──────────────────────────────────────────────
 
 type PurchaseStore = {
-  suppliers: Supplier[];
   purchaseRequests: PurchaseRequest[];
   purchaseOrders: PurchaseOrder[];
   goodsReceipts: GoodsReceipt[];
   invoices: PurchaseInvoice[];
+  supplierPayments: SupplierPayment[];
   loading: boolean;
 
   fetchPurchaseRequests: () => Promise<void>;
   fetchPurchaseOrders: () => Promise<void>;
   fetchGoodsReceipts: () => Promise<void>;
   fetchPurchaseInvoices: () => Promise<void>;
-
-  addSupplier: (s: Omit<Supplier, "id">) => string;
+  fetchSupplierPayments: () => Promise<void>;
 
   // PR
-  addPR: (pr: Omit<PurchaseRequest, "id" | "prNumber" | "createdAt">) => Promise<string>;
+  addPR: (pr: Omit<PurchaseRequest, "id" | "prNumber" | "createdAt" | "status"> & { status?: PRStatus }) => Promise<string>;
   updatePR: (id: string, data: Partial<PurchaseRequest>) => Promise<void>;
+  submitPR: (id: string) => Promise<void>;
+  approvePR: (id: string) => Promise<void>;
+  rejectPR: (id: string) => Promise<void>;
+  cancelPR: (id: string) => Promise<void>;
+  convertPRToPO: (id: string, supplierId: string) => Promise<string>;
 
   // PO
-  addPO: (po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">) => Promise<string>;
+  addPO: (po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt" | "status"> & { status?: POStatus }) => Promise<string>;
   updatePO: (id: string, data: Partial<PurchaseOrder>) => Promise<void>;
+  submitPO: (id: string) => Promise<void>;
+  approvePO: (id: string) => Promise<void>;
+  cancelPO: (id: string) => Promise<void>;
+  closePO: (id: string) => Promise<void>;
   createPOFromPR: (prId: string, supplierId: string) => Promise<string | null>;
 
   // GRN
-  addGRN: (grn: Omit<GoodsReceipt, "id" | "grnNumber" | "createdAt">) => Promise<string>;
-  confirmGRN: (id: string) => Promise<void>;
+  addGRN: (grn: Omit<GoodsReceipt, "id" | "grnNumber" | "createdAt"> & { warehouseId?: string }) => Promise<string>;
+  receiveGRN: (id: string) => Promise<void>;
+  postGRN: (id: string) => Promise<void>;
+  cancelGRN: (id: string) => Promise<void>;
+  getGRNProgress: (id: string) => Promise<{ orderedQty: number; receivedQty: number; remainingQty: number; completionPercentage: number }>;
 
   // Invoice
   addInvoice: (inv: {
-    supplierId: string;
-    poReference: string;
-    grReference?: string;
+    purchaseOrderId: string;
+    goodsReceiptId: string;
+    supplierInvoiceNo?: string;
     date: string;
-    status: InvoiceStatus;
-    tax: number;
-    items: { inventoryItemId: string; qty: number; unit: string; price: number }[];
+    dueDate?: string;
+    tax?: number;
+    taxPercentage?: number;
+    items?: Array<{ inventoryItemId: string; qty: number }>;
   }) => Promise<string>;
+  submitInvoice: (id: string) => Promise<void>;
+  approveInvoice: (id: string) => Promise<void>;
+  voidInvoice: (id: string) => Promise<void>;
   updateInvoice: (id: string, data: Partial<PurchaseInvoice>) => Promise<void>;
-  addInvoicePayment: (
-    id: string,
-    payment: { date: string; amount: number; paymentMethod: "cash" | "bank"; referenceNo?: string; notes?: string },
-  ) => Promise<void>;
+  fetchSupplierPayables: () => Promise<import("@/lib/api-integration/purchaseEndpoints").SupplierPayableRow[]>;
+  addSupplierPayment: (payload: {
+    supplierId: string;
+    paymentDate: string;
+    paymentMethod?: SupplierPayment["paymentMethod"];
+    referenceNo?: string;
+    amount: number;
+    allocations: Array<{ invoiceId: string; allocatedAmount: number }>;
+  }) => Promise<string>;
+  approveSupplierPaymentAction: (id: string) => Promise<void>;
+  postSupplierPaymentAction: (id: string) => Promise<void>;
+  voidSupplierPaymentAction: (id: string) => Promise<void>;
 };
 
 let nextId = 1;
@@ -171,11 +265,13 @@ function getActiveScope() {
   };
 }
 
-const defaultSuppliers: Supplier[] = [
-  { id: "sup-1", name: "PT Sumber Pangan", contact: "08123456789", email: "info@sumberpangan.id" },
-  { id: "sup-2", name: "CV Maju Bersama", contact: "08198765432", email: "order@majubersama.id" },
-  { id: "sup-3", name: "UD Tani Makmur", contact: "08111222333", email: "sales@tanimakmur.id" },
-];
+function requireActiveOutletId(): number {
+  const outletId = useOutletStore.getState().activeOutletId;
+  if (typeof outletId !== "number" || outletId < 1) {
+    throw new Error("Active outlet is required for procurement operations.");
+  }
+  return outletId;
+}
 
 const mapPurchaseRequest = (row: PurchaseRequestApiRow): PurchaseRequest => ({
   id: row.id,
@@ -192,6 +288,7 @@ const mapPurchaseRequest = (row: PurchaseRequestApiRow): PurchaseRequest => ({
     fulfilledQty: item.fulfilledQty ?? 0,
     remainingQty: item.remainingQty ?? Math.max(0, item.qty - (item.fulfilledQty ?? 0)),
     unit: item.unit,
+    estimatedCost: item.estimatedCost ?? undefined,
     notes: item.notes ?? undefined,
   })),
   createdAt: row.createdAt,
@@ -201,10 +298,16 @@ const mapPurchaseOrder = (row: PurchaseOrderApiRow): PurchaseOrder => ({
   id: row.id,
   poNumber: row.poNumber,
   supplierId: row.supplierId,
+  destinationWarehouseId: row.destinationWarehouseId ?? undefined,
   date: row.date,
   referencePR: row.referencePR ?? undefined,
+  sourceType: row.sourceType,
   status: row.status,
   notes: row.notes ?? undefined,
+  totalOrderedQty: row.totalOrderedQty,
+  totalReceivedQty: row.totalReceivedQty,
+  totalRemainingQty: row.totalRemainingQty,
+  completionPercentage: row.completionPercentage,
   items: row.items.map((item) => ({
     inventoryItemId: item.inventoryItemId,
     qty: item.qty,
@@ -214,7 +317,9 @@ const mapPurchaseOrder = (row: PurchaseOrderApiRow): PurchaseOrder => ({
     unit: item.unit ?? "",
     price: item.price,
     receivedQty: item.receivedQty,
+    remainingQty: item.remainingQty,
   })),
+  goodsReceipts: row.goodsReceipts,
   createdAt: row.createdAt,
 });
 
@@ -222,8 +327,18 @@ const mapGoodsReceipt = (row: GoodsReceiptApiRow): GoodsReceipt => ({
   id: row.id,
   grnNumber: row.grnNumber,
   poReference: row.poReference,
+  purchaseOrderId: row.purchaseOrderId ?? undefined,
+  warehouseId: row.warehouseId ?? row.destinationWarehouseId ?? undefined,
   date: row.date,
   status: row.status,
+  notes: row.notes ?? undefined,
+  supplierDeliveryNo: row.supplierDeliveryNo ?? undefined,
+  supplierDeliveryDate: row.supplierDeliveryDate ?? undefined,
+  vehicleNo: row.vehicleNo ?? undefined,
+  driverName: row.driverName ?? undefined,
+  receivedBy: row.receivedBy ?? undefined,
+  receivedValue: row.receivedValue,
+  relatedInvoiceCount: row.relatedInvoiceCount,
   items: row.items.map((item) => ({
     inventoryItemId: item.inventoryItemId,
     orderedQty: item.orderedQty,
@@ -233,23 +348,50 @@ const mapGoodsReceipt = (row: GoodsReceiptApiRow): GoodsReceipt => ({
   createdAt: row.createdAt,
 });
 
+const mapSupplierPayment = (row: SupplierPaymentApiRow): SupplierPayment => ({
+  id: row.id,
+  paymentNo: row.paymentNo,
+  supplierId: row.supplierId,
+  supplierName: row.supplierName ?? undefined,
+  paymentDate: row.paymentDate,
+  paymentMethod: row.paymentMethod,
+  referenceNo: row.referenceNo ?? undefined,
+  notes: row.notes ?? undefined,
+  amount: row.amount,
+  allocatedAmount: row.allocatedAmount,
+  unallocatedAmount: row.unallocatedAmount,
+  status: row.status,
+  allocations: row.allocations,
+  createdAt: row.createdAt,
+});
+
 const mapPurchaseInvoice = (row: PurchaseInvoiceApiRow): PurchaseInvoice => ({
   id: row.id,
   invoiceNumber: row.invoiceNumber,
+  supplierInvoiceNo: row.supplierInvoiceNo ?? undefined,
   supplierId: row.supplierId,
   poReference: row.poReference,
   grReference: row.grReference,
+  purchaseOrderId: row.purchaseOrderId ?? undefined,
+  goodsReceiptId: row.goodsReceiptId ?? undefined,
   date: row.date,
+  dueDate: row.dueDate ?? undefined,
   status: row.status,
+  subtotal: row.subtotal,
   total: row.total,
   paidAmount: row.paidAmount,
   remainingAmount: row.remainingAmount,
+  outstandingAmount: row.outstandingAmount ?? row.remainingAmount,
   tax: row.tax,
+  taxPercentage: row.taxPercentage ?? undefined,
+  discountAmount: row.discountAmount,
+  notes: row.notes ?? undefined,
   items: row.items.map((item) => ({
     inventoryItemId: item.inventoryItemId,
-    qty: item.qty,
+    qty: item.invoicedQty ?? item.qty,
+    invoicedQty: item.invoicedQty ?? item.qty,
     unit: item.unit,
-    price: item.price,
+    price: item.unitCost ?? item.price,
   })),
   payments: row.payments.map((payment) => ({
     id: payment.id,
@@ -263,11 +405,11 @@ const mapPurchaseInvoice = (row: PurchaseInvoiceApiRow): PurchaseInvoice => ({
 });
 
 export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
-  suppliers: defaultSuppliers,
   purchaseRequests: [],
   purchaseOrders: [],
   goodsReceipts: [],
   invoices: [],
+  supplierPayments: [],
   loading: false,
 
   fetchPurchaseRequests: async () => {
@@ -314,24 +456,28 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
     }
   },
 
-  addSupplier: (s) => {
-    const id = uid();
-    set((st) => ({ suppliers: [...st.suppliers, { ...s, id }] }));
-    return id;
+  fetchSupplierPayments: async () => {
+    set({ loading: true });
+    try {
+      const rows = await listSupplierPayments(getActiveScope());
+      set({ supplierPayments: rows.map(mapSupplierPayment), loading: false });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
   },
 
   // ── PR ──
   addPR: async (pr) => {
     const created = await createPurchaseRequest({
-      date: pr.date,
-      outlet: pr.outlet,
+      outletId: requireActiveOutletId(),
       requestedBy: pr.requestedBy,
-      status: pr.status,
       notes: pr.notes,
       items: pr.items.map((item) => ({
         inventoryItemId: item.inventoryItemId,
-        qty: item.qty,
+        quantity: item.qty,
         unit: item.unit,
+        estimatedCost: item.estimatedCost,
         notes: item.notes,
       })),
     });
@@ -340,29 +486,49 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   },
   updatePR: async (id, data) => {
     await updatePurchaseRequest(id, {
-      date: data.date,
-      outlet: data.outlet,
       requestedBy: data.requestedBy,
-      status: data.status,
       notes: data.notes ?? null,
       items: data.items?.map((item) => ({
         inventoryItemId: item.inventoryItemId,
-        qty: item.qty,
+        quantity: item.qty,
         unit: item.unit,
+        estimatedCost: item.estimatedCost,
         notes: item.notes,
       })),
     });
     await get().fetchPurchaseRequests();
+  },
+  submitPR: async (id) => {
+    await submitPurchaseRequest(id);
+    await get().fetchPurchaseRequests();
+  },
+  approvePR: async (id) => {
+    await approvePurchaseRequest(id);
+    await get().fetchPurchaseRequests();
+  },
+  rejectPR: async (id) => {
+    await rejectPurchaseRequest(id);
+    await get().fetchPurchaseRequests();
+  },
+  cancelPR: async (id) => {
+    await cancelPurchaseRequest(id);
+    await get().fetchPurchaseRequests();
+  },
+  convertPRToPO: async (id, supplierId) => {
+    const { purchaseOrder } = await convertPurchaseRequestToPo(id, { supplierId });
+    await Promise.all([get().fetchPurchaseRequests(), get().fetchPurchaseOrders()]);
+    return purchaseOrder.id;
   },
 
   // ── PO ──
   addPO: async (po) => {
     const prId = get().purchaseRequests.find((pr) => pr.prNumber === po.referencePR)?.id;
     const created = await createPurchaseOrder({
+      outletId: requireActiveOutletId(),
       date: po.date,
       supplierId: po.supplierId,
+      destinationWarehouseId: po.destinationWarehouseId,
       purchaseRequestId: prId,
-      status: po.status,
       notes: po.notes,
       items: po.items.map((item) => ({
         inventoryItemId: item.inventoryItemId,
@@ -382,8 +548,8 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
     await updatePurchaseOrder(id, {
       date: data.date,
       supplierId: data.supplierId,
+      destinationWarehouseId: data.destinationWarehouseId,
       purchaseRequestId: prId,
-      status: data.status,
       notes: data.notes ?? null,
       items: data.items?.map((item) => ({
         inventoryItemId: item.inventoryItemId,
@@ -397,29 +563,24 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
     });
     await get().fetchPurchaseOrders();
   },
-
-  createPOFromPR: async (prId, supplierId) => {
-    const pr = get().purchaseRequests.find((p) => p.id === prId);
-    if (!pr) return null;
-    const created = await createPurchaseOrder({
-      date: new Date().toISOString().slice(0, 10),
-      supplierId,
-      purchaseRequestId: pr.id,
-      status: "draft",
-      notes: "",
-      items: pr.items.map((item) => ({
-        inventoryItemId: item.inventoryItemId,
-        qty: item.remainingQty ?? item.qty,
-        prItemId: item.id,
-        requestedQty: item.qty,
-        isFromPr: true,
-        unit: item.unit,
-        price: 0,
-      })),
-    });
+  submitPO: async (id) => {
+    await submitPurchaseOrder(id);
     await get().fetchPurchaseOrders();
-    return created.id;
   },
+  approvePO: async (id) => {
+    await approvePurchaseOrder(id);
+    await get().fetchPurchaseOrders();
+  },
+  cancelPO: async (id) => {
+    await cancelPurchaseOrder(id);
+    await get().fetchPurchaseOrders();
+  },
+  closePO: async (id) => {
+    await closePurchaseOrder(id);
+    await get().fetchPurchaseOrders();
+  },
+
+  createPOFromPR: async (prId, supplierId) => get().convertPRToPO(prId, supplierId),
 
   // ── GRN ──
   addGRN: async (grn) => {
@@ -430,7 +591,14 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
 
     const created = await createGoodsReceipt({
       purchaseOrderId: po.id,
+      warehouseId: grn.warehouseId ?? po.destinationWarehouseId,
       date: grn.date,
+      notes: grn.notes,
+      supplierDeliveryNo: grn.supplierDeliveryNo,
+      supplierDeliveryDate: grn.supplierDeliveryDate,
+      vehicleNo: grn.vehicleNo,
+      driverName: grn.driverName,
+      receivedBy: grn.receivedBy,
       items: grn.items.map((item) => ({
         inventoryItemId: item.inventoryItemId,
         receivedQty: item.receivedQty,
@@ -441,35 +609,82 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
     return created.id;
   },
 
-  confirmGRN: async (_id) => {
+  receiveGRN: async (id) => {
+    await receiveGoodsReceipt(id);
     await Promise.all([get().fetchGoodsReceipts(), get().fetchPurchaseOrders()]);
   },
 
+  postGRN: async (id) => {
+    await postGoodsReceipt(id);
+    await Promise.all([get().fetchGoodsReceipts(), get().fetchPurchaseOrders()]);
+  },
+
+  cancelGRN: async (id) => {
+    await cancelGoodsReceipt(id);
+    await Promise.all([get().fetchGoodsReceipts(), get().fetchPurchaseOrders()]);
+  },
+
+  getGRNProgress: async (id) => getGoodsReceiptProgress(id),
+
   // ── Invoice ──
   addInvoice: async (inv) => {
-    const po = get().purchaseOrders.find((order) => order.poNumber === inv.poReference);
-    if (!po) throw new Error("Purchase order not found");
-    const gr = get().goodsReceipts.find((receipt) =>
-      inv.grReference ? receipt.grnNumber === inv.grReference : receipt.poReference === po.poNumber
-    );
-    if (!gr) throw new Error("Goods receipt not found for selected PO");
-
     const created = await createPurchaseInvoice({
-      purchaseOrderId: po.id,
-      goodsReceiptId: gr.id,
+      purchaseOrderId: inv.purchaseOrderId,
+      goodsReceiptId: inv.goodsReceiptId,
+      supplierInvoiceNo: inv.supplierInvoiceNo,
       date: inv.date,
+      dueDate: inv.dueDate,
       tax: inv.tax,
+      taxPercentage: inv.taxPercentage,
+      items: inv.items,
     });
     await get().fetchPurchaseInvoices();
     return created.id;
   },
+
+  submitInvoice: async (id) => {
+    await submitPurchaseInvoice(id);
+    await get().fetchPurchaseInvoices();
+  },
+
+  approveInvoice: async (id) => {
+    await approvePurchaseInvoice(id);
+    await get().fetchPurchaseInvoices();
+  },
+
+  voidInvoice: async (id) => {
+    await voidPurchaseInvoice(id);
+    await get().fetchPurchaseInvoices();
+  },
+
+  fetchSupplierPayables: async () => listSupplierPayables(getActiveScope()),
   updateInvoice: async (id, data) => {
     if (!data.status) return;
     await updatePurchaseInvoice(id, { status: data.status });
     await get().fetchPurchaseInvoices();
   },
-  addInvoicePayment: async (id, payment) => {
-    await createPurchaseInvoicePayment(id, payment);
-    await get().fetchPurchaseInvoices();
+  addSupplierPayment: async (payload) => {
+    const outletId = requireActiveOutletId();
+    const created = await createSupplierPayment({
+      ...payload,
+      outletId,
+    });
+    await Promise.all([get().fetchSupplierPayments(), get().fetchPurchaseInvoices()]);
+    return created.id;
+  },
+
+  approveSupplierPaymentAction: async (id) => {
+    await approveSupplierPayment(id);
+    await Promise.all([get().fetchSupplierPayments(), get().fetchPurchaseInvoices()]);
+  },
+
+  postSupplierPaymentAction: async (id) => {
+    await postSupplierPayment(id);
+    await Promise.all([get().fetchSupplierPayments(), get().fetchPurchaseInvoices()]);
+  },
+
+  voidSupplierPaymentAction: async (id) => {
+    await voidSupplierPayment(id);
+    await Promise.all([get().fetchSupplierPayments(), get().fetchPurchaseInvoices()]);
   },
 }));

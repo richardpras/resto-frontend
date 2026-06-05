@@ -11,7 +11,34 @@ export type SupplierApiRow = {
   address: string;
   notes?: string | null;
   status: "active" | "inactive";
+  paymentTermDays?: number | null;
+  leadTimeDays?: number | null;
+  taxNumber?: string | null;
+  taxName?: string | null;
+  taxAddress?: string | null;
+  contactPerson?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  isActive: boolean;
   createdAt: string;
+};
+
+export type SupplierPayload = {
+  name: string;
+  contact?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  status: "active" | "inactive";
+  paymentTermDays?: number;
+  leadTimeDays?: number;
+  taxNumber?: string;
+  taxName?: string;
+  taxAddress?: string;
+  contactPerson?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  isActive?: boolean;
 };
 
 export async function listSuppliers(): Promise<SupplierApiRow[]> {
@@ -19,14 +46,7 @@ export async function listSuppliers(): Promise<SupplierApiRow[]> {
   return res.data;
 }
 
-export async function createSupplier(payload: {
-  name: string;
-  contact?: string;
-  email?: string;
-  address?: string;
-  notes?: string;
-  status: "active" | "inactive";
-}): Promise<SupplierApiRow> {
+export async function createSupplier(payload: SupplierPayload): Promise<SupplierApiRow> {
   const res = await apiRequest<MessageItemEnvelope<SupplierApiRow>>("/suppliers", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -43,6 +63,15 @@ export async function updateSupplier(
     address: string | null;
     notes: string | null;
     status: "active" | "inactive";
+    paymentTermDays: number | null;
+    leadTimeDays: number | null;
+    taxNumber: string | null;
+    taxName: string | null;
+    taxAddress: string | null;
+    contactPerson: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
+    isActive: boolean;
   }>,
 ): Promise<SupplierApiRow> {
   const res = await apiRequest<MessageItemEnvelope<SupplierApiRow>>(`/suppliers/${id}`, {
