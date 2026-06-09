@@ -14,6 +14,7 @@ type Item = { title: string; url: string; icon: any; perm?: string };
 
 const mainItems: Item[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Menu Intelligence", url: "/dashboard/menu", icon: BarChart3, perm: PERMISSIONS.MENU_DASHBOARD },
   { title: "POS Cashier", url: "/pos", icon: ShoppingCart, perm: PERMISSIONS.POS },
   { title: "Open bills", url: "/cashier", icon: Banknote, perm: PERMISSIONS.POS },
   { title: "Orders", url: "/orders", icon: ListOrdered, perm: PERMISSIONS.POS },
@@ -26,6 +27,7 @@ const mainItems: Item[] = [
 
 const managementItems: Item[] = [
   { title: "Menu", url: "/menu", icon: UtensilsCrossed, perm: PERMISSIONS.MENU },
+  { title: "Menu Costing", url: "/menu/costing", icon: BarChart3, perm: PERMISSIONS.COST_VIEW },
   { title: "Inventory", url: "/inventory", icon: Package, perm: PERMISSIONS.INVENTORY },
   { title: "Suppliers", url: "/suppliers", icon: Truck, perm: PERMISSIONS.SUPPLIERS },
   { title: "Members", url: "/members", icon: UserCircle, perm: PERMISSIONS.MEMBERS },

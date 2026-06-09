@@ -4,6 +4,8 @@ export * from "./hrEndpoints";
 export * from "./userManagementEndpoints";
 export * from "./settingsDomainEndpoints";
 export * from "./endpoints";
+export * from "./menuCostingEndpoints";
+export * from "./menuDashboardEndpoints";
 export * from "./tableEndpoints";
 export * from "./posSessionEndpoints";
 export * from "./kitchenEndpoints";

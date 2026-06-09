@@ -129,6 +129,7 @@ export type MenuItemApi = {
   emoji?: string | null;
   recipes?: MenuRecipeApi[];
   menuItemOutlets?: MenuItemOutletApi[];
+  createdAt?: string | null;
 };
 
 export type MenuPayload = Omit<MenuItemApi, "id"> & {

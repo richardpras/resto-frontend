@@ -12,9 +12,14 @@ import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedR
 import { PERMISSIONS } from "@/stores/authStore";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const MenuIntelligenceDashboard = lazy(() => import("./pages/dashboard/MenuIntelligenceDashboard"));
 const POS = lazy(() => import("./pages/POS"));
 const Kitchen = lazy(() => import("./pages/Kitchen"));
 const MenuManagement = lazy(() => import("./pages/MenuManagement"));
+const MenuCostDashboard = lazy(() => import("./pages/menu/costing/MenuCostDashboard"));
+const MenuCostList = lazy(() => import("./pages/menu/costing/MenuCostList"));
+const MenuCostDetail = lazy(() => import("./pages/menu/costing/MenuCostDetail"));
+const RecipeCostComparison = lazy(() => import("./pages/menu/costing/RecipeCostComparison"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const QROrder = lazy(() => import("./pages/QROrder"));
 const QROrdersList = lazy(() => import("./pages/QROrdersList"));
@@ -138,6 +143,10 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/dashboard/menu"
+              element={guarded(PERMISSIONS.MENU_DASHBOARD, <MenuIntelligenceDashboard />)}
+            />
             <Route path="/pos" element={guarded(PERMISSIONS.POS, <POS />)} />
             <Route path="/kitchen" element={guarded(PERMISSIONS.KITCHEN, <Kitchen />)} />
             <Route path="/qr-orders" element={guarded(PERMISSIONS.QR_ORDERS, <QROrdersList />)} />
@@ -150,6 +159,10 @@ const App = () => (
               element={guarded(PERMISSIONS.POS, <ReservationDashboard />)}
             />
             <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
+            <Route path="/menu/costing" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDashboard />)} />
+            <Route path="/menu/costing/items" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostList />)} />
+            <Route path="/menu/costing/items/:id" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDetail />)} />
+            <Route path="/menu/costing/comparison" element={guarded(PERMISSIONS.COST_VIEW, <RecipeCostComparison />)} />
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
             <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
             <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />

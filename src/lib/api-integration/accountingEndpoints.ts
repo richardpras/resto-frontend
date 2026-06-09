@@ -396,6 +396,10 @@ export type AccountingHealth = {
   openPeriods: number;
   lockedPeriods: number;
   healthScore: number;
+  inventoryValuationStatus?: string;
+  inventoryGlBalance?: number;
+  inventoryValuationBalance?: number;
+  inventoryValuationDifference?: number;
 };
 
 export type AccountingSettings = {

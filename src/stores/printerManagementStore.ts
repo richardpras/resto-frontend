@@ -38,9 +38,11 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
 
   fetchQueueStatus: async () => {
     if (!selectUserCapabilities().printerAdmin) return;
+    const outletId = useSettingsStore.getState().outlets[0]?.id;
+    if (!outletId || outletId < 1) return;
     set({ isLoadingQueue: true, error: null });
     try {
-      const queueByPrinter = await listPrinterQueues();
+      const queueByPrinter = await listPrinterQueues(outletId);
       set({ queueByPrinter });
     } catch (error) {
       if (error instanceof ApiHttpError && error.status === 403) {

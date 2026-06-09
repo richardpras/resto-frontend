@@ -71,6 +71,7 @@ import {
   splitPaymentsForGatewayCreate,
 } from "@/features/pos/gatewayCheckoutUtils";
 import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
+import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
 
@@ -1620,10 +1621,7 @@ export default function POS() {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 text-success text-sm">
-                <Printer className="h-4 w-4" /><span className="font-medium">Print: Ready</span>
-                <span className="text-xs opacity-70 ml-auto">Cashier Printer</span>
-              </div>
+              <PosPrintStatusBar outletId={typeof activeOutletId === "number" ? activeOutletId : null} />
             </motion.div>
           </motion.div>
         )}

@@ -4,18 +4,40 @@ import { apiRequest as request } from "./client";
 type Envelope<T> = { data: T };
 type MessageEnvelope<T> = { data: T; message?: string };
 
-export async function listPrinterQueues(): Promise<PrinterQueueSummary[]> {
-  const res = await request<Envelope<PrinterQueueSummary[]>>("/print/queue/status");
-  return res.data ?? [];
+export type PrinterQueueStatusResponse = {
+  outletId: number;
+  pending: number;
+  failed: number;
+  awaitingAck: number;
+  doneToday: number;
+  bridgeConnected: boolean;
+  printerOnline: boolean;
+  queues: PrinterQueueSummary[];
+};
+
+export async function listPrinterQueueStatus(outletId: number): Promise<PrinterQueueStatusResponse> {
+  const res = await request<Envelope<PrinterQueueStatusResponse>>(`/print/queue/status?outletId=${outletId}`);
+  return res.data;
+}
+
+/** @deprecated use listPrinterQueueStatus */
+export async function listPrinterQueues(outletId?: number): Promise<PrinterQueueSummary[]> {
+  if (!outletId || outletId < 1) return [];
+  const status = await listPrinterQueueStatus(outletId);
+  return status.queues ?? [];
 }
 
 export async function retryPrinterQueueJob(
   _printerId: string,
   jobId: string,
+  outletId?: number,
 ): Promise<{ id: string; status: "pending" | "printing" | "failed" | "done"; attempts: number }> {
   const res = await request<MessageEnvelope<{ id: string; status: "pending" | "printing" | "failed" | "done"; attempts: number }>>(
     `/print/queue/jobs/${encodeURIComponent(jobId)}/retry`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: JSON.stringify({ outletId }),
+    },
   );
   return res.data;
 }

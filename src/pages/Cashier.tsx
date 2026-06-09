@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
+import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import {
   apiMethodFromCheckoutMethod,
@@ -1329,11 +1330,7 @@ export default function Cashier() {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 text-success text-sm">
-                <Printer className="h-4 w-4" />
-                <span className="font-medium">Print: Ready</span>
-                <span className="text-xs opacity-70 ml-auto">Cashier Printer</span>
-              </div>
+              <PosPrintStatusBar outletId={typeof activeOutletId === "number" ? activeOutletId : null} />
             </motion.div>
           </motion.div>
         )}

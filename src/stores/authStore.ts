@@ -30,9 +30,12 @@ export interface AuthUser {
 export const PERMISSIONS = {
   DASHBOARD_ALL: "dashboard.view_all_outlets",
   DASHBOARD_OWN: "dashboard.view_own_outlet",
+  MENU_DASHBOARD: "dashboard.view",
   POS: "pos.use",
   KITCHEN: "kitchen.use",
   MENU: "menu.manage",
+  COST_VIEW: "cost.view",
+  COST_MANAGE: "cost.manage",
   INVENTORY: "inventory.manage",
   PURCHASE: "purchase.manage",
   PROMOTIONS: "promotions.manage",
@@ -66,6 +69,9 @@ function expandPermissionCodes(codes: string[]): string[] {
 
   const has = (...keys: string[]) => keys.some((k) => codes.includes(k));
 
+  if (has("dashboard.view", "dashboard.manage")) out.add(PERMISSIONS.MENU_DASHBOARD);
+  if (has("foodcost.view", "pos.use", "recipe.view")) out.add(PERMISSIONS.COST_VIEW);
+  if (has("menu.manage", "recipe.manage")) out.add(PERMISSIONS.COST_MANAGE);
   if (has("users.view", "users.create", "users.assign_roles")) out.add(PERMISSIONS.USERS);
   if (has("roles.view", "roles.create", "roles.assign_permissions")) out.add(PERMISSIONS.USERS);
   if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);

@@ -103,6 +103,14 @@ export default function AccountingHealth() {
           <MetricCard label="Duplicate Attempts" value={health.duplicatePostingAttempts} />
           <MetricCard label="Open Periods" value={health.openPeriods} />
           <MetricCard label="Locked Periods" value={health.lockedPeriods} />
+          {health.inventoryValuationStatus !== undefined && (
+            <>
+              <MetricCard label="Inventory Valuation" value={health.inventoryValuationStatus} />
+              <MetricCard label="GL Inventory (1300)" value={health.inventoryGlBalance ?? 0} />
+              <MetricCard label="Valuation Balance" value={health.inventoryValuationBalance ?? 0} />
+              <MetricCard label="Valuation Δ" value={health.inventoryValuationDifference ?? 0} />
+            </>
+          )}
         </div>
       )}
 
