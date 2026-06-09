@@ -11,7 +11,8 @@ import { usePurchaseStore } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getApAgingReport, getProcurementSummary, getSupplierStatement, type ApAgingReport, type ProcurementSummary, type SupplierStatement } from "@/lib/api-integration/purchaseEndpoints";
-import { Plus, Search, Check, Upload, Ban } from "lucide-react";
+import { Plus, Search, Check, Upload, Ban, Eye } from "lucide-react";
+import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
 
 const statusColors = {
@@ -43,6 +44,7 @@ export default function PurchasePayments() {
   const [statementSupplierId, setStatementSupplierId] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer" | "giro" | "check" | "other">("bank_transfer");
@@ -128,6 +130,8 @@ export default function PurchasePayments() {
     (p.supplierName ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
+  const viewedPayment = viewId ? supplierPayments.find((pay) => pay.id === viewId) : null;
+
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? `Supplier #${id}`;
 
   return (
@@ -187,8 +191,12 @@ export default function PurchasePayments() {
                     <TableCell>{pay.paymentDate}</TableCell>
                     <TableCell>{pay.amount.toLocaleString()}</TableCell>
                     <TableCell>{pay.allocatedAmount.toLocaleString()}</TableCell>
-                    <TableCell><Badge variant="outline" className={statusColors[pay.status]}>{pay.status}</Badge></TableCell>
+                    <TableCell className="space-x-1">
+                      <Badge variant="outline" className={statusColors[pay.status]}>{pay.status}</Badge>
+                      {pay.status === "posted" && <PostingStatusBadge postingStatus={pay.postingStatus} />}
+                    </TableCell>
                     <TableCell className="text-right space-x-1">
+                      <Button size="sm" variant="ghost" onClick={() => setViewId(pay.id)}><Eye className="h-3.5 w-3.5" /></Button>
                       {pay.status === "draft" && <Button size="sm" variant="outline" onClick={() => void approveSupplierPaymentAction(pay.id).then(loadDashboard)}>Approve</Button>}
                       {pay.status === "approved" && <Button size="sm" onClick={() => void postSupplierPaymentAction(pay.id).then(loadDashboard)}><Upload className="h-3 w-3" /></Button>}
                       {(pay.status === "draft" || pay.status === "approved" || pay.status === "posted") && pay.status !== "void" && (
@@ -313,6 +321,23 @@ export default function PurchasePayments() {
               <Button onClick={() => void handleSave()}>Save Draft</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Payment Detail — {viewedPayment?.paymentNo}</DialogTitle></DialogHeader>
+          {viewedPayment && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-muted-foreground">Supplier:</span> {viewedPayment.supplierName ?? getSupplierName(viewedPayment.supplierId)}</div>
+                <div><span className="text-muted-foreground">Amount:</span> {viewedPayment.amount.toLocaleString()}</div>
+                <div><span className="text-muted-foreground">Date:</span> {viewedPayment.paymentDate}</div>
+                <div><span className="text-muted-foreground">Method:</span> {viewedPayment.paymentMethod}</div>
+              </div>
+              <PostingStatusIndicator postingStatus={viewedPayment.postingStatus} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

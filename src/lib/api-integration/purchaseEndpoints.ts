@@ -86,6 +86,15 @@ export type PurchaseOrderApiRow = {
 
 export type GRNStatusApi = "draft" | "received" | "posted" | "cancelled";
 
+export type PostingStatusPayload = {
+  status: "posted" | "not_posted" | "reversed";
+  journalEntryId?: string | null;
+  journalNo?: string | null;
+  postedAt?: string | null;
+  reversedAt?: string | null;
+  reason?: string | null;
+};
+
 export type GoodsReceiptApiRow = {
   id: string;
   grnNumber: string;
@@ -115,6 +124,7 @@ export type GoodsReceiptApiRow = {
     unit?: string | null;
   }>;
   createdAt: string;
+  postingStatus?: PostingStatusPayload | null;
 };
 
 export type ReceivingProgress = {
@@ -177,6 +187,7 @@ export type PurchaseInvoiceApiRow = {
   matchQtyDifference?: number | null;
   matchPriceDifference?: number | null;
   matchAmountDifference?: number | null;
+  postingStatus?: PostingStatusPayload | null;
 };
 
 export type SupplierPayableRow = {
@@ -272,6 +283,31 @@ export type ProcurementSummary = {
   mismatchInvoices: number;
   blockedInvoices: number;
   matchRate: number;
+  postedGrnValue: number;
+  postedInvoiceValue: number;
+  postedPaymentValue: number;
+  unpostedGrnValue: number;
+  unpostedInvoiceValue: number;
+  unpostedPaymentValue: number;
+};
+
+export type ProcurementPostingStatus = "draft" | "posted" | "reversed";
+
+export type ProcurementPostingApiRow = {
+  id: string;
+  postingNo: string;
+  outletId?: string | null;
+  sourceType: "grn" | "invoice" | "supplier_payment";
+  sourceId: string;
+  documentNo?: string | null;
+  supplierName?: string | null;
+  amount: number;
+  journalEntryId?: string | null;
+  journalNo?: string | null;
+  status: ProcurementPostingStatus;
+  postedAt?: string | null;
+  reversedAt?: string | null;
+  notes?: string | null;
 };
 
 export type SupplierPaymentStatusApi = "draft" | "approved" | "posted" | "void";
@@ -297,6 +333,69 @@ export type SupplierPaymentApiRow = {
     allocatedAmount: number;
   }>;
   createdAt: string;
+  postingStatus?: PostingStatusPayload | null;
+};
+
+export type ProcurementAnalyticsSummary = {
+  totalSpend: number;
+  totalPurchaseOrders: number;
+  totalReceipts: number;
+  totalInvoices: number;
+  totalPayments: number;
+  outstandingPayables: number;
+  overduePayables: number;
+  averagePoCycleDays: number;
+  averageInvoiceCycleDays: number;
+  averageSupplierLeadTime?: number;
+  matchRate: number;
+  postingRate: number;
+  topSupplier?: { supplierId: string; supplierName: string; purchaseAmount: number } | null;
+};
+
+export type SupplierPerformanceRow = {
+  supplierId: string;
+  supplierName: string;
+  purchaseAmount: number;
+  purchaseCount: number;
+  averageLeadTime: number;
+  onTimeDeliveryRate: number;
+  invoiceAccuracyRate: number;
+  matchRate: number;
+};
+
+export type ProcurementSpendAnalysis = {
+  monthlySpend: Array<{ month: string; amount: number }>;
+  supplierSpend: Array<{ id: string; name: string; amount: number }>;
+  categorySpend: Array<{ categoryId: string; categoryName: string; amount: number }>;
+  warehouseSpend: Array<{ warehouseId: string; warehouseName: string; amount: number }>;
+};
+
+export type ProcurementPayablesAnalytics = {
+  current: number;
+  days1to30: number;
+  days31to60: number;
+  days61to90: number;
+  days90plus: number;
+  totalOutstanding: number;
+};
+
+export type ProcurementTrendAnalysis = {
+  months: string[];
+  purchaseOrders: number[];
+  receipts: number[];
+  invoices: number[];
+  payments: number[];
+  spend: number[];
+};
+
+export type ProcurementPostingAnalytics = {
+  postedGrnCount: number;
+  postedInvoiceCount: number;
+  postedPaymentCount: number;
+  unpostedGrnCount: number;
+  unpostedInvoiceCount: number;
+  unpostedPaymentCount: number;
+  postingRate: number;
 };
 
 export type ApAgingReport = {
@@ -756,6 +855,77 @@ export async function updateProcurementMatchConfig(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+  return res.data;
+}
+
+export async function listProcurementPostings(params?: PurchaseScopeQuery & { sourceType?: ProcurementPostingApiRow["sourceType"]; status?: ProcurementPostingStatus }): Promise<ProcurementPostingApiRow[]> {
+  const qs = toQuery(params);
+  const extra = new URLSearchParams();
+  if (params?.sourceType) extra.set("sourceType", params.sourceType);
+  if (params?.status) extra.set("status", params.status);
+  const extraStr = extra.toString();
+  const suffix = extraStr ? `${qs ? `${qs}&` : "?"}${extraStr}` : qs;
+  const res = await apiRequest<ListEnvelope<ProcurementPostingApiRow>>(`/procurement/postings${suffix}`);
+  return res.data;
+}
+
+export async function getProcurementPostingStatus(sourceType: ProcurementPostingApiRow["sourceType"], sourceId: string | number): Promise<ProcurementPostingApiRow | null> {
+  const res = await apiRequest<{ data: ProcurementPostingApiRow | null }>(`/procurement/postings/status?sourceType=${encodeURIComponent(sourceType)}&sourceId=${encodeURIComponent(String(sourceId))}`);
+  return res.data;
+}
+
+export async function postProcurementGrn(grnId: string | number): Promise<ProcurementPostingApiRow> {
+  const res = await apiRequest<MessageItemEnvelope<ProcurementPostingApiRow>>(`/procurement/postings/grn/${grnId}`, { method: "POST" });
+  return res.data;
+}
+
+export async function postProcurementInvoice(invoiceId: string | number): Promise<ProcurementPostingApiRow> {
+  const res = await apiRequest<MessageItemEnvelope<ProcurementPostingApiRow>>(`/procurement/postings/invoice/${invoiceId}`, { method: "POST" });
+  return res.data;
+}
+
+export async function postProcurementPayment(paymentId: string | number): Promise<ProcurementPostingApiRow> {
+  const res = await apiRequest<MessageItemEnvelope<ProcurementPostingApiRow>>(`/procurement/postings/payment/${paymentId}`, { method: "POST" });
+  return res.data;
+}
+
+export async function reverseProcurementPosting(id: string | number, notes?: string): Promise<ProcurementPostingApiRow> {
+  const res = await apiRequest<MessageItemEnvelope<ProcurementPostingApiRow>>(`/procurement/postings/${id}/reverse`, {
+    method: "POST",
+    body: JSON.stringify({ notes }),
+  });
+  return res.data;
+}
+
+export async function getProcurementAnalyticsSummary(params?: PurchaseScopeQuery): Promise<ProcurementAnalyticsSummary> {
+  const res = await apiRequest<{ data: ProcurementAnalyticsSummary }>(`/procurement/analytics/summary${toQuery(params)}`);
+  return res.data;
+}
+
+export async function getProcurementAnalyticsSuppliers(params?: PurchaseScopeQuery): Promise<SupplierPerformanceRow[]> {
+  const res = await apiRequest<ListEnvelope<SupplierPerformanceRow>>(`/procurement/analytics/suppliers${toQuery(params)}`);
+  return res.data;
+}
+
+export async function getProcurementAnalyticsSpend(
+  params?: PurchaseScopeQuery & { supplierId?: number; categoryId?: number; warehouseId?: number; fromDate?: string; toDate?: string },
+): Promise<ProcurementSpendAnalysis> {
+  const res = await apiRequest<{ data: ProcurementSpendAnalysis }>(`/procurement/analytics/spend${toQuery(params)}`);
+  return res.data;
+}
+
+export async function getProcurementAnalyticsPayables(params?: PurchaseScopeQuery): Promise<ProcurementPayablesAnalytics> {
+  const res = await apiRequest<{ data: ProcurementPayablesAnalytics }>(`/procurement/analytics/payables${toQuery(params)}`);
+  return res.data;
+}
+
+export async function getProcurementAnalyticsTrends(params?: PurchaseScopeQuery): Promise<ProcurementTrendAnalysis> {
+  const res = await apiRequest<{ data: ProcurementTrendAnalysis }>(`/procurement/analytics/trends${toQuery(params)}`);
+  return res.data;
+}
+
+export async function getProcurementAnalyticsPosting(params?: PurchaseScopeQuery): Promise<ProcurementPostingAnalytics> {
+  const res = await apiRequest<{ data: ProcurementPostingAnalytics }>(`/procurement/analytics/posting${toQuery(params)}`);
   return res.data;
 }
 

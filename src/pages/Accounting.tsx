@@ -9,6 +9,7 @@ import ProfitLoss from "./accounting/ProfitLoss";
 import BalanceSheet from "./accounting/BalanceSheet";
 import TrialBalance from "./accounting/TrialBalance";
 import AccountingPeriods from "./accounting/AccountingPeriods";
+import AccountingHealth from "./accounting/AccountingHealth";
 
 export default function Accounting() {
   const refreshFromApi = useAccountingStore((s) => s.refreshFromApi);
@@ -32,6 +33,7 @@ export default function Accounting() {
           <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
           <TabsTrigger value="journal">Journal Entries</TabsTrigger>
           <TabsTrigger value="periods">Accounting Periods</TabsTrigger>
+          <TabsTrigger value="health">Health</TabsTrigger>
           <TabsTrigger value="ledger">General Ledger</TabsTrigger>
           <TabsTrigger value="tb">Trial Balance</TabsTrigger>
           <TabsTrigger value="pl">Profit & Loss</TabsTrigger>
@@ -40,6 +42,7 @@ export default function Accounting() {
         <TabsContent value="coa" className="mt-4"><ChartOfAccounts /></TabsContent>
         <TabsContent value="journal" className="mt-4"><JournalEntries /></TabsContent>
         <TabsContent value="periods" className="mt-4"><AccountingPeriods /></TabsContent>
+        <TabsContent value="health" className="mt-4"><AccountingHealth /></TabsContent>
         <TabsContent value="ledger" className="mt-4"><GeneralLedger /></TabsContent>
         <TabsContent value="tb" className="mt-4"><TrialBalance /></TabsContent>
         <TabsContent value="pl" className="mt-4"><ProfitLoss /></TabsContent>

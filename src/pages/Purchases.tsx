@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Package, PackageCheck, Receipt, Wallet, ArrowRight } from "lucide-react";
+import { FileText, Package, PackageCheck, Receipt, Wallet, ArrowRight, BarChart3 } from "lucide-react";
 import PurchaseRequests from "./PurchaseRequests";
 import PurchaseOrders from "./PurchaseOrders";
 import GoodsReceipts from "./GoodsReceipts";
 import PurchaseInvoices from "./PurchaseInvoices";
 import PurchasePayments from "./PurchasePayments";
 import ProcurementThreeWayMatch from "./ProcurementThreeWayMatch";
+import ProcurementPosting from "./ProcurementPosting";
+import ProcurementAnalytics from "./ProcurementAnalytics";
 
 export default function Purchases() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,7 +46,7 @@ export default function Purchases() {
       </div>
 
       <Tabs value={tab} onValueChange={(value) => { setTab(value); setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("tab", value); return p; }); }}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
           <TabsTrigger value="pr" className="gap-1.5 text-xs sm:text-sm">
             <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Purchase</span> Requests
           </TabsTrigger>
@@ -60,6 +62,12 @@ export default function Purchases() {
           <TabsTrigger value="match" className="gap-1.5 text-xs sm:text-sm">
             <Receipt className="h-3.5 w-3.5" /> 3-Way Match
           </TabsTrigger>
+          <TabsTrigger value="posting" className="gap-1.5 text-xs sm:text-sm">
+            <Receipt className="h-3.5 w-3.5" /> Posting
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5 text-xs sm:text-sm">
+            <BarChart3 className="h-3.5 w-3.5" /> Analytics
+          </TabsTrigger>
           <TabsTrigger value="pay" className="gap-1.5 text-xs sm:text-sm">
             <Wallet className="h-3.5 w-3.5" /> Payments
           </TabsTrigger>
@@ -69,6 +77,8 @@ export default function Purchases() {
         <TabsContent value="grn"><GoodsReceipts /></TabsContent>
         <TabsContent value="inv"><PurchaseInvoices /></TabsContent>
         <TabsContent value="match"><ProcurementThreeWayMatch /></TabsContent>
+        <TabsContent value="posting"><ProcurementPosting /></TabsContent>
+        <TabsContent value="analytics"><ProcurementAnalytics /></TabsContent>
         <TabsContent value="pay"><PurchasePayments /></TabsContent>
       </Tabs>
     </div>

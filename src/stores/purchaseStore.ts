@@ -35,6 +35,7 @@ import {
   updatePurchaseRequest,
   type GoodsReceiptApiRow,
   type PurchaseInvoiceApiRow,
+  type PostingStatusPayload,
   type SupplierPaymentApiRow,
   type PurchaseOrderApiRow,
   type PurchaseRequestApiRow,
@@ -134,6 +135,7 @@ export type GoodsReceipt = {
   relatedInvoiceCount?: number;
   items: GRNItem[];
   createdAt: string;
+  postingStatus?: PostingStatusPayload | null;
 };
 
 export type SupplierPayment = {
@@ -151,6 +153,7 @@ export type SupplierPayment = {
   status: "draft" | "approved" | "posted" | "void";
   allocations: Array<{ id: string; invoiceId: string; invoiceNumber?: string; allocatedAmount: number }>;
   createdAt: string;
+  postingStatus?: PostingStatusPayload | null;
 };
 
 export type PurchaseInvoice = {
@@ -181,6 +184,7 @@ export type PurchaseInvoice = {
   matchQtyDifference?: number | null;
   matchPriceDifference?: number | null;
   matchAmountDifference?: number | null;
+  postingStatus?: PostingStatusPayload | null;
 };
 
 // ── Store ──────────────────────────────────────────────
@@ -346,6 +350,7 @@ const mapGoodsReceipt = (row: GoodsReceiptApiRow): GoodsReceipt => ({
     unit: item.unit ?? "",
   })),
   createdAt: row.createdAt,
+  postingStatus: row.postingStatus ?? undefined,
 });
 
 const mapSupplierPayment = (row: SupplierPaymentApiRow): SupplierPayment => ({
@@ -363,6 +368,7 @@ const mapSupplierPayment = (row: SupplierPaymentApiRow): SupplierPayment => ({
   status: row.status,
   allocations: row.allocations,
   createdAt: row.createdAt,
+  postingStatus: row.postingStatus ?? undefined,
 });
 
 const mapPurchaseInvoice = (row: PurchaseInvoiceApiRow): PurchaseInvoice => ({
@@ -402,6 +408,11 @@ const mapPurchaseInvoice = (row: PurchaseInvoiceApiRow): PurchaseInvoice => ({
     notes: payment.notes ?? undefined,
   })),
   createdAt: row.createdAt,
+  matchStatus: row.matchStatus ?? undefined,
+  matchQtyDifference: row.matchQtyDifference ?? undefined,
+  matchPriceDifference: row.matchPriceDifference ?? undefined,
+  matchAmountDifference: row.matchAmountDifference ?? undefined,
+  postingStatus: row.postingStatus ?? undefined,
 });
 
 export const usePurchaseStore = create<PurchaseStore>((set, get) => ({

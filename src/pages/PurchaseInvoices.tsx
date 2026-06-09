@@ -12,7 +12,8 @@ import { useInventoryStore } from "@/stores/inventoryStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getProcurementSummary, type ProcurementSummary, type SupplierPayableRow } from "@/lib/api-integration/purchaseEndpoints";
-import { Plus, Receipt, Search, Check, Send, Ban } from "lucide-react";
+import { Plus, Receipt, Search, Check, Send, Ban, Eye } from "lucide-react";
+import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
 
 const statusColors: Record<InvoiceStatus, string> = {
@@ -67,6 +68,7 @@ export default function PurchaseInvoices() {
 
   const [tab, setTab] = useState("invoices");
   const [formOpen, setFormOpen] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [summary, setSummary] = useState<ProcurementSummary | null>(null);
   const [payables, setPayables] = useState<SupplierPayableRow[]>([]);
@@ -171,6 +173,8 @@ export default function PurchaseInvoices() {
     ["approved", "partial"].includes(inv.status) && (inv.outstandingAmount ?? inv.remainingAmount) > 0
   );
 
+  const viewedInvoice = viewId ? invoices.find((inv) => inv.id === viewId) : null;
+
   const eligiblePOs = purchaseOrders.filter((po) => ["approved", "partially_received", "received"].includes(po.status));
   const eligibleGRs = goodsReceipts.filter((gr) => {
     if (gr.status !== "posted") return false;
@@ -260,8 +264,12 @@ export default function PurchaseInvoices() {
                             {matchLabel[inv.matchStatus] ?? inv.matchStatus}
                           </Badge>
                         )}
+                        {["approved", "partial", "paid"].includes(inv.status) && (
+                          <PostingStatusBadge postingStatus={inv.postingStatus} />
+                        )}
                       </TableCell>
                       <TableCell className="text-right space-x-1">
+                        <Button size="sm" variant="ghost" onClick={() => setViewId(inv.id)}><Eye className="h-3.5 w-3.5" /></Button>
                         {inv.status === "draft" && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => void submitInvoice(inv.id).then(loadDashboard)}><Send className="h-3 w-3" /></Button>
@@ -429,6 +437,23 @@ export default function PurchaseInvoices() {
               <Button onClick={() => void handleSaveDraft()}>Save Draft</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Invoice Detail — {viewedInvoice?.invoiceNumber}</DialogTitle></DialogHeader>
+          {viewedInvoice && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-muted-foreground">Supplier:</span> {getSupplierName(viewedInvoice.supplierId)}</div>
+                <div><span className="text-muted-foreground">Total:</span> {viewedInvoice.total.toLocaleString()}</div>
+                <div><span className="text-muted-foreground">PO / GRN:</span> {viewedInvoice.poReference} / {viewedInvoice.grReference}</div>
+                <div><span className="text-muted-foreground">Due:</span> {viewedInvoice.dueDate ?? "—"}</div>
+              </div>
+              <PostingStatusIndicator postingStatus={viewedInvoice.postingStatus} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

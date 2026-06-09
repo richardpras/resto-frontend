@@ -12,6 +12,7 @@ import { useOutletStore } from "@/stores/outletStore";
 import { getProcurementSummary, type ProcurementSummary } from "@/lib/api-integration/purchaseEndpoints";
 import { listWarehouses, type WarehouseApiRow } from "@/lib/api-integration/warehouseEndpoints";
 import { Plus, PackageCheck, Search, Check, Upload, Ban, Eye } from "lucide-react";
+import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
 
 const statusColors: Record<GRNStatus, string> = {
@@ -240,8 +241,9 @@ export default function GoodsReceipts() {
                   <TableCell className="text-sm font-mono">{grn.poReference}</TableCell>
                   <TableCell className="text-sm">{grn.date}</TableCell>
                   <TableCell className="text-sm">{grn.items.length} items</TableCell>
-                  <TableCell>
+                  <TableCell className="space-x-1">
                     <Badge variant="outline" className={statusColors[grn.status]}>{statusLabel[grn.status]}</Badge>
+                    {grn.status === "posted" && <PostingStatusBadge postingStatus={grn.postingStatus} />}
                   </TableCell>
                   <TableCell className="text-right space-x-1">
                     <Button size="sm" variant="ghost" onClick={() => setViewId(grn.id)}><Eye className="h-3.5 w-3.5" /></Button>
@@ -392,6 +394,8 @@ export default function GoodsReceipts() {
                   <Progress value={progress.completionPercentage} />
                 </div>
               )}
+
+              <PostingStatusIndicator postingStatus={viewedGrn.postingStatus} />
 
               <div className="flex justify-end gap-2">
                 {viewedGrn.status === "draft" && <Button onClick={() => void handleReceive(viewedGrn.id)}>Receive</Button>}

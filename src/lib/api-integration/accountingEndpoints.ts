@@ -386,3 +386,74 @@ export async function openAccountingPeriod(periodId: string): Promise<Accounting
   });
   return res.data;
 }
+
+export type AccountingHealth = {
+  failedPostings: number;
+  pendingPostings: number;
+  duplicatePostingAttempts: number;
+  unbalancedJournalAttempts: number;
+  missingMappings: number;
+  openPeriods: number;
+  lockedPeriods: number;
+  healthScore: number;
+};
+
+export type AccountingSettings = {
+  revenuePostingMode: "realtime" | "shift_close";
+  tenantId?: number | null;
+  outletId?: number | null;
+};
+
+export type AccountingPostingFailureRow = {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  outletId?: string | null;
+  errorCode: string;
+  errorMessage: string;
+  status: "pending" | "resolved" | "ignored";
+  journalId?: string | null;
+  journalNo?: string | null;
+  createdAt?: string;
+  resolvedAt?: string | null;
+};
+
+export async function getAccountingHealth(params?: { outletId?: number }): Promise<AccountingHealth> {
+  const q = params?.outletId ? `?outletId=${params.outletId}` : "";
+  const res = await request<{ data: AccountingHealth }>(`/accounting/health${q}`);
+  return res.data;
+}
+
+export async function getAccountingSettings(params?: { outletId?: number; tenantId?: number }): Promise<AccountingSettings> {
+  const search = new URLSearchParams();
+  if (params?.outletId) search.set("outletId", String(params.outletId));
+  if (params?.tenantId) search.set("tenantId", String(params.tenantId));
+  const suffix = search.toString() ? `?${search}` : "";
+  const res = await request<{ data: AccountingSettings }>(`/accounting/settings${suffix}`);
+  return res.data;
+}
+
+export async function updateAccountingSettings(payload: {
+  revenuePostingMode: "realtime" | "shift_close";
+  outletId?: number;
+  tenantId?: number;
+}): Promise<AccountingSettings> {
+  const res = await request<{ data: AccountingSettings }>(`/accounting/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function listAccountingPostingFailures(status?: string): Promise<AccountingPostingFailureRow[]> {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await request<{ data: AccountingPostingFailureRow[] }>(`/accounting/posting-failures${suffix}`);
+  return res.data;
+}
+
+export async function retryAccountingPostingFailure(id: string | number): Promise<AccountingPostingFailureRow> {
+  const res = await request<{ data: AccountingPostingFailureRow }>(`/accounting/posting-failures/${id}/retry`, {
+    method: "POST",
+  });
+  return res.data;
+}
