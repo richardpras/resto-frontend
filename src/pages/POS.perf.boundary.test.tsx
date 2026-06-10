@@ -13,9 +13,14 @@ vi.mock("@/domain/accessControl", () => ({
   getUserCapabilities: () => mockCapabilities(),
 }));
 
-vi.mock("@/stores/authStore", () => ({
-  useAuthStore: (selector: (state: { user: { id: string } | null }) => unknown) => selector({ user: { id: "1" } }),
-}));
+vi.mock("@/stores/authStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/authStore")>();
+  return {
+    ...actual,
+    useAuthStore: (selector: (state: { user: { id: string; permissions: string[] } | null }) => unknown) =>
+      selector({ user: { id: "1", permissions: [] } }),
+  };
+});
 
 vi.mock("@/stores/outletStore", () => ({
   useOutletStore: (selector: (state: { activeOutletId: number }) => unknown) => selector({ activeOutletId: 3 }),
@@ -44,15 +49,19 @@ vi.mock("@/stores/promotionStore", () => ({
   }),
 }));
 
+const memberStoreState = {
+  members: [],
+  loading: false,
+  searchLoading: false,
+  searchResults: [],
+  fetchMembers: mockFetchMembers,
+  searchMembersForOutlet: vi.fn(),
+  quickCreateMember: vi.fn(),
+};
+
 vi.mock("@/stores/memberStore", () => ({
-  useMemberStore: (selector?: (state: Record<string, unknown>) => unknown) => {
-    const state = {
-      members: [],
-      loading: false,
-      fetchMembers: mockFetchMembers,
-    };
-    return selector ? selector(state) : state;
-  },
+  useMemberStore: (selector?: (state: typeof memberStoreState) => unknown) =>
+    selector ? selector(memberStoreState) : memberStoreState,
 }));
 
 vi.mock("@/stores/customerStore", () => ({
@@ -78,7 +87,13 @@ vi.mock("@/stores/loyaltyStore", () => ({
 
 vi.mock("@/stores/posSessionStore", () => ({
   usePosSessionStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({ fetchCurrent: vi.fn() }),
+    selector({
+      fetchCurrent: vi.fn().mockResolvedValue(undefined),
+      open: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      currentSession: null,
+      isLoading: false,
+    }),
 }));
 
 vi.mock("@/stores/paymentStore", () => ({
@@ -149,9 +164,10 @@ describe("POS PERF orchestration boundaries", () => {
     mockCapabilities.mockReturnValue({ crm: false });
     renderPos();
     const button = screen.getByRole("button", { name: /\+ select member/i });
-    expect(button).toBeDisabled();
+    fireEvent.click(button);
     expect(mockFetchMembers).not.toHaveBeenCalled();
     expect(mockFetchCustomers).not.toHaveBeenCalled();
+    expect(mockRefreshLoyalty).not.toHaveBeenCalled();
   });
 });
 

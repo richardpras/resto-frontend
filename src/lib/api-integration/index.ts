@@ -16,5 +16,8 @@ export * from "./terminalEndpoints";
 export * from "./terminalSyncEndpoints";
 export * from "./receiptDocumentEndpoints";
 export * from "./crmEndpoints";
+export * from "./giftCardEndpoints";
+export * from "./posFinanceEndpoints";
 export * from "./hardwareBridgeEndpoints";
 export * from "./openBillEndpoints";
+export * from "./notificationEndpoints";

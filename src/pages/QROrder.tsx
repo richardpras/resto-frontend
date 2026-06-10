@@ -4,8 +4,6 @@ import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, Bell } fr
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
 import { toast } from "sonner";
-import { getApiAccessToken } from "@/lib/api-integration/client";
-import { listFloorTables, resolveLegacyTableQr, resolveTableQrPublicId } from "@/lib/api-integration/tableEndpoints";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string; description: string;
@@ -47,6 +45,10 @@ export default function QROrder() {
   const createRequest = useQrOrderStore((s) => s.createRequest);
   const callCashier = useQrOrderStore((s) => s.callCashier);
   const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
+  const hasApiAccess = useQrOrderStore((s) => s.hasApiAccess);
+  const resolveTableFromPublicId = useQrOrderStore((s) => s.resolveTableFromPublicId);
+  const resolveLegacyTable = useQrOrderStore((s) => s.resolveLegacyTable);
+  const fetchTableOperationalStatus = useQrOrderStore((s) => s.fetchTableOperationalStatus);
 
   const [view, setView] = useState<View>("menu");
   const [activeCat, setActiveCat] = useState("All");
@@ -71,7 +73,7 @@ export default function QROrder() {
   useEffect(() => {
     let active = true;
     if (typeof qrPublicId !== "string" || qrPublicId.trim() === "") return;
-    void resolveTableQrPublicId(qrPublicId)
+    void resolveTableFromPublicId(qrPublicId)
       .then((resolved) => {
         if (!active) return;
         setResolvedOutletId(resolved.outletId);
@@ -84,13 +86,13 @@ export default function QROrder() {
     return () => {
       active = false;
     };
-  }, [qrPublicId]);
+  }, [qrPublicId, resolveTableFromPublicId]);
 
   useEffect(() => {
     let active = true;
     if (resolvedOutletId !== null || resolvedTableId !== null) return;
     if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) return;
-    void resolveLegacyTableQr(outletIdParam, tableIdParam)
+    void resolveLegacyTable(outletIdParam, tableIdParam)
       .then((resolved) => {
         if (!active) return;
         setResolvedOutletId(resolved.outletId);
@@ -103,7 +105,7 @@ export default function QROrder() {
     return () => {
       active = false;
     };
-  }, [outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId]);
+  }, [outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId, resolveLegacyTable]);
 
   const filtered = useMemo(() =>
     menuItems.filter(
@@ -133,20 +135,14 @@ export default function QROrder() {
 
   useEffect(() => {
     let active = true;
-    const hasToken = Boolean(getApiAccessToken());
-    if (!hasToken || !Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {
+    if (!hasApiAccess() || !Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {
       return;
     }
     setProjectionStatus("checking");
-    void listFloorTables(activeOutletId)
-      .then((tables) => {
+    void fetchTableOperationalStatus(activeOutletId, activeTableId)
+      .then((status) => {
         if (!active) return;
-        const table = tables.find((row) => row.id === activeTableId);
-        if (!table) {
-          setProjectionStatus("disabled");
-          return;
-        }
-        setProjectionStatus(table.tableOperationalStatus);
+        setProjectionStatus(status);
       })
       .catch(() => {
         if (!active) return;
@@ -155,7 +151,7 @@ export default function QROrder() {
     return () => {
       active = false;
     };
-  }, [activeOutletId, activeTableId]);
+  }, [activeOutletId, activeTableId, hasApiAccess, fetchTableOperationalStatus]);
 
   const submitOrder = async () => {
     if (!Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {

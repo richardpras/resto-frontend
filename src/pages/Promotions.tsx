@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Plus, Search, X, Percent, DollarSign, Gift, ToggleLeft, ToggleRight,
   Edit2, Trash2, Calendar, Clock, Tag, AlertCircle, ChevronDown,
@@ -9,26 +10,15 @@ import { format } from "date-fns";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { listMenuItems } from "@/lib/api-integration/endpoints";
+import { useOutletStore } from "@/stores/outletStore";
+import { isPromotionsModuleEnabled } from "@/domain/featureFlags";
 
-const menuItems = [
-  { id: "1", name: "Nasi Goreng Special", category: "Main Course" },
-  { id: "2", name: "Ayam Bakar", category: "Main Course" },
-  { id: "3", name: "Mie Goreng", category: "Main Course" },
-  { id: "4", name: "Sate Ayam 10pcs", category: "Main Course" },
-  { id: "5", name: "Gado-Gado", category: "Appetizers" },
-  { id: "6", name: "Lumpia Goreng", category: "Appetizers" },
-  { id: "7", name: "Tahu Goreng", category: "Appetizers" },
-  { id: "8", name: "Es Teh Manis", category: "Drinks" },
-  { id: "9", name: "Jus Alpukat", category: "Drinks" },
-  { id: "10", name: "Kopi Susu", category: "Drinks" },
-  { id: "11", name: "Es Jeruk", category: "Drinks" },
-  { id: "12", name: "Pisang Goreng", category: "Desserts" },
-  { id: "13", name: "Es Campur", category: "Desserts" },
-  { id: "14", name: "Kerupuk Udang", category: "Sides" },
-];
+const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
+
+type PromoMenuItem = { id: string; name: string; category: string };
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const categories = ["Main Course", "Appetizers", "Drinks", "Desserts", "Sides"];
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
@@ -101,6 +91,9 @@ const defaultForm: FormData = {
 
 export default function Promotions() {
   const { promotions, addPromotion, updatePromotion, removePromotion, toggleActive } = usePromotionStore();
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const [menuItems, setMenuItems] = useState<PromoMenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive" | "expired">("all");
   const [filterType, setFilterType] = useState<"all" | PromotionType>("all");
@@ -108,6 +101,31 @@ export default function Promotions() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(defaultForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+      setMenuItems([]);
+      return;
+    }
+    setMenuLoading(true);
+    void listMenuItems({ tenantId: TENANT_ID, outletId: activeOutletId, perPage: 500 })
+      .then((items) =>
+        setMenuItems(
+          items.map((item) => ({
+            id: String(item.id),
+            name: item.name,
+            category: item.category?.trim() || "Uncategorized",
+          })),
+        ),
+      )
+      .catch(() => setMenuItems([]))
+      .finally(() => setMenuLoading(false));
+  }, [activeOutletId]);
+
+  const categories = useMemo(
+    () => [...new Set(menuItems.map((item) => item.category))].sort(),
+    [menuItems],
+  );
 
   const filtered = promotions.filter((p) => {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -236,6 +254,21 @@ export default function Promotions() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl">
+      {isPromotionsModuleEnabled() ? (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <p>
+            Promotions module is deprecated. Use{" "}
+            <Link to="/loyalty-programs" className="font-semibold underline underline-offset-2">
+              Loyalty Programs
+            </Link>{" "}
+            for production discount management.
+          </p>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Promotions</h1>
@@ -433,6 +466,10 @@ export default function Promotions() {
                       <div>
                         <label className="text-xs font-medium text-muted-foreground mb-1 block">Applicable Menu Items</label>
                         <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                          {menuLoading && <p className="text-xs text-muted-foreground">Loading menu items…</p>}
+                          {!menuLoading && menuItems.length === 0 && (
+                            <p className="text-xs text-muted-foreground">Select an outlet or add menu items in Menu Management.</p>
+                          )}
                           {menuItems.map((m) => (
                             <button key={m.id} onClick={() => toggleMenu(m.id)}
                               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${form.applicableMenuIds.includes(m.id) ? "bg-primary text-primary-foreground" : "bg-background border border-border text-muted-foreground hover:text-foreground"}`}>
@@ -460,6 +497,9 @@ export default function Promotions() {
                     <div>
                       <label className="text-xs font-medium text-muted-foreground mb-1 block">Applicable Categories</label>
                       <div className="flex flex-wrap gap-1.5">
+                        {categories.length === 0 && (
+                          <p className="text-xs text-muted-foreground">No categories available for the active outlet.</p>
+                        )}
                         {categories.map((c) => (
                           <button key={c} onClick={() => toggleCategory(c)}
                             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${form.applicableCategories.includes(c) ? "bg-primary text-primary-foreground" : "bg-background border border-border text-muted-foreground hover:text-foreground"}`}>

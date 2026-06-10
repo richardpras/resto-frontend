@@ -15,6 +15,7 @@ type QrisPaymentModalProps = {
   onRetry: () => void;
   retryLabel?: string;
   onReconcile: () => void;
+  showReconcile?: boolean;
   onExpire: () => void;
   onChangePaymentMethod?: () => void;
   checkoutHint?: string | null;
@@ -47,6 +48,7 @@ export function QrisPaymentModal({
   onRetry,
   retryLabel = "Retry QRIS Payment",
   onReconcile,
+  showReconcile = false,
   onExpire,
   onChangePaymentMethod,
   checkoutHint,
@@ -163,14 +165,16 @@ export function QrisPaymentModal({
               >
                 {retryLabel}
               </button>
-              <button
-                type="button"
-                onClick={onReconcile}
-                disabled={isSubmitting}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs inline-flex items-center gap-1"
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Reconcile
-              </button>
+              {showReconcile ? (
+                <button
+                  type="button"
+                  onClick={onReconcile}
+                  disabled={isSubmitting}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs inline-flex items-center gap-1"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Reconcile
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onExpire}

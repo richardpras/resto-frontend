@@ -7,8 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Download, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/authStore";
+import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
 
 export default function ProfitLoss() {
+  const user = useAuthStore((s) => s.user);
+  const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outlets);
   const current = useAccountingStore((s) => s.profitLossCurrent);
   const previous = useAccountingStore((s) => s.profitLossPrevious);
@@ -24,11 +28,20 @@ export default function ProfitLoss() {
   const [outlet, setOutlet] = useState("all");
   const [compare, setCompare] = useState(true);
   useEffect(() => {
+    if (!allowed) return;
     void fetchProfitLossReport({ from, to, outlet, compareFrom: startPrev, compareTo: endPrev })
       .catch((e) => {
         toast.error(e instanceof Error ? e.message : "Failed to load P&L report");
       });
-  }, [from, to, outlet, startPrev, endPrev, fetchProfitLossReport]);
+  }, [allowed, from, to, outlet, startPrev, endPrev, fetchProfitLossReport]);
+
+  if (!allowed) {
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+      </Card>
+    );
+  }
 
   const pct = (curr: number, prev: number) => {
     if (prev === 0) return curr === 0 ? 0 : 100;

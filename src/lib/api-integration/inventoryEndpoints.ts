@@ -141,3 +141,43 @@ export async function createStockMovement(payload: StockMovementPayload): Promis
   });
   return response.data;
 }
+
+export type InventoryValuationApi = {
+  ingredientId: string;
+  ingredientName?: string | null;
+  ingredientUnit?: string | null;
+  outletId: number;
+  stockQuantity: number;
+  inventoryValue: number;
+  averageCost: number;
+  lastPurchaseCost: number;
+  lastGrnId?: number | null;
+  lastUpdatedAt?: string | null;
+};
+
+function valuationQuery(params?: { outletId?: number; ingredientId?: number }): string {
+  const query = new URLSearchParams();
+  if (params?.outletId !== undefined && params.outletId >= 1) query.set("outletId", String(params.outletId));
+  if (params?.ingredientId !== undefined && params.ingredientId >= 1) query.set("ingredientId", String(params.ingredientId));
+  const text = query.toString();
+  return text.length > 0 ? `?${text}` : "";
+}
+
+export async function listInventoryValuations(params?: {
+  outletId?: number;
+  ingredientId?: number;
+}): Promise<InventoryValuationApi[]> {
+  const response = await request<ApiListResponse<InventoryValuationApi>>(`/inventory/valuations${valuationQuery(params)}`);
+  return response.data ?? [];
+}
+
+export async function recalculateInventoryValuations(payload?: {
+  outletId?: number;
+  ingredientId?: number;
+}): Promise<{ rebuiltPairs: number }> {
+  const response = await request<{ data: { rebuiltPairs: number } }>("/inventory/valuations/recalculate", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+  return response.data;
+}

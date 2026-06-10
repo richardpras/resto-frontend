@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X,
-  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift,
+  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift, CreditCard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
@@ -33,6 +33,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
+import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
+import { canReconcilePayments } from "@/domain/permissionGates";
 import { PosMenuGridSkeleton } from "@/components/skeletons/card/PosMenuGridSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
@@ -74,6 +76,21 @@ import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayl
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
+import {
+  appliedGiftCardAmount,
+  buildGiftCardDirectSettleIdempotencyKey,
+  buildGiftCardRedeemIdempotencyKey,
+  giftCardCheckErrorMessage,
+  mapGiftCardApiError,
+  remainingGiftCardBalance,
+  resolveGiftCardApplyAmount,
+  type AppliedGiftCardCheckout,
+} from "@/features/pos/giftCardCheckoutUtils";
+import {
+  checkGiftCard,
+  redeemGiftCard,
+  settleGiftCardRedemptions,
+} from "@/lib/api-integration/giftCardEndpoints";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -131,6 +148,7 @@ function operationalChannelFromOrder(order: Order | null): string {
 
 export default function POS() {
   const authUser = useAuthStore((s) => s.user);
+  const showReconcile = canReconcilePayments(authUser);
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   useReservationTableProjectionSync();
@@ -151,9 +169,11 @@ export default function POS() {
   const membersLoading = useMemberStore((s) => s.searchLoading);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
-  const [giftCardInput, setGiftCardInput] = useState("");
+  const [giftCardCodeInput, setGiftCardCodeInput] = useState("");
+  const [giftCardAmountInput, setGiftCardAmountInput] = useState("");
+  const [appliedGiftCardState, setAppliedGiftCardState] = useState<AppliedGiftCardCheckout | null>(null);
+  const [giftCardApplyLoading, setGiftCardApplyLoading] = useState(false);
   const [appliedPoints, setAppliedPoints] = useState(0);
-  const [appliedGiftCard, setAppliedGiftCard] = useState(0);
   const [memberSearch, setMemberSearch] = useState("");
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [quickMemberName, setQuickMemberName] = useState("");
@@ -408,6 +428,7 @@ export default function POS() {
   const taxableBase = Math.max(0, subtotal - discount - voucherDiscount);
   const tax = Math.round(taxableBase * 0.1);
   const baseTotal = taxableBase + tax;
+  const appliedGiftCard = appliedGiftCardAmount(appliedGiftCardState);
   const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
   const selectedCustomer = customers.find(
@@ -416,7 +437,7 @@ export default function POS() {
       (customer.phone === selectedMember.phone || customer.name.toLowerCase() === selectedMember.name.toLowerCase()),
   );
   const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
-  const availableGiftCard = selectedCustomer ? selectedCustomer.giftCardBalance ?? 0 : 0;
+  const remainingAppliedGiftCardBalance = remainingGiftCardBalance(appliedGiftCardState);
 
   const selectableTables = tables.filter(
     (t) => t.status === "available" || t.status === "occupied" || t.status === "reserved",
@@ -600,7 +621,8 @@ export default function POS() {
     if (gatewayMethod && paymentTransaction && isTerminalGatewayStatus(paymentTransaction.status) && currentOrderId) {
       setSubmitting(true);
       try {
-        const tx = await paymentRetry(paymentTransaction.id);
+        const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
+        const tx = await paymentRetry(paymentTransaction.id, { giftCardSettlementIds });
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
         if (apiMethod === "qris" && tx.qrString) {
           setShowQrisModal(true);
@@ -653,6 +675,7 @@ export default function POS() {
           : storedOrder.total;
 
       if (cashMethod) {
+        const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
         if (reusing) {
           const cashBatch =
             pendingGatewayPayments.length > 0
@@ -661,6 +684,7 @@ export default function POS() {
           await addOrderPaymentsRemote(storedOrder.id, cashBatch);
           setPendingGatewayPayments([]);
         }
+        await settleGiftCardAfterDirectPayment(storedOrder.id, giftCardSettlementIds);
         if (selectedCustomer && appliedPoints > 0) {
           await enqueueRedemption({
             customerId: selectedCustomer.id,
@@ -686,6 +710,7 @@ export default function POS() {
         return;
       }
 
+      const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
       const gatewayPayment: OrderPaymentPayload = {
         method: apiMethod,
         amount: checkoutTotal,
@@ -702,6 +727,7 @@ export default function POS() {
                 remapSettlementBatchMethod(pendingGatewayPayments, gatewayPayment.method),
               )
             : undefined,
+        giftCardSettlementIds: giftCardSettlementIds.length > 0 ? giftCardSettlementIds : undefined,
       });
       setPendingGatewayPayments([gatewayPayment]);
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, storedOrder.id);
@@ -733,11 +759,13 @@ export default function POS() {
         pendingGatewayPayments.length > 0
           ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
           : (currentOpenOrder?.total ?? total);
+      const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
       const batch =
         pendingGatewayPayments.length > 0
           ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
           : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
       await addOrderPaymentsRemote(currentOrderId, batch);
+      await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
       setPendingGatewayPayments([]);
       setShowStaticQrisModal(false);
       if (selectedCustomer && appliedPoints > 0) {
@@ -767,9 +795,47 @@ export default function POS() {
     setSelectedTable("");
     setManualPromo(null);
     setAppliedPoints(0);
-    setAppliedGiftCard(0);
+    setAppliedGiftCardState(null);
     setRedeemPointsInput("");
-    setGiftCardInput("");
+    setGiftCardCodeInput("");
+    setGiftCardAmountInput("");
+  };
+
+  const redeemGiftCardForOrder = async (orderId: string): Promise<number[]> => {
+    if (!appliedGiftCardState || appliedGiftCardState.appliedAmount <= 0) {
+      return [];
+    }
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+      throw new Error("Select an outlet before redeeming a gift card.");
+    }
+    const result = await redeemGiftCard({
+      outletId: activeOutletId,
+      code: appliedGiftCardState.code,
+      amount: appliedGiftCardState.appliedAmount,
+      idempotencyKey: buildGiftCardRedeemIdempotencyKey(orderId, appliedGiftCardState.code),
+      referenceType: "order",
+      referenceId: String(orderId),
+      meta: { source: "pos" },
+    });
+    const settlementId = Number(result.settlement.id);
+    if (!Number.isFinite(settlementId) || settlementId <= 0) {
+      throw new Error("Gift card redemption did not return a settlement id.");
+    }
+    return [settlementId];
+  };
+
+  const settleGiftCardAfterDirectPayment = async (orderId: string, settlementIds: number[]) => {
+    if (settlementIds.length === 0 || typeof activeOutletId !== "number" || activeOutletId < 1) {
+      return;
+    }
+    await settleGiftCardRedemptions({
+      outletId: activeOutletId,
+      idempotencyKey: buildGiftCardDirectSettleIdempotencyKey(orderId),
+      settlementReference: `pos-order#${orderId}`,
+      settlementStatus: "settled",
+      redeemSettlementIds: settlementIds,
+      meta: { trigger: "pos_direct_payment" },
+    });
   };
 
   const applyPointsRedemption = () => {
@@ -782,14 +848,59 @@ export default function POS() {
     setAppliedPoints(capped);
   };
 
-  const applyGiftCardRedemption = () => {
-    if (!selectedCustomer) {
-      toast.error("Select a member linked to CRM customer first.");
+  const applyGiftCardRedemption = async () => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+      toast.error("Select an outlet before applying a gift card.");
       return;
     }
-    const requested = Math.max(0, Number(giftCardInput || 0));
-    const capped = Math.min(requested, availableGiftCard, baseTotal);
-    setAppliedGiftCard(capped);
+    const code = giftCardCodeInput.trim();
+    if (!code) {
+      toast.error("Enter a gift card or store credit code.");
+      return;
+    }
+    setGiftCardApplyLoading(true);
+    try {
+      const issuance = await checkGiftCard(activeOutletId, code);
+      const validationError = giftCardCheckErrorMessage(issuance);
+      if (validationError) {
+        toast.error(validationError);
+        setAppliedGiftCardState(null);
+        return;
+      }
+      const availableBalance = Number(issuance.balanceAmount ?? 0);
+      const requestedAmount = giftCardAmountInput.trim() === "" ? 0 : Number(giftCardAmountInput);
+      if (giftCardAmountInput.trim() !== "" && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
+        toast.error("Enter a valid gift card amount.");
+        return;
+      }
+      const appliedAmount = resolveGiftCardApplyAmount(requestedAmount, availableBalance, baseTotal);
+      if (appliedAmount <= 0) {
+        toast.error("Insufficient gift card or store credit balance.");
+        return;
+      }
+      setAppliedGiftCardState({
+        code: String(issuance.code ?? code).toUpperCase(),
+        availableBalance,
+        appliedAmount,
+        instrumentType: typeof issuance.instrumentType === "string" ? issuance.instrumentType : undefined,
+        status: typeof issuance.status === "string" ? issuance.status : undefined,
+        expiresAt: typeof issuance.expiresAt === "string" ? issuance.expiresAt : null,
+      });
+      toast.success("Gift card applied.");
+    } catch (error) {
+      setAppliedGiftCardState(null);
+      const message = error instanceof ApiHttpError ? mapGiftCardApiError(error.message) : mapGiftCardApiError(
+        error instanceof Error ? error.message : "Gift card validation failed.",
+      );
+      toast.error(message);
+    } finally {
+      setGiftCardApplyLoading(false);
+    }
+  };
+
+  const clearAppliedGiftCard = () => {
+    setAppliedGiftCardState(null);
+    setGiftCardAmountInput("");
   };
 
   // Split bill helpers
@@ -905,9 +1016,13 @@ export default function POS() {
       const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
       const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method, checkoutMethods));
       const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method, checkoutMethods));
+      const giftCardSettlementIds = await redeemGiftCardForOrder(created.id);
       const paidOrder = immediatePayments.length > 0
         ? await addOrderPaymentsRemote(created.id, immediatePayments)
         : fresh;
+      if (immediatePayments.length > 0) {
+        await settleGiftCardAfterDirectPayment(created.id, giftCardSettlementIds);
+      }
       const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
       if (gatewayPayments.length > 0) {
         const gatewayTotal = gatewayPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -917,6 +1032,7 @@ export default function POS() {
           method: gatewayPayments.length === 1 ? gatewayPayments[0].method : "mixed",
           amount: gatewayTotal,
           splitPayments: gatewayPayments,
+          giftCardSettlementIds: giftCardSettlementIds.length > 0 ? giftCardSettlementIds : undefined,
         });
         setCurrentOrderId(created.id);
         setPendingGatewayPayments(gatewayPayments);
@@ -1083,6 +1199,9 @@ export default function POS() {
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       <ConnectivitySyncRibbon outletId={activeOutletId} />
+      <div className="px-4 py-1 border-b border-border/40 bg-card/30">
+        <PosSessionPanel outletId={activeOutletId} />
+      </div>
       <div className="flex flex-1 min-h-0">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5">
@@ -1220,11 +1339,59 @@ export default function POS() {
                 + Select member (optional)
               </button>
             )}
+            <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
+              <div className="flex items-center gap-1.5">
+                <Gift className="h-3.5 w-3.5 text-primary" />
+                <p className="text-[11px] font-semibold text-foreground">Gift card / store credit</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={giftCardCodeInput}
+                  onChange={(e) => setGiftCardCodeInput(e.target.value)}
+                  placeholder="Gift card code"
+                  className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
+                />
+                <input
+                  value={giftCardAmountInput}
+                  onChange={(e) => setGiftCardAmountInput(e.target.value)}
+                  placeholder="Amount (optional)"
+                  className="w-28 rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => void applyGiftCardRedemption()}
+                  disabled={giftCardApplyLoading || typeof activeOutletId !== "number"}
+                  className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium disabled:opacity-50"
+                >
+                  {giftCardApplyLoading ? "..." : "Apply"}
+                </button>
+              </div>
+              {appliedGiftCardState ? (
+                <div className="rounded-lg bg-primary/5 px-2 py-1.5 text-[11px] space-y-0.5">
+                  <p className="text-muted-foreground">
+                    Code: <span className="font-semibold text-foreground">{appliedGiftCardState.code}</span>
+                  </p>
+                  <p className="text-muted-foreground">
+                    Available: <span className="font-semibold text-foreground">{formatRp(appliedGiftCardState.availableBalance)}</span>
+                    {" • "}Applied: <span className="font-semibold text-primary">{formatRp(appliedGiftCardState.appliedAmount)}</span>
+                    {" • "}Remaining: <span className="font-semibold text-foreground">{formatRp(remainingAppliedGiftCardBalance)}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearAppliedGiftCard}
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    Remove gift card
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Enter a code to validate balance before checkout.</p>
+              )}
+            </div>
             {selectedMember && (
               <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
                 <p className="text-[11px] text-muted-foreground">
                   Points: <span className="font-semibold text-foreground">{availablePoints}</span>
-                  {" • "}Gift Card/Store Credit: <span className="font-semibold text-foreground">{formatRp(availableGiftCard)}</span>
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -1234,17 +1401,6 @@ export default function POS() {
                     className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
                   />
                   <button onClick={applyPointsRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
-                    Apply
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={giftCardInput}
-                    onChange={(e) => setGiftCardInput(e.target.value)}
-                    placeholder="Use gift card amount"
-                    className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
-                  />
-                  <button onClick={applyGiftCardRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
                     Apply
                   </button>
                 </div>
@@ -1424,7 +1580,10 @@ export default function POS() {
               <div className="flex justify-between text-primary font-medium"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
             )}
             {appliedGiftCard > 0 && (
-              <div className="flex justify-between text-primary font-medium"><span>Gift Card / Store Credit</span><span>-{formatRp(appliedGiftCard)}</span></div>
+              <div className="flex justify-between text-primary font-medium">
+                <span>Gift Card / Store Credit{appliedGiftCardState?.code ? ` (${appliedGiftCardState.code})` : ""}</span>
+                <span>-{formatRp(appliedGiftCard)}</span>
+              </div>
             )}
             <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
             <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50">
@@ -1611,7 +1770,9 @@ export default function POS() {
                   {paymentError && <p className="text-destructive">{paymentError}</p>}
                   <div className="flex gap-2">
                     <button onClick={() => void handleGatewayRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{gatewayRetryLabel(paymentTransaction.method)}</button>
-                    <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Reconcile</button>
+                    {showReconcile ? (
+                      <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Reconcile</button>
+                    ) : null}
                     <button onClick={() => void paymentExpire(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Expire</button>
                     {allowSandboxSimulation && (
                       <button onClick={() => void paymentSimulateSandboxPaid(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-amber-500/30 px-2 py-1 text-amber-700 dark:text-amber-300">
@@ -1650,6 +1811,7 @@ export default function POS() {
         onChangePaymentMethod={handleChangePaymentMethodFromQris}
         onRetry={() => void (paymentTransaction ? handleGatewayRetry(paymentTransaction.id) : Promise.resolve())}
         onReconcile={() => void (paymentTransaction ? paymentReconcile(paymentTransaction.id) : Promise.resolve())}
+        showReconcile={showReconcile}
         onExpire={() => void (paymentTransaction ? paymentExpire(paymentTransaction.id) : Promise.resolve())}
         showSandboxSimulate={allowSandboxSimulation}
         onSimulateSandboxPaid={() => void (paymentTransaction ? paymentSimulateSandboxPaid(paymentTransaction.id) : Promise.resolve())}

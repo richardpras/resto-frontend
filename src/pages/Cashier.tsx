@@ -48,6 +48,9 @@ import { usePaymentStore } from "@/stores/paymentStore";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
 import { QrisPaymentModal } from "@/components/payments/QrisPaymentModal";
 import { StaticQrisPaymentModal } from "@/components/payments/StaticQrisPaymentModal";
+import { useAuthStore } from "@/stores/authStore";
+import { canReconcilePayments } from "@/domain/permissionGates";
+import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
 
 const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -244,6 +247,8 @@ export default function Cashier() {
     String(import.meta.env.VITE_ENABLE_SANDBOX_PAYMENT_SIMULATOR ?? "").toLowerCase() === "true" ||
     import.meta.env.DEV;
   const [providerSimulating, setProviderSimulating] = useState(false);
+  const authUser = useAuthStore((s) => s.user);
+  const showReconcile = canReconcilePayments(authUser);
 
   const [orders, setOrders] = useState<CashierOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1008,6 +1013,7 @@ export default function Cashier() {
           Select an outlet in the header with a numeric id from <code className="text-xs">outlet_bridge</code> to load cashier queues for that outlet.
         </div>
       )}
+      <PosSessionPanel outletId={activeOutletId} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Cashier Payments</h1>
@@ -1301,14 +1307,16 @@ export default function Cashier() {
                     >
                       {gatewayRetryLabel(paymentTransaction.method)}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void paymentReconcile(paymentTransaction.id)}
-                      disabled={paymentIsSubmitting}
-                      className="rounded-lg border border-border px-2 py-1"
-                    >
-                      Reconcile
-                    </button>
+                    {showReconcile ? (
+                      <button
+                        type="button"
+                        onClick={() => void paymentReconcile(paymentTransaction.id)}
+                        disabled={paymentIsSubmitting}
+                        className="rounded-lg border border-border px-2 py-1"
+                      >
+                        Reconcile
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void paymentExpire(paymentTransaction.id)}
@@ -1359,6 +1367,7 @@ export default function Cashier() {
         }
         onRetry={() => void (paymentTransaction ? handleCashierGatewayRetry(paymentTransaction.id) : Promise.resolve())}
         onReconcile={() => void (paymentTransaction ? paymentReconcile(paymentTransaction.id) : Promise.resolve())}
+        showReconcile={showReconcile}
         onExpire={() => void (paymentTransaction ? paymentExpire(paymentTransaction.id) : Promise.resolve())}
         showSandboxSimulate={allowSandboxSimulation}
         onSimulateSandboxPaid={() => void (paymentTransaction ? paymentSimulateSandboxPaid(paymentTransaction.id) : Promise.resolve())}

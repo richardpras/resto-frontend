@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getPaymentTransactionIdFromSearchParams } from "@/domain/paymentAdapters";
 import { usePaymentStore } from "@/stores/paymentStore";
+import { canReconcilePayments } from "@/domain/permissionGates";
+import { useAuthStore } from "@/stores/authStore";
 import { PaymentStatusCardSkeleton } from "@/components/skeletons/payment/PaymentStatusCardSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
@@ -23,6 +25,8 @@ export default function PaymentStatus() {
   const reconcileTransaction = usePaymentStore((s) => s.reconcileTransaction);
   const expireTransaction = usePaymentStore((s) => s.expireTransaction);
   const stopPolling = usePaymentStore((s) => s.stopPolling);
+  const user = useAuthStore((s) => s.user);
+  const showReconcile = canReconcilePayments(user);
 
   useEffect(() => {
     if (!transactionId) return;
@@ -91,14 +95,16 @@ export default function PaymentStatus() {
                 >
                   Retry payment
                 </button>
-                <button
-                  type="button"
-                  className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
-                  onClick={() => void reconcileTransaction(transactionId)}
-                  disabled={isSubmitting || !transactionId}
-                >
-                  Reconcile
-                </button>
+                {showReconcile ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"
+                    onClick={() => void reconcileTransaction(transactionId)}
+                    disabled={isSubmitting || !transactionId}
+                  >
+                    Reconcile
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="rounded-lg border border-border px-2 py-1 disabled:opacity-50"

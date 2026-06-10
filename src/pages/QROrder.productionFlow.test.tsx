@@ -29,18 +29,10 @@ vi.mock("sonner", () => ({
 }));
 
 const mockGetApiAccessToken = vi.fn();
-vi.mock("@/lib/api-integration/client", () => ({
-  getApiAccessToken: () => mockGetApiAccessToken(),
-}));
-
 const mockListFloorTables = vi.fn();
-const mockResolveLegacyTableQr = vi.fn();
-const mockResolveTableQrPublicId = vi.fn();
-vi.mock("@/lib/api-integration/tableEndpoints", () => ({
-  listFloorTables: (...args: unknown[]) => mockListFloorTables(...args),
-  resolveLegacyTableQr: (...args: unknown[]) => mockResolveLegacyTableQr(...args),
-  resolveTableQrPublicId: (...args: unknown[]) => mockResolveTableQrPublicId(...args),
-}));
+const mockResolveLegacyTable = vi.fn();
+const mockResolveTableFromPublicId = vi.fn();
+const mockFetchTableOperationalStatus = vi.fn();
 
 describe("QROrder production flow guards", () => {
   beforeEach(() => {
@@ -49,21 +41,27 @@ describe("QROrder production flow guards", () => {
     mockToastError.mockReset();
     mockListFloorTables.mockReset();
     mockGetApiAccessToken.mockReset();
-    mockResolveLegacyTableQr.mockReset();
-    mockResolveTableQrPublicId.mockReset();
+    mockResolveLegacyTable.mockReset();
+    mockResolveTableFromPublicId.mockReset();
+    mockFetchTableOperationalStatus.mockReset();
     mockCreateRequest.mockResolvedValue({ id: "req-1", requestCode: "QRR-001" });
     mockCallCashier.mockResolvedValue({ id: "req-1", requestCode: "QRR-001" });
     mockGetApiAccessToken.mockReturnValue(null);
-    mockResolveLegacyTableQr.mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" });
-    mockResolveTableQrPublicId.mockRejectedValue(new Error("not-used"));
+    mockResolveLegacyTable.mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" });
+    mockResolveTableFromPublicId.mockRejectedValue(new Error("not-used"));
     mockListFloorTables.mockResolvedValue([
       { id: 7, tableOperationalStatus: "available" },
     ]);
+    mockFetchTableOperationalStatus.mockResolvedValue("available");
     mockUseQrOrderStore.mockImplementation((selector: (state: Record<string, unknown>) => unknown) =>
       selector({
         createRequest: mockCreateRequest,
         callCashier: mockCallCashier,
         isSubmitting: false,
+        hasApiAccess: () => Boolean(mockGetApiAccessToken()),
+        resolveTableFromPublicId: mockResolveTableFromPublicId,
+        resolveLegacyTable: mockResolveLegacyTable,
+        fetchTableOperationalStatus: mockFetchTableOperationalStatus,
       }),
     );
   });
@@ -86,9 +84,7 @@ describe("QROrder production flow guards", () => {
 
   it("blocks submission when projection marks table as reserved", async () => {
     mockGetApiAccessToken.mockReturnValue("token");
-    mockListFloorTables.mockResolvedValueOnce([
-      { id: 7, tableOperationalStatus: "reserved" },
-    ]);
+    mockFetchTableOperationalStatus.mockResolvedValue("reserved");
 
     render(<QROrder />);
     fireEvent.click(screen.getByRole("button", { name: /nasi goreng special/i }));

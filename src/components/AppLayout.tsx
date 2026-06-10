@@ -1,25 +1,17 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { Bell, Wifi, WifiOff, Lock } from "lucide-react";
+import { Wifi, WifiOff, Lock } from "lucide-react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { LockScreen } from "@/components/auth/LockScreen";
 import { IdleTracker } from "@/components/auth/ProtectedRoute";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useOutletStore } from "@/stores/outletStore";
-
-const notifications = [
-  { id: 1, title: "Low stock: Chicken", body: "Below minimum threshold", time: "5m" },
-  { id: 2, title: "New QR order", body: "Table 7 placed an order", time: "12m" },
-  { id: 3, title: "Payment received", body: "Order #ORD-147 paid via QRIS", time: "20m" },
-];
+import { BugReportButton } from "@/components/bug-report/BugReportButton";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [online] = useState(true);
@@ -114,30 +106,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <Lock className="h-4 w-4 text-muted-foreground" />
                 </button>
               ) : null}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
-                    <Bell className="h-4 w-4 text-muted-foreground" />
-                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {notifications.map((n) => (
-                    <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-0.5 py-2.5">
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-sm font-medium">{n.title}</span>
-                        <span className="text-[11px] text-muted-foreground">{n.time}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{n.body}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <NotificationBell />
             </div>
           </header>
           <main className="flex-1 overflow-auto">{children}</main>
+          <BugReportButton />
         </div>
       </div>
     </SidebarProvider>

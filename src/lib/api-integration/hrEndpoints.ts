@@ -2289,7 +2289,7 @@ export async function generatePayrollRun(payload: { period: string; outlet?: str
   });
 }
 
-export async function markPayrollRunPaid(runId: number | string): Promise<void> {
+export async function markLegacyPayrollRunPaid(runId: number | string): Promise<void> {
   await request<{ message: string; data: unknown }>(`/payroll/${runId}/pay`, {
     method: "POST",
   });

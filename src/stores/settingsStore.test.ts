@@ -7,6 +7,10 @@ const mockPostOutlet = vi.fn();
 const mockPatchOutlet = vi.fn();
 const mockDeleteOutletApi = vi.fn();
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => ({ settings: true }),
+}));
+
 vi.mock("@/lib/api-integration/client", () => ({
   getApiAccessToken: () => mockGetApiAccessToken(),
 }));

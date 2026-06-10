@@ -7,8 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/authStore";
+import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
 
 export default function TrialBalance() {
+  const user = useAuthStore((s) => s.user);
+  const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outlets);
   const trialBalanceRows = useAccountingStore((s) => s.trialBalanceRows);
   const trialBalanceSummary = useAccountingStore((s) => s.trialBalanceSummary);
@@ -20,11 +24,20 @@ export default function TrialBalance() {
   const [outlet, setOutlet] = useState("all");
 
   useEffect(() => {
+    if (!allowed) return;
     void fetchTrialBalanceReport({ from, to, outlet })
       .catch((e) => {
         toast.error(e instanceof Error ? e.message : "Failed to load trial balance report");
       });
-  }, [from, to, outlet, fetchTrialBalanceReport]);
+  }, [allowed, from, to, outlet, fetchTrialBalanceReport]);
+
+  if (!allowed) {
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+      </Card>
+    );
+  }
 
   const totals = computeTrialBalanceTotals(trialBalanceRows);
   const displaySummary = trialBalanceSummary ?? {

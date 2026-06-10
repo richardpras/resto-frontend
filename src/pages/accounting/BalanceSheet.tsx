@@ -8,8 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/authStore";
+import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
 
 export default function BalanceSheet() {
+  const user = useAuthStore((s) => s.user);
+  const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outlets);
   const bs = useAccountingStore((s) => s.balanceSheetReport);
   const fetchBalanceSheetReport = useAccountingStore((s) => s.fetchBalanceSheetReport);
@@ -17,11 +21,20 @@ export default function BalanceSheet() {
   const [outlet, setOutlet] = useState("all");
 
   useEffect(() => {
+    if (!allowed) return;
     void fetchBalanceSheetReport({ to: asOf, outlet })
       .catch((e) => {
         toast.error(e instanceof Error ? e.message : "Failed to load balance sheet report");
       });
-  }, [asOf, outlet, fetchBalanceSheetReport]);
+  }, [allowed, asOf, outlet, fetchBalanceSheetReport]);
+
+  if (!allowed) {
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+      </Card>
+    );
+  }
 
   const Section = ({ title, items, total }: { title: string; items: { account: { id: string; name: string }; amount: number }[]; total?: boolean }) => (
     <div>

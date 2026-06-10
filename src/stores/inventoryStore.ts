@@ -4,11 +4,14 @@ import {
   createInventoryItem as apiCreateInventoryItem,
   createStockMovement as apiCreateStockMovement,
   deleteInventoryItem as apiDeleteInventoryItem,
+  listInventoryValuations as apiListInventoryValuations,
   listInventoryWithMeta as apiListInventoryWithMeta,
   listStockMovementsWithMeta as apiListStockMovementsWithMeta,
+  recalculateInventoryValuations as apiRecalculateInventoryValuations,
   updateInventoryItem as apiUpdateInventoryItem,
   type InventoryListMeta,
   type InventoryPayload,
+  type InventoryValuationApi,
   type ListInventoryParams,
   type ListStockMovementsParams,
   type StockMovementPayload,
@@ -47,6 +50,7 @@ export type StockMovement = {
 export type Ingredient = InventoryItem;
 export type RecipeItem = { ingredientId: string; qty: number };
 export type Recipe = { menuItemId: string; ingredients: RecipeItem[] };
+export type { InventoryValuationApi };
 
 type InventoryStore = {
   ingredients: InventoryItem[];
@@ -63,6 +67,8 @@ type InventoryStore = {
   lastSyncAt: string | null;
   lastListParams: ListInventoryParams | null;
   lastMovementListParams: ListStockMovementsParams | null;
+  valuations: InventoryValuationApi[];
+  valuationsLoading: boolean;
   setBlockOnInsufficient: (v: boolean) => void;
   fetchInventory: (params?: ListInventoryParams) => Promise<InventoryItem[]>;
   revalidateInventory: () => Promise<InventoryItem[] | null>;
@@ -72,6 +78,8 @@ type InventoryStore = {
   updateItemRemote: (id: string, payload: Partial<InventoryPayload>) => Promise<InventoryItem>;
   deleteItemRemote: (id: string) => Promise<void>;
   createStockMovementRemote: (payload: StockMovementPayload) => Promise<StockMovement>;
+  fetchValuations: (outletId: number) => Promise<InventoryValuationApi[]>;
+  recalculateValuations: (outletId: number) => Promise<InventoryValuationApi[]>;
   addItem: (item: Omit<InventoryItem, "id">) => void;
   updateItem: (id: string, data: Partial<Omit<InventoryItem, "id">>) => void;
   removeItem: (id: string) => void;
@@ -116,6 +124,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   lastSyncAt: null,
   lastListParams: null,
   lastMovementListParams: null,
+  valuations: [],
+  valuationsLoading: false,
 
   setBlockOnInsufficient: (v) => set({ blockOnInsufficient: v }),
 
@@ -244,6 +254,40 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
     }
   },
 
+  fetchValuations: async (outletId) => {
+    if (!outletId || outletId < 1) {
+      set({ valuations: [], valuationsLoading: false });
+      return [];
+    }
+    set({ valuationsLoading: true, error: null });
+    try {
+      const rows = await apiListInventoryValuations({ outletId });
+      set({ valuations: rows });
+      return rows;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ valuationsLoading: false });
+    }
+  },
+
+  recalculateValuations: async (outletId) => {
+    if (!outletId || outletId < 1) return [];
+    set({ valuationsLoading: true, error: null });
+    try {
+      await apiRecalculateInventoryValuations({ outletId });
+      const rows = await apiListInventoryValuations({ outletId });
+      set({ valuations: rows });
+      return rows;
+    } catch (error) {
+      set({ error: mapApiError(error) });
+      throw error;
+    } finally {
+      set({ valuationsLoading: false });
+    }
+  },
+
   addItem: (item) =>
     set((s) => ({
       ingredients: [...s.ingredients, { ...item, id: `inv-${nextId++}` }],
@@ -318,5 +362,7 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       lastSyncAt: null,
       lastListParams: null,
       lastMovementListParams: null,
+      valuations: [],
+      valuationsLoading: false,
     }),
 }));

@@ -71,6 +71,30 @@ describe("payment endpoints", () => {
     expect(result.providerMetadataSnapshot).toEqual({ provider: "xendit" });
   });
 
+  it("includes gift card settlement ids in payment payload snapshot", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { id: "tx-gc", method: "qris", amount: 5000, status: "pending" },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createPaymentTransaction({
+      orderId: "order-gc",
+      outletId: 2,
+      method: "qris",
+      amount: 5000,
+      giftCardSettlementIds: [88, 91],
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(init.body);
+    expect(body.payloadSnapshot.giftCardSettlementIds).toEqual([88, 91]);
+  });
+
   it("reads, reconciles, and posts webhooks through finalized endpoints", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

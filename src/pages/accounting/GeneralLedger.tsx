@@ -8,8 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/authStore";
+import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
 
 export default function GeneralLedger() {
+  const user = useAuthStore((s) => s.user);
+  const allowed = canViewFinancialStatements(user);
   const accounts = useAccountingStore((s) => s.accounts);
   const outlets = useAccountingStore((s) => s.outlets);
   const ledger = useAccountingStore((s) => s.ledgerReport);
@@ -28,14 +32,22 @@ export default function GeneralLedger() {
   }, [accountId, accounts]);
 
   useEffect(() => {
-    if (!accountId) {
+    if (!allowed || !accountId) {
       return;
     }
     void fetchLedgerReport({ accountId, from, to, outlet })
       .catch((e) => {
         toast.error(e instanceof Error ? e.message : "Failed to load ledger report");
       });
-  }, [accountId, from, to, outlet, fetchLedgerReport]);
+  }, [allowed, accountId, from, to, outlet, fetchLedgerReport]);
+
+  if (!allowed) {
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+      </Card>
+    );
+  }
 
   const exportCSV = () => {
     const rows = [["Date", "Reference", "Description", "Debit", "Credit", "Balance"]];

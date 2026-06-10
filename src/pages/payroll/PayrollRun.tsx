@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calculator, DollarSign, FileText, Printer, Download, Lock, Unlock } from "lucide-react";
 import { usePayrollStore, formatIDR } from "@/stores/payrollStore";
-import { generatePayrollRun, getPayrollDetail, listPayrollTable, lockPayrollLine, markPayrollRunPaid, unlockPayrollLine, type PayrollDetail, type PayrollListRow } from "@/lib/api";
+import { generatePayrollRun, getPayrollDetail, listPayrollTable, lockPayrollLine, markLegacyPayrollRunPaid, unlockPayrollLine, type PayrollDetail, type PayrollListRow } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function PayrollRunPage() {
@@ -70,7 +70,7 @@ export default function PayrollRunPage() {
 
   const handleMarkPaid = async (runId: number) => {
     try {
-      await markPayrollRunPaid(runId);
+      await markLegacyPayrollRunPaid(runId);
       toast.success("Payroll marked as paid");
       void fetchRows();
     } catch (e) {

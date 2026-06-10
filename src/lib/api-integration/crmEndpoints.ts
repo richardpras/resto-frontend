@@ -107,23 +107,6 @@ export async function listLoyaltyRedemptions(params: {
   return { rows: response.data, meta: response.meta ?? {} };
 }
 
-export async function listGiftCards(params: {
-  outletId: number;
-  page?: number;
-  perPage?: number;
-  customerId?: string;
-}): Promise<CrmApiListResult<Record<string, unknown>>> {
-  const response = await apiRequest<ApiListEnvelope<Record<string, unknown>>>(
-    withQuery("/crm/gift-cards", {
-      outletId: params.outletId,
-      page: params.page,
-      perPage: params.perPage,
-      customerId: params.customerId,
-    }),
-  );
-  return { rows: response.data, meta: response.meta ?? {} };
-}
-
 export async function getCrmDashboardSnapshot(outletId: number): Promise<Record<string, unknown>> {
   const response = await apiRequest<ApiEnvelope<Record<string, unknown>>>(
     withQuery("/crm/dashboard", { outletId }),

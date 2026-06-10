@@ -77,6 +77,7 @@ type PaymentStore = {
       amount: number;
       allocations?: { orderItemId: string | number; qty: number; amount: number }[];
     }[];
+    giftCardSettlementIds?: number[];
   }) => Promise<PaymentTransaction>;
   pollTransactionStatus: (id: string, intervalMs?: number) => void;
   expireTransaction: (id?: string) => Promise<PaymentTransaction>;
@@ -89,6 +90,7 @@ type PaymentStore = {
         amount: number;
         allocations?: { orderItemId: string | number; qty: number; amount: number }[];
       }[];
+      giftCardSettlementIds?: number[];
     },
   ) => Promise<PaymentTransaction>;
   simulateSandboxPaid: (id?: string) => Promise<PaymentTransaction>;
@@ -330,6 +332,17 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
     if (!tx.orderId) throw new Error("Payment transaction is missing order context");
     const splitPayments =
       options?.splitPayments ?? splitPaymentsFromTransactionSnapshot(tx.payloadSnapshot);
+    const snapshotSettlementIds = Array.isArray(tx.payloadSnapshot?.giftCardSettlementIds)
+      ? tx.payloadSnapshot.giftCardSettlementIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const giftCardSettlementIds =
+      options?.giftCardSettlementIds && options.giftCardSettlementIds.length > 0
+        ? options.giftCardSettlementIds
+        : snapshotSettlementIds.length > 0
+          ? snapshotSettlementIds
+          : undefined;
     const updated = await get().createPaymentTransaction({
       orderId: tx.orderId,
       outletId: tx.outletId ?? undefined,
@@ -340,6 +353,7 @@ export const usePaymentStore = create<PaymentStore>((set, get) => ({
           ? tx.providerMetadataSnapshot.provider
           : undefined,
       splitPayments,
+      giftCardSettlementIds,
     });
     get().pollTransactionStatus(updated.id);
     return updated;

@@ -5,6 +5,10 @@ const mockListPointsLedger = vi.fn();
 const mockListLoyaltyRedemptions = vi.fn();
 const mockRedeemLoyaltyPoints = vi.fn();
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => ({ crm: true }),
+}));
+
 vi.mock("@/lib/api-integration/crmEndpoints", () => ({
   listLoyaltyTiers: (...args: unknown[]) => mockListLoyaltyTiers(...args),
   listPointsLedger: (...args: unknown[]) => mockListPointsLedger(...args),

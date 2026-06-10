@@ -138,6 +138,17 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Reconciliation Warnings</p>
             <p className="text-sm font-semibold">{metrics.reconciliationWarnings.length} warning(s)</p>
           </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><Cpu className="h-3 w-3" /> Hardware Bridge</p>
+            <p className="text-sm font-semibold">
+              Dead letters {metrics.hardware.deadLetters} • Stale {metrics.hardware.staleBridges}
+            </p>
+          </div>
+          <div className="rounded-xl border p-3">
+            <p className="text-xs text-muted-foreground">Offline Sync Failures</p>
+            <p className="text-2xl font-bold text-destructive">{metrics.offlineSync.failures}</p>
+            <p className="text-xs text-muted-foreground mt-1">Conflicts {metrics.offlineSync.conflicts}</p>
+          </div>
         </div>
         {metrics.reconciliationWarnings.length > 0 && (
           <div className="space-y-2">

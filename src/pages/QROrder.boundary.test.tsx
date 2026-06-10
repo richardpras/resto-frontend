@@ -20,12 +20,6 @@ vi.mock("@/stores/qrOrderStore", () => ({
   useQrOrderStore: (selector: (state: Record<string, unknown>) => unknown) => mockUseQrOrderStore(selector),
 }));
 
-vi.mock("@/lib/api-integration/tableEndpoints", () => ({
-  listFloorTables: vi.fn().mockResolvedValue([{ id: 7, tableOperationalStatus: "available" }]),
-  resolveLegacyTableQr: vi.fn().mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" }),
-  resolveTableQrPublicId: vi.fn(),
-}));
-
 describe("QROrder page store boundary", () => {
   beforeEach(() => {
     mockCreateRequest.mockReset();
@@ -34,6 +28,10 @@ describe("QROrder page store boundary", () => {
         createRequest: mockCreateRequest,
         callCashier: vi.fn(),
         isSubmitting: false,
+        hasApiAccess: () => false,
+        resolveTableFromPublicId: vi.fn(),
+        resolveLegacyTable: vi.fn().mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" }),
+        fetchTableOperationalStatus: vi.fn().mockResolvedValue("available"),
       }),
     );
   });

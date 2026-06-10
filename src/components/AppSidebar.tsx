@@ -1,22 +1,36 @@
 import {
   LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
   ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings, Store,
-  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase,
+  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase, LockKeyhole, Bell,
 } from "lucide-react";
+import { useEffect } from "react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, SidebarHeader, useSidebar,
 } from "@/components/ui/sidebar";
-import { useAuthStore, PERMISSIONS } from "@/stores/authStore";
+import { useAuthStore, PERMISSIONS, type AuthUser } from "@/stores/authStore";
+import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
+import { isPromotionsModuleEnabled } from "@/domain/featureFlags";
+import { useNotificationStore } from "@/stores/notificationStore";
+import { useOutletStore } from "@/stores/outletStore";
+import { Badge } from "@/components/ui/badge";
 
-type Item = { title: string; url: string; icon: any; perm?: string };
+type Item = {
+  title: string;
+  url: string;
+  icon: any;
+  perm?: string;
+  accessCheck?: (user: AuthUser | null, hasPermission: (perm: string) => boolean) => boolean;
+};
 
 const mainItems: Item[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Notification Center", url: "/notifications", icon: Bell },
   { title: "Menu Intelligence", url: "/dashboard/menu", icon: BarChart3, perm: PERMISSIONS.MENU_DASHBOARD },
   { title: "POS Cashier", url: "/pos", icon: ShoppingCart, perm: PERMISSIONS.POS },
   { title: "Open bills", url: "/cashier", icon: Banknote, perm: PERMISSIONS.POS },
+  { title: "Shift Close", url: "/shift-close", icon: LockKeyhole, perm: PERMISSIONS.FINANCE_SHIFT_CLOSE },
   { title: "Orders", url: "/orders", icon: ListOrdered, perm: PERMISSIONS.POS },
   { title: "Kitchen Display", url: "/kitchen", icon: ChefHat, perm: PERMISSIONS.KITCHEN },
   { title: "QR Orders", url: "/qr-orders", icon: QrCode, perm: PERMISSIONS.QR_ORDERS },
@@ -31,18 +45,22 @@ const managementItems: Item[] = [
   { title: "Inventory", url: "/inventory", icon: Package, perm: PERMISSIONS.INVENTORY },
   { title: "Suppliers", url: "/suppliers", icon: Truck, perm: PERMISSIONS.SUPPLIERS },
   { title: "Members", url: "/members", icon: UserCircle, perm: PERMISSIONS.MEMBERS },
+  { title: "Customers", url: "/customers", icon: UserCircle, perm: PERMISSIONS.CUSTOMERS },
+  { title: "Loyalty Dashboard", url: "/loyalty-dashboard", icon: Gift, perm: PERMISSIONS.LOYALTY_DASHBOARD },
   { title: "Loyalty Programs", url: "/loyalty-programs", icon: Gift, perm: PERMISSIONS.MEMBERS },
+  { title: "Gift Cards", url: "/gift-cards", icon: Gift, perm: PERMISSIONS.GIFT_CARDS },
   { title: "Purchases", url: "/purchases", icon: ClipboardList, perm: PERMISSIONS.PURCHASE },
   { title: "Promotions", url: "/promotions", icon: Megaphone, perm: PERMISSIONS.PROMOTIONS },
 ];
 
 const adminItems: Item[] = [
   { title: "Users & Roles", url: "/users", icon: UserCog, perm: PERMISSIONS.USERS },
-  { title: "Employees", url: "/employees", icon: Users, perm: PERMISSIONS.USERS },
+  { title: "Employees", url: "/employees", icon: Users, accessCheck: (user) => canViewEmployees(user) },
   { title: "Departments", url: "/departments", icon: Building2, perm: PERMISSIONS.USERS },
   { title: "Positions", url: "/positions", icon: Briefcase, perm: PERMISSIONS.USERS },
-  { title: "Payroll", url: "/payroll", icon: Users, perm: PERMISSIONS.PAYROLL },
+  { title: "Payroll", url: "/payroll", icon: Users, accessCheck: (user) => canAccessPayrollModule(user) },
   { title: "Accounting", url: "/accounting", icon: BookOpen, perm: PERMISSIONS.ACCOUNTING },
+  { title: "Executive Dashboard", url: "/executive-dashboard", icon: LayoutDashboard, perm: PERMISSIONS.REPORTS },
   { title: "Reports", url: "/reports", icon: BarChart3, perm: PERMISSIONS.REPORTS },
   { title: "Settings", url: "/settings", icon: Settings, perm: PERMISSIONS.SETTINGS },
 ];
@@ -51,8 +69,21 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, hasPermission, logout, lock } = useAuthStore();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const fetchUnreadCount = useNotificationStore((s) => s.fetchUnreadCount);
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
 
-  const filterItems = (items: Item[]) => items.filter((i) => !i.perm || hasPermission(i.perm));
+  useEffect(() => {
+    if (!user) return;
+    void fetchUnreadCount(activeOutletId);
+  }, [user, activeOutletId, fetchUnreadCount]);
+
+  const filterItems = (items: Item[]) =>
+    items.filter((i) => {
+      if (i.url === "/promotions" && !isPromotionsModuleEnabled()) return false;
+      if (i.accessCheck) return i.accessCheck(user, hasPermission);
+      return !i.perm || hasPermission(i.perm);
+    });
 
   const renderGroup = (label: string, items: Item[]) => {
     const visible = filterItems(items);
@@ -73,7 +104,16 @@ export function AppSidebar() {
                     activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                   >
                     <item.icon className="h-[18px] w-[18px] shrink-0" />
-                    {!collapsed && <span className="text-sm">{item.title}</span>}
+                    {!collapsed && (
+                      <span className="text-sm flex-1 flex items-center justify-between gap-2">
+                        {item.title}
+                        {item.url === "/notifications" && unreadCount > 0 ? (
+                          <Badge variant="destructive" className="h-5 min-w-5 px-1 text-[10px]">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </Badge>
+                        ) : null}
+                      </span>
+                    )}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

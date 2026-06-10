@@ -9,6 +9,7 @@ describe("POS + QR store-wired redemption flows", () => {
   it("wires POS loyalty redemption through loyalty store", () => {
     expect(posSource).toMatch(/useLoyaltyStore\(\(s\)\s*=>\s*s\.enqueueRedemption\)/);
     expect(posSource).toMatch(/applyPointsRedemption/);
+    expect(posSource).toMatch(/redeemGiftCardForOrder/);
     expect(posSource).toMatch(/Gift Card \/ Store Credit/);
   });
 

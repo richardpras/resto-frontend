@@ -11,16 +11,39 @@ import IntegrationSettings from "./settings/IntegrationSettings";
 import NumberingSettings from "./settings/NumberingSettings";
 import BankSettings from "./settings/BankSettings";
 import ReceiptSettings from "./settings/ReceiptsSettings";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { ApiHttpError, getApiAccessToken, setApiAccessToken } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
+const SETTINGS_TAB_KEYS = [
+  "merchant",
+  "outlets",
+  "taxes",
+  "printers",
+  "payments",
+  "system",
+  "integration",
+  "numbering",
+  "banks",
+  "receipt",
+] as const;
+
 export default function Settings() {
+  const [searchParams] = useSearchParams();
   const [syncing, setSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState("merchant");
+  const requestedTab = searchParams.get("tab");
+  const initialTab =
+    requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab) ? requestedTab : "merchant";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const loadTabData = async (tab: string, force = false) => {
     const sectionsByTab: Record<string, string[]> = {

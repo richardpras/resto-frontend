@@ -387,6 +387,20 @@ export async function openAccountingPeriod(periodId: string): Promise<Accounting
   return res.data;
 }
 
+export type HealthSeverity = "healthy" | "warning" | "high" | "critical";
+
+export type AccountingHealthPriorityItem = {
+  priority: HealthSeverity;
+  title: string;
+  message: string;
+  actionUrl: string;
+};
+
+export type AccountingFailureSourceGroup = {
+  sourceType: string;
+  count: number;
+};
+
 export type AccountingHealth = {
   failedPostings: number;
   pendingPostings: number;
@@ -396,10 +410,30 @@ export type AccountingHealth = {
   openPeriods: number;
   lockedPeriods: number;
   healthScore: number;
+  healthSeverity?: HealthSeverity;
+  postingFailuresSeverity?: HealthSeverity;
+  giftCardSeverity?: HealthSeverity;
+  inventorySeverity?: HealthSeverity;
+  payrollSeverity?: HealthSeverity;
+  procurementSeverity?: HealthSeverity;
+  failureAgingBuckets?: Record<string, number>;
+  topFailureSources?: AccountingFailureSourceGroup[];
+  priorityQueue?: AccountingHealthPriorityItem[];
+  giftCardVariance?: number;
+  giftCardReconciliationStatus?: string;
+  payrollVariance?: number;
+  procurementVariance?: number;
   inventoryValuationStatus?: string;
   inventoryGlBalance?: number;
   inventoryValuationBalance?: number;
   inventoryValuationDifference?: number;
+};
+
+export type AccountingHealthTrends = {
+  postingFailures: { date: string; count: number }[];
+  giftCardVariance: { date: string; variance: number }[];
+  inventoryVariance: { date: string; variance: number }[];
+  severityTrend: { date: string; severity: HealthSeverity }[];
 };
 
 export type AccountingSettings = {
@@ -420,11 +454,29 @@ export type AccountingPostingFailureRow = {
   journalNo?: string | null;
   createdAt?: string;
   resolvedAt?: string | null;
+  ageMinutes?: number;
+  ageHours?: number;
+  ageDays?: number;
+  agingBucket?: string;
 };
 
 export async function getAccountingHealth(params?: { outletId?: number }): Promise<AccountingHealth> {
   const q = params?.outletId ? `?outletId=${params.outletId}` : "";
   const res = await request<{ data: AccountingHealth }>(`/accounting/health${q}`);
+  return res.data;
+}
+
+export async function getAccountingHealthTrends(params: {
+  outletId?: number;
+  startDate?: string;
+  endDate?: string;
+}): Promise<AccountingHealthTrends> {
+  const search = new URLSearchParams();
+  if (params.outletId) search.set("outletId", String(params.outletId));
+  if (params.startDate) search.set("startDate", params.startDate);
+  if (params.endDate) search.set("endDate", params.endDate);
+  const suffix = search.toString() ? `?${search}` : "";
+  const res = await request<{ data: AccountingHealthTrends }>(`/accounting/health/trends${suffix}`);
   return res.data;
 }
 
@@ -459,5 +511,111 @@ export async function retryAccountingPostingFailure(id: string | number): Promis
   const res = await request<{ data: AccountingPostingFailureRow }>(`/accounting/posting-failures/${id}/retry`, {
     method: "POST",
   });
+  return res.data;
+}
+
+export type CashFlowReport = {
+  operating: Record<string, number>;
+  investing: Record<string, number>;
+  financing: Record<string, number>;
+  netCashChange: number;
+  period: string;
+  from: string;
+  to: string;
+};
+
+export async function getCashFlowReport(params?: {
+  from?: string;
+  to?: string;
+  outletId?: number;
+  tenantId?: number;
+  period?: "monthly" | "quarterly" | "yearly";
+}): Promise<CashFlowReport> {
+  const search = new URLSearchParams();
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  if (params?.outletId) search.set("outletId", String(params.outletId));
+  if (params?.tenantId) search.set("tenantId", String(params.tenantId));
+  if (params?.period) search.set("period", params.period);
+  const suffix = search.toString() ? `?${search}` : "";
+  const res = await request<{ data: CashFlowReport }>(`/accounting/reports/cash-flow${suffix}`);
+  return res.data;
+}
+
+export type ReconciliationSlice = {
+  subledger?: number;
+  glBalance?: number;
+  difference?: number;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export type ApReconciliationReport = {
+  subledger: number;
+  glBalance: number;
+  difference: number;
+  status: string;
+};
+
+export type ProcurementReconciliationReport = {
+  grni: ReconciliationSlice;
+  inventory: ReconciliationSlice;
+  accountsPayable: ReconciliationSlice;
+  postedGrnTotal: number;
+  postedInvoiceTotal: number;
+  postedPaymentTotal: number;
+  status: string;
+};
+
+export type PayrollReconciliationReport = {
+  subledger?: number;
+  glBalance?: number;
+  difference?: number;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export type GiftCardReconciliationReport = {
+  subledgerOutstanding: number;
+  glLiabilityBalance: number;
+  giftCardLiabilityBalance?: number;
+  storeCreditLiabilityBalance?: number;
+  giftCardLiabilityOutstanding?: number;
+  giftCardLiabilityGLBalance?: number;
+  giftCardLiabilityVariance?: number;
+  storeCreditLiabilityOutstanding?: number;
+  storeCreditLiabilityGLBalance?: number;
+  storeCreditLiabilityVariance?: number;
+  difference: number;
+  status: string;
+  issuedAmount: number;
+  redeemedAmount: number;
+  expiredAmount: number;
+  pendingSettlements: number;
+  settledSettlements: number;
+  pendingGlIssuances?: number;
+};
+
+export async function getApReconciliation(params?: { outletId?: number }): Promise<ApReconciliationReport> {
+  const suffix = params?.outletId ? `?outletId=${params.outletId}` : "";
+  const res = await request<{ data: ApReconciliationReport }>(`/accounting/reconciliation/ap${suffix}`);
+  return res.data;
+}
+
+export async function getProcurementReconciliation(params?: { outletId?: number }): Promise<ProcurementReconciliationReport> {
+  const suffix = params?.outletId ? `?outletId=${params.outletId}` : "";
+  const res = await request<{ data: ProcurementReconciliationReport }>(`/accounting/reconciliation/procurement${suffix}`);
+  return res.data;
+}
+
+export async function getPayrollReconciliation(params?: { outletId?: number }): Promise<PayrollReconciliationReport> {
+  const suffix = params?.outletId ? `?outletId=${params.outletId}` : "";
+  const res = await request<{ data: PayrollReconciliationReport }>(`/accounting/reconciliation/payroll${suffix}`);
+  return res.data;
+}
+
+export async function getGiftCardReconciliation(params?: { outletId?: number }): Promise<GiftCardReconciliationReport> {
+  const suffix = params?.outletId ? `?outletId=${params.outletId}` : "";
+  const res = await request<{ data: GiftCardReconciliationReport }>(`/accounting/reconciliation/gift-cards${suffix}`);
   return res.data;
 }

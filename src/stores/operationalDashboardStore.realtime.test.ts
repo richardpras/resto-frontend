@@ -132,4 +132,26 @@ describe("operationalDashboardStore realtime updates", () => {
     expect(state.metrics.activeSessions).toBe(7);
     expect(state.lastRealtimeSeq).toBe(8);
   });
+
+  it("maps backend-shaped realtime payload through monitoring mapper", () => {
+    useOperationalDashboardStore.getState().startRealtime();
+    expect(realtimeHandler).toBeTypeOf("function");
+
+    realtimeHandler?.({
+      channel: "operations",
+      seq: 3,
+      payload: {
+        pendingKitchenTickets: { count: 11 },
+        stalePayments: { count: 4 },
+        reconciliationFailures: { count: 2 },
+        hardwareBridge: { deadLetterCount: 5, staleBridges: 1 },
+      },
+    });
+
+    const state = useOperationalDashboardStore.getState();
+    expect(state.metrics.kitchen.queued).toBe(11);
+    expect(state.metrics.pendingPayments).toBe(4);
+    expect(state.metrics.reconciliationWarnings).toHaveLength(1);
+    expect(state.metrics.hardware.deadLetters).toBe(5);
+  });
 });

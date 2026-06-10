@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useCustomerStore } from "@/stores/customerStore";
+import { useOutletStore } from "@/stores/outletStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { GiftCardStoreCreditPanel } from "@/components/crm/GiftCardStoreCreditPanel";
 import { useCrmDashboardStore } from "@/stores/crmDashboardStore";
@@ -14,10 +15,23 @@ export default function CustomerProfile() {
   const pointsBalanceByCustomer = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
   const crmMetrics = useCrmDashboardStore((s) => s.metrics);
 
+  const fetchPointsLedger = useLoyaltyStore((s) => s.fetchPointsLedger);
+  const fetchRedemptions = useLoyaltyStore((s) => s.fetchRedemptions);
+  const refreshCrm = useCrmDashboardStore((s) => s.refreshForOutlet);
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+
   useEffect(() => {
     if (!customerId) return;
     void fetchCustomerById(customerId);
-  }, [customerId, fetchCustomerById]);
+    void fetchPointsLedger({ customerId, perPage: 100 });
+    void fetchRedemptions({ customerId, perPage: 50 });
+  }, [customerId, fetchCustomerById, fetchPointsLedger, fetchRedemptions]);
+
+  useEffect(() => {
+    if (typeof activeOutletId === "number" && activeOutletId >= 1) {
+      void refreshCrm(activeOutletId);
+    }
+  }, [activeOutletId, refreshCrm]);
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl">

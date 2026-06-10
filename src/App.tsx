@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Outlet } from "react-router-dom";
+import { PromotionsRouteElement } from "@/components/promotions/PromotionsRouteElement";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +11,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
 import { PERMISSIONS } from "@/stores/authStore";
+import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MenuIntelligenceDashboard = lazy(() => import("./pages/dashboard/MenuIntelligenceDashboard"));
@@ -37,8 +39,17 @@ const Departments = lazy(() => import("./pages/Departments"));
 const Positions = lazy(() => import("./pages/Positions"));
 const Accounting = lazy(() => import("./pages/Accounting"));
 const Settings = lazy(() => import("./pages/Settings"));
-const PlaceholderPage = lazy(() => import("./pages/PlaceholderPage"));
+const PaymentHealth = lazy(() => import("./pages/settings/PaymentHealth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Customers = lazy(() => import("./pages/Customers"));
+const CustomerProfile = lazy(() => import("./pages/CustomerProfile"));
+const LoyaltyDashboard = lazy(() => import("./pages/LoyaltyDashboard"));
+const PaymentStatus = lazy(() => import("./pages/PaymentStatus"));
+const ReportsHub = lazy(() => import("./pages/ReportsHub"));
+const ExecutiveSalesReport = lazy(() => import("./pages/ExecutiveSalesReport"));
+const ExecutiveDashboard = lazy(() => import("./pages/ExecutiveDashboard"));
+const GiftCards = lazy(() => import("./pages/GiftCards"));
+const ShiftClose = lazy(() => import("./pages/ShiftClose"));
 const Login = lazy(() => import("./pages/Login"));
 const EmployeeLogin = lazy(() => import("./pages/employee/Login"));
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
@@ -46,6 +57,11 @@ const EmployeeProfile = lazy(() => import("./pages/employee/Profile"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Members = lazy(() => import("./pages/Members"));
 const LoyaltyPrograms = lazy(() => import("./pages/LoyaltyPrograms"));
+const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
+const FailedJobsDashboard = lazy(() => import("./pages/system/FailedJobsDashboard"));
+const AuditCenterPage = lazy(() => import("./pages/system/AuditCenterPage"));
+const BugReportsPage = lazy(() => import("./pages/system/BugReportsPage"));
+const SystemHealthCenterPage = lazy(() => import("./pages/system/SystemHealthCenterPage"));
 
 const queryClient = new QueryClient();
 
@@ -53,6 +69,18 @@ const routeFallback = <RoutePageSkeleton />;
 
 const guarded = (perm: string | undefined, el: React.ReactElement) => (
   <ProtectedRoute permission={perm}>
+    <Suspense fallback={routeFallback}>{el}</Suspense>
+  </ProtectedRoute>
+);
+
+const payrollGuarded = (el: React.ReactElement) => (
+  <ProtectedRoute accessCheck={(user) => canAccessPayrollModule(user)}>
+    <Suspense fallback={routeFallback}>{el}</Suspense>
+  </ProtectedRoute>
+);
+
+const employeesGuarded = (el: React.ReactElement) => (
+  <ProtectedRoute accessCheck={(user) => canViewEmployees(user)}>
     <Suspense fallback={routeFallback}>{el}</Suspense>
   </ProtectedRoute>
 );
@@ -132,6 +160,14 @@ const App = () => (
               </Suspense>
             }
           />
+          <Route
+            path="/payment-status"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PaymentStatus />
+              </Suspense>
+            }
+          />
           <Route element={<AppShell />}>
             <Route
               path="/"
@@ -144,6 +180,16 @@ const App = () => (
               }
             />
             <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={routeFallback}>
+                    <NotificationCenter />
+                  </Suspense>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/dashboard/menu"
               element={guarded(PERMISSIONS.MENU_DASHBOARD, <MenuIntelligenceDashboard />)}
             />
@@ -151,6 +197,7 @@ const App = () => (
             <Route path="/kitchen" element={guarded(PERMISSIONS.KITCHEN, <Kitchen />)} />
             <Route path="/qr-orders" element={guarded(PERMISSIONS.QR_ORDERS, <QROrdersList />)} />
             <Route path="/cashier" element={guarded(PERMISSIONS.POS, <Cashier />)} />
+            <Route path="/shift-close" element={guarded(PERMISSIONS.FINANCE_SHIFT_CLOSE, <ShiftClose />)} />
             <Route path="/orders" element={guarded(PERMISSIONS.POS, <OrdersExplorer />)} />
             <Route path="/tables" element={guarded(PERMISSIONS.TABLES, <Tables />)} />
             <Route path="/reservations" element={guarded(PERMISSIONS.POS, <Reservations />)} />
@@ -166,23 +213,36 @@ const App = () => (
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
             <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
             <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />
+            <Route path="/customers" element={guarded(PERMISSIONS.CUSTOMERS, <Customers />)} />
+            <Route path="/customers/:customerId" element={guarded(PERMISSIONS.CUSTOMERS, <CustomerProfile />)} />
+            <Route path="/loyalty-dashboard" element={guarded(PERMISSIONS.LOYALTY_DASHBOARD, <LoyaltyDashboard />)} />
             <Route path="/loyalty-programs" element={guarded(PERMISSIONS.MEMBERS, <LoyaltyPrograms />)} />
+            <Route path="/gift-cards" element={guarded(PERMISSIONS.GIFT_CARDS, <GiftCards />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
-            <Route path="/promotions" element={guarded(PERMISSIONS.PROMOTIONS, <Promotions />)} />
-            <Route path="/payroll" element={guarded(PERMISSIONS.PAYROLL, <Payroll />)} />
+            <Route
+              path="/promotions"
+              element={
+                <PromotionsRouteElement>
+                  {guarded(PERMISSIONS.PROMOTIONS, <Promotions />)}
+                </PromotionsRouteElement>
+              }
+            />
+            <Route path="/payroll" element={payrollGuarded(<Payroll />)} />
             <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
-            <Route path="/employees" element={guarded(PERMISSIONS.USERS, <Employees />)} />
+            <Route path="/employees" element={employeesGuarded(<Employees />)} />
             <Route path="/departments" element={guarded(PERMISSIONS.USERS, <Departments />)} />
             <Route path="/positions" element={guarded(PERMISSIONS.USERS, <Positions />)} />
             <Route path="/accounting" element={guarded(PERMISSIONS.ACCOUNTING, <Accounting />)} />
-            <Route
-              path="/reports"
-              element={guarded(
-                PERMISSIONS.REPORTS,
-                <PlaceholderPage title="Reports" description="Sales, purchases, P&L, and employee performance reports." />,
-              )}
-            />
+            <Route path="/reports" element={guarded(PERMISSIONS.REPORTS, <ReportsHub />)} />
+            <Route path="/executive-dashboard" element={guarded(PERMISSIONS.REPORTS, <ExecutiveDashboard />)} />
+            <Route path="/reports/executive-sales" element={guarded(PERMISSIONS.REPORTS, <ExecutiveSalesReport />)} />
             <Route path="/settings" element={guarded(PERMISSIONS.SETTINGS, <Settings />)} />
+            <Route path="/settings/payments/health" element={guarded(PERMISSIONS.SETTINGS, <PaymentHealth />)} />
+            <Route path="/system/failed-jobs" element={guarded(PERMISSIONS.SETTINGS, <FailedJobsDashboard />)} />
+            <Route path="/system/audit" element={guarded(PERMISSIONS.SETTINGS, <AuditCenterPage />)} />
+            <Route path="/system/health" element={guarded(PERMISSIONS.SETTINGS, <SystemHealthCenterPage />)} />
+            <Route path="/system/bug-reports" element={guarded(PERMISSIONS.SETTINGS, <BugReportsPage />)} />
+            <Route path="/system/bug-reports/:id" element={guarded(PERMISSIONS.SETTINGS, <BugReportsPage />)} />
             <Route
               path="*"
               element={

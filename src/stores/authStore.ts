@@ -49,6 +49,18 @@ export const PERMISSIONS = {
   TABLES: "tables.view",
   QR_ORDERS: "qr_orders.view",
   TABLES_MANAGE: "tables.manage",
+  CUSTOMERS: "members.manage",
+  LOYALTY_DASHBOARD: "members.manage",
+  FINANCE_RECONCILE: "finance.reconcile",
+  FINANCE_SHIFT_CLOSE: "finance.shift_close",
+  /** HRM granular groups — never inflate into PAYROLL. */
+  EMPLOYEES: "employees.view",
+  ATTENDANCE: "attendance.view",
+  SHIFTS: "shift.view",
+  SCHEDULING: "schedule.view",
+  LEAVE: "leave.manage",
+  OVERTIME: "overtime.view",
+  GIFT_CARDS: "pos.use",
 } as const;
 
 const allPermValues = new Set<string>(Object.values(PERMISSIONS));
@@ -72,14 +84,20 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (has("dashboard.view", "dashboard.manage")) out.add(PERMISSIONS.MENU_DASHBOARD);
   if (has("foodcost.view", "pos.use", "recipe.view")) out.add(PERMISSIONS.COST_VIEW);
   if (has("menu.manage", "recipe.manage")) out.add(PERMISSIONS.COST_MANAGE);
-  if (has("users.view", "users.create", "users.assign_roles")) out.add(PERMISSIONS.USERS);
+  if (has("users.view", "users.create", "users.assign_roles", "users.manage")) out.add(PERMISSIONS.USERS);
   if (has("roles.view", "roles.create", "roles.assign_permissions")) out.add(PERMISSIONS.USERS);
   if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);
-  if (has("employees.view", "employees.manage", "users.manage")) out.add(PERMISSIONS.USERS);
+  if (has("employees.view", "employees.manage")) out.add(PERMISSIONS.EMPLOYEES);
+  if (has("attendance.view", "attendance.manage")) out.add(PERMISSIONS.ATTENDANCE);
+  if (has("shift.view", "shift.manage")) out.add(PERMISSIONS.SHIFTS);
+  if (has("schedule.view", "schedule.manage")) out.add(PERMISSIONS.SCHEDULING);
+  if (has("leave.manage")) out.add(PERMISSIONS.LEAVE);
+  if (has("overtime.view", "overtime.manage")) out.add(PERMISSIONS.OVERTIME);
   if (has("settings.view", "settings.update")) out.add(PERMISSIONS.SETTINGS);
-  if (codes.some((c) => c.startsWith("payroll."))) out.add(PERMISSIONS.PAYROLL);
-  if (has("shift.view", "shift.manage")) out.add(PERMISSIONS.PAYROLL);
-  if (has("schedule.view", "schedule.manage")) out.add(PERMISSIONS.PAYROLL);
+  if (codes.includes("payroll.manage")) out.add(PERMISSIONS.PAYROLL);
+  if (codes.includes("finance.reconcile")) out.add(PERMISSIONS.FINANCE_RECONCILE);
+  if (codes.includes("finance.shift_close")) out.add(PERMISSIONS.FINANCE_SHIFT_CLOSE);
+  if (codes.includes("pos.use")) out.add(PERMISSIONS.GIFT_CARDS);
   if (codes.includes("tables.manage")) {
     out.add(PERMISSIONS.TABLES);
     out.add(PERMISSIONS.TABLES_MANAGE);

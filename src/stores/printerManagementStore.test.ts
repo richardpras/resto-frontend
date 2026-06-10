@@ -8,6 +8,10 @@ const mockPatchPrinter = vi.fn();
 const mockPostPrinter = vi.fn();
 const mockGetApiAccessToken = vi.fn();
 
+vi.mock("@/domain/accessControl", () => ({
+  selectUserCapabilities: () => ({ printerAdmin: true }),
+}));
+
 vi.mock("@/lib/api-integration/client", () => ({
   getApiAccessToken: () => mockGetApiAccessToken(),
 }));

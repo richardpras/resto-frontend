@@ -1,3 +1,5 @@
+import { recordApiError } from "@/lib/diagnostics/diagnosticsBuffer";
+
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "http://127.0.0.1:8000/api/v1";
 
@@ -96,6 +98,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       typeof body === "object" && body !== null && "message" in body && typeof (body as { message: unknown }).message === "string"
         ? (body as { message: string }).message
         : `Request failed (${response.status})`;
+    recordApiError(path, response.status, message, body);
     throw new ApiHttpError(response.status, message, body);
   }
 

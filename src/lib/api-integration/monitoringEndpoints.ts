@@ -1,24 +1,19 @@
 import type {
   DashboardSummary,
   OfflineResilienceMetrics,
-  OperationalMetrics,
-  QrQueueMetrics,
 } from "@/domain/operationsTypes";
-import { EMPTY_OFFLINE_RESILIENCE, EMPTY_QR_QUEUE } from "@/domain/operationsTypes";
+import { EMPTY_OFFLINE_RESILIENCE } from "@/domain/operationsTypes";
+import type { MonitoringMetricsResponse, OperationalMetricsViewModel } from "@/domain/monitoring/types";
+import {
+  emptyOperationalMetricsViewModel,
+  mapMonitoringMetrics,
+  normalizeQrQueueMetrics,
+} from "@/lib/api-integration/monitoringMapper";
 import { apiRequest as request } from "./client";
 
-type MonitoringApiBody = { success?: boolean; data?: Record<string, unknown> };
+export { normalizeQrQueueMetrics };
 
-const EMPTY_METRICS: OperationalMetrics = {
-  kitchen: { queued: 0, inProgress: 0, ready: 0 },
-  pendingPayments: 0,
-  activeSessions: 0,
-  qrQueue: EMPTY_QR_QUEUE,
-  printerQueue: { pending: 0, failed: 0, printing: 0 },
-  reconciliationWarnings: [],
-  updatedAt: null,
-  offlineResilience: EMPTY_OFFLINE_RESILIENCE,
-};
+type MonitoringApiBody = { success?: boolean; data?: MonitoringMetricsResponse };
 
 function asFiniteNumber(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -29,21 +24,6 @@ function asFiniteNumber(value: unknown, fallback: number): number {
   return fallback;
 }
 
-/** Normalize API `qrQueue` (object or legacy total number) for UI / store. */
-export function normalizeQrQueueMetrics(raw: unknown): QrQueueMetrics {
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return { pendingConfirmation: raw, expired: 0 };
-  }
-  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-    const o = raw as Record<string, unknown>;
-    return {
-      pendingConfirmation: asFiniteNumber(o.pendingConfirmation ?? o.pending_confirmation, 0),
-      expired: asFiniteNumber(o.expired, 0),
-    };
-  }
-  return { ...EMPTY_QR_QUEUE };
-}
-
 function mergeOfflineResilience(raw: unknown): OfflineResilienceMetrics {
   if (typeof raw !== "object" || raw === null) {
     return EMPTY_OFFLINE_RESILIENCE;
@@ -51,28 +31,13 @@ function mergeOfflineResilience(raw: unknown): OfflineResilienceMetrics {
   return { ...EMPTY_OFFLINE_RESILIENCE, ...(raw as OfflineResilienceMetrics) };
 }
 
-export async function getOperationalMetrics(outletId?: number | null): Promise<OperationalMetrics> {
+export async function getOperationalMetrics(outletId?: number | null): Promise<OperationalMetricsViewModel> {
   const query = typeof outletId === "number" && outletId >= 1 ? `?outletId=${outletId}` : "";
   const res = await request<MonitoringApiBody>(`/monitoring/metrics${query}`);
-  const d = res.data ?? {};
-  return {
-    ...EMPTY_METRICS,
-    ...(d as Partial<OperationalMetrics>),
-    kitchen: {
-      ...EMPTY_METRICS.kitchen,
-      ...(((d.kitchen ?? {}) as Partial<OperationalMetrics["kitchen"]>) ?? {}),
-    },
-    printerQueue: {
-      ...EMPTY_METRICS.printerQueue,
-      ...(((d.printerQueue ?? {}) as Partial<OperationalMetrics["printerQueue"]>) ?? {}),
-    },
-    qrQueue: normalizeQrQueueMetrics((d as Record<string, unknown>).qrQueue),
-    reconciliationWarnings: Array.isArray(d.reconciliationWarnings)
-      ? (d.reconciliationWarnings as OperationalMetrics["reconciliationWarnings"])
-      : [],
-    offlineResilience: mergeOfflineResilience(d.offlineResilience),
-  };
+  return mapMonitoringMetrics(res.data ?? {});
 }
+
+export { emptyOperationalMetricsViewModel, mapMonitoringMetrics };
 
 export async function getDashboardSummary(outletId?: number | null): Promise<DashboardSummary> {
   const query = typeof outletId === "number" && outletId >= 1 ? `?outletId=${outletId}` : "";

@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
+import { useAuthStore, type AuthUser } from "@/stores/authStore";
 
 export function ProtectedRoute({
   children,
   permission,
+  accessCheck,
 }: {
   children: React.ReactNode;
   permission?: string;
+  /** Custom access predicate evaluated after login (e.g. multi-permission module gates). */
+  accessCheck?: (user: AuthUser, hasPermission: (perm: string) => boolean) => boolean;
 }) {
   const user = useAuthStore((s) => s.user);
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -16,7 +19,9 @@ export function ProtectedRoute({
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  if (permission && !hasPermission(permission)) {
+  if (accessCheck && !accessCheck(user, hasPermission)) {
+    return <Navigate to="/" replace />;
+  } else if (permission && !hasPermission(permission)) {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;

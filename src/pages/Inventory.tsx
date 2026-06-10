@@ -1,5 +1,6 @@
-import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Paperclip, Armchair } from "lucide-react";
+import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Paperclip, Armchair, Scale } from "lucide-react";
 import { useEffect, useState } from "react";
+import { StockMovementModal } from "@/components/inventory/StockMovementModal";
 import { useOutletStore } from "@/stores/outletStore";
 import { useInventoryStore, type InventoryItemType } from "@/stores/inventoryStore";
 import { Button } from "@/components/ui/button";
@@ -34,10 +35,17 @@ export default function Inventory() {
   const createItemRemote = useInventoryStore((s) => s.createItemRemote);
   const updateItemRemote = useInventoryStore((s) => s.updateItemRemote);
   const deleteItemRemote = useInventoryStore((s) => s.deleteItemRemote);
+  const valuations = useInventoryStore((s) => s.valuations);
+  const valuationsLoading = useInventoryStore((s) => s.valuationsLoading);
+  const fetchValuations = useInventoryStore((s) => s.fetchValuations);
+  const recalculateValuations = useInventoryStore((s) => s.recalculateValuations);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<InventoryItemType | "all">("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [wasteOpen, setWasteOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const createStockMovementRemote = useInventoryStore((s) => s.createStockMovementRemote);
 
   useEffect(() => {
     const load = async () => {
@@ -50,6 +58,9 @@ export default function Inventory() {
         await Promise.all([
           fetchInventory(scopedParams),
           fetchStockMovements(scopedParams),
+          typeof activeOutletId === "number" && activeOutletId >= 1
+            ? fetchValuations(activeOutletId)
+            : Promise.resolve(),
         ]);
       } catch (error) {
         toast({
@@ -60,7 +71,7 @@ export default function Inventory() {
     };
 
     void load();
-  }, [activeOutletId, fetchInventory, fetchStockMovements]);
+  }, [activeOutletId, fetchInventory, fetchStockMovements, fetchValuations]);
 
   const filtered = ingredients
     .filter((i) => filterType === "all" || i.type === filterType)
@@ -121,9 +132,36 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{ingredients.length} items tracked</p>
         </div>
-        <Button onClick={handleCreate} className="gap-2" disabled={!activeOutletId || activeOutletId < 1}>
-          <Plus className="h-4 w-4" /> Add Item
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setWasteOpen(true)} disabled={!activeOutletId || activeOutletId < 1}>
+            Record Waste
+          </Button>
+          <Button variant="outline" onClick={() => setAdjustOpen(true)} disabled={!activeOutletId || activeOutletId < 1}>
+            Adjustment
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!activeOutletId || activeOutletId < 1 || valuationsLoading}
+            onClick={() => void (async () => {
+              if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+              try {
+                await recalculateValuations(activeOutletId);
+                toast({ title: "Valuations recalculated" });
+              } catch (error) {
+                toast({
+                  title: "Recalculation failed",
+                  description: error instanceof Error ? error.message : "Unknown error",
+                });
+              }
+            })()}
+          >
+            <Scale className="h-4 w-4" /> Recalc Valuations
+          </Button>
+          <Button onClick={handleCreate} className="gap-2" disabled={!activeOutletId || activeOutletId < 1}>
+            <Plus className="h-4 w-4" /> Add Item
+          </Button>
+        </div>
       </div>
 
       {lowCount > 0 && (
@@ -271,6 +309,63 @@ export default function Inventory() {
           )}
         </div>
       </div>
+
+      <div className="mt-6">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-foreground">Inventory Valuations</h2>
+          <p className="text-xs text-muted-foreground">Moving-average valuation per ingredient (outlet scope)</p>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border/60">
+            <span className="col-span-4">Item</span>
+            <span className="col-span-2 text-right">Qty</span>
+            <span className="col-span-2 text-right">Avg Cost</span>
+            <span className="col-span-2 text-right">Value</span>
+            <span className="col-span-2">Updated</span>
+          </div>
+          {valuations.slice(0, 12).map((row) => (
+            <div key={`${row.ingredientId}-${row.outletId}`} className="grid grid-cols-12 gap-2 px-4 py-2 text-sm border-b border-border/40 last:border-b-0">
+              <span className="col-span-4 truncate">{row.ingredientName ?? row.ingredientId}</span>
+              <span className="col-span-2 text-right">{row.stockQuantity}</span>
+              <span className="col-span-2 text-right">Rp {row.averageCost.toLocaleString("id-ID")}</span>
+              <span className="col-span-2 text-right font-medium">Rp {row.inventoryValue.toLocaleString("id-ID")}</span>
+              <span className="col-span-2 text-muted-foreground text-xs">{row.lastUpdatedAt ? new Date(row.lastUpdatedAt).toLocaleDateString() : "—"}</span>
+            </div>
+          ))}
+          {valuations.length === 0 && (
+            <div className="px-4 py-6 text-sm text-muted-foreground">
+              {valuationsLoading ? "Loading valuations…" : "No valuation rows for this outlet."}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <StockMovementModal
+        open={wasteOpen}
+        onOpenChange={setWasteOpen}
+        type="waste"
+        items={ingredients}
+        onSubmit={async (payload) => {
+          await createStockMovementRemote(payload);
+          if (typeof activeOutletId === "number" && activeOutletId >= 1) {
+            await fetchStockMovements({ tenantId: TENANT_ID, outletId: activeOutletId, perPage: 200 });
+          }
+          toast({ title: "Waste recorded" });
+        }}
+      />
+      <StockMovementModal
+        open={adjustOpen}
+        onOpenChange={setAdjustOpen}
+        type="adjustment"
+        items={ingredients}
+        onSubmit={async (payload) => {
+          await createStockMovementRemote(payload);
+          if (typeof activeOutletId === "number" && activeOutletId >= 1) {
+            await fetchStockMovements({ tenantId: TENANT_ID, outletId: activeOutletId, perPage: 200 });
+          }
+          toast({ title: "Adjustment recorded" });
+        }}
+      />
 
       <InventoryFormModal
         open={formOpen}

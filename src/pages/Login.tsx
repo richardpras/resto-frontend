@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Store, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,20 +103,22 @@ export default function Login() {
           <Button type="submit" className="w-full h-11 rounded-xl text-base">Sign in</Button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-border/50">
-          <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">Demo accounts</p>
-          <div className="grid grid-cols-2 gap-2">
-            {DEMO_CREDENTIALS.map((c) => (
-              <button
-                key={c.email} onClick={() => quickFill(c.email, c.password)}
-                className="text-left p-2.5 rounded-xl border border-border/60 hover:border-primary hover:bg-muted/40 transition-colors"
-              >
-                <p className="text-xs font-semibold text-foreground">{c.role}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
-              </button>
-            ))}
+        {isDevelopmentEnvironment() ? (
+          <div className="mt-8 pt-6 border-t border-border/50">
+            <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">Demo accounts</p>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_CREDENTIALS.map((c) => (
+                <button
+                  key={c.email} onClick={() => quickFill(c.email, c.password)}
+                  className="text-left p-2.5 rounded-xl border border-border/60 hover:border-primary hover:bg-muted/40 transition-colors"
+                >
+                  <p className="text-xs font-semibold text-foreground">{c.role}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </motion.div>
     </div>
   );

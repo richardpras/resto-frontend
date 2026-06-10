@@ -103,6 +103,7 @@ export type CreatePaymentTransactionPayload = {
     amount: number;
     allocations?: { orderItemId: string | number; qty: number; amount: number }[];
   }[];
+  giftCardSettlementIds?: number[];
 };
 
 type PaymentRequestOptions = {
@@ -130,6 +131,9 @@ export async function createPaymentTransaction(
   }
   if (payload.providerMetadata && Object.keys(payload.providerMetadata).length > 0) {
     payloadSnapshot.clientProviderMetadata = payload.providerMetadata;
+  }
+  if (payload.giftCardSettlementIds && payload.giftCardSettlementIds.length > 0) {
+    payloadSnapshot.giftCardSettlementIds = payload.giftCardSettlementIds;
   }
 
   const body: Record<string, unknown> = {
@@ -216,6 +220,144 @@ export async function simulateViaXenditProvider(
 ): Promise<PaymentTransactionApi> {
   const response = await request<{ data: PaymentTransactionApi }>(`/payments/xendit/simulate-provider/${id}`, {
     method: "POST",
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
+}
+
+export type PaymentHealthSeverity = "healthy" | "warning" | "high" | "critical";
+
+export type PaymentHealthProviderRank = {
+  provider: string;
+  healthSeverity: PaymentHealthSeverity;
+  paymentSuccessRate: number;
+  webhookSuccessRate: number;
+  openIncidents: number;
+  reliabilityScore: number;
+};
+
+export type PaymentHealthReport = {
+  provider: string;
+  healthy: boolean;
+  status: "healthy" | "warning" | "critical";
+  mode: string;
+  stubAllowed: boolean;
+  wouldUseStub: boolean;
+  missing: string[];
+  warnings: string[];
+  healthSeverity?: PaymentHealthSeverity;
+  configurationSeverity?: PaymentHealthSeverity;
+  webhookSeverity?: PaymentHealthSeverity;
+  paymentSeverity?: PaymentHealthSeverity;
+  staleSeverity?: PaymentHealthSeverity;
+  paymentSuccessRate?: number;
+  webhookSuccessRate?: number;
+  stalePayments?: number;
+  failedWebhooks?: number;
+  averageProcessingTimeMs?: number;
+  openIncidents?: number;
+  reliabilityScore?: number;
+  providerRanking?: PaymentHealthProviderRank[];
+};
+
+export type PaymentHealthTrends = {
+  providerTrend: Array<{ date: string; provider: string; severity: string }>;
+  paymentSuccessTrend: Array<{ date: string; rate: number }>;
+  webhookTrend: Array<{ date: string; rate: number }>;
+  incidentTrend: Array<{ date: string; count: number }>;
+};
+
+export type PaymentReliabilityRow = {
+  provider: string;
+  uptimePercent: number;
+  incidents: number;
+  avgResolutionMinutes: number;
+  paymentSuccessRate: number;
+};
+
+export type PaymentIncidentRow = {
+  id: number;
+  outletId: number;
+  provider: string;
+  incidentType: string;
+  severity: string;
+  title: string;
+  description: string;
+  openedAt: string | null;
+  resolvedAt: string | null;
+  durationMinutes: number | null;
+  status: "open" | "resolved";
+};
+
+export async function getPaymentHealth(
+  params?: { provider?: string; outletId?: number },
+  options: PaymentRequestOptions = {},
+): Promise<PaymentHealthReport> {
+  const search = new URLSearchParams();
+  if (params?.provider) search.set("provider", params.provider);
+  if (typeof params?.outletId === "number") search.set("outletId", String(params.outletId));
+  const qs = search.toString();
+  const response = await request<{ data: PaymentHealthReport }>(`/payments/health${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
+}
+
+export async function getPaymentHealthTrends(
+  params: { outletId?: number; provider?: string; startDate: string; endDate: string },
+  options: PaymentRequestOptions = {},
+): Promise<PaymentHealthTrends> {
+  const search = new URLSearchParams();
+  if (typeof params.outletId === "number") search.set("outletId", String(params.outletId));
+  if (params.provider) search.set("provider", params.provider);
+  search.set("startDate", params.startDate);
+  search.set("endDate", params.endDate);
+  const response = await request<{ data: PaymentHealthTrends }>(`/payments/health/trends?${search}`, {
+    method: "GET",
+    signal: options.signal,
+    headers: options.headers,
+  });
+  return response.data;
+}
+
+export async function getPaymentReliabilityReport(
+  params?: { outletId?: number },
+  options: PaymentRequestOptions = {},
+): Promise<PaymentReliabilityRow[]> {
+  const search = new URLSearchParams();
+  if (typeof params?.outletId === "number") search.set("outletId", String(params.outletId));
+  const qs = search.toString();
+  const response = await request<{ data: PaymentReliabilityRow[] }>(
+    `/payments/health/reliability${qs ? `?${qs}` : ""}`,
+    { method: "GET", signal: options.signal, headers: options.headers },
+  );
+  return response.data;
+}
+
+export async function listPaymentIncidents(
+  params?: {
+    outletId?: number;
+    provider?: string;
+    severity?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+  },
+  options: PaymentRequestOptions = {},
+): Promise<PaymentIncidentRow[]> {
+  const search = new URLSearchParams();
+  if (typeof params?.outletId === "number") search.set("outletId", String(params.outletId));
+  if (params?.provider) search.set("provider", params.provider);
+  if (params?.severity) search.set("severity", params.severity);
+  if (params?.status) search.set("status", params.status);
+  if (params?.startDate) search.set("startDate", params.startDate);
+  if (params?.endDate) search.set("endDate", params.endDate);
+  const qs = search.toString();
+  const response = await request<{ data: PaymentIncidentRow[] }>(`/payments/incidents${qs ? `?${qs}` : ""}`, {
+    method: "GET",
     signal: options.signal,
     headers: options.headers,
   });

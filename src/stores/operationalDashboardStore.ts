@@ -1,24 +1,18 @@
 import { create } from "zustand";
-import { getOperationalMetrics, normalizeQrQueueMetrics } from "@/lib/api-integration/monitoringEndpoints";
+import { getOperationalMetrics } from "@/lib/api-integration/monitoringEndpoints";
+import {
+  emptyOperationalMetricsViewModel,
+  mergeOperationalMetrics,
+} from "@/lib/api-integration/monitoringMapper";
 import { getRealtimeAdapter, type RealtimeEnvelope, type RealtimeConnectionState } from "@/domain/realtimeAdapter";
-import type { OperationalMetrics } from "@/domain/operationsTypes";
-import { EMPTY_OFFLINE_RESILIENCE, EMPTY_QR_QUEUE } from "@/domain/operationsTypes";
+import type { OperationalMetricsViewModel } from "@/domain/monitoring/types";
 import { selectUserCapabilities } from "@/domain/accessControl";
 import { ApiHttpError } from "@/lib/api-integration/client";
 
-const EMPTY_METRICS: OperationalMetrics = {
-  kitchen: { queued: 0, inProgress: 0, ready: 0 },
-  pendingPayments: 0,
-  activeSessions: 0,
-  qrQueue: EMPTY_QR_QUEUE,
-  printerQueue: { pending: 0, failed: 0, printing: 0 },
-  reconciliationWarnings: [],
-  updatedAt: null,
-  offlineResilience: EMPTY_OFFLINE_RESILIENCE,
-};
+const EMPTY_METRICS: OperationalMetricsViewModel = emptyOperationalMetricsViewModel();
 
 type OperationalDashboardStore = {
-  metrics: OperationalMetrics;
+  metrics: OperationalMetricsViewModel;
   isLoading: boolean;
   initialLoading: boolean;
   switchingOutlet: boolean;
@@ -142,29 +136,12 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
     const unsubscribe = adapter.subscribe({
       channel: "operations",
       onEvent: (event) => {
-        const payload = (event.payload ?? event.data) as Partial<OperationalMetrics> | undefined;
+        const payload = event.payload ?? event.data;
         if (!payload) return;
         const incomingSeq = extractRealtimeSeq(event);
         if (incomingSeq > 0 && incomingSeq <= get().lastRealtimeSeq) return;
         set((state) => ({
-          metrics: {
-            ...state.metrics,
-            ...payload,
-            kitchen: { ...state.metrics.kitchen, ...(payload.kitchen ?? {}) },
-            printerQueue: { ...state.metrics.printerQueue, ...(payload.printerQueue ?? {}) },
-            qrQueue:
-              payload.qrQueue !== undefined
-                ? normalizeQrQueueMetrics(payload.qrQueue)
-                : state.metrics.qrQueue,
-            reconciliationWarnings: payload.reconciliationWarnings ?? state.metrics.reconciliationWarnings,
-            offlineResilience: payload.offlineResilience
-              ? {
-                  ...(state.metrics.offlineResilience ?? EMPTY_OFFLINE_RESILIENCE),
-                  ...payload.offlineResilience,
-                }
-              : state.metrics.offlineResilience,
-            updatedAt: payload.updatedAt ?? new Date().toISOString(),
-          },
+          metrics: mergeOperationalMetrics(state.metrics, payload),
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : state.lastRealtimeSeq,
           lastSyncAt: new Date().toISOString(),
         }));

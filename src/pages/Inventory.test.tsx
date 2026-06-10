@@ -5,6 +5,7 @@ import Inventory from "./Inventory";
 
 const mockFetchInventory = vi.fn();
 const mockFetchStockMovements = vi.fn();
+const mockFetchValuations = vi.fn();
 const mockCreateItemRemote = vi.fn();
 const mockUpdateItemRemote = vi.fn();
 const mockDeleteItemRemote = vi.fn();
@@ -28,8 +29,13 @@ const storeState = {
     },
   ],
   isLoading: false,
+  valuations: [],
+  valuationsLoading: false,
   fetchInventory: mockFetchInventory,
   fetchStockMovements: mockFetchStockMovements,
+  fetchValuations: mockFetchValuations,
+  recalculateValuations: vi.fn(),
+  createStockMovementRemote: vi.fn(),
   createItemRemote: mockCreateItemRemote,
   updateItemRemote: mockUpdateItemRemote,
   deleteItemRemote: mockDeleteItemRemote,
@@ -57,6 +63,8 @@ describe("Inventory page store orchestration", () => {
     activeOutletId = 2;
     mockFetchInventory.mockReset();
     mockFetchStockMovements.mockReset();
+    mockFetchValuations.mockReset();
+    mockFetchValuations.mockResolvedValue([]);
     mockCreateItemRemote.mockReset();
     mockUpdateItemRemote.mockReset();
     mockDeleteItemRemote.mockReset();

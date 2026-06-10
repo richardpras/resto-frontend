@@ -2,8 +2,15 @@ import { create } from "zustand";
 import {
   ApiHttpError,
   createObservabilityHeaders,
+  getApiAccessToken,
   type RequestObservabilityMetadata,
 } from "@/lib/api-integration/client";
+import {
+  listFloorTables,
+  resolveLegacyTableQr,
+  resolveTableQrPublicId,
+  type QrResolvedTableApi,
+} from "@/lib/api-integration/tableEndpoints";
 import {
   callQrOrderCashier as apiCallQrOrderCashier,
   confirmQrOrder as apiConfirmQrOrder,
@@ -119,6 +126,14 @@ function normalizeRealtimePayload(payload: Record<string, unknown>): Partial<QrO
   return normalized;
 }
 
+export type QrTableOperationalStatus =
+  | "unknown"
+  | "available"
+  | "occupied"
+  | "reserved"
+  | "cleaning"
+  | "disabled";
+
 type QrOrderStore = {
   requests: QrOrderRequest[];
   isLoading: boolean;
@@ -155,6 +170,10 @@ type QrOrderStore = {
   stopRealtime: () => void;
   startPolling: (params: ListQrOrdersParams, intervalMs?: number) => void;
   stopPolling: () => void;
+  hasApiAccess: () => boolean;
+  resolveTableFromPublicId: (qrPublicId: string) => Promise<QrResolvedTableApi>;
+  resolveLegacyTable: (outletId: number, tableId: number) => Promise<QrResolvedTableApi>;
+  fetchTableOperationalStatus: (outletId: number, tableId: number) => Promise<QrTableOperationalStatus>;
   resetAsync: () => void;
 };
 
@@ -469,6 +488,24 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       activeRequestId: get().activeRequestId + 1,
       lastRequestMeta: null,
     });
+  },
+
+  hasApiAccess: () => Boolean(getApiAccessToken()),
+
+  resolveTableFromPublicId: (qrPublicId) => resolveTableQrPublicId(qrPublicId),
+
+  resolveLegacyTable: (outletId, tableId) => resolveLegacyTableQr(outletId, tableId),
+
+  fetchTableOperationalStatus: async (outletId, tableId) => {
+    if (!getApiAccessToken() || outletId < 1 || tableId < 1) return "unknown";
+    try {
+      const tables = await listFloorTables(outletId);
+      const table = tables.find((row) => row.id === tableId);
+      if (!table) return "disabled";
+      return table.tableOperationalStatus;
+    } catch {
+      return "unknown";
+    }
   },
 
   resetAsync: () => {
