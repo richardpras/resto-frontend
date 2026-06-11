@@ -71,6 +71,12 @@ export async function logout(): Promise<{ message: string }> {
   });
 }
 
+export async function refreshAuthSession(): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/refresh", {
+    method: "POST",
+  });
+}
+
 export async function me(): Promise<MeResponse> {
   const res = await request<ItemEnvelope<MeResponse>>("/auth/me");
   return res.data;

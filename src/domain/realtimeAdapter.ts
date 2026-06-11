@@ -409,12 +409,26 @@ export function kitchenRealtimePayloadToApiTicket(
   const createdAt = str("createdAt", "created_at");
   const updatedAt = str("updatedAt", "updated_at");
 
+  const stationRaw = payload.station;
+  const station =
+    stationRaw && typeof stationRaw === "object" && !Array.isArray(stationRaw)
+      ? {
+          id:
+            typeof (stationRaw as Record<string, unknown>).id === "number"
+              ? ((stationRaw as Record<string, unknown>).id as number)
+              : null,
+          code: String((stationRaw as Record<string, unknown>).code ?? ""),
+          name: String((stationRaw as Record<string, unknown>).name ?? (stationRaw as Record<string, unknown>).code ?? ""),
+        }
+      : null;
+
   return {
     id,
     outletId: outletRaw,
     orderId,
     ticketNo: ticketNoRaw,
     status: statusRaw as import("@/lib/api-integration/kitchenEndpoints").KitchenTicketStatus,
+    station: station && station.code !== "" ? station : null,
     orderNumber: str("orderNumber", "order_number") ?? str("orderCode", "order_code") ?? undefined,
     orderCode: str("orderCode", "order_code") ?? undefined,
     tableNumber: str("tableNumber", "table_number") ?? undefined,

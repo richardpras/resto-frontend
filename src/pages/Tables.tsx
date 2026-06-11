@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, QrCode, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
@@ -11,10 +11,15 @@ import {
   enableTableQr,
   generateTableQr,
   listFloorTables,
+  fetchTableQrImageBlob,
   rotateTableQr,
   updateFloorTable,
   type FloorTableApi,
 } from "@/lib/api-integration/tableEndpoints";
+import { QrPreviewModal } from "@/components/tables/QrPreviewModal";
+import { BulkQrPrintDialog } from "@/components/tables/BulkQrPrintDialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { useAuthStore, PERMISSIONS } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
@@ -38,6 +43,18 @@ const statusConfig = {
   cleaning: { label: "Cleaning", color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20", dot: "bg-amber-500" },
   disabled: { label: "Disabled", color: "bg-muted text-muted-foreground border-border/40", dot: "bg-muted-foreground/50" },
 };
+
+function qrStatusLabel(status?: FloorTableApi["qrStatus"]): string {
+  if (status === "ready") return "Ready";
+  if (status === "invalid_url") return "Invalid URL";
+  return "Missing URL";
+}
+
+function qrStatusClass(status?: FloorTableApi["qrStatus"]): string {
+  if (status === "ready") return "text-success font-medium";
+  if (status === "invalid_url") return "text-destructive font-medium";
+  return "text-amber-600 dark:text-amber-400 font-medium";
+}
 
 function linkedOrderForTable(tableIdStr: string, orders: Order[]) {
   return (
@@ -63,11 +80,21 @@ export default function Tables() {
   const [formCapacity, setFormCapacity] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [previewTable, setPreviewTable] = useState<FloorTableApi | null>(null);
+  const [bulkPrintOpen, setBulkPrintOpen] = useState(false);
+  const outlets = useSettingsStore((s) => s.outlets);
+  const activeOutletName = outlets.find((o) => o.id === activeOutletId)?.name ?? null;
 
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const authed = Boolean(getApiAccessToken());
 
   useReservationTableProjectionSync();
+
+  useEffect(() => {
+    void useSettingsStore.getState().ensureSectionsLoaded(["outlets"]);
+  }, []);
 
   const { data: masterRows = [], isLoading } = useQuery({
     queryKey: ["tables-master", activeOutletId ?? 0],
@@ -192,6 +219,46 @@ export default function Tables() {
     }
   };
 
+  const toggleSelected = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? [...new Set([...prev, id])] : prev.filter((x) => x !== id)));
+  };
+
+  const printTableQr = async (row: FloorTableApi) => {
+    if (row.qrStatus !== "ready") {
+      toast.error("QR is not ready. Generate QR and configure Customer App URL in Settings.");
+      return;
+    }
+    try {
+      const blob = await fetchTableQrImageBlob(row.id);
+      const imageUrl = URL.createObjectURL(blob);
+      const printWindow = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
+      if (!printWindow) {
+        URL.revokeObjectURL(imageUrl);
+        toast.error("Pop-up blocked. Allow pop-ups to print QR.");
+        return;
+      }
+      printWindow.document.write(`
+        <html><head><title>Print QR ${row.name}</title>
+        <style>body{font-family:sans-serif;padding:16px;} @media print { body { margin: 0; } }</style>
+        </head><body>
+        <div style="text-align:center;border:1px solid #ccc;border-radius:8px;padding:16px;max-width:320px;margin:0 auto;">
+          <div style="font-weight:700;font-size:14px;">Restaurant</div>
+          <div style="font-size:12px;color:#555;margin-bottom:8px;">${activeOutletName ?? "Outlet"}</div>
+          <div style="font-size:22px;font-weight:800;margin-bottom:12px;">${row.name}</div>
+          <img src="${imageUrl}" alt="QR" style="width:180px;height:180px;object-fit:contain;" />
+          <div style="font-size:12px;margin-top:12px;">Scan to order from your table</div>
+          <div style="font-size:10px;color:#666;margin-top:8px;word-break:break-all;">${row.qrUrl ?? ""}</div>
+        </div>
+        <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
+        </body></html>
+      `);
+      printWindow.document.close();
+      setTimeout(() => URL.revokeObjectURL(imageUrl), 60_000);
+    } catch {
+      toast.error("Failed to print QR.");
+    }
+  };
+
   const onToggleQr = async (row: FloorTableApi, enabled: boolean) => {
     try {
       if (enabled) await enableTableQr(row.id);
@@ -232,9 +299,34 @@ export default function Tables() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {canManage && (
-            <Button type="button" size="sm" onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-1" /> Add table
-            </Button>
+            <>
+              <Button type="button" size="sm" onClick={openCreate}>
+                <Plus className="h-4 w-4 mr-1" /> Add table
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectMode ? "secondary" : "outline"}
+                onClick={() => {
+                  setSelectMode((v) => !v);
+                  setSelectedIds([]);
+                }}
+              >
+                {selectMode ? "Cancel select" : "Select tables"}
+              </Button>
+              {selectMode ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={selectedIds.length === 0}
+                  onClick={() => setBulkPrintOpen(true)}
+                >
+                  <Printer className="h-4 w-4 mr-1" />
+                  Print selected QR ({selectedIds.length})
+                </Button>
+              ) : null}
+            </>
           )}
           {(Object.entries(statusConfig) as [keyof typeof statusConfig, typeof statusConfig[keyof typeof statusConfig]][]).map(([key, cfg]) => (
             <span key={key} className={`px-3 py-1.5 rounded-xl text-xs font-medium border ${cfg.color}`}>
@@ -300,6 +392,13 @@ export default function Tables() {
               >
                 <span className="font-bold text-sm text-foreground truncate">{table.name}</span>
                 <div className="flex items-center gap-1 shrink-0">
+                  {selectMode && canManage ? (
+                    <Checkbox
+                      checked={selectedIds.includes(table.id)}
+                      onCheckedChange={(v) => toggleSelected(table.id, v === true)}
+                      aria-label={`Select ${table.name}`}
+                    />
+                  ) : null}
                   <span className={`h-2.5 w-2.5 rounded-full ${inactive ? "bg-muted-foreground/40" : cfg.dot}`} />
                   {canManage && (
                     <>
@@ -338,10 +437,14 @@ export default function Tables() {
 
                 <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">QR Status</span>
+                    <span className="text-muted-foreground">QR</span>
                     <span className={table.qrEnabled ? "text-success font-medium" : "text-muted-foreground"}>
                       {table.qrEnabled ? "Enabled" : "Disabled"}
                     </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">QR Status</span>
+                    <span className={qrStatusClass(table.qrStatus)}>{qrStatusLabel(table.qrStatus)}</span>
                   </div>
                   <div className="text-[11px] text-muted-foreground break-all">
                     {table.qrUrl ?? "No QR URL generated"}
@@ -365,16 +468,15 @@ export default function Tables() {
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void copyQrUrl(table)}>
                       Copy URL
                     </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => setPreviewTable(table)}>
+                      <QrCode className="h-3 w-3 mr-1" />
+                      Preview QR
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void printTableQr(table)}>
+                      <Printer className="h-3 w-3 mr-1" />
+                      Print QR
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-full text-[11px]"
-                    onClick={() => toast.message("Print QR will be wired to print module in next phase.")}
-                  >
-                    Prepare Print QR
-                  </Button>
                 </div>
 
                 {linkedOrder && (
@@ -416,6 +518,28 @@ export default function Tables() {
       {!isLoading && masterRows.length === 0 && (
         <p className="text-sm text-muted-foreground text-center mt-12">No tables defined for this outlet. Add one above.</p>
       )}
+
+      <QrPreviewModal
+        open={previewTable !== null}
+        table={previewTable}
+        outletName={activeOutletName}
+        onOpenChange={(open) => {
+          if (!open) setPreviewTable(null);
+        }}
+        onRegenerate={(table) => {
+          void onRotateQr(table);
+          setPreviewTable(null);
+        }}
+      />
+
+      {outletReady ? (
+        <BulkQrPrintDialog
+          open={bulkPrintOpen}
+          outletId={activeOutletId!}
+          tables={masterRows.filter((t) => selectedIds.includes(t.id))}
+          onOpenChange={setBulkPrintOpen}
+        />
+      ) : null}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

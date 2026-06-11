@@ -12,6 +12,8 @@ export * from "./kitchenEndpoints";
 export * from "./qrOrderEndpoints";
 export * from "./monitoringEndpoints";
 export * from "./printerManagementEndpoints";
+export * from "./printerRouteEndpoints";
+export * from "./productionStationEndpoints";
 export * from "./terminalEndpoints";
 export * from "./terminalSyncEndpoints";
 export * from "./receiptDocumentEndpoints";

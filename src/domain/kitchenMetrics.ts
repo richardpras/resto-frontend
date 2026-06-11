@@ -1,5 +1,6 @@
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
-import { elapsedMinutesSince, ticketElapsedReferenceDate } from "@/domain/kitchenWorkflow";
+import { KDS_MAX_ELAPSED_MINUTES, sanitizeElapsedMinutes } from "@/domain/kdsUrgency";
+import { ticketElapsedReferenceDate } from "@/domain/kitchenWorkflow";
 
 export type KitchenDayMetrics = {
   completedToday: number;
@@ -28,7 +29,8 @@ export function computeKitchenDayMetrics(tickets: KitchenTicket[], nowMs: number
     .map((ticket) => {
       if (!ticket.startedAt || !ticket.readyAt) return null;
       const minutes = Math.round((ticket.readyAt.getTime() - ticket.startedAt.getTime()) / 60000);
-      return minutes >= 0 ? minutes : null;
+      const safe = sanitizeElapsedMinutes(minutes);
+      return safe;
     })
     .filter((value): value is number => value !== null);
 
@@ -38,7 +40,13 @@ export function computeKitchenDayMetrics(tickets: KitchenTicket[], nowMs: number
       : null;
 
   const waitingTickets = tickets.filter((ticket) => ticket.status === "queued" || ticket.status === "in_progress");
-  const waitingMinutes = waitingTickets.map((ticket) => elapsedMinutesSince(ticketElapsedReferenceDate(ticket), nowMs));
+  const waitingMinutes = waitingTickets
+    .map((ticket) => {
+      const ref = ticketElapsedReferenceDate(ticket);
+      const rawMinutes = Math.floor((nowMs - ref.getTime()) / 60000);
+      return sanitizeElapsedMinutes(rawMinutes);
+    })
+    .filter((value): value is number => value !== null);
   const longestWaitingMinutes = waitingMinutes.length > 0 ? Math.max(...waitingMinutes) : null;
 
   return {
@@ -49,6 +57,9 @@ export function computeKitchenDayMetrics(tickets: KitchenTicket[], nowMs: number
 }
 
 export function formatKitchenMetricValue(value: number | null, suffix = ""): string {
-  if (value === null) return "—";
-  return `${value}${suffix}`;
+  if (value === null) return "--";
+  const safe = sanitizeElapsedMinutes(value);
+  if (safe === null) return "--";
+  if (safe > KDS_MAX_ELAPSED_MINUTES) return "--";
+  return `${safe}${suffix}`;
 }

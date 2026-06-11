@@ -72,6 +72,18 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        kds: {
+          bg: "hsl(var(--kds-bg))",
+          fg: "hsl(var(--kds-fg))",
+          muted: "hsl(var(--kds-muted))",
+          "muted-fg": "hsl(var(--kds-muted-fg))",
+          card: "hsl(var(--kds-card))",
+          "card-border": "hsl(var(--kds-card-border))",
+          column: "hsl(var(--kds-column))",
+          "column-header": "hsl(var(--kds-column-header))",
+          accent: "hsl(var(--kds-accent))",
+          "accent-fg": "hsl(var(--kds-accent-fg))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

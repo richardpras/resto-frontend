@@ -7,6 +7,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchSystemSettings } from "@/lib/api-integration/settingsDomainEndpoints";
+import { SoundAlertSettings } from "@/components/sound/SoundAlertSettings";
+import CustomerAppUrlSettings from "./CustomerAppUrlSettings";
 
 export default function SystemSettings() {
   const system = useSettingsStore((s) => s.system);
@@ -70,6 +72,10 @@ export default function SystemSettings() {
           <Row k="enableQROrdering" label="QR Ordering" desc="Allow customers to scan and order from their device." />
         </CardContent>
       </Card>
+
+      <SoundAlertSettings />
+
+      <CustomerAppUrlSettings />
 
       <Card>
         <CardHeader>

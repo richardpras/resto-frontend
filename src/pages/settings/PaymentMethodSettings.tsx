@@ -49,8 +49,13 @@ export default function PaymentMethodSettings() {
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="font-semibold">Payment Methods</h2>
+        <div className="flex flex-wrap justify-between items-start gap-3">
+          <div>
+            <h2 className="font-semibold">Master Payment Methods</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage global payment methods available for outlet configuration and POS checkout.
+            </p>
+          </div>
           <Button onClick={() => { setForm({ ...empty, id: newId() }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Method</Button>
         </div>
         <Table>

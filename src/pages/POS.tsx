@@ -63,6 +63,7 @@ import {
   isManualQrisCheckoutMethod,
 } from "@/features/pos/paymentMethodCapabilities";
 import { findCheckoutMethod, useOutletCheckoutMethods } from "@/features/pos/useOutletCheckoutMethods";
+import { PaymentMethodTileGrid } from "@/components/pos/PaymentMethodTileGrid";
 import {
   canReuseCheckoutOrder,
   gatewayRetryLabel,
@@ -1691,7 +1692,7 @@ export default function POS() {
               setShowPayment(false);
             }}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-6 w-full max-w-md pos-shadow-md">
+              onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">Payment</h3>
                 <button onClick={() => { setShowQrisModal(false); setShowPayment(false); }} className="p-1 rounded-lg hover:bg-muted"><X className="h-5 w-5 text-muted-foreground" /></button>
@@ -1703,18 +1704,13 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                {checkoutTiles.map(({ method, icon: Icon }) => (
-                  <button
-                    key={method.paymentMethodCode}
-                    onClick={() => handleSelectPaymentMethod(method.paymentMethodCode)}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${selectedCheckoutCode === method.paymentMethodCode ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/30 hover:bg-primary/5"}`}
-                  >
-                    <Icon className="h-6 w-6 text-primary" />
-                    <span className="text-sm font-medium text-foreground">{method.label}</span>
-                  </button>
-                ))}
-              </div>
+              <PaymentMethodTileGrid
+                className="mb-6"
+                tiles={checkoutTiles}
+                selectedCode={selectedCheckoutCode}
+                onSelect={handleSelectPaymentMethod}
+                disabled={submitting || paymentIsSubmitting}
+              />
               <button onClick={initSplitBill}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
                 <SplitSquareHorizontal className="h-4 w-4" /> Split Bill
@@ -2003,19 +1999,19 @@ export default function POS() {
                               <p className="text-sm font-semibold text-foreground mb-3">
                                 Pay for {person.label}: {formatRp(person.totalDue)}
                               </p>
-                              <div className="grid grid-cols-4 gap-2 mb-3">
-                                {checkoutTiles.map(({ method, icon: Icon }) => (
-                                  <button
-                                    key={method.paymentMethodCode}
-                                    type="button"
-                                    onClick={() => setSplitPayMethod(method.label)}
-                                    className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border text-xs transition-all ${splitPayMethod === method.label ? "border-primary bg-primary/5" : "border-border"}`}
-                                  >
-                                    <Icon className="h-4 w-4 text-primary" />
-                                    {method.label}
-                                  </button>
-                                ))}
-                              </div>
+                              <PaymentMethodTileGrid
+                                className="mb-3"
+                                variant="compact"
+                                tiles={checkoutTiles}
+                                selectedCode={
+                                  checkoutTiles.find((t) => t.method.label === splitPayMethod)?.method
+                                    .paymentMethodCode ?? null
+                                }
+                                onSelect={(code) => {
+                                  const tile = checkoutTiles.find((t) => t.method.paymentMethodCode === code);
+                                  setSplitPayMethod(tile?.method.label ?? null);
+                                }}
+                              />
                               <div className="flex gap-2">
                                 <button
                                   type="button"

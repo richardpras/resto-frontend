@@ -77,4 +77,133 @@
   .pos-shadow-md {
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.03);
   }
+
+  /* Thin overlay-style scrollbar (iOS-like) for dark sidebar and themed panels */
+  .scrollbar-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--sidebar-foreground) / 0.28) transparent;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--sidebar-foreground) / 0.22);
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-sidebar:hover::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--sidebar-foreground) / 0.38);
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-thumb:active {
+    background-color: hsl(var(--sidebar-foreground) / 0.48);
+  }
+
+  .scrollbar-sidebar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Kitchen Display System — dedicated high-contrast operational theme */
+  .kds-display {
+    --kds-bg: 222 28% 7%;
+    --kds-fg: 210 25% 96%;
+    --kds-muted: 222 20% 14%;
+    --kds-muted-fg: 215 14% 68%;
+    --kds-card: 222 22% 11%;
+    --kds-card-border: 220 16% 22%;
+    --kds-column: 222 24% 9%;
+    --kds-column-header: 222 22% 12%;
+    --kds-accent: 142 65% 42%;
+    --kds-accent-fg: 0 0% 100%;
+    @apply bg-kds-bg text-kds-fg;
+  }
+
+  .kds-display .kds-column-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--kds-muted-fg) / 0.35) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ticket cards must keep natural height; column scrolls instead of squashing */
+  .kds-display .kds-column-scroll [data-testid="kitchen-ticket-card"] {
+    flex-shrink: 0;
+  }
+
+  .kds-display .kds-column-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .kds-display .kds-column-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--kds-muted-fg) / 0.35);
+    border-radius: 9999px;
+  }
+
+  @keyframes kds-ticket-flash {
+    0% {
+      box-shadow: 0 0 0 3px hsl(48 96% 53% / 0.85);
+    }
+    100% {
+      box-shadow: 0 0 0 0 hsl(48 96% 53% / 0);
+    }
+  }
+
+  .kds-display .kds-ticket-flash {
+    animation: kds-ticket-flash 1.2s ease-out;
+  }
+
+  /* KDS kiosk — hide admin shell chrome (sidebar, header, prompts) */
+  html[data-kds-kiosk="true"] [data-app-chrome] {
+    display: none !important;
+  }
+
+  html[data-kds-kiosk="true"] body.kds-kiosk-active {
+    overflow: hidden;
+  }
+
+  .kds-display:fullscreen {
+    width: 100%;
+    height: 100%;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .kds-display[data-kds-fullscreen="true"] .kds-board-region {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .kds-display[data-kds-fullscreen="true"] .kds-board-fullscreen {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  .kds-display[data-kds-fullscreen="true"] [data-testid^="kitchen-column-"] {
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .kds-display [data-testid="kitchen-connection-status"] {
+    @apply bg-kds-card border-kds-card-border text-kds-fg text-sm;
+  }
 }

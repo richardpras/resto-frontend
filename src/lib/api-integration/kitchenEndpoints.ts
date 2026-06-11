@@ -15,6 +15,12 @@ type ApiListResponse<T> = {
 
 export type KitchenTicketStatus = "queued" | "in_progress" | "ready" | "served" | "cancelled";
 
+export type KitchenTicketStationApi = {
+  id: number | null;
+  code: string;
+  name: string;
+};
+
 export type KitchenTicketItemApi = {
   id: string | number;
   orderItemId: string | number;
@@ -24,6 +30,7 @@ export type KitchenTicketItemApi = {
   status: string;
   recoveryStatus?: string | null;
   recoveryReason?: string | null;
+  station?: KitchenTicketStationApi | null;
 };
 
 export type KitchenTicketApi = {
@@ -36,6 +43,7 @@ export type KitchenTicketApi = {
   serviceMode?: string | null;
   ticketNo: string;
   status: KitchenTicketStatus;
+  station?: KitchenTicketStationApi | null;
   queuedAt?: string | null;
   startedAt?: string | null;
   readyAt?: string | null;
@@ -55,6 +63,8 @@ export type KitchenTicketListMeta = {
 export type ListKitchenTicketsParams = {
   outletId?: number;
   status?: KitchenTicketStatus;
+  stationId?: number;
+  stationCode?: string;
   perPage?: number;
 };
 
@@ -77,6 +87,12 @@ export async function listKitchenTickets(
     query.set("outletId", String(params.outletId));
   }
   if (params?.status) query.set("status", params.status);
+  if (typeof params?.stationId === "number" && params.stationId > 0) {
+    query.set("stationId", String(params.stationId));
+  }
+  if (typeof params?.stationCode === "string" && params.stationCode.trim() !== "") {
+    query.set("stationCode", params.stationCode.trim());
+  }
   if (typeof params?.perPage === "number") query.set("perPage", String(params.perPage));
 
   const suffix = query.toString() ? `?${query.toString()}` : "";

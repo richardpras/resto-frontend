@@ -7,6 +7,7 @@ import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { MenuProductionStationField } from "@/components/menu/MenuProductionStationField";
 import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import type { Outlet } from "@/domain/settingsDomainTypes";
@@ -28,6 +29,7 @@ type EditMenuForm = {
   category: string;
   price: string;
   emoji: string;
+  productionStationId: number | null;
   menuItemOutlets: MenuItemOutletForm[];
 };
 
@@ -89,10 +91,10 @@ export default function MenuManagement() {
   const [editingRecipe, setEditingRecipe] = useState<EditingRecipe | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItemApi | null>(null);
   const [creatingItem, setCreatingItem] = useState(false);
-  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", menuItemOutlets: [] });
+  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: [] });
   const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingEdit, setSavingEdit] = useState(false);
-  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", menuItemOutlets: [] });
+  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: [] });
   const [createErrors, setCreateErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingCreate, setSavingCreate] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -229,16 +231,17 @@ export default function MenuManagement() {
     setEditingItem(item);
     setEditForm({
       name: sourceItem.name,
-      category: sourceItem.category,
+      category: sourceItem.category ?? "",
       price: String(sourceItem.price),
-      emoji: sourceItem.emoji,
+      emoji: sourceItem.emoji ?? "",
+      productionStationId: sourceItem.productionStation?.id ?? null,
       menuItemOutlets: toOutletForms(outlets, sourceItem.menuItemOutlets),
     });
     setEditErrors({});
   };
 
   const openCreateModal = () => {
-    setCreateForm({ name: "", category: "", price: "", emoji: "", menuItemOutlets: toOutletForms(outlets) });
+    setCreateForm({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: toOutletForms(outlets) });
     setCreateErrors({});
     setCreatingItem(true);
   };
@@ -294,6 +297,7 @@ export default function MenuManagement() {
         category: editForm.category.trim(),
         price: Number(editForm.price),
         emoji: editForm.emoji.trim(),
+        productionStationId: editForm.productionStationId,
         menuItemOutlets: editForm.menuItemOutlets.map((row) => ({
           outletId: row.outletId,
           isActive: row.isActive,
@@ -320,11 +324,14 @@ export default function MenuManagement() {
     try {
       setSavingCreate(true);
       const created = await createMenuItem({
+        tenantId: TENANT_ID,
+        outletId: typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : undefined,
         name: createForm.name.trim(),
         category: createForm.category.trim(),
         price: Number(createForm.price),
         emoji: createForm.emoji.trim(),
         available: true,
+        productionStationId: createForm.productionStationId ?? undefined,
         recipes: [],
         menuItemOutlets: createForm.menuItemOutlets.map((row) => ({
           outletId: row.outletId,
@@ -620,6 +627,12 @@ export default function MenuManagement() {
                   {editErrors.category && <p className="text-xs text-destructive">{editErrors.category}</p>}
                 </div>
 
+                <MenuProductionStationField
+                  outletId={typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null}
+                  value={editForm.productionStationId}
+                  onChange={(productionStationId) => setEditForm((prev) => ({ ...prev, productionStationId }))}
+                />
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-foreground">Price</label>
@@ -794,6 +807,12 @@ export default function MenuManagement() {
                   />
                   {createErrors.category && <p className="text-xs text-destructive">{createErrors.category}</p>}
                 </div>
+
+                <MenuProductionStationField
+                  outletId={typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null}
+                  value={createForm.productionStationId}
+                  onChange={(productionStationId) => setCreateForm((prev) => ({ ...prev, productionStationId }))}
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

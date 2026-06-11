@@ -4,6 +4,12 @@ import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, Bell } fr
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
 import { toast } from "sonner";
+import { getApiErrorCode } from "@/lib/apiErrorCode";
+import {
+  qrScanErrorMessage,
+  qrScanErrorTitle,
+  type QrScanErrorCode,
+} from "@/components/tables/qrScanErrors";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string; description: string;
@@ -64,6 +70,8 @@ export default function QROrder() {
   const tableIdParam = Number(searchParams.get("tableId"));
   const [resolvedOutletId, setResolvedOutletId] = useState<number | null>(null);
   const [resolvedTableId, setResolvedTableId] = useState<number | null>(null);
+  const [resolveError, setResolveError] = useState<QrScanErrorCode | null>(null);
+  const [resolvingQr, setResolvingQr] = useState(false);
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
   const [orderCode, setOrderCode] = useState(() => "QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
@@ -73,15 +81,30 @@ export default function QROrder() {
   useEffect(() => {
     let active = true;
     if (typeof qrPublicId !== "string" || qrPublicId.trim() === "") return;
+    setResolvingQr(true);
+    setResolveError(null);
     void resolveTableFromPublicId(qrPublicId)
       .then((resolved) => {
         if (!active) return;
         setResolvedOutletId(resolved.outletId);
         setResolvedTableId(resolved.tableId);
         setTableNumber(resolved.tableName);
+        setResolveError(null);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
+        const code = getApiErrorCode(error);
+        if (
+          code === "qr_not_found" ||
+          code === "qr_expired" ||
+          code === "table_unavailable" ||
+          code === "outlet_unavailable"
+        ) {
+          setResolveError(code);
+        }
+      })
+      .finally(() => {
+        if (active) setResolvingQr(false);
       });
     return () => {
       active = false;
@@ -90,22 +113,38 @@ export default function QROrder() {
 
   useEffect(() => {
     let active = true;
+    if (typeof qrPublicId === "string" && qrPublicId.trim() !== "") return;
     if (resolvedOutletId !== null || resolvedTableId !== null) return;
     if (!Number.isFinite(outletIdParam) || outletIdParam < 1 || !Number.isFinite(tableIdParam) || tableIdParam < 1) return;
+    setResolvingQr(true);
+    setResolveError(null);
     void resolveLegacyTable(outletIdParam, tableIdParam)
       .then((resolved) => {
         if (!active) return;
         setResolvedOutletId(resolved.outletId);
         setResolvedTableId(resolved.tableId);
         setTableNumber(resolved.tableName);
+        setResolveError(null);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
+        const code = getApiErrorCode(error);
+        if (
+          code === "qr_not_found" ||
+          code === "qr_expired" ||
+          code === "table_unavailable" ||
+          code === "outlet_unavailable"
+        ) {
+          setResolveError(code);
+        }
+      })
+      .finally(() => {
+        if (active) setResolvingQr(false);
       });
     return () => {
       active = false;
     };
-  }, [outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId, resolveLegacyTable]);
+  }, [qrPublicId, outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId, resolveLegacyTable]);
 
   const filtered = useMemo(() =>
     menuItems.filter(
@@ -198,6 +237,28 @@ export default function QROrder() {
       toast.error(error instanceof Error ? error.message : "Could not call cashier");
     }
   };
+
+  if (resolveError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-error">
+        <div className="bg-card rounded-3xl p-8 max-w-sm w-full text-center shadow-lg border border-border">
+          <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <h1 className="text-xl font-bold text-foreground mb-2">{qrScanErrorTitle(resolveError)}</h1>
+          <p className="text-sm text-muted-foreground">{qrScanErrorMessage(resolveError)}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (resolvingQr && activeOutletId === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-loading">
+        <p className="text-sm text-muted-foreground">Opening table menu…</p>
+      </div>
+    );
+  }
 
   // --- SUCCESS VIEW ---
   if (view === "success") {

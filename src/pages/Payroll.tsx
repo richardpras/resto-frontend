@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Clock, Timer, Wallet, CalendarDays, Banknote, Calculator, CalendarRange, CalendarClock, ClipboardCheck, Palmtree, FileStack, Cog, HandCoins, FileText, Shield, Receipt, ReceiptText, LockKeyhole, BookOpen } from "lucide-react";
 import Preparation from "./payroll/Preparation";
@@ -61,10 +62,18 @@ const TAB_REFRESH_KEYS: Partial<Record<PayrollTabKey, "employees" | "attendance"
 };
 
 export default function Payroll() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const visibleTabs = useMemo(() => getVisiblePayrollTabs(user), [user]);
   const payrollFull = useMemo(() => hasPayrollFullAccess(user), [user]);
-  const defaultTab = visibleTabs[0] ?? "attendance";
+  const requestedTab = searchParams.get("tab") as PayrollTabKey | null;
+  const resolvedDefaultTab =
+    requestedTab && visibleTabs.includes(requestedTab) ? requestedTab : (visibleTabs[0] ?? "attendance");
+  const [activeTab, setActiveTab] = useState<PayrollTabKey>(resolvedDefaultTab);
+
+  useEffect(() => {
+    setActiveTab(resolvedDefaultTab);
+  }, [resolvedDefaultTab]);
   const refreshEmployeesFromApi = usePayrollStore((s) => s.refreshEmployeesFromApi);
   const refreshAttendanceFromApi = usePayrollStore((s) => s.refreshAttendanceFromApi);
   const refreshPayrollsFromApi = usePayrollStore((s) => s.refreshPayrollsFromApi);
@@ -123,7 +132,18 @@ export default function Payroll() {
       {visibleTabs.length === 0 ? (
         <p className="text-sm text-muted-foreground">You do not have permission to view any payroll modules.</p>
       ) : (
-      <Tabs defaultValue={defaultTab}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          const next = value as PayrollTabKey;
+          setActiveTab(next);
+          setSearchParams((prev) => {
+            const p = new URLSearchParams(prev);
+            p.set("tab", next);
+            return p;
+          });
+        }}
+      >
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
           {visibleTabs.map((key) => {
             const meta = TAB_META[key];

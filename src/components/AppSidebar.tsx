@@ -1,69 +1,15 @@
-import {
-  LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
-  ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings, Store,
-  LogOut, Lock, Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase, LockKeyhole, Bell,
-} from "lucide-react";
-import { useEffect } from "react";
-import { NavLink } from "@/components/NavLink";
+import { Store, LogOut, Lock } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, SidebarHeader, useSidebar,
+  SidebarFooter, SidebarHeader, useSidebar,
 } from "@/components/ui/sidebar";
-import { useAuthStore, PERMISSIONS, type AuthUser } from "@/stores/authStore";
-import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
-import { isPromotionsModuleEnabled } from "@/domain/featureFlags";
+import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOutletStore } from "@/stores/outletStore";
-import { Badge } from "@/components/ui/badge";
-
-type Item = {
-  title: string;
-  url: string;
-  icon: any;
-  perm?: string;
-  accessCheck?: (user: AuthUser | null, hasPermission: (perm: string) => boolean) => boolean;
-};
-
-const mainItems: Item[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Notification Center", url: "/notifications", icon: Bell },
-  { title: "Menu Intelligence", url: "/dashboard/menu", icon: BarChart3, perm: PERMISSIONS.MENU_DASHBOARD },
-  { title: "POS Cashier", url: "/pos", icon: ShoppingCart, perm: PERMISSIONS.POS },
-  { title: "Open bills", url: "/cashier", icon: Banknote, perm: PERMISSIONS.POS },
-  { title: "Shift Close", url: "/shift-close", icon: LockKeyhole, perm: PERMISSIONS.FINANCE_SHIFT_CLOSE },
-  { title: "Orders", url: "/orders", icon: ListOrdered, perm: PERMISSIONS.POS },
-  { title: "Kitchen Display", url: "/kitchen", icon: ChefHat, perm: PERMISSIONS.KITCHEN },
-  { title: "QR Orders", url: "/qr-orders", icon: QrCode, perm: PERMISSIONS.QR_ORDERS },
-  { title: "Tables", url: "/tables", icon: Armchair, perm: PERMISSIONS.TABLES },
-  { title: "Reservations", url: "/reservations", icon: CalendarDays, perm: PERMISSIONS.POS },
-  { title: "Reservation Ops", url: "/reservations/operations", icon: BarChart3, perm: PERMISSIONS.POS },
-];
-
-const managementItems: Item[] = [
-  { title: "Menu", url: "/menu", icon: UtensilsCrossed, perm: PERMISSIONS.MENU },
-  { title: "Menu Costing", url: "/menu/costing", icon: BarChart3, perm: PERMISSIONS.COST_VIEW },
-  { title: "Inventory", url: "/inventory", icon: Package, perm: PERMISSIONS.INVENTORY },
-  { title: "Suppliers", url: "/suppliers", icon: Truck, perm: PERMISSIONS.SUPPLIERS },
-  { title: "Members", url: "/members", icon: UserCircle, perm: PERMISSIONS.MEMBERS },
-  { title: "Customers", url: "/customers", icon: UserCircle, perm: PERMISSIONS.CUSTOMERS },
-  { title: "Loyalty Dashboard", url: "/loyalty-dashboard", icon: Gift, perm: PERMISSIONS.LOYALTY_DASHBOARD },
-  { title: "Loyalty Programs", url: "/loyalty-programs", icon: Gift, perm: PERMISSIONS.MEMBERS },
-  { title: "Gift Cards", url: "/gift-cards", icon: Gift, perm: PERMISSIONS.GIFT_CARDS },
-  { title: "Purchases", url: "/purchases", icon: ClipboardList, perm: PERMISSIONS.PURCHASE },
-  { title: "Promotions", url: "/promotions", icon: Megaphone, perm: PERMISSIONS.PROMOTIONS },
-];
-
-const adminItems: Item[] = [
-  { title: "Users & Roles", url: "/users", icon: UserCog, perm: PERMISSIONS.USERS },
-  { title: "Employees", url: "/employees", icon: Users, accessCheck: (user) => canViewEmployees(user) },
-  { title: "Departments", url: "/departments", icon: Building2, perm: PERMISSIONS.USERS },
-  { title: "Positions", url: "/positions", icon: Briefcase, perm: PERMISSIONS.USERS },
-  { title: "Payroll", url: "/payroll", icon: Users, accessCheck: (user) => canAccessPayrollModule(user) },
-  { title: "Accounting", url: "/accounting", icon: BookOpen, perm: PERMISSIONS.ACCOUNTING },
-  { title: "Executive Dashboard", url: "/executive-dashboard", icon: LayoutDashboard, perm: PERMISSIONS.REPORTS },
-  { title: "Reports", url: "/reports", icon: BarChart3, perm: PERMISSIONS.REPORTS },
-  { title: "Settings", url: "/settings", icon: Settings, perm: PERMISSIONS.SETTINGS },
-];
+import { buildAdminItems, buildMainItems, buildManagementItems } from "@/components/sidebar/sidebarNavConfig";
+import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
+import { SidebarNavMenu } from "@/components/sidebar/SidebarNavMenu";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -78,47 +24,28 @@ export function AppSidebar() {
     void fetchUnreadCount(activeOutletId);
   }, [user, activeOutletId, fetchUnreadCount]);
 
-  const filterItems = (items: Item[]) =>
-    items.filter((i) => {
-      if (i.url === "/promotions" && !isPromotionsModuleEnabled()) return false;
-      if (i.accessCheck) return i.accessCheck(user, hasPermission);
-      return !i.perm || hasPermission(i.perm);
-    });
+  const mainItems = useMemo(
+    () => filterNavItems(buildMainItems(), user, hasPermission),
+    [user, hasPermission],
+  );
+  const managementItems = useMemo(
+    () => filterNavItems(buildManagementItems(user), user, hasPermission),
+    [user, hasPermission],
+  );
+  const adminItems = useMemo(
+    () => filterNavItems(buildAdminItems(user), user, hasPermission),
+    [user, hasPermission],
+  );
 
-  const renderGroup = (label: string, items: Item[]) => {
-    const visible = filterItems(items);
-    if (visible.length === 0) return null;
+  const renderGroup = (label: string, items: ReturnType<typeof filterNavItems>) => {
+    if (items.length === 0) return null;
     return (
       <SidebarGroup>
         <SidebarGroupLabel className="text-sidebar-foreground/50 text-[11px] uppercase tracking-wider font-semibold">
           {!collapsed && label}
         </SidebarGroupLabel>
         <SidebarGroupContent>
-          <SidebarMenu>
-            {visible.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild>
-                  <NavLink
-                    to={item.url} end={item.url === "/"}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                    activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                  >
-                    <item.icon className="h-[18px] w-[18px] shrink-0" />
-                    {!collapsed && (
-                      <span className="text-sm flex-1 flex items-center justify-between gap-2">
-                        {item.title}
-                        {item.url === "/notifications" && unreadCount > 0 ? (
-                          <Badge variant="destructive" className="h-5 min-w-5 px-1 text-[10px]">
-                            {unreadCount > 99 ? "99+" : unreadCount}
-                          </Badge>
-                        ) : null}
-                      </span>
-                    )}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          <SidebarNavMenu items={items} unreadCount={unreadCount} />
         </SidebarGroupContent>
       </SidebarGroup>
     );

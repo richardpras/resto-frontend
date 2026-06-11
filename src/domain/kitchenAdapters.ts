@@ -1,4 +1,10 @@
-import type { KitchenTicketApi } from "@/lib/api-integration/kitchenEndpoints";
+import type { KitchenTicketApi, KitchenTicketStationApi } from "@/lib/api-integration/kitchenEndpoints";
+
+export type KitchenTicketStation = {
+  id: number | null;
+  code: string;
+  name: string;
+};
 
 export type KitchenTicketItem = {
   id: string;
@@ -9,6 +15,7 @@ export type KitchenTicketItem = {
   status: string;
   recoveryStatus?: string | null;
   recoveryReason?: string | null;
+  station?: KitchenTicketStation | null;
 };
 
 export type KitchenTicket = {
@@ -21,6 +28,7 @@ export type KitchenTicket = {
   serviceMode?: string | null;
   ticketNo: string;
   status: "queued" | "in_progress" | "ready" | "served" | "cancelled";
+  station?: KitchenTicketStation | null;
   queuedAt?: Date;
   startedAt?: Date;
   readyAt?: Date;
@@ -36,6 +44,18 @@ function toDate(value: string | null | undefined): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+function mapStation(station: KitchenTicketStationApi | null | undefined): KitchenTicketStation | null {
+  if (!station || typeof station.code !== "string" || station.code.trim() === "") {
+    return null;
+  }
+
+  return {
+    id: typeof station.id === "number" ? station.id : null,
+    code: station.code,
+    name: station.name ?? station.code,
+  };
+}
+
 export function mapKitchenTicketApiToStore(ticket: KitchenTicketApi): KitchenTicket {
   return {
     id: String(ticket.id),
@@ -47,6 +67,7 @@ export function mapKitchenTicketApiToStore(ticket: KitchenTicketApi): KitchenTic
     serviceMode: ticket.serviceMode ?? null,
     ticketNo: ticket.ticketNo,
     status: ticket.status,
+    station: mapStation(ticket.station),
     queuedAt: toDate(ticket.queuedAt),
     startedAt: toDate(ticket.startedAt),
     readyAt: toDate(ticket.readyAt),
@@ -60,6 +81,7 @@ export function mapKitchenTicketApiToStore(ticket: KitchenTicketApi): KitchenTic
       status: item.status,
       recoveryStatus: item.recoveryStatus ?? null,
       recoveryReason: item.recoveryReason ?? null,
+      station: mapStation(item.station),
     })),
     createdAt: toDate(ticket.createdAt) ?? new Date(),
     updatedAt: toDate(ticket.updatedAt) ?? new Date(),

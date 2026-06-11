@@ -120,6 +120,12 @@ export type MenuItemOutletApi = {
   receiptName?: string | null;
 };
 
+export type MenuProductionStationApi = {
+  id: number;
+  code: string;
+  name: string;
+};
+
 export type MenuItemApi = {
   id: string;
   name: string;
@@ -127,6 +133,8 @@ export type MenuItemApi = {
   price: number;
   available: boolean;
   emoji?: string | null;
+  productionStation?: MenuProductionStationApi | null;
+  productionStationId?: number | null;
   recipes?: MenuRecipeApi[];
   menuItemOutlets?: MenuItemOutletApi[];
   createdAt?: string | null;

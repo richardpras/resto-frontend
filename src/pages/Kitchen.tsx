@@ -1,20 +1,22 @@
-import { useState, useEffect, useRef } from "react";
-import { ChefHat, Maximize2, Minimize2 } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { ChefHat } from "lucide-react";
 import { KitchenTicketBoardSkeleton } from "@/components/skeletons/list/KitchenTicketBoardSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
-import { KitchenWorkflowBoard } from "@/components/kitchen/KitchenWorkflowBoard";
-import { KitchenConnectionStatus } from "@/components/kitchen/KitchenConnectionStatus";
-import { KitchenWorkflowSummary } from "@/components/kitchen/KitchenWorkflowSummary";
-import { KitchenDayMetricsCard } from "@/components/kitchen/KitchenDayMetricsCard";
+import { KdsBoard } from "@/components/kitchen/KdsBoard";
+import { KdsHeader } from "@/components/kitchen/KdsHeader";
+import { KdsMetricsStrip } from "@/components/kitchen/KdsMetricsStrip";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
-import { boardActiveTicketCount } from "@/domain/kitchenWorkflow";
 import type { KitchenBoardColumn } from "@/domain/kitchenWorkflow";
 import type { KitchenTicketStatus as ApiKitchenTicketStatus } from "@/lib/api-integration/kitchenEndpoints";
 import { useKitchenStore } from "@/stores/kitchenStore";
 import { useKitchenTicketSounds } from "@/hooks/useKitchenTicketSounds";
 import { useKitchenFullscreen } from "@/hooks/useKitchenFullscreen";
+import { useKdsFocusMode } from "@/hooks/useKdsFocusMode";
+import { useKdsStationFilter } from "@/hooks/useKdsStationFilter";
+import { useKdsNewTicketHighlights } from "@/hooks/useKdsNewTicketHighlights";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_RECOVERY_PRESETS } from "@/domain/orderRecoveryPresets";
+import { cn } from "@/lib/utils";
 
 const KITCHEN_RECOVERY_PRESETS = ORDER_RECOVERY_PRESETS.map((p) =>
   p.targetStatus === "rejected" ? { ...p, hint: "Kitchen rejection" } : p,
@@ -33,7 +36,9 @@ const KITCHEN_RECOVERY_PRESETS = ORDER_RECOVERY_PRESETS.map((p) =>
 export default function Kitchen() {
   const displayRootRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, toggleFullscreen } = useKitchenFullscreen(displayRootRef);
+  const { focusMode, setFocusMode } = useKdsFocusMode();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const outlets = useSettingsStore((s) => s.outlets);
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const canUseKitchen = hasPermission(PERMISSIONS.KITCHEN);
   const canReportItemRecovery = hasPermission("orders.recovery.request");
@@ -59,6 +64,10 @@ export default function Kitchen() {
   } | null>(null);
   const [recoveryMode, setRecoveryMode] = useState<"preset" | "custom">("preset");
   const [customReason, setCustomReason] = useState("");
+  const outletName = useMemo(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return null;
+    return outlets.find((o) => o.id === activeOutletId)?.name ?? null;
+  }, [activeOutletId, outlets]);
 
   useKitchenTicketSounds(tickets, lastTicketsUpdateSource, canUseKitchen);
 
@@ -67,23 +76,46 @@ export default function Kitchen() {
     return () => clearInterval(interval);
   }, []);
 
+  const {
+    availableStations,
+    station,
+    setStation,
+    stationCodeForApi,
+    showStationBadges,
+    stationSelectorVisible,
+    filteredTickets: stationFilteredTickets,
+  } = useKdsStationFilter(
+    useMemo(
+      () =>
+        tickets.filter(
+          (ticket) =>
+            ticket.status === "queued" || ticket.status === "in_progress" || ticket.status === "ready",
+        ),
+      [tickets],
+    ),
+  );
+
   useEffect(() => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1 || !canUseKitchen) {
       stopPolling();
       return;
     }
-    void startPolling({ outletId: activeOutletId, perPage: 200 });
+    void startPolling({
+      outletId: activeOutletId,
+      perPage: 200,
+      ...(stationCodeForApi ? { stationCode: stationCodeForApi } : {}),
+    });
     return () => stopPolling();
-  }, [activeOutletId, canUseKitchen, startPolling, stopPolling]);
+  }, [activeOutletId, canUseKitchen, stationCodeForApi, startPolling, stopPolling]);
 
   useEffect(() => {
     if (!error) return;
     toast.error(error);
   }, [error]);
 
-  const boardTickets = tickets.filter(
-    (ticket) => ticket.status === "queued" || ticket.status === "in_progress" || ticket.status === "ready",
-  );
+  const boardTickets = stationFilteredTickets;
+
+  const newTicketIds = useKdsNewTicketHighlights(boardTickets, lastTicketsUpdateSource);
 
   const onUpdateTicketStatus = async (id: string, status: ApiKitchenTicketStatus) => {
     try {
@@ -146,60 +178,67 @@ export default function Kitchen() {
   }
 
   return (
-    <div ref={displayRootRef} className="p-4 md:p-6 max-w-[1600px] bg-background min-h-screen" data-testid="kitchen-display-root">
+    <div
+      ref={displayRootRef}
+      className={cn(
+        "kds-display flex flex-col p-3 sm:p-4",
+        isFullscreen
+          ? "fixed inset-0 z-[300] h-dvh max-h-dvh w-screen overflow-hidden"
+          : "min-h-screen",
+      )}
+      data-testid="kitchen-display-root"
+      data-kds-focus-mode={focusMode}
+      data-kds-fullscreen={isFullscreen ? "true" : "false"}
+    >
       {(!activeOutletId || activeOutletId < 1) && (
-        <div className="mb-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
-          Select an outlet in the header with a configured numeric id (<code className="text-xs">outlet_bridge</code>) to show this kitchen&apos;s tickets.
+        <div className="mb-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100">
+          Select an outlet in the header to show this kitchen&apos;s tickets.
         </div>
       )}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <ChefHat className="h-6 w-6" /> Kitchen Display
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {boardActiveTicketCount(boardTickets)} active ticket(s) on the line
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <KitchenConnectionStatus
-            realtimeConnected={realtimeConnected}
-            pollingActive={pollTimer !== null}
-            consecutiveFetchFailures={consecutiveFetchFailures}
-            hasBlockingError={error !== null}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="kitchen-fullscreen-toggle"
-            onClick={() => void toggleFullscreen()}
-          >
-            {isFullscreen ? <Minimize2 className="h-4 w-4 mr-1.5" /> : <Maximize2 className="h-4 w-4 mr-1.5" />}
-            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          </Button>
-        </div>
-      </div>
 
-      <KitchenDayMetricsCard tickets={tickets} nowMs={nowMs} />
-      <KitchenWorkflowSummary tickets={boardTickets} />
+      <KdsHeader
+        outletName={outletName}
+        nowMs={nowMs}
+        isFullscreen={isFullscreen}
+        focusMode={focusMode}
+        onFocusModeChange={setFocusMode}
+        onToggleFullscreen={() => void toggleFullscreen()}
+        realtimeConnected={realtimeConnected}
+        pollingActive={pollTimer !== null}
+        consecutiveFetchFailures={consecutiveFetchFailures}
+        hasBlockingError={error !== null}
+        stationSelectorVisible={stationSelectorVisible}
+        availableStations={availableStations}
+        station={station}
+        onStationChange={setStation}
+      />
 
-      <SkeletonBusyRegion busy={isLoading && boardTickets.length === 0} className="min-h-[240px]" label="Loading kitchen tickets">
+      <KdsMetricsStrip tickets={tickets} nowMs={nowMs} />
+
+      <SkeletonBusyRegion
+        busy={isLoading && boardTickets.length === 0}
+        className={cn("kds-board-region flex-1 min-h-0 flex flex-col", isFullscreen && "overflow-hidden")}
+        label="Loading kitchen tickets"
+      >
         {isLoading && boardTickets.length === 0 ? (
           <KitchenTicketBoardSkeleton />
         ) : boardTickets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 text-muted-foreground rounded-2xl border border-border/50 bg-card">
-            <ChefHat className="h-16 w-16 mb-4 opacity-20" />
-            <p className="text-lg font-medium">No active orders</p>
-            <p className="text-sm">Confirmed orders from POS and QR will appear here</p>
+          <div className="flex flex-col items-center justify-center flex-1 py-24 text-kds-muted-fg rounded-2xl border border-kds-card-border bg-kds-card/40">
+            <ChefHat className="h-20 w-20 mb-4 opacity-25" />
+            <p className="text-xl font-semibold text-kds-fg">No active orders</p>
+            <p className="text-sm mt-1">Confirmed orders from POS and QR will appear here</p>
           </div>
         ) : (
-          <KitchenWorkflowBoard
+          <KdsBoard
             tickets={boardTickets}
             nowMs={nowMs}
+            focusMode={focusMode}
+            isFullscreen={isFullscreen}
             isSubmitting={isSubmitting}
             recoverySubmitting={recoverySubmitting}
             canReportItemRecovery={canReportItemRecovery}
+            newTicketIds={newTicketIds}
+            showStationBadges={showStationBadges}
             onAdvance={onAdvance}
             onCancel={onCancelTicket}
             onItemIssue={openRecovery}

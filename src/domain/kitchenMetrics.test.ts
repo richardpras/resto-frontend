@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKitchenDayMetrics } from "./kitchenMetrics";
+import { computeKitchenDayMetrics, formatKitchenMetricValue } from "./kitchenMetrics";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
 
 function ticket(partial: Partial<KitchenTicket> & Pick<KitchenTicket, "id" | "status">): KitchenTicket {
@@ -33,6 +33,21 @@ describe("kitchen day metrics", () => {
     );
     expect(metrics.completedToday).toBe(1);
     expect(metrics.averageCookTimeMinutes).toBe(20);
+  });
+
+  it("sanitizes absurd longest waiting values", () => {
+    const metrics = computeKitchenDayMetrics(
+      [
+        ticket({
+          id: "q-bad",
+          status: "queued",
+          queuedAt: new Date("1990-01-01T00:00:00.000Z"),
+        }),
+      ],
+      nowMs,
+    );
+    expect(metrics.longestWaitingMinutes).toBeNull();
+    expect(formatKitchenMetricValue(metrics.longestWaitingMinutes, " min")).toBe("--");
   });
 
   it("reports longest waiting among active tickets", () => {

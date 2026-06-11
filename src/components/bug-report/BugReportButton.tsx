@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { Bug } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { BugReportModal } from "@/components/bug-report/BugReportModal";
 
 const HIDDEN_ROUTES = ["/login", "/payment-status", "/qr-order"];
@@ -82,18 +82,28 @@ export function BugReportButton() {
 
   return (
     <>
-      <Button
+      <button
         type="button"
-        size="sm"
-        variant="secondary"
-        className="fixed bottom-6 right-6 z-40 shadow-lg gap-2 rounded-full h-11 px-4"
+        data-app-chrome
+        className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2 rounded-l-lg border border-r-0 border-red-700/30 bg-red-600 px-2.5 py-4 text-white shadow-lg transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-80"
         onClick={() => void handleOpen()}
         disabled={capturing}
         aria-label="Report bug"
+        title={capturing ? "Capturing screenshot…" : "Report a bug"}
       >
-        <Bug className="h-4 w-4" />
-        <span className="hidden sm:inline">{capturing ? "Capturing…" : "Report Bug"}</span>
-      </Button>
+        {capturing ? (
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Bug className="h-5 w-5 shrink-0" aria-hidden />
+        )}
+        <span
+          className="text-[11px] font-bold uppercase tracking-[0.18em]"
+          style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+          aria-hidden
+        >
+          {capturing ? "…" : "Report"}
+        </span>
+      </button>
 
       <BugReportModal
         open={open}

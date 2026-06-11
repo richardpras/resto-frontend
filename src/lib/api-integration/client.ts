@@ -9,6 +9,16 @@ const envToken =
     : undefined;
 
 let accessTokenOverride: string | undefined = undefined;
+let unauthorizedHandler: (() => void) | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+type RefreshTokenResponse = {
+  data?: { accessToken?: string };
+};
 
 function getPersistedAccessToken(): string | undefined {
   if (typeof window === "undefined") return undefined;
@@ -75,7 +85,50 @@ export function createObservabilityHeaders(
   };
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function persistRefreshedAccessToken(accessToken: string): Promise<void> {
+  setApiAccessToken(accessToken);
+  if (typeof window === "undefined") return;
+  const { useAuthStore } = await import("@/stores/authStore");
+  useAuthStore.setState({ accessToken });
+}
+
+export async function refreshAccessToken(): Promise<boolean> {
+  const token = getApiAccessToken();
+  if (!token) return false;
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = (await response.json().catch(() => null)) as RefreshTokenResponse | null;
+      const nextToken = body?.data?.accessToken;
+      if (!response.ok || typeof nextToken !== "string" || nextToken.trim() === "") {
+        return false;
+      }
+      await persistRefreshedAccessToken(nextToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { skipAuthRecovery?: boolean; isRetry?: boolean },
+): Promise<T> {
   const token = getApiAccessToken();
   const mergedHeaders = new Headers(init?.headers ?? {});
   if (!mergedHeaders.has("Content-Type")) {
@@ -94,6 +147,20 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !options?.skipAuthRecovery &&
+      !options?.isRetry &&
+      path !== "/auth/login" &&
+      path !== "/auth/refresh"
+    ) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        return apiRequest<T>(path, init, { ...options, isRetry: true });
+      }
+      unauthorizedHandler?.();
+    }
+
     const message =
       typeof body === "object" && body !== null && "message" in body && typeof (body as { message: unknown }).message === "string"
         ? (body as { message: string }).message

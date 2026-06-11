@@ -21,6 +21,7 @@ import { PrinterQueuePanelSkeleton } from "@/components/skeletons/list/PrinterQu
 import { BridgeDeviceListSkeleton } from "@/components/skeletons/list/BridgeDeviceListSkeleton";
 import { useAuthStore } from "@/stores/authStore";
 import { getUserCapabilities } from "@/domain/accessControl";
+import { PrinterStationRoutePanel } from "@/components/settings/PrinterStationRoutePanel";
 
 const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: 0 };
 
@@ -167,6 +168,8 @@ export default function PrinterSettings() {
             ))}
           </TableBody>
         </Table>
+
+        <PrinterStationRoutePanel outletId={historyOutletId && historyOutletId > 0 ? historyOutletId : (outlets[0]?.id ?? 0)} />
 
         <div className="space-y-3 border-t pt-4">
           <h3 className="font-medium">Receipt render history (Phase 14)</h3>
@@ -504,9 +507,12 @@ export default function PrinterSettings() {
                 </Select>
               </div>
               {form.printerType === "kitchen" && (
-                <div className="space-y-2">
-                  <Label>Route Assignment (comma-separated)</Label>
-                  <Input placeholder="Main Course, Drinks" value={form.assignedCategories?.join(", ") || ""} onChange={(e) => setForm({ ...form, assignedCategories: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+                <div className="space-y-2" data-testid="printer-legacy-category-routing">
+                  <Label>Legacy category routing (fallback)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Used only when a menu item has no production station assignment.
+                  </p>
+                  <Input placeholder="Food, Beverage" value={form.assignedCategories?.join(", ") || ""} onChange={(e) => setForm({ ...form, assignedCategories: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
                 </div>
               )}
             </div>

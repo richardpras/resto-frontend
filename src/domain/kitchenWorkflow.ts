@@ -1,4 +1,5 @@
 import type { KitchenTicket, KitchenTicketStatus } from "@/domain/kitchenAdapters";
+import { kdsUrgencyFromMinutes, sanitizeElapsedMinutes, type KdsUrgency } from "@/domain/kdsUrgency";
 
 export type KitchenBoardColumnId = "new" | "cooking" | "ready";
 
@@ -32,13 +33,13 @@ export const KITCHEN_BOARD_COLUMNS: KitchenBoardColumn[] = [
     id: "ready",
     title: "READY",
     status: "ready",
-    actionLabel: "Served",
+    actionLabel: "Completed",
     nextStatus: "served",
     badgeClass: "bg-success/10 text-success border-success/20",
   },
 ];
 
-export type ElapsedUrgency = "normal" | "warning" | "critical";
+export type ElapsedUrgency = KdsUrgency;
 
 export function groupTicketsByBoardColumn(tickets: KitchenTicket[]): Record<KitchenBoardColumnId, KitchenTicket[]> {
   const grouped: Record<KitchenBoardColumnId, KitchenTicket[]> = {
@@ -71,13 +72,17 @@ export function ticketElapsedReferenceDate(ticket: KitchenTicket): Date {
 }
 
 export function elapsedMinutesSince(date: Date, nowMs: number = Date.now()): number {
-  return Math.max(0, Math.floor((nowMs - date.getTime()) / 60000));
+  const time = date.getTime();
+  if (Number.isNaN(time)) return 0;
+  const diff = nowMs - time;
+  if (diff < 0) return 0;
+  const minutes = Math.floor(diff / 60000);
+  const safe = sanitizeElapsedMinutes(minutes);
+  return safe ?? 0;
 }
 
 export function elapsedUrgency(minutes: number): ElapsedUrgency {
-  if (minutes >= 20) return "critical";
-  if (minutes >= 10) return "warning";
-  return "normal";
+  return kdsUrgencyFromMinutes(minutes);
 }
 
 export function formatElapsedClock(date: Date, nowMs: number = Date.now()): string {

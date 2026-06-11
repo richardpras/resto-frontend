@@ -102,9 +102,9 @@ export default function OutletPaymentMethodConfigSettings() {
     <Card>
       <CardContent className="p-6 space-y-4">
         <div>
-          <h2 className="font-semibold">Outlet payment methods</h2>
+          <h2 className="font-semibold">Outlet Payment Settings</h2>
           <p className="text-sm text-muted-foreground">
-            Enable Cash, static QRIS, and optional gateway QRIS per outlet. POS checkout shows only enabled methods.
+            Enable or disable accepted payment methods per outlet. Configure static QRIS and customer payment instructions.
           </p>
         </div>
 
@@ -133,64 +133,72 @@ export default function OutletPaymentMethodConfigSettings() {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : (
           <div className="space-y-4">
-            {configs.map((row) => (
-              <div
-                key={row.paymentMethodCode}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-              >
-                <div>
-                  <p className="font-medium">{row.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {row.paymentMethodCode} · {row.type}
-                    {row.provider ? ` · ${row.provider}` : ""}
-                  </p>
-                </div>
-                <Switch
-                  checked={row.enabled}
-                  disabled={saving}
-                  onCheckedChange={(checked) => void toggleEnabled(row, checked)}
-                />
-              </div>
-            ))}
+            {configs.map((row) => {
+              const isManualQris = row.paymentMethodCode === "manual_qris";
 
-            <div className="rounded-lg border border-border p-4 space-y-3">
-              <h3 className="font-medium text-sm">Static QRIS</h3>
-              {manualQris?.settings?.qr_image_url ? (
-                <img
-                  src={String(manualQris.settings.qr_image_url)}
-                  alt="Static QRIS"
-                  className="max-h-40 rounded-md border border-border"
-                />
-              ) : (
-                <p className="text-xs text-muted-foreground">No QR image uploaded yet.</p>
-              )}
-              <div>
-                <Label htmlFor="static-qris-file">Upload QR image</Label>
-                <Input
-                  id="static-qris-file"
-                  type="file"
-                  accept="image/*"
-                  disabled={saving}
-                  className="mt-1"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void onUploadImage(file);
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="static-qris-instructions">Payment instructions</Label>
-                <Input
-                  id="static-qris-instructions"
-                  value={draft}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder="e.g. Scan QRIS and send proof to cashier"
-                />
-                <Button type="button" size="sm" disabled={saving} onClick={() => void saveInstructions()}>
-                  Save instructions
-                </Button>
-              </div>
-            </div>
+              return (
+                <div
+                  key={row.paymentMethodCode}
+                  className="rounded-lg border border-border p-3 space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{row.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.paymentMethodCode} · {row.type}
+                        {row.provider ? ` · ${row.provider}` : ""}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={row.enabled}
+                      disabled={saving}
+                      onCheckedChange={(checked) => void toggleEnabled(row, checked)}
+                    />
+                  </div>
+
+                  {isManualQris && row.enabled ? (
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <h3 className="font-medium text-sm">Static QRIS</h3>
+                      {manualQris?.settings?.qr_image_url ? (
+                        <img
+                          src={String(manualQris.settings.qr_image_url)}
+                          alt="Static QRIS"
+                          className="max-h-40 rounded-md border border-border"
+                        />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No QR image uploaded yet.</p>
+                      )}
+                      <div>
+                        <Label htmlFor="static-qris-file">Upload QR image</Label>
+                        <Input
+                          id="static-qris-file"
+                          type="file"
+                          accept="image/*"
+                          disabled={saving}
+                          className="mt-1"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void onUploadImage(file);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="static-qris-instructions">Payment instructions</Label>
+                        <Input
+                          id="static-qris-instructions"
+                          value={draft}
+                          onChange={(e) => setInstructions(e.target.value)}
+                          placeholder="e.g. Scan QRIS and send proof to cashier"
+                        />
+                        <Button type="button" size="sm" disabled={saving} onClick={() => void saveInstructions()}>
+                          Save instructions
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

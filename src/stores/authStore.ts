@@ -7,7 +7,8 @@ import {
   verifyScreenPin,
 } from "@/lib/api-integration/userManagementEndpoints";
 import type { MeResponse } from "@/lib/api-integration/userManagementEndpoints";
-import { ApiHttpError, setApiAccessToken } from "@/lib/api-integration/client";
+import { ApiHttpError, refreshAccessToken, setApiAccessToken } from "@/lib/api-integration/client";
+import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
 import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
 
@@ -180,7 +181,7 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       locked: false,
       autoLock: true,
-      idleMinutes: 5,
+      idleMinutes: getDefaultIdleLockMinutes(),
       accessToken: null,
 
       restoreSessionFromApi: async () => {
@@ -190,11 +191,24 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const meData = await fetchMe();
           syncActiveOutletFromMe(meData);
-          set({ user: mapMeToAuthUser(meData), locked: false });
-        } catch {
-          set({ user: null, locked: false, accessToken: null });
-          useOutletStore.getState().clearActiveOutlet();
-          setApiAccessToken(undefined);
+          set({ user: mapMeToAuthUser(meData) });
+        } catch (error) {
+          if (error instanceof ApiHttpError && error.status === 401) {
+            const refreshed = await refreshAccessToken();
+            if (refreshed) {
+              try {
+                const meData = await fetchMe();
+                syncActiveOutletFromMe(meData);
+                set({ user: mapMeToAuthUser(meData) });
+                return;
+              } catch {
+                // fall through to logout below
+              }
+            }
+            get().logout();
+            return;
+          }
+          // Transient/network errors: keep cached session and token for lock/unlock continuity.
         }
       },
 
@@ -234,7 +248,9 @@ export const useAuthStore = create<AuthStore>()(
 
       lock: () => {
         const u = get().user;
-        if (u?.pinSet) set({ locked: true });
+        if (u?.pinSet) {
+          set({ locked: true });
+        }
       },
 
       unlock: async (pin) => {

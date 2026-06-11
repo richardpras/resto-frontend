@@ -10,6 +10,11 @@ vi.mock("@/stores/outletStore", () => ({
     selector({ activeOutletId: 2 }),
 }));
 
+vi.mock("@/stores/settingsStore", () => ({
+  useSettingsStore: (selector: (state: { outlets: { id: number; name: string }[] }) => unknown) =>
+    selector({ outlets: [{ id: 2, name: "Demo Outlet" }] }),
+}));
+
 vi.mock("@/stores/authStore", () => ({
   PERMISSIONS: { KITCHEN: "kitchen.use" },
   useAuthStore: (selector: (state: { hasPermission: (perm: string) => boolean }) => unknown) =>

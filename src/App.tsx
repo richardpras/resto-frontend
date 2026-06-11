@@ -40,6 +40,7 @@ const Positions = lazy(() => import("./pages/Positions"));
 const Accounting = lazy(() => import("./pages/Accounting"));
 const Settings = lazy(() => import("./pages/Settings"));
 const PaymentHealth = lazy(() => import("./pages/settings/PaymentHealth"));
+const ProductionStationsSettings = lazy(() => import("./pages/settings/ProductionStationsSettings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Customers = lazy(() => import("./pages/Customers"));
 const CustomerProfile = lazy(() => import("./pages/CustomerProfile"));
@@ -238,6 +239,7 @@ const App = () => (
             <Route path="/reports/executive-sales" element={guarded(PERMISSIONS.REPORTS, <ExecutiveSalesReport />)} />
             <Route path="/settings" element={guarded(PERMISSIONS.SETTINGS, <Settings />)} />
             <Route path="/settings/payments/health" element={guarded(PERMISSIONS.SETTINGS, <PaymentHealth />)} />
+            <Route path="/settings/production-stations" element={guarded(PERMISSIONS.SETTINGS, <ProductionStationsSettings />)} />
             <Route path="/system/failed-jobs" element={guarded(PERMISSIONS.SETTINGS, <FailedJobsDashboard />)} />
             <Route path="/system/audit" element={guarded(PERMISSIONS.SETTINGS, <AuditCenterPage />)} />
             <Route path="/system/health" element={guarded(PERMISSIONS.SETTINGS, <SystemHealthCenterPage />)} />

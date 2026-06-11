@@ -12,6 +12,8 @@ import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
+import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
+import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [online] = useState(true);
@@ -57,7 +59,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-30">
+          <SoundAlertsProvider />
+          <div data-app-chrome>
+            <SoundAlertPrompt />
+          </div>
+          <header
+            data-app-chrome
+            className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-30"
+          >
             <div className="flex items-center gap-3 min-w-0">
               <SidebarTrigger />
               {outlets.length > 0 && (

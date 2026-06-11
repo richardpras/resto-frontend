@@ -1,4 +1,4 @@
-import { apiRequest as request } from "./client";
+import { API_BASE_URL, apiRequest as request, getApiAccessToken } from "./client";
 
 type Envelope<T> = { data: T };
 
@@ -13,6 +13,8 @@ export type FloorTableApi = {
   qrVersion?: number;
   qrLastRotatedAt?: string | null;
   qrUrl?: string | null;
+  qrStatus?: "ready" | "missing_url" | "invalid_url";
+  qrStatusReason?: string | null;
   tableOperationalStatus: "available" | "occupied" | "reserved" | "cleaning" | "disabled";
   tableOperationalSignals?: {
     openBillCount?: number;
@@ -112,4 +114,56 @@ export async function resolveLegacyTableQr(outletId: number, tableId: number): P
   const query = `outletId=${encodeURIComponent(String(outletId))}&tableId=${encodeURIComponent(String(tableId))}`;
   const res = await request<Envelope<QrResolvedTableApi>>(`/qr/legacy-resolve?${query}`);
   return res.data;
+}
+
+export type TableQrDetailApi = {
+  tableId: number;
+  tableName: string;
+  qrPublicId: string | null;
+  qrUrl: string | null;
+  qrImageUrl: string | null;
+  qrStatus: "ready" | "missing_url" | "invalid_url";
+  qrStatusReason: string | null;
+};
+
+export async function getTableQrDetail(tableId: number): Promise<TableQrDetailApi> {
+  const res = await request<Envelope<TableQrDetailApi>>(`/tables/${encodeURIComponent(String(tableId))}/qr`);
+  return res.data;
+}
+
+export function tableQrImageUrl(tableId: number): string {
+  return `${API_BASE_URL}/tables/${encodeURIComponent(String(tableId))}/qr/image`;
+}
+
+export async function fetchTableQrImageBlob(tableId: number): Promise<Blob> {
+  const token = getApiAccessToken();
+  const response = await fetch(tableQrImageUrl(tableId), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error("Failed to load QR image.");
+  }
+  return response.blob();
+}
+
+export async function regenerateTableQr(tableId: number): Promise<FloorTableApi> {
+  const res = await request<MessageEnvelope<FloorTableApi>>(`/tables/${encodeURIComponent(String(tableId))}/qr/regenerate`, {
+    method: "POST",
+  });
+  return res.data;
+}
+
+export async function exportTableQrPdf(outletId: number, tableIds: number[]): Promise<Blob> {
+  const params = new URLSearchParams({ outletId: String(outletId) });
+  for (const id of tableIds) {
+    params.append("tableIds[]", String(id));
+  }
+  const token = getApiAccessToken();
+  const response = await fetch(`${API_BASE_URL}/tables/qr/export?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error("Failed to export QR PDF.");
+  }
+  return response.blob();
 }

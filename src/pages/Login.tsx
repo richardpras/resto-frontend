@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Store, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -18,15 +18,22 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   if (user) return <Navigate to={from} replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError("");
-    const res = await login(email.trim(), password);
-    if (!res.ok) setError(res.error ?? "Login failed");
-    else navigate(from, { replace: true });
+    setIsLoading(true);
+    try {
+      const res = await login(email.trim(), password);
+      if (!res.ok) setError(res.error ?? "Login failed");
+      else navigate(from, { replace: true });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const quickFill = (em: string, pw: string) => { setEmail(em); setPassword(pw); };
@@ -68,13 +75,14 @@ export default function Login() {
         <h2 className="text-2xl font-bold text-foreground mb-1">Welcome back</h2>
         <p className="text-sm text-muted-foreground mb-8">Sign in to access your dashboard.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4" aria-busy={isLoading}>
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email" type="email" autoComplete="email" required
               value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="you@restaurant.com" className="h-11 rounded-xl"
+              disabled={isLoading}
             />
           </div>
           <div className="space-y-1.5">
@@ -84,10 +92,13 @@ export default function Login() {
                 id="password" type={showPwd ? "text" : "password"} autoComplete="current-password" required
                 value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••" className="h-11 rounded-xl pr-10"
+                disabled={isLoading}
               />
               <button
                 type="button" onClick={() => setShowPwd((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                disabled={isLoading}
+                aria-label={showPwd ? "Hide password" : "Show password"}
               >
                 {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -100,7 +111,16 @@ export default function Login() {
             </div>
           )}
 
-          <Button type="submit" className="w-full h-11 rounded-xl text-base">Sign in</Button>
+          <Button type="submit" className="w-full h-11 rounded-xl text-base" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Signing in…
+              </>
+            ) : (
+              "Sign in"
+            )}
+          </Button>
         </form>
 
         {isDevelopmentEnvironment() ? (
@@ -109,8 +129,11 @@ export default function Login() {
             <div className="grid grid-cols-2 gap-2">
               {DEMO_CREDENTIALS.map((c) => (
                 <button
-                  key={c.email} onClick={() => quickFill(c.email, c.password)}
-                  className="text-left p-2.5 rounded-xl border border-border/60 hover:border-primary hover:bg-muted/40 transition-colors"
+                  key={c.email}
+                  type="button"
+                  onClick={() => quickFill(c.email, c.password)}
+                  disabled={isLoading}
+                  className="text-left p-2.5 rounded-xl border border-border/60 hover:border-primary hover:bg-muted/40 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <p className="text-xs font-semibold text-foreground">{c.role}</p>
                   <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>

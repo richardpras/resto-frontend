@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
+import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
 
 export function ProtectedRoute({
   children,
@@ -29,23 +30,23 @@ export function ProtectedRoute({
 
 export function IdleTracker() {
   const { user, autoLock, idleMinutes, lock, locked } = useAuthStore();
-  const [, force] = useState(0);
+  const effectiveIdleMinutes = idleMinutes > 0 ? idleMinutes : getDefaultIdleLockMinutes();
 
   useEffect(() => {
     if (!user?.pinSet || !autoLock || locked) return;
     let timer: number;
     const reset = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => lock(), idleMinutes * 60 * 1000);
+      timer = window.setTimeout(() => lock(), effectiveIdleMinutes * 60 * 1000);
     };
-    const events = ["mousemove", "keydown", "click", "touchstart", "scroll"];
-    events.forEach((e) => window.addEventListener(e, reset));
+    const events = ["mousemove", "keydown", "click", "touchstart", "scroll"] as const;
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
     reset();
     return () => {
       window.clearTimeout(timer);
       events.forEach((e) => window.removeEventListener(e, reset));
     };
-  }, [user, user?.pinSet, autoLock, idleMinutes, lock, locked]);
+  }, [user, user?.pinSet, autoLock, effectiveIdleMinutes, lock, locked]);
 
   return null;
 }

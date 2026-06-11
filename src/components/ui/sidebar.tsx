@@ -174,6 +174,7 @@ const Sidebar = React.forwardRef<
     <div
       ref={ref}
       className="group peer hidden text-sidebar-foreground md:block"
+      data-app-chrome
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
@@ -331,7 +332,7 @@ const SidebarContent = React.forwardRef<HTMLDivElement, React.ComponentProps<"di
       ref={ref}
       data-sidebar="content"
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto scrollbar-sidebar group-data-[collapsible=icon]:overflow-hidden",
         className,
       )}
       {...props}

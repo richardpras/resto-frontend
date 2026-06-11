@@ -4,8 +4,8 @@ import MerchantSettings from "./settings/MerchantSettings";
 import OutletsSettings from "./settings/OutletsSettings";
 import TaxSettings from "./settings/TaxSettings";
 import PrinterSettings from "./settings/PrinterSettings";
-import PaymentMethodSettings from "./settings/PaymentMethodSettings";
-import OutletPaymentMethodConfigSettings from "./settings/OutletPaymentMethodConfigSettings";
+import PaymentSettingsSectionTabs from "./settings/PaymentSettingsSectionTabs";
+import { normalizeSettingsTabKey, settingsTabToUrlParam } from "./settings/paymentSettingsSections";
 import SystemSettings from "./settings/SystemsSettings";
 import IntegrationSettings from "./settings/IntegrationSettings";
 import NumberingSettings from "./settings/NumberingSettings";
@@ -32,18 +32,35 @@ const SETTINGS_TAB_KEYS = [
 ] as const;
 
 export default function Settings() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [syncing, setSyncing] = useState(false);
-  const requestedTab = searchParams.get("tab");
+  const requestedTab = normalizeSettingsTabKey(searchParams.get("tab"));
   const initialTab =
     requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab) ? requestedTab : "merchant";
   const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
-    if (requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab)) {
-      setActiveTab(requestedTab);
+    const normalized = normalizeSettingsTabKey(searchParams.get("tab"));
+    if (normalized && (SETTINGS_TAB_KEYS as readonly string[]).includes(normalized)) {
+      setActiveTab(normalized);
     }
-  }, [requestedTab]);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const urlTab = searchParams.get("tab");
+    const normalized = normalizeSettingsTabKey(urlTab);
+    if (normalized === "payments" && !searchParams.get("section")) {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("tab", settingsTabToUrlParam("payments"));
+          params.set("section", "outlet");
+          return params;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, setSearchParams]);
 
   const loadTabData = async (tab: string, force = false) => {
     const sectionsByTab: Record<string, string[]> = {
@@ -140,6 +157,16 @@ export default function Settings() {
         value={activeTab}
         onValueChange={(tab) => {
           setActiveTab(tab);
+          setSearchParams((prev) => {
+            const params = new URLSearchParams(prev);
+            params.set("tab", settingsTabToUrlParam(tab));
+            if (tab === "payments") {
+              params.set("section", prev.get("section") === "master" ? "master" : "outlet");
+            } else {
+              params.delete("section");
+            }
+            return params;
+          });
         }}
         className="w-full"
       >
@@ -160,12 +187,7 @@ export default function Settings() {
         <TabsContent value="taxes" className="mt-4">{activeTab === "taxes" ? <TaxSettings /> : null}</TabsContent>
         <TabsContent value="printers" className="mt-4">{activeTab === "printers" ? <PrinterSettings /> : null}</TabsContent>
         <TabsContent value="payments" className="mt-4">
-          {activeTab === "payments" ? (
-            <div className="space-y-6">
-              <OutletPaymentMethodConfigSettings />
-              <PaymentMethodSettings />
-            </div>
-          ) : null}
+          {activeTab === "payments" ? <PaymentSettingsSectionTabs /> : null}
         </TabsContent>
         <TabsContent value="system" className="mt-4">{activeTab === "system" ? <SystemSettings /> : null}</TabsContent>
         <TabsContent value="integration" className="mt-4">{activeTab === "integration" ? <IntegrationSettings /> : null}</TabsContent>

@@ -1,58 +1,39 @@
 import { useEffect, useRef } from "react";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
-import {
-  collectNewQueuedTicketIdsForSound,
-  collectNewReadyTicketIdsForSound,
-  markInitializedSoundBaseline,
-  playKitchenNewTicketChime,
-  playKitchenReadyChime,
-  type TicketsUpdateSource,
-} from "@/lib/kitchenNewTicketSound";
+import { collectNewIds, initializeKnownIds, markIdsKnown } from "@/lib/sound/soundEventDetectors";
+import { soundAlertService } from "@/lib/sound/soundAlertService";
+import type { TicketsUpdateSource } from "@/lib/kitchenNewTicketSound";
 
 export function useKitchenTicketSounds(
   tickets: KitchenTicket[],
   source: TicketsUpdateSource | null,
   enabled: boolean,
 ): void {
-  const queuedNotifiedRef = useRef<Set<string>>(new Set());
-  const readyNotifiedRef = useRef<Set<string>>(new Set());
+  const knownQueuedRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
 
+    const queuedIds = tickets.filter((ticket) => ticket.status === "queued").map((ticket) => ticket.id);
+
     if (!initializedRef.current && tickets.length > 0) {
-      markInitializedSoundBaseline(tickets, queuedNotifiedRef.current, readyNotifiedRef.current);
+      initializeKnownIds(queuedIds, knownQueuedRef.current);
       initializedRef.current = true;
       return;
     }
 
-    if (source === null) return;
+    if (!initializedRef.current || source === null || source === "mutation") return;
 
-    const newQueued = collectNewQueuedTicketIdsForSound({
-      tickets,
-      source,
-      alreadyNotifiedIds: queuedNotifiedRef.current,
+    const newIds = collectNewIds({
+      currentIds: queuedIds,
+      knownIds: knownQueuedRef.current,
       hasInitialized: initializedRef.current,
     });
-    if (newQueued.length > 0) {
-      playKitchenNewTicketChime();
-      for (const id of newQueued) {
-        queuedNotifiedRef.current.add(id);
-      }
-    }
 
-    const newReady = collectNewReadyTicketIdsForSound({
-      tickets,
-      source,
-      alreadyReadyNotifiedIds: readyNotifiedRef.current,
-      hasInitialized: initializedRef.current,
-    });
-    if (newReady.length > 0) {
-      playKitchenReadyChime();
-      for (const id of newReady) {
-        readyNotifiedRef.current.add(id);
-      }
-    }
+    if (newIds.length === 0) return;
+
+    markIdsKnown(newIds, knownQueuedRef.current);
+    void soundAlertService.play("kitchen_ticket", { visualFallback: true });
   }, [tickets, source, enabled]);
 }

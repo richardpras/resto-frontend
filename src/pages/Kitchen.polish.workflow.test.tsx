@@ -42,24 +42,25 @@ describe("KitchenPolishWorkflowTest", () => {
     vi.clearAllMocks();
   });
 
-  it("renders sticky column headers on workflow board", () => {
+  it("renders column headers for each kanban lane", () => {
     render(
-      <KitchenWorkflowBoard
-        tickets={[baseTicket]}
-        nowMs={Date.now()}
-        isSubmitting={false}
-        recoverySubmitting={false}
-        canReportItemRecovery={false}
-        onAdvance={vi.fn()}
-        onCancel={vi.fn()}
-        onItemIssue={vi.fn()}
-      />,
+      <div className="kds-display">
+        <KitchenWorkflowBoard
+          tickets={[baseTicket]}
+          nowMs={Date.now()}
+          isSubmitting={false}
+          recoverySubmitting={false}
+          canReportItemRecovery={false}
+          onAdvance={vi.fn()}
+          onCancel={vi.fn()}
+          onItemIssue={vi.fn()}
+        />
+      </div>,
     );
 
     for (const column of KITCHEN_BOARD_COLUMNS) {
       const header = screen.getByTestId(`kitchen-column-header-${column.id}`);
-      expect(header.className).toMatch(/sticky/);
-      expect(header.className).toMatch(/top-0/);
+      expect(header).toHaveTextContent(column.title);
     }
   });
 
@@ -78,23 +79,25 @@ describe("KitchenPolishWorkflowTest", () => {
 
   it("emphasizes ready tickets and highlights item notes", () => {
     render(
-      <KitchenTicketCard
-        ticket={baseTicket}
-        column={KITCHEN_BOARD_COLUMNS[2]}
-        nowMs={Date.now()}
-        isSubmitting={false}
-        recoverySubmitting={false}
-        canReportItemRecovery={false}
-        onAdvance={vi.fn()}
-        onCancel={vi.fn()}
-        onItemIssue={vi.fn()}
-      />,
+      <div className="kds-display">
+        <KitchenTicketCard
+          ticket={baseTicket}
+          column={KITCHEN_BOARD_COLUMNS[2]}
+          nowMs={Date.now()}
+          isSubmitting={false}
+          recoverySubmitting={false}
+          canReportItemRecovery={false}
+          onAdvance={vi.fn()}
+          onCancel={vi.fn()}
+          onItemIssue={vi.fn()}
+        />
+      </div>,
     );
 
     const card = screen.getByTestId("kitchen-ticket-card");
     expect(card).toHaveAttribute("data-ready-emphasis", "true");
     expect(card.className).toMatch(/border-2/);
     expect(screen.getByTestId("kitchen-ready-badge")).toBeInTheDocument();
-    expect(screen.getByTestId("kitchen-item-notes")).toHaveTextContent("NO ONION");
+    expect(screen.getByTestId("kitchen-item-notes")).toHaveTextContent("+ NO ONION");
   });
 });

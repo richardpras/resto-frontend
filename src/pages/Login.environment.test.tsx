@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import Login from "./Login";
@@ -8,13 +8,15 @@ vi.mock("@/domain/environment", () => ({
   isDevelopmentEnvironment: vi.fn(),
 }));
 
+const loginMock = vi.fn();
+
 vi.mock("@/stores/authStore", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/stores/authStore")>();
   return {
     ...actual,
     useAuthStore: () => ({
       user: null,
-      login: vi.fn().mockResolvedValue({ ok: true }),
+      login: loginMock,
     }),
   };
 });
@@ -24,6 +26,8 @@ import { isDevelopmentEnvironment } from "@/domain/environment";
 describe("Login environment hardening", () => {
   beforeEach(() => {
     vi.mocked(isDevelopmentEnvironment).mockReset();
+    loginMock.mockReset();
+    loginMock.mockResolvedValue({ ok: true });
   });
 
   it("shows demo accounts section when development environment", () => {
@@ -55,5 +59,36 @@ describe("Login environment hardening", () => {
     expect(screen.getByRole("button", { name: /Sign in/i })).toBeTruthy();
     expect(screen.getByLabelText("Email")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
+  });
+
+  it("shows loading indicator while sign in is in progress", async () => {
+    vi.mocked(isDevelopmentEnvironment).mockReturnValue(false);
+    let resolveLogin: (value: { ok: boolean }) => void = () => {};
+    loginMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLogin = resolve;
+        }),
+    );
+
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "owner@demo.resto.local" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "demo123" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
+
+    expect(await screen.findByRole("button", { name: /Signing in/i })).toBeDisabled();
+    expect(screen.getByLabelText("Email")).toBeDisabled();
+    expect(screen.getByLabelText("Password")).toBeDisabled();
+
+    resolveLogin({ ok: true });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Signing in/i })).toBeNull();
+    });
   });
 });

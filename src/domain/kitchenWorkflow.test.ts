@@ -38,9 +38,10 @@ describe("kitchenWorkflow", () => {
   });
 
   it("classifies elapsed urgency thresholds", () => {
-    expect(elapsedUrgency(5)).toBe("normal");
-    expect(elapsedUrgency(10)).toBe("warning");
-    expect(elapsedUrgency(20)).toBe("critical");
+    expect(elapsedUrgency(4)).toBe("normal");
+    expect(elapsedUrgency(5)).toBe("warning");
+    expect(elapsedUrgency(9)).toBe("warning");
+    expect(elapsedUrgency(10)).toBe("critical");
   });
 
   it("counts only board-active tickets", () => {
