@@ -64,6 +64,10 @@ const EMPTY_SYSTEM: SystemPrefs = {
   enableMultiPayment: true,
   confirmBeforePayment: true,
   enableQROrdering: true,
+  enableCallCashier: true,
+  enforceStockOnSale: false,
+  stockEnforcementMode: "deferred",
+  allowNegativeStock: true,
 };
 
 const EMPTY_NUMBERING: NumberingSettings = {

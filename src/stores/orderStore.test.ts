@@ -114,7 +114,7 @@ describe("orderStore async lifecycle", () => {
     let observedSubmitting = false;
     mockCreateOrder.mockImplementationOnce(async () => {
       observedSubmitting = useOrderStore.getState().isSubmitting;
-      return buildApiOrder({ id: "42", code: "POS-42" });
+      return { order: buildApiOrder({ id: "42", code: "POS-42" }), meta: undefined };
     });
 
     const created = await useOrderStore.getState().createOrderRemote({
@@ -133,7 +133,8 @@ describe("orderStore async lifecycle", () => {
       payments: [],
     });
 
-    expect(created.id).toBe("42");
+    expect(created.order.id).toBe("42");
+    expect(created.resumed).toBe(false);
     expect(observedSubmitting).toBe(true);
 
     const state = useOrderStore.getState();

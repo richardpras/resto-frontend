@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExecutiveScoreGauge } from "@/components/executive/ExecutiveScoreGauge";
 import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard";
 import { ExecutiveDashboardSystemHealthWidget } from "@/components/executive/ExecutiveDashboardSystemHealthWidget";
+import { ExecutiveInventoryReliabilityWidget } from "@/components/executive/ExecutiveInventoryReliabilityWidget";
+import { ExecutiveCustomerOrderingWidget } from "@/components/executive/ExecutiveCustomerOrderingWidget";
+import { ExecutiveShiftCloseWidget } from "@/components/executive/ExecutiveShiftCloseWidget";
 import { useExecutiveDashboardData } from "@/hooks/executive/useExecutiveDashboardData";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
@@ -209,6 +212,12 @@ export default function ExecutiveDashboard() {
         <h2 className="text-lg font-semibold">Operations</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <ExecutiveDashboardSystemHealthWidget />
+
+          <ExecutiveInventoryReliabilityWidget />
+
+          <ExecutiveShiftCloseWidget />
+
+          <ExecutiveCustomerOrderingWidget />
 
           <ExecutiveWidgetCard
             title="Payment Health"

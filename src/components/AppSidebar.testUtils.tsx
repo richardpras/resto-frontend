@@ -137,6 +137,7 @@ vi.mock("@/components/ui/sidebar", () => ({
     ),
   SidebarFooter: ({ children }: { children: ReactNode }) => <div data-testid="footer">{children}</div>,
   SidebarHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SidebarLogoRail: () => null,
   useSidebar: () => ({ state: "expanded" }),
 }));
 

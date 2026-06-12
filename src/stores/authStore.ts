@@ -103,6 +103,7 @@ function expandPermissionCodes(codes: string[]): string[] {
     out.add(PERMISSIONS.TABLES);
     out.add(PERMISSIONS.TABLES_MANAGE);
   }
+  if (codes.includes("qr_orders.view")) out.add(PERMISSIONS.QR_ORDERS);
   if (codes.includes("tables.manage") && codes.includes("pos.use")) {
     out.add(PERMISSIONS.QR_ORDERS);
   }

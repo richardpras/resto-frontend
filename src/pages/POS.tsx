@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X,
-  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift, CreditCard,
+  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift, CreditCard, Undo2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
@@ -27,9 +27,12 @@ import {
 import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { useOutletStore } from "@/stores/outletStore";
+import { useQrOrderPosBridgeStore } from "@/stores/qrOrderPosBridgeStore";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { showInventoryPolicySuccessToast } from "@/features/pos/posInventoryPolicyToast";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
@@ -65,7 +68,6 @@ import {
 import { findCheckoutMethod, useOutletCheckoutMethods } from "@/features/pos/useOutletCheckoutMethods";
 import { PaymentMethodTileGrid } from "@/components/pos/PaymentMethodTileGrid";
 import {
-  canReuseCheckoutOrder,
   gatewayRetryLabel,
   isTerminalGatewayStatus,
   pendingGatewayCheckoutTotal,
@@ -92,6 +94,24 @@ import {
   redeemGiftCard,
   settleGiftCardRedemptions,
 } from "@/lib/api-integration/giftCardEndpoints";
+import { resolveCheckoutIdempotencyKey } from "@/features/pos/posCheckoutIdempotency";
+import {
+  parsePosPaymentFailure,
+  paymentFailureRecoveryMessage,
+} from "@/features/pos/posPaymentFailure";
+import {
+  isUnpaidOpenBill,
+  openBillCheckoutIdempotencyKey,
+  shouldResumeOpenBillCheckout,
+} from "@/features/pos/posOpenBillCheckout";
+import { isPosPaymentSubmitDisabled } from "@/features/pos/posPaymentSubmitGuards";
+import {
+  formatPosStockErrorMessage,
+  parsePosStockError,
+  type PosStockErrorPayload,
+} from "@/features/pos/posStockError";
+import { PosPaymentStockErrorAlert } from "@/components/pos/PosPaymentStockErrorAlert";
+import { PosOpenBillRecoveryBanner } from "@/components/pos/PosOpenBillRecoveryBanner";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -152,6 +172,7 @@ export default function POS() {
   const showReconcile = canReconcilePayments(authUser);
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const stockEnforcementMode = useSettingsStore((s) => s.system.stockEnforcementMode);
   useReservationTableProjectionSync();
   const { tables, orders, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
@@ -212,6 +233,16 @@ export default function POS() {
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [paymentStockError, setPaymentStockError] = useState<PosStockErrorPayload | null>(null);
+  const [paymentAckRequired, setPaymentAckRequired] = useState(false);
+  const [openBillRecoveryCode, setOpenBillRecoveryCode] = useState<string | null>(null);
+  const checkoutAttemptIdRef = useRef<string | null>(null);
+  const [qrOrderContext, setQrOrderContext] = useState<{
+    requestId: string;
+    requestCode: string;
+    tableName?: string | null;
+    linkedOrderId?: string | null;
+  } | null>(null);
   const { data: checkoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
     enabled: showPayment || showSplit,
   });
@@ -315,6 +346,40 @@ export default function POS() {
       // POS session guard is non-blocking for current UI flow.
     });
   }, [activeOutletId, fetchCurrentPosSession]);
+
+  useEffect(() => {
+    const { loadPayload, draftSession, clear } = useQrOrderPosBridgeStore.getState();
+    if (!loadPayload || !draftSession) return;
+
+    setQrOrderContext({
+      requestId: loadPayload.requestId,
+      requestCode: loadPayload.requestCode,
+      tableName: loadPayload.tableName,
+      linkedOrderId: loadPayload.linkedOrderId ?? null,
+    });
+    if (loadPayload.linkedOrderId) {
+      setCurrentOrderId(loadPayload.linkedOrderId);
+      void fetchOrderRemote(loadPayload.linkedOrderId).catch(() => {
+        // Order fetch failure is surfaced elsewhere when cashier acts on the bill.
+      });
+    } else {
+      setCart(
+        loadPayload.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          category: "",
+          emoji: item.emoji ?? "🍽️",
+          qty: item.qty,
+          notes: item.notes ?? "",
+        })),
+      );
+    }
+    if (loadPayload.customerName) setCustomerName(loadPayload.customerName);
+    if (loadPayload.tableId) setSelectedTable(String(loadPayload.tableId));
+    setOrderType("Dine-in");
+    clear();
+  }, []);
 
   useEffect(() => {
     if (showPayment) return;
@@ -471,7 +536,126 @@ export default function POS() {
     toast.error("Something went wrong. Try again.");
   }
 
+  function beginCheckoutAttempt(scope: string): string {
+    const attemptId = resolveCheckoutIdempotencyKey({
+      currentOrderId,
+      qrOrderRequestId: qrOrderContext?.requestId,
+      scope,
+    });
+    checkoutAttemptIdRef.current = attemptId;
+    return attemptId;
+  }
+
+  function clearCheckoutRecoveryState(): void {
+    setPaymentStockError(null);
+    setPaymentAckRequired(false);
+    setOpenBillRecoveryCode(null);
+  }
+
+  async function handleCheckoutStockFailure(e: unknown): Promise<boolean> {
+    const stockError = parsePosStockError(e);
+    if (!stockError) {
+      return false;
+    }
+    setPaymentStockError(stockError);
+    setPaymentAckRequired(true);
+    if (stockError.orderCode) {
+      setOpenBillRecoveryCode(stockError.orderCode);
+    }
+    if (stockError.orderId) {
+      const orderId = String(stockError.orderId);
+      setCurrentOrderId(orderId);
+      checkoutAttemptIdRef.current = openBillCheckoutIdempotencyKey(orderId);
+      if (qrOrderContext) {
+        setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: orderId } : prev));
+      }
+      try {
+        await fetchOrderRemote(orderId);
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, orderId);
+      } catch {
+        // Best-effort sync so cashier sees the unpaid open bill after stock failure.
+      }
+    }
+    setShowPayment(false);
+    setShowStaticQrisModal(false);
+    setShowQrisModal(false);
+    setSelectedCheckoutCode(null);
+    void paymentResetAsync();
+    toast.error(formatPosStockErrorMessage(stockError));
+    return true;
+  }
+
+  async function handleCheckoutPaymentFailure(e: unknown): Promise<boolean> {
+    if (await handleCheckoutStockFailure(e)) {
+      return true;
+    }
+
+    const failure = parsePosPaymentFailure(e);
+    if (failure?.orderId) {
+      const orderId = String(failure.orderId);
+      setCurrentOrderId(orderId);
+      checkoutAttemptIdRef.current = openBillCheckoutIdempotencyKey(orderId);
+      if (qrOrderContext) {
+        setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: orderId } : prev));
+      }
+      if (failure.orderCode) {
+        setOpenBillRecoveryCode(failure.orderCode);
+      }
+      try {
+        await fetchOrderRemote(orderId);
+        useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, orderId);
+      } catch {
+        // Best-effort sync after payment failure.
+      }
+    }
+
+    setShowPayment(false);
+    setShowStaticQrisModal(false);
+    setShowQrisModal(false);
+    setSelectedCheckoutCode(null);
+    void paymentResetAsync();
+
+    if (failure?.orderCode) {
+      toast.error(paymentFailureRecoveryMessage(failure.orderCode));
+      return true;
+    }
+    if (failure) {
+      toast.error(failure.message);
+      return true;
+    }
+
+    return false;
+  }
+
+  const cartFingerprint = useMemo(
+    () => cart.map((item) => `${item.id}:${item.qty}`).join("|"),
+    [cart],
+  );
+  const previousCartFingerprintRef = useRef(cartFingerprint);
+
+  useEffect(() => {
+    if (
+      paymentStockError
+      && previousCartFingerprintRef.current !== cartFingerprint
+    ) {
+      clearCheckoutRecoveryState();
+      checkoutAttemptIdRef.current = null;
+    }
+    previousCartFingerprintRef.current = cartFingerprint;
+  }, [cartFingerprint, paymentStockError]);
+
   const memberIdForPayload = selectedMember ? Number(selectedMember.id) : undefined;
+
+  const qrOrderPayloadFields = useMemo((): Pick<CreateOrderPayload, "qrOrderRequestId" | "orderChannel" | "serviceMode"> => {
+    if (!qrOrderContext) return {};
+    return {
+      qrOrderRequestId: Number(qrOrderContext.requestId),
+      orderChannel: "qr",
+      serviceMode: "dine_in",
+    };
+  }, [qrOrderContext]);
+
+  const clearQrOrderContext = () => setQrOrderContext(null);
 
   async function attachMemberToOpenOrder(member: Member | null) {
     if (!currentOrderId) return;
@@ -566,11 +750,13 @@ export default function POS() {
         paymentStatus: "unpaid",
         payments: [],
         confirmedAt: new Date().toISOString(),
+        ...qrOrderPayloadFields,
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
       };
-      const storedOrder = await createOrderRemote(payload);
+      const { order: storedOrder } = await createOrderRemote(payload);
       setCurrentOrderId(storedOrder.id);
       resetCart();
+      clearQrOrderContext();
       setShowConfirmSent(true);
       toast.success(`Order ${storedOrder.code} sent to kitchen!`, { icon: "🍳" });
     } catch (e) {
@@ -588,12 +774,23 @@ export default function POS() {
   // FLOW 2: Pay Now (Takeaway/Quick)
   const handlePayNow = () => {
     if (cart.length === 0) return;
+    if (paymentAckRequired) {
+      toast.error("Fix or remove out-of-stock items before paying again.");
+      return;
+    }
+    if (currentOrderId && isUnpaidOpenBill(currentOpenOrder)) {
+      checkoutAttemptIdRef.current = openBillCheckoutIdempotencyKey(currentOrderId);
+      setShowPayment(true);
+      return;
+    }
+    beginCheckoutAttempt("pay-now");
     setShowPayment(true);
   };
 
   const completeDirectPayment = async () => {
-    if (!selectedCheckoutMethod || submitting) return;
+    if (!selectedCheckoutMethod || submitting || paymentAckRequired) return;
     if (!requireOutletOrderContext()) return;
+    const idempotencyKey = checkoutAttemptIdRef.current ?? beginCheckoutAttempt("pay-now");
 
     const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
     const gatewayMethod = isGatewayCheckoutMethod(selectedCheckoutMethod);
@@ -641,10 +838,30 @@ export default function POS() {
 
     setSubmitting(true);
     try {
-      let storedOrder: Awaited<ReturnType<typeof createOrderRemote>>;
-      const reusing = canReuseCheckoutOrder(currentOrderId, currentOpenOrder);
-      if (reusing && currentOrderId) {
-        storedOrder = await fetchOrderRemote(currentOrderId);
+      let storedOrder: Order;
+      let reusing = false;
+      const recoveryOrderId =
+        currentOrderId
+        ?? (qrOrderContext?.linkedOrderId ? String(qrOrderContext.linkedOrderId) : null)
+        ?? (paymentStockError?.orderId ? String(paymentStockError.orderId) : null);
+
+      if (recoveryOrderId) {
+        try {
+          storedOrder = await fetchOrderRemote(recoveryOrderId);
+        } catch {
+          toast.error(
+            openBillRecoveryCode
+              ? `Could not load open bill ${openBillRecoveryCode}. Resume it from Open Bills.`
+              : "Could not load the existing open bill. Resume from Open Bills.",
+          );
+          return;
+        }
+        if (!shouldResumeOpenBillCheckout(recoveryOrderId, storedOrder)) {
+          toast.error("This bill is already paid or cancelled. Start a new order instead.");
+          return;
+        }
+        setCurrentOrderId(storedOrder.id);
+        reusing = true;
       } else {
         const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
         const payload: CreateOrderPayload = {
@@ -663,12 +880,20 @@ export default function POS() {
             },
           ] : [],
           confirmedAt: new Date().toISOString(),
+          ...qrOrderPayloadFields,
+          idempotencyKey,
           ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
         };
-        storedOrder = await createOrderRemote(payload);
+        const createResult = await createOrderRemote(payload);
+        storedOrder = createResult.order;
         setCurrentOrderId(storedOrder.id);
-        resetCart();
+        if (createResult.resumed && qrOrderContext) {
+          setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: storedOrder.id } : prev));
+        }
       }
+
+      const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(String(storedOrder.id));
+      checkoutAttemptIdRef.current = paymentIdempotencyKey;
 
       const checkoutTotal =
         pendingGatewayPayments.length > 0
@@ -677,12 +902,13 @@ export default function POS() {
 
       if (cashMethod) {
         const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
-        if (reusing) {
+        const needsPaymentRecord = reusing || storedOrder.paymentStatus !== "paid";
+        if (needsPaymentRecord) {
           const cashBatch =
             pendingGatewayPayments.length > 0
               ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
               : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
-          await addOrderPaymentsRemote(storedOrder.id, cashBatch);
+          await addOrderPaymentsRemote(storedOrder.id, cashBatch, { idempotencyKey: paymentIdempotencyKey });
           setPendingGatewayPayments([]);
         }
         await settleGiftCardAfterDirectPayment(storedOrder.id, giftCardSettlementIds);
@@ -694,11 +920,16 @@ export default function POS() {
             replayFingerprint: `pos-${storedOrder.id}-${selectedCustomer.id}-${appliedPoints}`,
           });
         }
+        clearCheckoutRecoveryState();
+        checkoutAttemptIdRef.current = null;
+        setCurrentOrderId(null);
         resetCart();
+        clearQrOrderContext();
         setShowPayment(false);
         setSelectedCheckoutCode(null);
         setPendingGatewayPayments([]);
         toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+        showInventoryPolicySuccessToast(stockEnforcementMode);
         return;
       }
 
@@ -741,14 +972,26 @@ export default function POS() {
         toast.success("Payment checkout created. Ask customer to complete payment.");
       }
     } catch (e) {
-      toastApiError(e);
+      if (!(await handleCheckoutPaymentFailure(e))) {
+        if (currentOrderId) {
+          try {
+            await fetchOrderRemote(currentOrderId);
+            useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+          } catch {
+            // Best-effort sync so cashier sees real payment status after a partial failure.
+          }
+        }
+        toastApiError(e);
+        setShowPayment(false);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   const confirmStaticQrisPayment = async () => {
-    if (!selectedCheckoutMethod || !currentOrderId || submitting) return;
+    if (!selectedCheckoutMethod || !currentOrderId || submitting || paymentAckRequired) return;
+    const idempotencyKey = checkoutAttemptIdRef.current ?? beginCheckoutAttempt("static-qris");
     const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
     setSubmitting(true);
     try {
@@ -765,7 +1008,9 @@ export default function POS() {
         pendingGatewayPayments.length > 0
           ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
           : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
-      await addOrderPaymentsRemote(currentOrderId, batch);
+      const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(currentOrderId);
+      checkoutAttemptIdRef.current = paymentIdempotencyKey;
+      await addOrderPaymentsRemote(currentOrderId, batch, { idempotencyKey: paymentIdempotencyKey });
       await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
       setPendingGatewayPayments([]);
       setShowStaticQrisModal(false);
@@ -778,12 +1023,26 @@ export default function POS() {
         });
       }
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+      clearCheckoutRecoveryState();
+      checkoutAttemptIdRef.current = null;
+      setCurrentOrderId(null);
       resetCart();
+      clearQrOrderContext();
       setShowPayment(false);
       setSelectedCheckoutCode(null);
       toast.success("Static QRIS payment recorded.");
+      showInventoryPolicySuccessToast(stockEnforcementMode);
     } catch (e) {
-      toastApiError(e);
+      if (!(await handleCheckoutPaymentFailure(e))) {
+        try {
+          await fetchOrderRemote(currentOrderId);
+          useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+        } catch {
+          // Best-effort sync after failed static QRIS commit.
+        }
+        toastApiError(e);
+        setShowPayment(false);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -940,6 +1199,7 @@ export default function POS() {
     const line = cart.find((c) => c.id === itemId);
     if (!line) return;
     const lineQty = line.qty;
+    const hadDraftPayments = splitPersons.some((p) => p.payments.length > 0);
     setSplitPersons((prev) => {
       const maxMine = maxQtyForPersonOnLine(prev, personIdx, itemId, lineQty);
       const current = prev[personIdx]?.items.find((it) => it.itemId === itemId)?.qty ?? 0;
@@ -961,12 +1221,23 @@ export default function POS() {
       });
 
       const lines = cart.map((l) => ({ id: l.id, price: l.price, qty: l.qty }));
-      const full = byItemFullyAllocated(
-        updatedPeople,
-        lines.map((l) => ({ id: l.id, qty: l.qty })),
-      );
-      return applyByItemTotalDuesWithTaxScale(updatedPeople, lines, total, full);
+      const next = applyByItemTotalDuesWithTaxScale(updatedPeople, lines, total);
+      return next.map((p) => ({ ...p, payments: [] }));
     });
+    if (hadDraftPayments) {
+      toast.message("Split payment drafts cleared — item assignment changed.");
+    }
+  };
+
+  const undoSplitPersonDraftPayment = (personIdx: number) => {
+    if (submitting) return;
+    const label = splitPersons[personIdx]?.label ?? "Person";
+    setSplitPersons((prev) => prev.map((p, i) => (i === personIdx ? { ...p, payments: [] } : p)));
+    if (payingPersonIdx === personIdx) {
+      setPayingPersonIdx(null);
+      setSplitPayMethod(null);
+    }
+    toast.message(`${label}: payment choice cleared — pick a method again.`);
   };
 
   const allSplitPaid = splitPersons.every((p) => {
@@ -1000,7 +1271,7 @@ export default function POS() {
     setSubmitting(true);
     try {
       const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-      const created = await createOrderRemote({
+      const { order: created } = await createOrderRemote({
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
         code,
@@ -1010,9 +1281,15 @@ export default function POS() {
         paymentStatus: "unpaid",
         payments: [],
         confirmedAt: new Date().toISOString(),
+        idempotencyKey: checkoutAttemptIdRef.current ?? beginCheckoutAttempt("split-bill"),
         splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
+        ...qrOrderPayloadFields,
         ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
       });
+      setCurrentOrderId(created.id);
+      if (qrOrderContext) {
+        setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: created.id } : prev));
+      }
       const fresh = await fetchOrderRemote(created.id);
       const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
       const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method, checkoutMethods));
@@ -1085,7 +1362,9 @@ export default function POS() {
       const paymentsToCommit = pendingGatewayPayments;
       setPendingGatewayPayments([]);
       try {
-        await addOrderPaymentsRemote(currentOrderId, paymentsToCommit);
+        await addOrderPaymentsRemote(currentOrderId, paymentsToCommit, {
+          idempotencyKey: openBillCheckoutIdempotencyKey(currentOrderId),
+        });
         if (selectedCustomer && appliedPoints > 0) {
           await enqueueRedemption({
             customerId: selectedCustomer.id,
@@ -1094,17 +1373,38 @@ export default function POS() {
             replayFingerprint: `pos-${currentOrderId}-${selectedCustomer.id}-${appliedPoints}`,
           });
         }
+        clearCheckoutRecoveryState();
+        checkoutAttemptIdRef.current = null;
+        setCurrentOrderId(null);
         resetCart();
+        clearQrOrderContext();
         setShowPayment(false);
         setShowSplit(false);
         setSelectedCheckoutCode(null);
+        setShowQrisModal(false);
+        void paymentResetAsync();
         toast.success("Payment completed.");
+        showInventoryPolicySuccessToast(stockEnforcementMode);
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
-        toastApiError(error);
+        if (!(await handleCheckoutPaymentFailure(error))) {
+          if (currentOrderId) {
+            try {
+              await fetchOrderRemote(currentOrderId);
+              useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+            } catch {
+              // Best-effort sync after gateway payment commit failure.
+            }
+          }
+          setShowQrisModal(false);
+          setShowPayment(false);
+          setSelectedCheckoutCode(null);
+          void paymentResetAsync();
+          toastApiError(error);
+        }
       }
     })();
-  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, selectedCustomer, appliedPoints, enqueueRedemption]);
+  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, selectedCustomer, appliedPoints, enqueueRedemption, fetchOrderRemote, activeOutletId, paymentResetAsync]);
 
   const selectedApiMethod = selectedCheckoutMethod
     ? apiMethodFromCheckoutMethod(selectedCheckoutMethod)
@@ -1167,12 +1467,22 @@ export default function POS() {
       }
     })();
   };
+  const paymentSubmitDisabled = isPosPaymentSubmitDisabled({
+    selectedCheckoutCode,
+    submitting,
+    paymentIsSubmitting,
+    gatewayCheckoutPending,
+    paymentAckRequired,
+  });
+
   const primaryPaymentActionLabel =
     canRetryGatewayCheckout && selectedApiMethod
       ? gatewayRetryLabel(selectedApiMethod)
       : submitting || paymentIsSubmitting
-        ? "Processing…"
-        : "Complete Payment";
+        ? "Processing Payment..."
+        : paymentAckRequired
+          ? "Review cart to retry"
+          : "Complete Payment";
 
   const paymentCheckoutAmount =
     pendingGatewayPayments.length > 0
@@ -1203,6 +1513,22 @@ export default function POS() {
       <div className="px-4 py-1 border-b border-border/40 bg-card/30">
         <PosSessionPanel outletId={activeOutletId} />
       </div>
+      {qrOrderContext ? (
+        <div
+          className="px-4 py-2 border-b border-primary/20 bg-primary/5 text-xs font-semibold tracking-wide text-primary"
+          data-testid="pos-qr-order-badge"
+        >
+          QR ORDER • {qrOrderContext.requestCode}
+          {qrOrderContext.tableName ? ` • Table ${qrOrderContext.tableName}` : ""}
+        </div>
+      ) : (
+        <div
+          className="px-4 py-2 border-b border-border/40 bg-muted/20 text-xs font-semibold tracking-wide text-muted-foreground"
+          data-testid="pos-direct-source-badge"
+        >
+          Direct POS
+        </div>
+      )}
       <div className="flex flex-1 min-h-0">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5">
@@ -1566,6 +1892,26 @@ export default function POS() {
               ))}
             </div>
           )}
+          {paymentStockError ? (
+            <PosPaymentStockErrorAlert
+              error={paymentStockError}
+              onDismiss={() => {
+                clearCheckoutRecoveryState();
+                checkoutAttemptIdRef.current = null;
+              }}
+            />
+          ) : null}
+          {openBillRecoveryCode ? (
+            <PosOpenBillRecoveryBanner
+              orderCode={openBillRecoveryCode}
+              onOpenBill={() => {
+                if (currentOrderId) {
+                  void fetchOrderRemote(currentOrderId);
+                }
+                clearCheckoutRecoveryState();
+              }}
+            />
+          ) : null}
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
             {discount > 0 && (
@@ -1603,13 +1949,13 @@ export default function POS() {
                 >
                   <ChefHat className="h-4 w-4" /> Confirm Order
                 </button>
-                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
+                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <CreditCard className="h-4 w-4" /> Pay Now
                 </button>
               </>
             ) : (
-              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
+              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
                 Pay {formatRp(total)}
               </button>
@@ -1688,6 +2034,7 @@ export default function POS() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => {
+              if (submitting || paymentIsSubmitting || paymentAckRequired) return;
               setShowQrisModal(false);
               setShowPayment(false);
             }}>
@@ -1695,7 +2042,17 @@ export default function POS() {
               onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">Payment</h3>
-                <button onClick={() => { setShowQrisModal(false); setShowPayment(false); }} className="p-1 rounded-lg hover:bg-muted"><X className="h-5 w-5 text-muted-foreground" /></button>
+                <button
+                  onClick={() => {
+                    if (submitting || paymentIsSubmitting) return;
+                    setShowQrisModal(false);
+                    setShowPayment(false);
+                  }}
+                  disabled={submitting || paymentIsSubmitting}
+                  className="p-1 rounded-lg hover:bg-muted disabled:opacity-40"
+                >
+                  <X className="h-5 w-5 text-muted-foreground" />
+                </button>
               </div>
               <div className="text-center mb-6">
                 <p className="text-sm text-muted-foreground">Total Amount</p>
@@ -1704,12 +2061,25 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
                 ) : null}
               </div>
+              {paymentStockError ? (
+                <PosPaymentStockErrorAlert
+                  error={paymentStockError}
+                  onDismiss={() => {
+                    clearCheckoutRecoveryState();
+                    checkoutAttemptIdRef.current = null;
+                    setShowPayment(false);
+                  }}
+                />
+              ) : null}
+              {openBillRecoveryCode ? (
+                <PosOpenBillRecoveryBanner orderCode={openBillRecoveryCode} />
+              ) : null}
               <PaymentMethodTileGrid
                 className="mb-6"
                 tiles={checkoutTiles}
                 selectedCode={selectedCheckoutCode}
                 onSelect={handleSelectPaymentMethod}
-                disabled={submitting || paymentIsSubmitting}
+                disabled={submitting || paymentIsSubmitting || paymentAckRequired}
               />
               <button onClick={initSplitBill}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
@@ -1717,7 +2087,7 @@ export default function POS() {
               </button>
               <button
                 onClick={() => void completeDirectPayment()}
-                disabled={!selectedCheckoutCode || submitting || paymentIsSubmitting || gatewayCheckoutPending}
+                disabled={paymentSubmitDisabled}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3"
               >
                 <span className="flex items-center justify-center gap-2">
@@ -1905,7 +2275,7 @@ export default function POS() {
               {splitMethod === "by-item" && (
                 <div className="mb-5 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Use − / + to give each person a quantity. Units cannot exceed the line qty in the cart.
+                    Use − / + to assign quantities. Each person total includes their share of tax/discount on assigned items.
                   </p>
                   {!byItemAllocationComplete && (
                     <p className="text-xs text-amber-900 dark:text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
@@ -1965,23 +2335,44 @@ export default function POS() {
                 {splitPersons.map((person, i) => {
                   const paid = person.payments.reduce((s, p) => s + p.amount, 0);
                   const isPaid = paid >= person.totalDue && person.totalDue > 0;
+                  const hasDraftPayment = person.payments.length > 0;
+                  const methodSummary = person.payments.map((p) => p.method).join(" + ");
                   return (
                     <div key={i} className="space-y-2">
-                      <div className={`flex items-center gap-3 rounded-xl p-3 border transition-all ${isPaid ? "bg-success/5 border-success/20" : "bg-background border-border/50"}`}>
-                        <span className="text-sm font-medium text-foreground flex-1">{person.label}</span>
+                      <div className={`flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl p-3 border transition-all ${isPaid ? "bg-success/5 border-success/20" : "bg-background border-border/50"}`}>
+                        <span className="text-sm font-medium text-foreground flex-1 min-w-[6rem]">{person.label}</span>
                         <span className="text-sm font-bold text-foreground">{formatRp(person.totalDue)}</span>
                         {isPaid ? (
-                          <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success">✓ Paid ({person.payments[0]?.method})</span>
-                        ) : (
+                          <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success shrink-0">
+                            ✓ Paid ({methodSummary})
+                          </span>
+                        ) : hasDraftPayment ? (
+                          <span className="px-3 py-1 rounded-lg text-xs font-medium bg-muted text-foreground shrink-0">
+                            {formatRp(paid)} recorded ({methodSummary})
+                          </span>
+                        ) : null}
+                        {!isPaid && (
                           <button
                             type="button"
                             onClick={() => {
                               setPayingPersonIdx(i);
                               setSplitPayMethod(null);
                             }}
-                            className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90"
+                            className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
                           >
-                            Add Payment
+                            {hasDraftPayment ? "Add more" : "Add Payment"}
+                          </button>
+                        )}
+                        {hasDraftPayment && (
+                          <button
+                            type="button"
+                            title="Clear this person’s draft payment so you can pick another method"
+                            onClick={() => undoSplitPersonDraftPayment(i)}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 disabled:opacity-40"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                            Change
                           </button>
                         )}
                       </div>

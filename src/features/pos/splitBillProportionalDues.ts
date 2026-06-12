@@ -51,21 +51,44 @@ export function allocateProportionalIntegerShares(weights: number[], total: numb
 }
 
 /**
- * By-item: line totals are pre-tax; `balanceDue` / cart `total` includes tax & discounts.
- * When every unit is assigned, scale each person's `totalDue` so they sum to `balanceTarget`.
- * Until then, keep raw line subtotals so the UI shows progress toward full allocation.
+ * Stable per-person due for one assignee: item subtotal × (bill total ÷ catalog subtotal).
+ * Tax/discount share is included immediately — does not jump when other items are assigned.
+ */
+export function personDueWithBillTaxShare(personRaw: number, catalogSubtotal: number, balanceTarget: number): number {
+  if (personRaw <= 0 || catalogSubtotal <= 0 || balanceTarget <= 0) return 0;
+  return Math.round((personRaw / catalogSubtotal) * balanceTarget);
+}
+
+/**
+ * By-item: line prices are pre-tax; `balanceTarget` is the full bill (tax/discounts included).
+ * Each person's `totalDue` always reflects their item share of the full bill so amounts stay
+ * stable while assigning. When every unit is assigned, reconcile rounding so dues sum to the bill.
  */
 export function applyByItemTotalDuesWithTaxScale<T extends Pick<SplitPerson, "items" | "totalDue">>(
   persons: T[],
   lines: Array<{ id: string; price: number; qty: number }>,
   balanceTarget: number,
-  fullyAllocated: boolean,
 ): T[] {
+  const catalogTotal = catalogSubtotalFromLines(lines);
   const raw = personItemSubtotals(persons, lines);
-  if (!fullyAllocated || balanceTarget <= 0) {
+  const target = Math.round(balanceTarget);
+
+  if (catalogTotal <= 0 || target <= 0) {
     return persons.map((p, i) => ({ ...p, totalDue: raw[i] }));
   }
-  const target = Math.round(balanceTarget);
-  const scaled = allocateProportionalIntegerShares(raw, target);
-  return persons.map((p, i) => ({ ...p, totalDue: scaled[i] }));
+
+  const assignedCatalog = raw.reduce((sum, value) => sum + value, 0);
+  if (assignedCatalog <= 0) {
+    return persons.map((p) => ({ ...p, totalDue: 0 }));
+  }
+
+  if (assignedCatalog === catalogTotal) {
+    const scaled = allocateProportionalIntegerShares(raw, target);
+    return persons.map((p, i) => ({ ...p, totalDue: scaled[i] }));
+  }
+
+  return persons.map((p, i) => ({
+    ...p,
+    totalDue: personDueWithBillTaxShare(raw[i], catalogTotal, target),
+  }));
 }

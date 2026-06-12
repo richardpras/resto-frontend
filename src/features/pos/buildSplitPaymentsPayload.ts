@@ -36,9 +36,64 @@ function scaleAllocationRowsToPaymentAmount(allocations: AllocRow[], paymentAmou
   return scaled;
 }
 
+function buildPersonItemAllocations(
+  person: Pick<SplitPerson, "items">,
+  order: Pick<Order, "items">,
+  priceLines: Array<Pick<OrderItem, "id" | "price" | "qty">>,
+): AllocRow[] {
+  const allocations: AllocRow[] = [];
+  for (const it of person.items) {
+    const line = order.items.find((oi) => String(oi.id) === it.itemId);
+    const ci = priceLines.find((c) => c.id === it.itemId);
+    if (!line?.orderItemId || !ci) continue;
+    allocations.push({
+      orderItemId: Number(line.orderItemId),
+      qty: it.qty,
+      amount: ci.price * it.qty,
+    });
+  }
+  return allocations;
+}
+
+function resolveConsolidatedMethod(payments: SplitPerson["payments"]): string {
+  const methods = payments.map((p) => toApiPaymentMethod(p.method));
+  if (methods.length === 0) return "cash";
+  return methods.every((method) => method === methods[0]) ? methods[0] : methods[methods.length - 1];
+}
+
+function buildPaymentRow(
+  person: SplitPerson,
+  amount: number,
+  method: string,
+  paidAt: string,
+  splitMethod: "equal" | "by-item",
+  order: Pick<Order, "items">,
+  priceLines: Array<Pick<OrderItem, "id" | "price" | "qty">>,
+): OrderPaymentPayload {
+  const base: OrderPaymentPayload = { method, amount, paidAt };
+  if (splitMethod !== "by-item" || person.items.length === 0) {
+    return base;
+  }
+
+  const allocations = buildPersonItemAllocations(person, order, priceLines);
+  if (allocations.length === 0) return base;
+
+  let finalAlloc = allocations;
+  const sumAlloc = allocations.reduce((s, a) => s + a.amount, 0);
+  if (sumAlloc > 0 && Math.abs(sumAlloc - amount) > 0.02) {
+    finalAlloc = scaleAllocationRowsToPaymentAmount(allocations, amount);
+  }
+  const sumFinal = finalAlloc.reduce((s, a) => s + a.amount, 0);
+  if (Math.abs(sumFinal - amount) <= 0.02) {
+    return { ...base, allocations: finalAlloc };
+  }
+  return base;
+}
+
 /**
  * Builds payment rows for split-bill settlement (POS new order or Cashier existing order).
- * `priceLines` are usually cart lines or order lines — same menu `id` keys as `person.items[].itemId`.
+ * Each person emits one consolidated payment so item allocation qty is not duplicated when
+ * draft payments were recorded more than once (e.g. after re-assigning by-item quantities).
  */
 export function buildSplitPaymentsPayload(
   order: Pick<Order, "items">,
@@ -48,40 +103,26 @@ export function buildSplitPaymentsPayload(
 ): OrderPaymentPayload[] {
   const out: OrderPaymentPayload[] = [];
   for (const person of splitPersons) {
-    for (const p of person.payments) {
-      const base: OrderPaymentPayload = {
-        method: toApiPaymentMethod(p.method),
-        amount: p.amount,
-        paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : new Date(p.paidAt).toISOString(),
-      };
-      if (splitMethod === "by-item" && person.items.length > 0) {
-        const allocations: { orderItemId: number; qty: number; amount: number }[] = [];
-        for (const it of person.items) {
-          const line = order.items.find((oi) => String(oi.id) === it.itemId);
-          const ci = priceLines.find((c) => c.id === it.itemId);
-          if (!line?.orderItemId || !ci) continue;
-          const amount = ci.price * it.qty;
-          allocations.push({
-            orderItemId: Number(line.orderItemId),
-            qty: it.qty,
-            amount,
-          });
-        }
-        let finalAlloc = allocations;
-        const sumAlloc = allocations.reduce((s, a) => s + a.amount, 0);
-        if (allocations.length > 0 && sumAlloc > 0 && Math.abs(sumAlloc - p.amount) > 0.02) {
-          finalAlloc = scaleAllocationRowsToPaymentAmount(allocations, p.amount);
-        }
-        const sumFinal = finalAlloc.reduce((s, a) => s + a.amount, 0);
-        if (finalAlloc.length > 0 && Math.abs(sumFinal - p.amount) <= 0.02) {
-          out.push({ ...base, allocations: finalAlloc });
-        } else {
-          out.push(base);
-        }
-      } else {
-        out.push(base);
-      }
-    }
+    if (person.payments.length === 0) continue;
+
+    const totalAmount = person.payments.reduce((s, p) => s + p.amount, 0);
+    const lastPayment = person.payments[person.payments.length - 1];
+    const paidAt =
+      lastPayment.paidAt instanceof Date
+        ? lastPayment.paidAt.toISOString()
+        : new Date(lastPayment.paidAt).toISOString();
+
+    out.push(
+      buildPaymentRow(
+        person,
+        totalAmount,
+        resolveConsolidatedMethod(person.payments),
+        paidAt,
+        splitMethod,
+        order,
+        priceLines,
+      ),
+    );
   }
   return out;
 }

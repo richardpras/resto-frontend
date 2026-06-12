@@ -17,6 +17,7 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_WIDTH_LOGO = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContext = {
@@ -113,6 +114,7 @@ const SidebarProvider = React.forwardRef<
             {
               "--sidebar-width": SIDEBAR_WIDTH,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+              "--sidebar-width-logo": SIDEBAR_WIDTH_LOGO,
               ...style,
             } as React.CSSProperties
           }
@@ -133,10 +135,11 @@ const Sidebar = React.forwardRef<
   React.ComponentProps<"div"> & {
     side?: "left" | "right";
     variant?: "sidebar" | "floating" | "inset";
-    collapsible?: "offcanvas" | "icon" | "none";
+    collapsible?: "offcanvas" | "icon" | "logo-only" | "none";
   }
 >(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const isHiddenWithLogoRail = collapsible === "logo-only" && state === "collapsed";
 
   if (collapsible === "none") {
     return (
@@ -185,6 +188,7 @@ const Sidebar = React.forwardRef<
         className={cn(
           "relative h-svh w-[--sidebar-width] bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
+          "group-data-[collapsible=logo-only]:w-[--sidebar-width-logo]",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
@@ -195,8 +199,8 @@ const Sidebar = React.forwardRef<
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex",
           side === "left"
-            ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-            : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+            ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] group-data-[collapsible=logo-only]:left-[calc(var(--sidebar-width)*-1)]"
+            : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] group-data-[collapsible=logo-only]:right-[calc(var(--sidebar-width)*-1)]",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
@@ -207,6 +211,8 @@ const Sidebar = React.forwardRef<
       >
         <div
           data-sidebar="sidebar"
+          aria-hidden={isHiddenWithLogoRail || undefined}
+          {...(isHiddenWithLogoRail ? { inert: "" as const } : {})}
           className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
         >
           {children}
@@ -235,12 +241,43 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
         {...props}
       >
         <PanelLeft />
-        <span className="sr-only">Toggle Sidebar</span>
+        <span className="sr-only">Toggle sidebar</span>
       </Button>
     );
   },
 );
 SidebarTrigger.displayName = "SidebarTrigger";
+
+const SidebarLogoRail = React.forwardRef<HTMLButtonElement, React.ComponentProps<"button">>(
+  ({ className, children, onClick, ...props }, ref) => {
+    const { toggleSidebar, state, isMobile } = useSidebar();
+
+    if (isMobile || state !== "collapsed") {
+      return null;
+    }
+
+    return (
+      <button
+        ref={ref}
+        type="button"
+        data-sidebar="logo-rail"
+        aria-label="Open sidebar"
+        onClick={(event) => {
+          onClick?.(event);
+          toggleSidebar();
+        }}
+        className={cn(
+          "fixed left-0 top-0 z-20 hidden h-14 w-[--sidebar-width-logo] items-center justify-center border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:flex",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  },
+);
+SidebarLogoRail.displayName = "SidebarLogoRail";
 
 const SidebarRail = React.forwardRef<HTMLButtonElement, React.ComponentProps<"button">>(
   ({ className, ...props }, ref) => {
@@ -621,6 +658,7 @@ export {
   SidebarHeader,
   SidebarInput,
   SidebarInset,
+  SidebarLogoRail,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuBadge,

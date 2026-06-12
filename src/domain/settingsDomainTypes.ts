@@ -56,11 +56,18 @@ export interface PaymentMethod {
   status: "active" | "inactive";
 }
 
+export type StockEnforcementMode = "strict" | "warning" | "deferred";
+
 export interface SystemPrefs {
   enableSplitBill: boolean;
   enableMultiPayment: boolean;
   confirmBeforePayment: boolean;
   enableQROrdering: boolean;
+  enableCallCashier: boolean;
+  /** @deprecated Use stockEnforcementMode === "strict" */
+  enforceStockOnSale: boolean;
+  stockEnforcementMode: StockEnforcementMode;
+  allowNegativeStock: boolean;
 }
 
 export interface IntegrationSettings {

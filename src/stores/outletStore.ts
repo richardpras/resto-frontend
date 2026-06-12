@@ -18,9 +18,14 @@ export const useOutletStore = create<OutletContextState>()(
       activeOutletId: null,
       activeOutletCode: null,
       hydrateFromApiOutlets: (outlets) => {
-        if (outlets.length === 0) return;
+        if (outlets.length === 0) {
+          set({ activeOutletId: null, activeOutletCode: null });
+          return;
+        }
         const { activeOutletId } = get();
-        if (activeOutletId !== null && outlets.some((o) => o.id === activeOutletId)) return;
+        if (typeof activeOutletId === "number" && outlets.some((o) => o.id === activeOutletId)) {
+          return;
+        }
         const first = outlets[0];
         set({
           activeOutletId: first.id,

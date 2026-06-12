@@ -11,16 +11,17 @@ import { getOrdersExplorerUiCaps } from "@/stores/ordersExplorerCapabilities";
 import { explorerDetailKey, useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
 import { useOutletStore } from "@/stores/outletStore";
 import type { OrderApi, OrderItemRecoveryEventApi } from "@/lib/api-integration/endpoints";
+import { formatOrderSourceLabel } from "@/features/orders/orderSource";
 
 function formatRp(n: number): string {
   return "Rp " + n.toLocaleString("id-ID");
 }
 
 function orderChannelLabel(order: OrderApi): string {
-  const src = order.source === "qr" ? "QR" : "POS";
+  const source = formatOrderSourceLabel(order.orderSource ?? null);
   const ch = order.orderChannel ? String(order.orderChannel).replace(/_/g, " ") : "";
   const sm = order.serviceMode ? String(order.serviceMode).replace(/_/g, " ") : "";
-  return [src, ch, sm].filter((s) => s.length > 0).join(" · ");
+  return [source, ch, sm].filter((s) => s.length > 0).join(" · ");
 }
 
 function formatWhen(iso?: string | null): string {

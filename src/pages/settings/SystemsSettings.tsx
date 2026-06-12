@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { StockEnforcementMode } from "@/domain/settingsDomainTypes";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
@@ -70,6 +72,72 @@ export default function SystemSettings() {
             desc="Require staff confirmation before opening payment screen."
           />
           <Row k="enableQROrdering" label="QR Ordering" desc="Allow customers to scan and order from their device." />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>QR Ordering</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Row
+            k="enableCallCashier"
+            label="Enable Call Cashier button"
+            desc="Show the Call Cashier action on the customer QR order status page while awaiting confirmation."
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Inventory / POS</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium">Stock Enforcement Mode</Label>
+            <p className="text-xs text-muted-foreground">
+              Deferred mode allows sales to continue even when inventory records are incomplete. Inventory
+              consumption is processed during shift close or inventory posting.
+            </p>
+          </div>
+          <RadioGroup
+            value={system.stockEnforcementMode ?? (system.enforceStockOnSale ? "strict" : "deferred")}
+            onValueChange={(value) => {
+              const mode = value as StockEnforcementMode;
+              const next = {
+                ...system,
+                stockEnforcementMode: mode,
+                enforceStockOnSale: mode === "strict",
+              };
+              updateSystem(next);
+              void persistSystem(next, `Stock enforcement mode set to ${mode}`);
+            }}
+            className="space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="strict" id="stock-mode-strict" />
+              <Label htmlFor="stock-mode-strict" className="font-normal">
+                Strict — block checkout when stock is insufficient
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="warning" id="stock-mode-warning" />
+              <Label htmlFor="stock-mode-warning" className="font-normal">
+                Warning — complete sale and record inventory incidents
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="deferred" id="stock-mode-deferred" />
+              <Label htmlFor="stock-mode-deferred" className="font-normal">
+                Deferred (recommended) — consume inventory on shift close / posting
+              </Label>
+            </div>
+          </RadioGroup>
+          <Row
+            k="allowNegativeStock"
+            label="Allow negative stock"
+            desc="When enabled, inventory ledger may go below zero during consumption posting so kitchen operations can continue."
+          />
         </CardContent>
       </Card>
 

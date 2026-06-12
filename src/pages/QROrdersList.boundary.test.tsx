@@ -1,12 +1,31 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import QROrdersList from "./QROrdersList";
 
+const mockNavigate = vi.fn();
+const mockOpenQrOrderInPosFlow = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+vi.mock("@/components/qr-order/openQrOrderInPosFlow", () => ({
+  openQrOrderInPosFlow: (...args: unknown[]) => mockOpenQrOrderInPosFlow(...args),
+}));
+
+vi.mock("@/stores/qrOrderPosBridgeStore", () => ({
+  useQrOrderPosBridgeStore: (selector: (state: { setFromOpenInPos: () => void }) => unknown) =>
+    selector({ setFromOpenInPos: vi.fn() }),
+}));
+
 const mockStartPolling = vi.fn();
 const mockStopPolling = vi.fn();
-const mockConfirmRequest = vi.fn();
-const mockRejectRequest = vi.fn();
+const mockFetchRequests = vi.fn();
 const mockUseOutletStore = vi.fn();
 const mockUseAuthStore = vi.fn();
 const mockUseQrOrderStore = vi.fn();
@@ -25,18 +44,37 @@ vi.mock("@/stores/qrOrderStore", () => ({
   useQrOrderStore: (selector: (state: Record<string, unknown>) => unknown) => mockUseQrOrderStore(selector),
 }));
 
+vi.mock("@/lib/api-integration/qrOrderReviewEndpoints", () => ({
+  searchQrOrder: vi.fn(),
+  fetchQrOrderReview: vi.fn(),
+  fetchQrOrderHistory: vi.fn().mockResolvedValue([]),
+  adjustQrOrder: vi.fn(),
+  confirmQrOrderAndPay: vi.fn(),
+}));
+
 vi.mock("@/lib/api-integration/qrOrderEndpoints", () => ({
-  listQrOrdersWithMeta: vi.fn(),
-  confirmQrOrder: vi.fn(),
-  rejectQrOrder: vi.fn(),
+  listQrOrdersWithMeta: vi.fn().mockResolvedValue({
+    requests: [],
+    meta: { currentPage: 1, perPage: 50, total: 0, lastPage: 1 },
+  }),
+}));
+
+vi.mock("@/components/qr-order/QrOrderScannerModal", () => ({
+  QrOrderScannerModal: () => null,
+}));
+
+vi.mock("@/components/qr-order/QrOrderPreviewDrawer", () => ({
+  QrOrderPreviewDrawer: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="qr-preview-drawer-open">Preview Drawer</div> : null,
 }));
 
 describe("QROrdersList store boundary", () => {
   beforeEach(() => {
+    mockNavigate.mockReset();
+    mockOpenQrOrderInPosFlow.mockClear();
     mockStartPolling.mockReset();
     mockStopPolling.mockReset();
-    mockConfirmRequest.mockReset();
-    mockRejectRequest.mockReset();
+    mockFetchRequests.mockReset();
     mockUseOutletStore.mockImplementation((selector: (state: { activeOutletId: number }) => unknown) =>
       selector({ activeOutletId: 2 }),
     );
@@ -55,7 +93,10 @@ describe("QROrdersList store boundary", () => {
             customerName: "Ana",
             status: "pending_cashier_confirmation",
             decisionMode: null,
+            statusLabel: "Pending",
             estimatedTotal: 12000,
+            cashierCalledAt: null,
+            cashierCallCount: 0,
             expiresAt: null,
             confirmedAt: null,
             rejectedAt: null,
@@ -73,30 +114,34 @@ describe("QROrdersList store boundary", () => {
         lastSyncAt: null,
         startPolling: mockStartPolling,
         stopPolling: mockStopPolling,
-        confirmRequest: mockConfirmRequest,
-        rejectRequest: mockRejectRequest,
+        fetchRequests: mockFetchRequests,
       }),
     );
   });
 
-  it("delegates polling and actions to qrOrderStore", () => {
+  it("delegates polling and opens preview drawer from pending card", () => {
     const { container } = render(<QROrdersList />);
     expect(mockStartPolling).toHaveBeenCalledWith(
-      { outletId: 2, status: "pending_cashier_confirmation", perPage: 100 },
+      { outletId: 2, status: "pending_cashier_confirmation", perPage: 25, page: 1 },
       10000,
     );
     expect(container.firstChild).toHaveClass("p-4");
 
-    fireEvent.click(screen.getByRole("button", { name: /confirm only/i }));
-    expect(mockConfirmRequest).toHaveBeenCalledWith("12", { mode: "confirm_only" });
+    fireEvent.click(screen.getByTestId("qr-order-preview-button"));
+    expect(screen.getByTestId("qr-preview-drawer-open")).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /pay and confirm/i }));
-    expect(mockConfirmRequest).toHaveBeenCalledWith("12", {
-      mode: "pay_and_confirm",
-      payments: [{ method: "cash", amount: 12000 }],
+  it("opens POS directly from list without preview drawer", async () => {
+    render(<QROrdersList />);
+
+    fireEvent.click(screen.getByTestId("qr-order-open-pos-list-button"));
+
+    await waitFor(() => {
+      expect(mockOpenQrOrderInPosFlow).toHaveBeenCalledWith(
+        "12",
+        expect.objectContaining({ navigate: mockNavigate }),
+      );
     });
-
-    fireEvent.click(screen.getByRole("button", { name: /reject/i }));
-    expect(mockRejectRequest).toHaveBeenCalledWith("12", "Rejected by cashier");
+    expect(screen.queryByTestId("qr-preview-drawer-open")).not.toBeInTheDocument();
   });
 });

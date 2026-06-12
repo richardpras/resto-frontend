@@ -252,12 +252,12 @@ type OrderStore = {
     orderItemId: string,
     body: { resolution: string; notes?: string | null },
   ) => Promise<void>;
-  createOrderRemote: (payload: CreateOrderPayload) => Promise<Order>;
+  createOrderRemote: (payload: CreateOrderPayload) => Promise<{ order: Order; resumed: boolean }>;
   updateOrderRemote: (id: string, payload: UpdateOrderPayload) => Promise<Order>;
   addOrderPaymentsRemote: (
     id: string,
     payments: OrderPaymentPayload[],
-    extra?: { cashAccountCode?: string; revenueAccountCode?: string },
+    extra?: { cashAccountCode?: string; revenueAccountCode?: string; idempotencyKey?: string },
   ) => Promise<Order>;
   createOrderSplitRemote: (orderId: string, payload: OrderSplitPayload) => Promise<Order>;
   updateOrderSplitRemote: (
@@ -549,17 +549,18 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       lastRequestMeta: requestMeta,
     });
     try {
-      const apiOrder = await apiCreateOrder(payload, {
+      const { order: apiOrder, meta } = await apiCreateOrder(payload, {
         signal: controller.signal,
         headers: createObservabilityHeaders(requestMeta),
       });
       const mapped = orderApiToStoreOrder(apiOrder);
-      if (get().activeMutationRequestId !== requestId) return mapped;
+      const resumed = meta?.action === "resume_existing_order";
+      if (get().activeMutationRequestId !== requestId) return { order: mapped, resumed };
       set((s) => ({
         orders: upsertOrder(s.orders, mapped),
         lastSyncAt: new Date().toISOString(),
       }));
-      return mapped;
+      return { order: mapped, resumed };
     } catch (error) {
       const message = mapApiError(error);
       set({ error: message });
@@ -630,6 +631,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         payments,
         ...(extra?.cashAccountCode ? { cashAccountCode: extra.cashAccountCode } : {}),
         ...(extra?.revenueAccountCode ? { revenueAccountCode: extra.revenueAccountCode } : {}),
+        ...(extra?.idempotencyKey ? { idempotencyKey: extra.idempotencyKey } : {}),
       }, {
         signal: controller.signal,
         headers: createObservabilityHeaders(requestMeta),

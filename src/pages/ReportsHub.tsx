@@ -14,6 +14,7 @@ import {
   HeartPulse,
   ServerCrash,
   ShieldCheck,
+  LockKeyhole,
 } from "lucide-react";
 import { SystemHealthHubSummary } from "@/components/system-health/SystemHealthHubSummary";
 import { AuditCenterHubSummary } from "@/components/audit/AuditCenterHubSummary";
@@ -68,6 +69,7 @@ const HUB_SECTIONS: { title: string; cardIds: string[] }[] = [
       "audit-center",
       "bug-reports",
       "system-reliability",
+      "shift-close-operations",
     ],
   },
   {
@@ -214,6 +216,17 @@ const HUB_CARDS: HubCardDef[] = [
     isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
     isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
     footer: <FailedJobsHubSummary />,
+  },
+  {
+    id: "shift-close-operations",
+    title: "Shift Close Operations",
+    description: "End-of-shift preflight, cash reconciliation, inventory posting, and GL batch close.",
+    bullets: ["Preflight Checks", "Cash Variance", "Inventory Posting", "Journal Preview"],
+    to: "/shift-close",
+    icon: LockKeyhole,
+    permissionHint: "finance.shift_close",
+    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.FINANCE_SHIFT_CLOSE]),
+    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.FINANCE_SHIFT_CLOSE]),
   },
   {
     id: "loyalty-analytics",

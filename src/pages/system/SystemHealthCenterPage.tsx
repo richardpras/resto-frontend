@@ -1,6 +1,10 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { getInventoryPostingHealth } from "@/lib/api-integration/inventoryPostingEndpoints";
+import { getPosCheckoutIntegrityHealth } from "@/lib/api-integration/posCheckoutIntegrityEndpoints";
+import { ShiftCloseReadinessWidget } from "@/components/shift-close/ShiftCloseReadinessWidget";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SystemHealthScoreCard } from "@/components/system-health/SystemHealthScoreCard";
@@ -26,6 +30,18 @@ export default function SystemHealthCenterPage() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canAccess = hasPermission("settings.manage");
   const health = useSystemHealthData(activeOutletId, hasPermission);
+  const inventoryPostingQ = useQuery({
+    queryKey: ["system-health", "inventory-posting", activeOutletId],
+    queryFn: () => getInventoryPostingHealth(activeOutletId!),
+    enabled: canAccess && typeof activeOutletId === "number" && activeOutletId >= 1,
+    staleTime: 60_000,
+  });
+  const checkoutIntegrityQ = useQuery({
+    queryKey: ["system-health", "checkout-integrity", activeOutletId],
+    queryFn: () => getPosCheckoutIntegrityHealth(activeOutletId!),
+    enabled: canAccess && typeof activeOutletId === "number" && activeOutletId >= 1,
+    staleTime: 60_000,
+  });
 
   if (!canAccess) {
     return (
@@ -118,6 +134,55 @@ export default function SystemHealthCenterPage() {
                   Latest: {health.accounting.data.priorityQueue[0].title}
                 </p>
               ) : null}
+            </div>
+          ) : null}
+        </SystemModuleHealthCard>
+
+        <SystemModuleHealthCard
+          title="Inventory Posting Issues"
+          status={
+            inventoryPostingQ.isLoading
+              ? "loading"
+              : inventoryPostingQ.isError
+                ? "error"
+                : "success"
+          }
+          severity={inventoryPostingQ.data?.severity}
+          openTo="/inventory"
+          errorMessage={inventoryPostingQ.error instanceof Error ? inventoryPostingQ.error.message : undefined}
+        >
+          {inventoryPostingQ.data ? (
+            <div className="space-y-2">
+              <MetricRow label="Pending" value={inventoryPostingQ.data.pendingPostings} />
+              <MetricRow label="Review Required" value={inventoryPostingQ.data.reviewRequiredPostings} />
+              <MetricRow label="Failed" value={inventoryPostingQ.data.failedPostings} />
+              <MetricRow label="Open Incidents" value={inventoryPostingQ.data.openIncidents} />
+              <MetricRow label="Mode" value={inventoryPostingQ.data.enforcementMode} />
+            </div>
+          ) : null}
+        </SystemModuleHealthCard>
+
+        <ShiftCloseReadinessWidget />
+
+        <SystemModuleHealthCard
+          title="Duplicate Order Prevention"
+          status={
+            checkoutIntegrityQ.isLoading
+              ? "loading"
+              : checkoutIntegrityQ.isError
+                ? "error"
+                : "success"
+          }
+          openTo="/pos"
+          errorMessage={checkoutIntegrityQ.error instanceof Error ? checkoutIntegrityQ.error.message : undefined}
+        >
+          {checkoutIntegrityQ.data ? (
+            <div className="space-y-2">
+              <MetricRow label="Retries" value={checkoutIntegrityQ.data.retries} />
+              <MetricRow label="Idempotency Hits" value={checkoutIntegrityQ.data.idempotencyHits} />
+              <MetricRow label="Duplicates Prevented" value={checkoutIntegrityQ.data.duplicatePreventionCount} />
+              <MetricRow label="Resumed Orders" value={checkoutIntegrityQ.data.resumeExistingOrderCount} />
+              <MetricRow label="QR Bill Resumes" value={checkoutIntegrityQ.data.qrResumeCount} />
             </div>
           ) : null}
         </SystemModuleHealthCard>

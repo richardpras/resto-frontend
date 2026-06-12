@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
+import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import {
@@ -437,6 +438,20 @@ export default function Cashier() {
         setSelectedOrderId(null);
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
+        if (gatewayOrderId) {
+          try {
+            await fetchOrderRemote(gatewayOrderId);
+          } catch {
+            // Best-effort sync after gateway payment commit failure.
+          }
+        }
+        setShowQrisModal(false);
+        setShowPaymentModal(false);
+        setPaymentModalOrder(null);
+        setGatewayOrderId(null);
+        setSelectedCheckoutCode(null);
+        void paymentResetAsync();
+        await loadOpenOrders();
         toast.error(error instanceof ApiHttpError ? error.message : "Failed to record payment");
       }
     })();
@@ -447,6 +462,8 @@ export default function Cashier() {
     pendingGatewayPayments,
     addOrderPaymentsRemote,
     loadOpenOrders,
+    fetchOrderRemote,
+    paymentResetAsync,
   ]);
 
   const resetSplitState = () => {
@@ -551,6 +568,7 @@ export default function Cashier() {
     const line = splitSourceOrder.items.find((it) => String(it.id) === itemId);
     if (!line) return;
     const lineQty = line.qty;
+    const hadDraftPayments = splitPersons.some((p) => p.payments.length > 0);
     setSplitPersons((prev) => {
       const maxMine = maxQtyForPersonOnLine(prev, personIdx, itemId, lineQty);
       const current = prev[personIdx]?.items.find((it) => it.itemId === itemId)?.qty ?? 0;
@@ -572,12 +590,12 @@ export default function Cashier() {
       });
 
       const lines = splitSourceOrder.items.map((l) => ({ id: String(l.id), price: l.price, qty: l.qty }));
-      const full = byItemFullyAllocated(
-        updatedPeople,
-        lines.map((l) => ({ id: l.id, qty: l.qty })),
-      );
-      return applyByItemTotalDuesWithTaxScale(updatedPeople, lines, splitSourceOrder.balanceDue, full);
+      const next = applyByItemTotalDuesWithTaxScale(updatedPeople, lines, splitSourceOrder.balanceDue);
+      return next.map((p) => ({ ...p, payments: [] }));
     });
+    if (hadDraftPayments) {
+      toast.message("Split payment drafts cleared — item assignment changed.");
+    }
   };
 
   const handleSplitPersonPay = () => {
@@ -1103,8 +1121,11 @@ export default function Cashier() {
                           })
                         }
                       />
-                      <span className="text-xs text-foreground flex-1">
-                        {order.code} · {order.source.toUpperCase()}
+                      <span className="text-xs text-foreground flex-1 min-w-0">
+                        <span className="block truncate font-medium">{order.code}</span>
+                        <span className="mt-0.5 inline-flex" data-testid="open-bill-source-badge">
+                          <OrderSourceBadge source={order.orderSource ?? null} />
+                        </span>
                       </span>
                       <span className="text-xs font-semibold text-foreground">{formatRp(order.remainingPayable)}</span>
                       <button
@@ -1486,7 +1507,7 @@ export default function Cashier() {
               {splitMethod === "by-item" && splitAllowsByItem && (
                 <div className="mb-5 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Use − / + to give each person a quantity. Units cannot exceed the line qty on the order.
+                    Use − / + to assign quantities. Each person total includes their share of tax/discount on assigned items.
                   </p>
                   {!byItemAllocationComplete && (
                     <p className="text-xs text-amber-900 dark:text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">

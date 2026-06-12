@@ -243,6 +243,8 @@ export type CreateOrderPayload = {
   serviceMode?: ServiceMode;
   orderChannel?: OrderChannel;
   posSessionId?: number;
+  qrOrderRequestId?: number;
+  idempotencyKey?: string;
 };
 
 export type UpdateOrderPayload = Partial<{
@@ -264,6 +266,12 @@ export type OrderApi = {
   posSessionId?: number | null;
   code: string;
   source: "pos" | "qr";
+  orderSource?: {
+    type: string;
+    label: string;
+    code: string | null;
+    id: number | null;
+  };
   orderChannel?: OrderChannel | null;
   serviceMode?: ServiceMode | null;
   orderType: string;
@@ -417,17 +425,30 @@ export type ListOrdersParams = {
   hasVoidedPayment?: boolean;
 };
 
+export type CreateOrderApiResult = {
+  order: OrderApi;
+  meta?: {
+    action?: string;
+    existingOrderId?: number;
+    existingOrderCode?: string;
+    reason?: string;
+  };
+};
+
 export async function createOrder(
   payload: CreateOrderPayload,
   options: EndpointRequestOptions = {},
-): Promise<OrderApi> {
-  const response = await request<{ data: OrderApi }>("/orders", {
+): Promise<CreateOrderApiResult> {
+  const response = await request<{
+    data: OrderApi;
+    meta?: CreateOrderApiResult["meta"];
+  }>("/orders", {
     method: "POST",
     body: JSON.stringify(payload),
     signal: options.signal,
     headers: options.headers,
   });
-  return response.data;
+  return { order: response.data, meta: response.meta };
 }
 
 export async function getOrder(id: string, options: EndpointRequestOptions = {}): Promise<OrderApi> {
@@ -511,6 +532,7 @@ export async function addOrderPayments(
     payments: OrderPaymentPayload[];
     cashAccountCode?: string;
     revenueAccountCode?: string;
+    idempotencyKey?: string;
   },
   options: EndpointRequestOptions = {},
 ): Promise<OrderApi> {

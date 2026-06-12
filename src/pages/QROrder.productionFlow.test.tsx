@@ -7,6 +7,7 @@ const mockUseQrOrderStore = vi.fn();
 const mockCreateRequest = vi.fn();
 const mockCallCashier = vi.fn();
 const mockToastError = vi.fn();
+const mockNavigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
@@ -14,6 +15,7 @@ vi.mock("react-router-dom", async () => {
     ...actual,
     useSearchParams: () => [new URLSearchParams("outletId=2&tableId=7&tableName=T07")],
     useParams: () => ({ qrPublicId: undefined }),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -39,6 +41,7 @@ describe("QROrder production flow guards", () => {
     mockCreateRequest.mockReset();
     mockCallCashier.mockReset();
     mockToastError.mockReset();
+    mockNavigate.mockReset();
     mockListFloorTables.mockReset();
     mockGetApiAccessToken.mockReset();
     mockResolveLegacyTable.mockReset();
@@ -76,10 +79,7 @@ describe("QROrder production flow guards", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit order/i }));
 
     await waitFor(() => expect(mockCreateRequest).toHaveBeenCalledTimes(1));
-    expect(screen.getByText(/status: awaiting cashier/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /call cashier/i }));
-    await waitFor(() => expect(mockCallCashier).toHaveBeenCalledWith("req-1", { outletId: 2, tableId: 7 }));
+    expect(mockNavigate).toHaveBeenCalledWith("/qr/order/QRR-001");
   });
 
   it("blocks submission when projection marks table as reserved", async () => {

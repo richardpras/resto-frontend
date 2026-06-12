@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
-import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send, Bell } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Search, Plus, Minus, Trash2, ShoppingCart, ChevronLeft, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
 import { toast } from "sonner";
@@ -10,6 +10,15 @@ import {
   qrScanErrorTitle,
   type QrScanErrorCode,
 } from "@/components/tables/qrScanErrors";
+import { QrOrderMyOrdersSection } from "@/components/qr-order/QrOrderMyOrdersSection";
+import type { QrActiveSessionApi } from "@/lib/api-integration/tableEndpoints";
+import {
+  addActiveOrderCode,
+  setCurrentTableToken,
+  setLastSubmittedOrderCode,
+  setOrderRequestId,
+  setOrderTableContext,
+} from "@/lib/qrOrderSession";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string; description: string;
@@ -38,7 +47,7 @@ const menuItems: MenuItem[] = [
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
-type View = "menu" | "cart" | "confirm" | "success";
+type View = "menu" | "cart" | "confirm";
 
 /**
  * Guest / table self-order flow. Routed at `/qr-order` outside the main layout in `App.tsx`
@@ -46,10 +55,10 @@ type View = "menu" | "cart" | "confirm" | "success";
  * Staff monitors QR traffic at `/qr-orders` inside the app shell.
  */
 export default function QROrder() {
+  const navigate = useNavigate();
   const { qrPublicId } = useParams<{ qrPublicId: string }>();
   const [searchParams] = useSearchParams();
   const createRequest = useQrOrderStore((s) => s.createRequest);
-  const callCashier = useQrOrderStore((s) => s.callCashier);
   const isSubmitting = useQrOrderStore((s) => s.isSubmitting);
   const hasApiAccess = useQrOrderStore((s) => s.hasApiAccess);
   const resolveTableFromPublicId = useQrOrderStore((s) => s.resolveTableFromPublicId);
@@ -62,7 +71,6 @@ export default function QROrder() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notesItem, setNotesItem] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
-  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
   const [projectionStatus, setProjectionStatus] = useState<
     "unknown" | "checking" | "available" | "occupied" | "reserved" | "cleaning" | "disabled"
   >("unknown");
@@ -72,11 +80,18 @@ export default function QROrder() {
   const [resolvedTableId, setResolvedTableId] = useState<number | null>(null);
   const [resolveError, setResolveError] = useState<QrScanErrorCode | null>(null);
   const [resolvingQr, setResolvingQr] = useState(false);
+  const [activeSession, setActiveSession] = useState<QrActiveSessionApi | null>(null);
+  const [appendToRequestCode, setAppendToRequestCode] = useState<string | null>(null);
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
-  const [orderCode, setOrderCode] = useState(() => "QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
   const activeOutletId = resolvedOutletId ?? (Number.isFinite(outletIdParam) ? outletIdParam : null);
   const activeTableId = resolvedTableId ?? (Number.isFinite(tableIdParam) ? tableIdParam : null);
+  const tableSessionToken =
+    typeof qrPublicId === "string" && qrPublicId.trim() !== ""
+      ? qrPublicId.trim()
+      : activeOutletId !== null && activeTableId !== null
+        ? `legacy-${activeOutletId}-${activeTableId}`
+        : null;
 
   useEffect(() => {
     let active = true;
@@ -90,6 +105,10 @@ export default function QROrder() {
         setResolvedTableId(resolved.tableId);
         setTableNumber(resolved.tableName);
         setResolveError(null);
+        setCurrentTableToken(qrPublicId.trim());
+        setActiveSession(resolved.activeSession ?? null);
+        const activeCode = resolved.activeSession?.activeQrOrder?.requestCode ?? null;
+        setAppendToRequestCode(activeCode);
       })
       .catch((error) => {
         if (!active) return;
@@ -214,27 +233,27 @@ export default function QROrder() {
         outletId: activeOutletId,
         tableId: activeTableId,
         customerName: customerName.trim(),
+        ...(appendToRequestCode ? { appendToRequestCode } : {}),
         items: cart.map((item) => ({
           menuItemId: Number(item.id),
           qty: item.qty,
           notes: item.notes || undefined,
         })),
       });
-      setOrderCode(created.requestCode);
-      setSubmittedRequestId(created.id);
-      setView("success");
+      if (tableSessionToken) {
+        setCurrentTableToken(tableSessionToken);
+        addActiveOrderCode(tableSessionToken, created.requestCode);
+      }
+      setOrderRequestId(created.requestCode, String(created.id));
+      setOrderTableContext(created.requestCode, {
+        outletId: activeOutletId,
+        tableId: activeTableId,
+      });
+      setLastSubmittedOrderCode(created.requestCode);
+      setCart([]);
+      navigate(`/qr/order/${encodeURIComponent(created.requestCode)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to submit QR order");
-    }
-  };
-
-  const onCallCashier = async () => {
-    if (!submittedRequestId) return;
-    try {
-      await callCashier(submittedRequestId, { outletId: activeOutletId ?? 0, tableId: activeTableId ?? 0 });
-      toast.success("Cashier notified — please wait at your table or visit the counter.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not call cashier");
     }
   };
 
@@ -256,50 +275,6 @@ export default function QROrder() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-loading">
         <p className="text-sm text-muted-foreground">Opening table menu…</p>
-      </div>
-    );
-  }
-
-  // --- SUCCESS VIEW ---
-  if (view === "success") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          className="bg-card rounded-3xl p-8 max-w-sm w-full text-center shadow-lg border border-border">
-          <div className="h-20 w-20 rounded-full bg-accent flex items-center justify-center mx-auto mb-5"><span className="text-4xl">✅</span></div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Order Submitted!</h2>
-          <p className="text-sm text-muted-foreground mb-6">Status: Awaiting Cashier — kitchen starts after cashier confirms</p>
-          <div className="bg-muted rounded-2xl p-4 mb-6">
-            <p className="text-xs text-muted-foreground mb-1">Order Code</p>
-            <p className="text-2xl font-bold text-primary tracking-wider">{orderCode}</p>
-          </div>
-          <div className="space-y-2 text-sm text-left mb-6">
-            <div className="flex justify-between"><span className="text-muted-foreground">Table</span><span className="font-medium text-foreground">#{tableNumber}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span className="font-medium text-foreground">{totalItems} items</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold text-foreground">{formatRp(total)}</span></div>
-          </div>
-          <p className="text-xs text-muted-foreground mb-4">Pay at the cashier when ready — you cannot pay from this screen.</p>
-          <button
-            type="button"
-            disabled={isSubmitting || !submittedRequestId}
-            onClick={() => void onCallCashier()}
-            className="w-full py-3 rounded-2xl border border-primary text-primary font-semibold text-sm flex items-center justify-center gap-2 mb-3 disabled:opacity-60"
-          >
-            <Bell className="h-4 w-4" /> Call Cashier
-          </button>
-          <p className="text-xs text-muted-foreground">Show this code to the cashier when you pay or pick up.</p>
-          <button
-            onClick={() => {
-              setCart([]);
-              setSubmittedRequestId(null);
-              setOrderCode("QR-" + Math.random().toString(36).substring(2, 8).toUpperCase());
-              setView("menu");
-            }}
-            className="mt-6 w-full py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm"
-          >
-            Order More
-          </button>
-        </motion.div>
       </div>
     );
   }
@@ -465,6 +440,43 @@ export default function QROrder() {
         </div>
       </div>
       <div className="max-w-lg mx-auto p-4 pb-24">
+        {activeSession?.activeQrOrder && (
+          <div
+            className="mb-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3"
+            data-testid="qr-active-order-resume"
+          >
+            <div>
+              <p className="text-sm font-semibold text-foreground">Resume Existing Order</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Table {tableNumber} · {activeSession.activeQrOrder.requestCode}
+              </p>
+              <p className="text-sm text-primary font-medium mt-1">
+                {activeSession.activeQrOrder.customerStatusLabel}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Link
+                to={`/qr/order/${encodeURIComponent(activeSession.activeQrOrder.requestCode)}`}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold text-center"
+              >
+                View Order
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAppendToRequestCode(activeSession.activeQrOrder?.requestCode ?? null)}
+                className="flex-1 py-2.5 rounded-xl border border-primary text-primary text-sm font-semibold"
+              >
+                Add More Items
+              </button>
+            </div>
+            {appendToRequestCode && (
+              <p className="text-xs text-muted-foreground">
+                New items will be added to {appendToRequestCode}.
+              </p>
+            )}
+          </div>
+        )}
+        {tableSessionToken ? <QrOrderMyOrdersSection tableToken={tableSessionToken} /> : null}
         <div className="grid grid-cols-2 gap-3">
           {filtered.map((item) => {
             const inCart = cart.find((c) => c.id === item.id);

@@ -7,12 +7,15 @@ import QROrder from "./QROrder";
 const mockCreateRequest = vi.fn();
 const mockUseQrOrderStore = vi.fn();
 
+const mockNavigate = vi.fn();
+
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
     ...actual,
     useSearchParams: () => [new URLSearchParams("outletId=2&tableId=7&tableName=T07")],
     useParams: () => ({ qrPublicId: undefined }),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -56,7 +59,6 @@ describe("QROrder page store boundary", () => {
     await waitFor(() => {
       expect(mockCreateRequest).toHaveBeenCalled();
     });
-    expect(screen.getByText(/status: awaiting cashier/i)).toBeInTheDocument();
-    expect(screen.getByText(/you cannot pay from this screen/i)).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith("/qr/order/QRR-001");
   });
 });

@@ -1,5 +1,7 @@
 import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Paperclip, Armchair, Scale } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { PendingInventoryConsumptionPanel } from "@/components/inventory/PendingInventoryConsumptionPanel";
 import { StockMovementModal } from "@/components/inventory/StockMovementModal";
 import { useOutletStore } from "@/stores/outletStore";
 import { useInventoryStore, type InventoryItemType } from "@/stores/inventoryStore";
@@ -26,6 +28,8 @@ const typeBadge: Record<InventoryItemType, { label: string; className: string }>
 };
 
 export default function Inventory() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "posting" ? "posting" : "items";
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const ingredients = useInventoryStore((s) => s.ingredients);
   const stockMovements = useInventoryStore((s) => s.stockMovements);
@@ -120,6 +124,14 @@ export default function Inventory() {
     return created.id;
   };
 
+  const tabButtons = useMemo(
+    () => [
+      { id: "items" as const, label: "Items" },
+      { id: "posting" as const, label: "Pending Consumption" },
+    ],
+    [],
+  );
+
   return (
     <div className="p-4 md:p-6 max-w-5xl">
       {(!activeOutletId || activeOutletId < 1) && (
@@ -127,6 +139,33 @@ export default function Inventory() {
           Select an outlet with a numeric bridge id to see outlet-specific ledger stock and to seed stock on create. Without it, totals may fall back to legacy fields only.
         </div>
       )}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {tabButtons.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSearchParams(tab.id === "items" ? {} : { tab: tab.id })}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+              activeTab === tab.id
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:border-primary/30"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "posting" ? (
+        typeof activeOutletId === "number" && activeOutletId >= 1 ? (
+          <PendingInventoryConsumptionPanel outletId={activeOutletId} />
+        ) : (
+          <p className="text-sm text-muted-foreground">Select an outlet to view pending inventory consumption.</p>
+        )
+      ) : null}
+
+      {activeTab === "items" ? (
+      <>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
@@ -373,6 +412,8 @@ export default function Inventory() {
         editItem={editItem}
         onSave={handleSave}
       />
+      </>
+      ) : null}
     </div>
   );
 }

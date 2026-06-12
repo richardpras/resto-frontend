@@ -15,6 +15,7 @@ type ApiListResponse<T> = {
 
 export type QrOrderRequestStatus =
   | "pending_cashier_confirmation"
+  | "under_review"
   | "confirmed"
   | "rejected"
   | "expired";
@@ -46,6 +47,13 @@ export type QrOrderRequestApi = {
   rejectedAt?: string | null;
   rejectionReason?: string | null;
   orderId?: number | null;
+  linkedOrder?: {
+    id: number;
+    orderNo: string;
+    status: string;
+    paymentStatus: string;
+    total: number;
+  } | null;
   items: QrOrderRequestItemApi[];
   createdAt: string;
 };
@@ -55,6 +63,8 @@ export type CreateQrOrderPayload = {
   tableId: number;
   customerName: string;
   expiresInMinutes?: number;
+  appendToRequestCode?: string;
+  forceNew?: boolean;
   items: {
     menuItemId: number;
     qty: number;
@@ -62,9 +72,18 @@ export type CreateQrOrderPayload = {
   }[];
 };
 
+export type QrOrderCustomerHealth = {
+  pendingReviews: number;
+  adjustedAwaitingApproval: number;
+  callCashierVolume: number;
+  averageReviewTimeMinutes: number;
+  averageReadyTimeMinutes: number;
+};
+
 export type ListQrOrdersParams = {
   outletId?: number;
   status?: QrOrderRequestStatus;
+  search?: string;
   page?: number;
   perPage?: number;
 };
@@ -106,6 +125,7 @@ export async function listQrOrdersWithMeta(
   const query = new URLSearchParams();
   if (params?.outletId !== undefined && params.outletId > 0) query.set("outletId", String(params.outletId));
   if (params?.status) query.set("status", params.status);
+  if (params?.search) query.set("search", params.search);
   if (params?.page !== undefined) query.set("page", String(params.page));
   if (params?.perPage !== undefined) query.set("perPage", String(params.perPage));
 
@@ -179,5 +199,19 @@ export async function rejectQrOrder(
       headers: options.headers,
     },
   );
+  return response.data;
+}
+
+export async function markQrOrderServed(requestId: number | string): Promise<QrOrderRequestApi> {
+  const response = await request<{ message: string; data: QrOrderRequestApi }>(
+    `/qr-orders/${requestId}/mark-served`,
+    { method: "POST" },
+  );
+  return response.data;
+}
+
+export async function getQrOrderCustomerHealth(outletId?: number): Promise<QrOrderCustomerHealth> {
+  const query = outletId ? `?outletId=${encodeURIComponent(String(outletId))}` : "";
+  const response = await request<{ data: QrOrderCustomerHealth }>(`/qr-orders/customer-health${query}`);
   return response.data;
 }

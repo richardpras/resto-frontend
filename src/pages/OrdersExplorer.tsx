@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, Search } from "lucide-react";
 import { OrderExplorerDetailModal } from "@/components/orders/OrderExplorerDetailModal";
+import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { ReceiptPreviewModal } from "@/components/receipts/ReceiptPreviewModal";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { CustomerTableRowsSkeleton } from "@/components/skeletons/list/CustomerTableRowsSkeleton";
@@ -187,7 +188,7 @@ export default function OrdersExplorer() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") applySearch();
                 }}
-                placeholder="Search code…"
+                placeholder="Search code or QRO source…"
                 className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
               />
               <Button type="button" variant="secondary" className="shrink-0" onClick={() => applySearch()}>
@@ -201,8 +202,9 @@ export default function OrdersExplorer() {
       {listError ? <p className="text-sm text-destructive">{listError}</p> : null}
 
       <div className="rounded-2xl border border-border/50 bg-card p-4">
-        <div className="grid grid-cols-6 text-xs text-muted-foreground border-b pb-2 mb-2 gap-2">
+        <div className="grid grid-cols-7 text-xs text-muted-foreground border-b pb-2 mb-2 gap-2">
           <span className="col-span-2">Code</span>
+          <span>Source</span>
           <span>Status</span>
           <span>Pay</span>
           <span>Total</span>
@@ -216,9 +218,12 @@ export default function OrdersExplorer() {
               {orders.map((o) => (
                 <div
                   key={o.id}
-                  className="w-full grid grid-cols-6 gap-2 rounded-lg px-2 py-2 text-left text-sm items-center hover:bg-muted/40"
+                  className="w-full grid grid-cols-7 gap-2 rounded-lg px-2 py-2 text-left text-sm items-center hover:bg-muted/40"
                 >
                   <span className="col-span-2 truncate font-medium text-foreground">{o.code}</span>
+                  <span data-testid="order-history-source">
+                    <OrderSourceBadge source={o.orderSource ?? null} />
+                  </span>
                   <span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-lg font-medium ${statusBadgeClass(o.status)}`}>{o.status}</span>
                   </span>

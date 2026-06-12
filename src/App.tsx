@@ -24,6 +24,7 @@ const MenuCostDetail = lazy(() => import("./pages/menu/costing/MenuCostDetail"))
 const RecipeCostComparison = lazy(() => import("./pages/menu/costing/RecipeCostComparison"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const QROrder = lazy(() => import("./pages/QROrder"));
+const QrOrderDetail = lazy(() => import("./pages/QrOrderDetail"));
 const QROrdersList = lazy(() => import("./pages/QROrdersList"));
 const Tables = lazy(() => import("./pages/Tables"));
 const Reservations = lazy(() => import("./pages/Reservations"));
@@ -158,6 +159,14 @@ const App = () => (
             element={
               <Suspense fallback={routeFallback}>
                 <QROrder />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/qr/order/:orderCode"
+            element={
+              <Suspense fallback={routeFallback}>
+                <QrOrderDetail />
               </Suspense>
             }
           />

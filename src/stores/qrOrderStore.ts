@@ -48,6 +48,13 @@ export type QrOrderRequest = {
   rejectedAt: Date | null;
   rejectionReason: string;
   orderId: number | null;
+  linkedOrder: {
+    id: number;
+    orderNo: string;
+    status: string;
+    paymentStatus: string;
+    total: number;
+  } | null;
   items: {
     id: string;
     menuItemId: number;
@@ -76,6 +83,7 @@ export function qrOrderApiToStore(model: QrOrderRequestApi): QrOrderRequest {
     rejectedAt: model.rejectedAt ? new Date(model.rejectedAt) : null,
     rejectionReason: model.rejectionReason ?? "",
     orderId: model.orderId ?? null,
+    linkedOrder: model.linkedOrder ?? null,
     items: model.items.map((item) => ({
       id: String(item.id),
       menuItemId: item.menuItemId,
@@ -159,7 +167,7 @@ type QrOrderStore = {
   realtimeConnectionUnsubscribe: (() => void) | null;
   fetchRequests: (
     params?: ListQrOrdersParams,
-    options?: { mode?: "initial" | "background" },
+    options?: { mode?: "initial" | "background"; append?: boolean },
   ) => Promise<QrOrderRequest[]>;
   revalidateRequests: () => Promise<QrOrderRequest[] | null>;
   createRequest: (payload: CreateQrOrderPayload) => Promise<QrOrderRequest>;
@@ -204,7 +212,8 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   fetchRequests: async (params, options = {}) => {
     const requestId = get().activeRequestId + 1;
     const mode = options.mode ?? "initial";
-    const isInitialLike = mode === "initial" && !get().hasLoadedOnce;
+    const append = options.append ?? false;
+    const isInitialLike = mode === "initial" && !get().hasLoadedOnce && !append;
     const controller = new AbortController();
     const requestMeta: RequestObservabilityMetadata = {
       scope: "qr-order-store",
@@ -228,12 +237,12 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       });
       const mapped = response.requests.map(qrOrderApiToStore);
       if (get().activeRequestId !== requestId) return mapped;
-      set({
-        requests: mapped,
+      set((state) => ({
+        requests: append ? [...state.requests, ...mapped] : mapped,
         pagination: response.meta,
         lastSyncAt: new Date().toISOString(),
         hasLoadedOnce: true,
-      });
+      }));
       return mapped;
     } catch (error) {
       const message = mapApiError(error);

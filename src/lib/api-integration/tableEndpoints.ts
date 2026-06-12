@@ -25,6 +25,32 @@ export type FloorTableApi = {
   };
 };
 
+export type QrActiveSessionApi = {
+  hasActiveSession: boolean;
+  activeQrOrder?: {
+    id: number;
+    requestCode: string;
+    status: string;
+    customerStatus: string;
+    customerStatusLabel: string;
+    detailUrl: string;
+  } | null;
+  activePosOrder?: {
+    orderId: number;
+    orderCode: string;
+    paymentStatus: string;
+    total: number;
+    kitchenStatus: string;
+  } | null;
+  activeOpenBill?: {
+    orderId: number;
+    orderCode: string;
+    paymentStatus: string;
+    total: number;
+    kitchenStatus: string;
+  } | null;
+};
+
 export type QrResolvedTableApi = {
   id: number;
   outletId: number;
@@ -33,6 +59,7 @@ export type QrResolvedTableApi = {
   qrPublicId: string | null;
   qrEnabled: boolean;
   canonicalUrl: string;
+  activeSession?: QrActiveSessionApi;
 };
 
 export type CreateFloorTablePayload = {

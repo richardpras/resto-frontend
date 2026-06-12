@@ -6,6 +6,12 @@ export type OpenBillOrderApi = {
   id: number;
   code: string;
   source: "pos" | "qr";
+  orderSource?: {
+    type: string;
+    label: string;
+    code: string | null;
+    id: number | null;
+  };
   orderChannel?: string | null;
   status: string;
   paymentStatus: "unpaid" | "partial" | "paid";
