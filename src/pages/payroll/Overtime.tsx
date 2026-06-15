@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   approveOvertimeRequest,
   cancelOvertimeRequest,
@@ -38,6 +37,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ function requestStatusVariant(status: string): "default" | "secondary" | "destru
 }
 
 export default function Overtime() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -85,22 +87,22 @@ export default function Overtime() {
     if (!outletId) return;
     setLoading(true);
     try {
-      const [t, r, s, emps] = await Promise.all([
+      const [typeRows, requestRows, summaryRows, emps] = await Promise.all([
         listOvertimeTypes(outletId),
         listOvertimeRequests({ outletId }),
         listOvertimeSummaries({ outletId }),
         listOrganizationEmployees(outletId),
       ]);
-      setTypes(t);
-      setRequests(r);
-      setSummaries(s);
+      setTypes(typeRows);
+      setRequests(requestRows);
+      setSummaries(summaryRows);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load overtime data");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.overtime.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
   useEffect(() => {
     if (outletId === null && outlets[0]) setOutletId(outlets[0].id);
@@ -110,11 +112,11 @@ export default function Overtime() {
     void load();
   }, [load]);
 
-  const activeTypes = useMemo(() => types.filter((t) => t.isActive), [types]);
+  const activeTypes = useMemo(() => types.filter((row) => row.isActive), [types]);
 
   const submitRequest = async () => {
     if (!reqForm.employeeId || !reqForm.overtimeTypeId || !reqForm.overtimeDate || !reqForm.startTime || !reqForm.endTime) {
-      return toast.error("Fill required fields");
+      return toast.error(t("payroll.shared.fillRequired"));
     }
     try {
       await createOvertimeRequest({
@@ -125,17 +127,17 @@ export default function Overtime() {
         endTime: reqForm.endTime,
         reason: reqForm.reason || undefined,
       });
-      toast.success("Overtime request created");
+      toast.success(t("payroll.overtime.requestCreated"));
       setRequestOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create request");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.createRequestFailed"));
     }
   };
 
   const submitType = async () => {
     if (!outletId || !typeForm.code.trim() || !typeForm.name.trim()) {
-      return toast.error("Code and name required");
+      return toast.error(t("payroll.leave.codeNameRequired"));
     }
     try {
       await createOvertimeType({
@@ -145,70 +147,88 @@ export default function Overtime() {
         multiplier: Number(typeForm.multiplier) || 1,
         isActive: typeForm.isActive,
       });
-      toast.success("Overtime type created");
+      toast.success(t("payroll.overtime.typeCreated"));
       setTypeOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create type");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.createTypeFailed"));
     }
   };
 
-  const requestColumns: Column<OvertimeRequestRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.overtimeDate },
-    { key: "hours", header: "Hours", sortable: true, render: (r) => r.totalHours },
-    {
-      key: "type",
-      header: "Type",
-      render: (r) => r.overtimeType?.name ?? "—",
-    },
-    {
-      key: "status",
-      header: "Status",
-      sortable: true,
-      render: (r) => (
-        <Badge variant={requestStatusVariant(r.status)} className="capitalize">
-          {r.status}
-        </Badge>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right",
-      render: (r) =>
-        r.status === "pending" ? (
-          <div className="flex justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() =>
-                void approveOvertimeRequest(r.id)
-                  .then(() => {
-                    toast.success("Approved");
-                    return load();
-                  })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Approve failed"))
-              }
-            >
-              <Check className="h-4 w-4 text-green-600" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setRejectId(r.id);
-                setRejectReason("");
-                setRejectOpen(true);
-              }}
-            >
-              <X className="h-4 w-4 text-destructive" />
-            </Button>
+  const requestColumns: Column<OvertimeRequestRow>[] = useMemo(
+    () => [
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      { key: "date", header: t("payroll.shared.date"), sortable: true, render: (r) => r.overtimeDate },
+      { key: "hours", header: t("payroll.shared.hours"), sortable: true, render: (r) => r.totalHours },
+      {
+        key: "type",
+        header: t("payroll.shared.type"),
+        render: (r) => r.overtimeType?.name ?? "—",
+      },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        sortable: true,
+        render: (r) => (
+          <Badge variant={requestStatusVariant(r.status)} className="capitalize">
+            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        render: (r) =>
+          r.status === "pending" ? (
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  void approveOvertimeRequest(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.shared.approved"));
+                      return load();
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.approveFailed")))
+                }
+              >
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setRejectId(r.id);
+                  setRejectReason("");
+                  setRejectOpen(true);
+                }}
+              >
+                <X className="h-4 w-4 text-destructive" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() =>
+                  void cancelOvertimeRequest(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.shared.cancelled"));
+                      return load();
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.cancelFailed")))
+                }
+              >
+                {t("payroll.shared.cancel")}
+              </Button>
+            </div>
+          ) : r.status === "approved" ? (
             <Button
               variant="ghost"
               size="sm"
@@ -216,81 +236,72 @@ export default function Overtime() {
               onClick={() =>
                 void cancelOvertimeRequest(r.id)
                   .then(() => {
-                    toast.success("Cancelled");
+                    toast.success(t("payroll.shared.cancelled"));
                     return load();
                   })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Cancel failed"))
+                  .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.cancelFailed")))
               }
             >
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-          </div>
-        ) : r.status === "approved" ? (
+          ) : null,
+      },
+    ],
+    [t, load],
+  );
+
+  const summaryColumns: Column<OvertimeDailySummaryRow>[] = useMemo(
+    () => [
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      { key: "date", header: t("payroll.shared.date"), sortable: true, render: (r) => r.overtimeDate },
+      { key: "hours", header: t("payroll.overtime.approvedHours"), sortable: true, render: (r) => r.approvedHours },
+      { key: "requests", header: t("payroll.overtime.requestsCol"), render: (r) => r.requestCount },
+    ],
+    [t],
+  );
+
+  const typeColumns: Column<OvertimeTypeRow>[] = useMemo(
+    () => [
+      { key: "code", header: t("payroll.shared.code"), sortable: true },
+      { key: "name", header: t("payroll.shared.name"), sortable: true },
+      { key: "multiplier", header: t("payroll.shared.multiplier"), render: (row) => row.multiplier },
+      {
+        key: "active",
+        header: t("payroll.shared.active"),
+        render: (row) => (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="text-xs"
             onClick={() =>
-              void cancelOvertimeRequest(r.id)
-                .then(() => {
-                  toast.success("Cancelled");
-                  return load();
-                })
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Cancel failed"))
+              void updateOvertimeType(row.id, { isActive: !row.isActive })
+                .then(() => load())
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.saveFailed")))
             }
           >
-            Cancel
+            {row.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
           </Button>
-        ) : null,
-    },
-  ];
-
-  const summaryColumns: Column<OvertimeDailySummaryRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.overtimeDate },
-    { key: "hours", header: "Approved Hours", sortable: true, render: (r) => r.approvedHours },
-    { key: "requests", header: "Requests", render: (r) => r.requestCount },
-  ];
-
-  const typeColumns: Column<OvertimeTypeRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "multiplier", header: "Multiplier", render: (t) => t.multiplier },
-    {
-      key: "active",
-      header: "Active",
-      render: (t) => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            void updateOvertimeType(t.id, { isActive: !t.isActive })
-              .then(() => load())
-              .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Update failed"))
-          }
-        >
-          {t.isActive ? "Active" : "Inactive"}
-        </Button>
-      ),
-    },
-  ];
+        ),
+      },
+    ],
+    [t, load],
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Overtime</h2>
-        <p className="text-sm text-muted-foreground">Overtime requests, daily summaries, and types.</p>
+        <h2 className="text-lg font-semibold">{t("payroll.overtime.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("payroll.overtime.subtitle")}</p>
       </div>
 
       <Card className="p-4">
         {outlets.length > 1 && (
           <div className="max-w-xs space-y-1">
-            <Label className="text-xs">Outlet</Label>
+            <Label className="text-xs">{t("payroll.shared.outlet")}</Label>
             <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
               <SelectTrigger>
                 <SelectValue />
@@ -309,16 +320,16 @@ export default function Overtime() {
 
       <Tabs defaultValue="requests">
         <TabsList>
-          <TabsTrigger value="requests">Overtime Requests</TabsTrigger>
-          <TabsTrigger value="summary">Overtime Summary</TabsTrigger>
-          <TabsTrigger value="types">Overtime Types</TabsTrigger>
+          <TabsTrigger value="requests">{t("payroll.overtime.requests")}</TabsTrigger>
+          <TabsTrigger value="summary">{t("payroll.overtime.summary")}</TabsTrigger>
+          <TabsTrigger value="types">{t("payroll.overtime.types")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests" className="mt-4 space-y-3">
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setRequestOpen(true)} disabled={activeTypes.length === 0}>
               <Plus className="h-4 w-4 mr-1" />
-              New request
+              {t("payroll.shared.newRequest")}
             </Button>
           </div>
           <DataTable
@@ -326,7 +337,7 @@ export default function Overtime() {
             columns={requestColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            emptyMessage="No overtime requests"
+            emptyMessage={t("payroll.overtime.emptyRequests")}
             defaultPageSize={25}
           />
         </TabsContent>
@@ -337,7 +348,7 @@ export default function Overtime() {
             columns={summaryColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            emptyMessage="No approved overtime summaries"
+            emptyMessage={t("payroll.overtime.emptySummary")}
             defaultPageSize={25}
           />
         </TabsContent>
@@ -346,24 +357,24 @@ export default function Overtime() {
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setTypeOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Add type
+              {t("payroll.shared.addType")}
             </Button>
           </div>
-          <DataTable data={types} columns={typeColumns} rowKey={(t) => t.id} loading={loading} emptyMessage="No overtime types" />
+          <DataTable data={types} columns={typeColumns} rowKey={(row) => row.id} loading={loading} emptyMessage={t("payroll.overtime.emptyTypes")} />
         </TabsContent>
       </Tabs>
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New overtime request</DialogTitle>
+            <DialogTitle>{t("payroll.overtime.newRequest")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Employee</Label>
+              <Label>{t("payroll.shared.employee")}</Label>
               <Select value={reqForm.employeeId} onValueChange={(v) => setReqForm({ ...reqForm, employeeId: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder={t("payroll.shared.select")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -375,44 +386,44 @@ export default function Overtime() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Overtime type</Label>
+              <Label>{t("payroll.overtime.overtimeType")}</Label>
               <Select value={reqForm.overtimeTypeId} onValueChange={(v) => setReqForm({ ...reqForm, overtimeTypeId: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder={t("payroll.shared.select")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {activeTypes.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name} ({t.multiplier}x)
+                  {activeTypes.map((row) => (
+                    <SelectItem key={row.id} value={String(row.id)}>
+                      {row.name} ({row.multiplier}x)
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Date</Label>
+              <Label>{t("payroll.shared.date")}</Label>
               <Input type="date" value={reqForm.overtimeDate} onChange={(e) => setReqForm({ ...reqForm, overtimeDate: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Start time</Label>
+                <Label>{t("payroll.overtime.startTime")}</Label>
                 <Input type="time" value={reqForm.startTime} onChange={(e) => setReqForm({ ...reqForm, startTime: e.target.value })} />
               </div>
               <div className="space-y-1">
-                <Label>End time</Label>
+                <Label>{t("payroll.overtime.endTime")}</Label>
                 <Input type="time" value={reqForm.endTime} onChange={(e) => setReqForm({ ...reqForm, endTime: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Reason</Label>
+              <Label>{t("payroll.shared.reason")}</Label>
               <Textarea value={reqForm.reason} onChange={(e) => setReqForm({ ...reqForm, reason: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRequestOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitRequest()}>Submit</Button>
+            <Button onClick={() => void submitRequest()}>{t("payroll.shared.submit")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -420,19 +431,19 @@ export default function Overtime() {
       <Dialog open={typeOpen} onOpenChange={setTypeOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add overtime type</DialogTitle>
+            <DialogTitle>{t("payroll.overtime.addType")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("payroll.shared.code")}</Label>
               <Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="holiday" />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("payroll.shared.name")}</Label>
               <Input value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} />
             </div>
             <div className="space-y-1">
-              <Label>Multiplier</Label>
+              <Label>{t("payroll.shared.multiplier")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -444,9 +455,9 @@ export default function Overtime() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTypeOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitType()}>Save</Button>
+            <Button onClick={() => void submitType()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -454,12 +465,12 @@ export default function Overtime() {
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject overtime request</DialogTitle>
+            <DialogTitle>{t("payroll.overtime.rejectTitle")}</DialogTitle>
           </DialogHeader>
-          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason (optional)" />
+          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t("payroll.leave.reasonOptional")} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -467,14 +478,14 @@ export default function Overtime() {
                 if (rejectId === null) return;
                 void rejectOvertimeRequest(rejectId, rejectReason || undefined)
                   .then(() => {
-                    toast.success("Rejected");
+                    toast.success(t("payroll.shared.rejected"));
                     setRejectOpen(false);
                     return load();
                   })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Reject failed"));
+                  .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.rejectFailed")));
               }}
             >
-              Reject
+              {t("payroll.shared.reject")}
             </Button>
           </DialogFooter>
         </DialogContent>

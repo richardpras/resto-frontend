@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { motion } from "framer-motion";
 
 export default function Login() {
+  const { t } = useTranslation("common");
   const { user, login } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -29,7 +32,7 @@ export default function Login() {
     setIsLoading(true);
     try {
       const res = await login(email.trim(), password);
-      if (!res.ok) setError(res.error ?? "Login failed");
+      if (!res.ok) setError(res.error ?? t("auth.loginFailed"));
       else navigate(from, { replace: true });
     } finally {
       setIsLoading(false);
@@ -49,44 +52,46 @@ export default function Login() {
               <Store className="h-6 w-6 text-sidebar-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">RestoHub</h1>
-              <p className="text-xs text-sidebar-foreground/60">Restaurant ERP & POS</p>
+              <h1 className="text-xl font-bold">{t("auth.brandName")}</h1>
+              <p className="text-xs text-sidebar-foreground/60">{t("auth.brandTagline")}</p>
             </div>
           </div>
-          <h2 className="text-4xl font-bold leading-tight mb-4">Run your entire restaurant from one place.</h2>
-          <p className="text-sidebar-foreground/70 text-base">
-            POS, inventory, kitchen, accounting and payroll — unified across all your outlets.
-          </p>
+          <h2 className="text-4xl font-bold leading-tight mb-4">{t("auth.headline")}</h2>
+          <p className="text-sidebar-foreground/70 text-base">{t("auth.description")}</p>
         </div>
       </div>
 
       {/* Form panel */}
       <motion.div
         initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-        className="w-full lg:w-[480px] bg-card flex flex-col justify-center p-8 md:p-12"
+        className="w-full lg:w-[480px] bg-card flex flex-col justify-center p-8 md:p-12 relative"
       >
+        <div className="absolute top-6 right-6 md:top-8 md:right-8">
+          <LanguageSwitcher variant="login" />
+        </div>
+
         <div className="lg:hidden flex items-center gap-3 mb-8">
           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
             <Store className="h-5 w-5 text-primary" />
           </div>
-          <h1 className="text-lg font-bold">RestoHub</h1>
+          <h1 className="text-lg font-bold">{t("auth.brandName")}</h1>
         </div>
 
-        <h2 className="text-2xl font-bold text-foreground mb-1">Welcome back</h2>
-        <p className="text-sm text-muted-foreground mb-8">Sign in to access your dashboard.</p>
+        <h2 className="text-2xl font-bold text-foreground mb-1">{t("auth.welcomeBack")}</h2>
+        <p className="text-sm text-muted-foreground mb-8">{t("auth.signInSubtitle")}</p>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4" aria-busy={isLoading}>
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("auth.email")}</Label>
             <Input
               id="email" type="email" autoComplete="email" required
               value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@restaurant.com" className="h-11 rounded-xl"
+              placeholder={t("auth.emailPlaceholder")} className="h-11 rounded-xl"
               disabled={isLoading}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t("auth.password")}</Label>
             <div className="relative">
               <Input
                 id="password" type={showPwd ? "text" : "password"} autoComplete="current-password" required
@@ -98,7 +103,7 @@ export default function Login() {
                 type="button" onClick={() => setShowPwd((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 disabled={isLoading}
-                aria-label={showPwd ? "Hide password" : "Show password"}
+                aria-label={showPwd ? t("auth.hidePassword") : t("auth.showPassword")}
               >
                 {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -115,17 +120,17 @@ export default function Login() {
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Signing in…
+                {t("auth.signingIn")}
               </>
             ) : (
-              "Sign in"
+              t("auth.signIn")
             )}
           </Button>
         </form>
 
         {isDevelopmentEnvironment() ? (
           <div className="mt-8 pt-6 border-t border-border/50">
-            <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">Demo accounts</p>
+            <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">{t("auth.demoAccounts")}</p>
             <div className="grid grid-cols-2 gap-2">
               {DEMO_CREDENTIALS.map((c) => (
                 <button

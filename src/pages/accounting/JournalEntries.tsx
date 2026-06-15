@@ -11,10 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Send, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export default function JournalEntries() {
+  const { t } = useErpTranslation();
   const journals = useAccountingStore((s) => s.journals);
   const accounts = useAccountingStore((s) => s.accounts);
   const outlets = useAccountingStore((s) => s.outlets);
@@ -59,15 +62,15 @@ export default function JournalEntries() {
 
   const save = async (post: boolean) => {
     if (!description) {
-      toast.error("Description required");
+      toast.error(t("accounting.journal.descriptionRequired"));
       return;
     }
     if (!balanced) {
-      toast.error("Debit must equal credit");
+      toast.error(t("accounting.journal.debitMustEqualCredit"));
       return;
     }
     if (accounts.length < 2) {
-      toast.error("Create at least two accounts in Chart of Accounts first");
+      toast.error(t("accounting.journal.needTwoAccounts"));
       return;
     }
     const linePayload = lines.map((l) => ({
@@ -97,11 +100,11 @@ export default function JournalEntries() {
         });
       }
       await revalidateBaseData();
-      toast.success(post ? "Journal posted" : "Draft saved");
+      toast.success(post ? t("accounting.journal.journalPosted") : t("accounting.journal.draftSaved"));
       setOpen(false);
       reset();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Request failed");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.journal.requestFailed"));
     }
   };
 
@@ -113,22 +116,22 @@ export default function JournalEntries() {
   return (
     <Card className="p-4 space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="font-semibold">Journal Entries</h2>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-1" /> New Journal</Button>
+        <h2 className="font-semibold">{t("accounting.journal.title")}</h2>
+        <Button onClick={openNew}><Plus className="h-4 w-4 mr-1" /> {t("accounting.journal.newJournal")}</Button>
       </div>
 
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Reference</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Outlet</TableHead>
-              <TableHead className="text-right">Debit</TableHead>
-              <TableHead className="text-right">Credit</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("accounting.journal.date")}</TableHead>
+              <TableHead>{t("accounting.journal.reference")}</TableHead>
+              <TableHead>{t("accounting.journal.description")}</TableHead>
+              <TableHead>{t("accounting.journal.outlet")}</TableHead>
+              <TableHead className="text-right">{t("accounting.journal.debit")}</TableHead>
+              <TableHead className="text-right">{t("accounting.journal.credit")}</TableHead>
+              <TableHead>{t("common:common.status")}</TableHead>
+              <TableHead className="text-right">{t("accounting.coa.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -144,7 +147,9 @@ export default function JournalEntries() {
                   <TableCell className="text-right font-mono">{formatIDR(td)}</TableCell>
                   <TableCell className="text-right font-mono">{formatIDR(tc)}</TableCell>
                   <TableCell>
-                    <Badge variant={j.status === "posted" ? "default" : "secondary"}>{j.status}</Badge>
+                    <Badge variant={j.status === "posted" ? "default" : "secondary"}>
+                      {t(`accounting.journal.${j.status}`)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => setViewing(j)}><Eye className="h-4 w-4" /></Button>
@@ -159,9 +164,9 @@ export default function JournalEntries() {
                               try {
                                 await postJournalRemote(j.id);
                                 await revalidateBaseData();
-                                toast.success("Posted");
+                                toast.success(t("accounting.journal.postedToast"));
                               } catch (e) {
-                                toast.error(e instanceof Error ? e.message : "Post failed");
+                                toast.error(formatApiErrorMessage(e, t) || t("accounting.journal.postFailed"));
                               }
                             })();
                           }}
@@ -176,9 +181,9 @@ export default function JournalEntries() {
                               try {
                                 await deleteJournalRemote(j.id);
                                 await revalidateBaseData();
-                                toast.success("Deleted");
+                                toast.success(t("accounting.journal.deletedToast"));
                               } catch (e) {
-                                toast.error(e instanceof Error ? e.message : "Delete failed");
+                                toast.error(formatApiErrorMessage(e, t) || t("common:common.deleteFailed"));
                               }
                             })();
                           }}
@@ -195,31 +200,32 @@ export default function JournalEntries() {
         </Table>
       </div>
 
-      {/* Editor Dialog */}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>{editingId ? "Edit Journal" : "New Journal Entry"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingId ? t("accounting.journal.editJournal") : t("accounting.journal.newJournalEntry")}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-              <div><Label>Reference</Label><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="INV-001" /></div>
+              <div><Label>{t("accounting.journal.date")}</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+              <div><Label>{t("accounting.journal.reference")}</Label><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="INV-001" /></div>
               <div>
-                <Label>Outlet</Label>
+                <Label>{t("accounting.journal.outlet")}</Label>
                 <Select value={outlet} onValueChange={setOutlet}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
-            <div><Label>Description</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+            <div><Label>{t("accounting.journal.description")}</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
 
             <div className="rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Account</TableHead>
-                    <TableHead className="text-right">Debit</TableHead>
-                    <TableHead className="text-right">Credit</TableHead>
+                    <TableHead>{t("accounting.ledger.account")}</TableHead>
+                    <TableHead className="text-right">{t("accounting.journal.debit")}</TableHead>
+                    <TableHead className="text-right">{t("accounting.journal.credit")}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -255,36 +261,43 @@ export default function JournalEntries() {
 
             <div className="flex items-center justify-between">
               <Button variant="outline" size="sm" onClick={() => setLines([...lines, blankLine()])}>
-                <Plus className="h-3 w-3 mr-1" /> Add line
+                <Plus className="h-3 w-3 mr-1" /> {t("accounting.journal.addLine")}
               </Button>
               <div className="text-sm flex gap-4">
-                <span>Debit: <span className="font-mono font-semibold">{formatIDR(totalDebit)}</span></span>
-                <span>Credit: <span className="font-mono font-semibold">{formatIDR(totalCredit)}</span></span>
-                <Badge variant={balanced ? "default" : "destructive"}>{balanced ? "Balanced" : "Unbalanced"}</Badge>
+                <span>{t("accounting.journal.debit")}: <span className="font-mono font-semibold">{formatIDR(totalDebit)}</span></span>
+                <span>{t("accounting.journal.credit")}: <span className="font-mono font-semibold">{formatIDR(totalCredit)}</span></span>
+                <Badge variant={balanced ? "default" : "destructive"}>
+                  {balanced ? t("accounting.journal.balanced") : t("accounting.journal.unbalanced")}
+                </Badge>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="secondary" onClick={() => void save(false)}>Save Draft</Button>
-            <Button onClick={() => void save(true)} disabled={!balanced}>Post Journal</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("common:common.cancel")}</Button>
+            <Button variant="secondary" onClick={() => void save(false)}>{t("accounting.journal.saveDraft")}</Button>
+            <Button onClick={() => void save(true)} disabled={!balanced}>{t("accounting.journal.postJournal")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
       <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Journal Detail</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("accounting.journal.journalDetail")}</DialogTitle></DialogHeader>
           {viewing && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-muted-foreground">Date: </span>{viewing.date}</div>
-                <div><span className="text-muted-foreground">Ref: </span>{viewing.reference || "—"}</div>
-                <div className="col-span-2"><span className="text-muted-foreground">Description: </span>{viewing.description}</div>
+                <div><span className="text-muted-foreground">{t("accounting.journal.date")}: </span>{viewing.date}</div>
+                <div><span className="text-muted-foreground">{t("accounting.journal.ref")}: </span>{viewing.reference || "—"}</div>
+                <div className="col-span-2"><span className="text-muted-foreground">{t("accounting.journal.description")}: </span>{viewing.description}</div>
               </div>
               <Table>
-                <TableHeader><TableRow><TableHead>Account</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Credit</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("accounting.ledger.account")}</TableHead>
+                    <TableHead className="text-right">{t("accounting.journal.debit")}</TableHead>
+                    <TableHead className="text-right">{t("accounting.journal.credit")}</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {viewing.lines.map((l) => {
                     const a = accounts.find((x) => x.id === l.accountId);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   approvePayrollPreparationPeriod,
   createPayrollPreparationPeriod,
@@ -34,6 +33,8 @@ import {
   type PayrollPreparationSummaryRow,
 } from "@/lib/api-integration/hrEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Lock, Play, Plus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,6 +45,7 @@ function periodStatusVariant(status: string): "default" | "secondary" | "destruc
 }
 
 export default function Preparation() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -68,11 +70,11 @@ export default function Preparation() {
         setSelectedPeriodId(String(rows[0].id));
       }
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load periods");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.preparation.loadPeriodsFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId, selectedPeriodId]);
+  }, [outletId, selectedPeriodId, t]);
 
   const loadSnapshotsAndSummary = useCallback(async (periodId: number) => {
     try {
@@ -83,9 +85,9 @@ export default function Preparation() {
       setSnapshots(snaps);
       setSummary(sum);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load snapshot data");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.preparation.loadSnapshotFailed"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (outletId === null && outlets[0]) setOutletId(outlets[0].id);
@@ -105,7 +107,7 @@ export default function Preparation() {
 
   const submitPeriod = async () => {
     if (!outletId || !periodForm.periodStart || !periodForm.periodEnd) {
-      return toast.error("Fill period dates");
+      return toast.error(t("payroll.preparation.fillPeriodDates"));
     }
     try {
       const created = await createPayrollPreparationPeriod({
@@ -113,144 +115,162 @@ export default function Preparation() {
         periodStart: periodForm.periodStart,
         periodEnd: periodForm.periodEnd,
       });
-      toast.success("Preparation period created");
+      toast.success(t("payroll.preparation.periodCreated"));
       setPeriodOpen(false);
       setSelectedPeriodId(String(created.id));
       await loadPeriods();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create period");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.preparation.createPeriodFailed"));
     }
   };
 
-  const runAction = async (label: string, fn: () => Promise<void>) => {
-    try {
-      await fn();
-      toast.success(label);
-      await loadPeriods();
-      if (selectedPeriodId) await loadSnapshotsAndSummary(Number(selectedPeriodId));
-    } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : `${label} failed`);
-    }
-  };
+  const runAction = useCallback(
+    async (successKey: string, fn: () => Promise<void>) => {
+      try {
+        await fn();
+        toast.success(t(successKey));
+        await loadPeriods();
+        if (selectedPeriodId) await loadSnapshotsAndSummary(Number(selectedPeriodId));
+      } catch (e) {
+        toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.actionFailed"));
+      }
+    },
+    [t, loadPeriods, loadSnapshotsAndSummary, selectedPeriodId],
+  );
 
-  const periodColumns: Column<PayrollPreparationPeriodRow>[] = [
-    {
-      key: "period",
-      header: "Period",
-      sortable: true,
-      render: (p) => p.periodLabel ?? `${p.periodStart} → ${p.periodEnd}`,
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (p) => (
-        <Badge variant={periodStatusVariant(p.status)} className="capitalize">
-          {p.status}
-        </Badge>
-      ),
-    },
-    { key: "employees", header: "Employees", render: (p) => p.employeeCount ?? 0 },
-    {
-      key: "generated",
-      header: "Generated At",
-      render: (p) => (p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"),
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right",
-      render: (p) => (
-        <div className="flex justify-end gap-1">
-          {p.status !== "locked" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void runAction("Snapshot generated", async () => {
-                  await generatePayrollPreparationSnapshot(p.id);
-                })
-              }
-            >
-              <Play className="h-3.5 w-3.5 mr-1" />
-              Generate
-            </Button>
-          )}
-          {p.status === "draft" && p.generatedAt && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void runAction("Period approved", async () => {
-                  await approvePayrollPreparationPeriod(p.id);
-                })
-              }
-            >
-              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-              Approve
-            </Button>
-          )}
-          {p.status === "approved" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void runAction("Period locked", async () => {
-                  await lockPayrollPreparationPeriod(p.id);
-                })
-              }
-            >
-              <Lock className="h-3.5 w-3.5 mr-1" />
-              Lock
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const periodColumns: Column<PayrollPreparationPeriodRow>[] = useMemo(
+    () => [
+      {
+        key: "period",
+        header: t("payroll.shared.period"),
+        sortable: true,
+        render: (p) => p.periodLabel ?? `${p.periodStart} → ${p.periodEnd}`,
+      },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (p) => (
+          <Badge variant={periodStatusVariant(p.status)} className="capitalize">
+            {t(`payroll.shared.${p.status}`, { defaultValue: p.status })}
+          </Badge>
+        ),
+      },
+      { key: "employees", header: t("payroll.shared.employeesCount"), render: (p) => p.employeeCount ?? 0 },
+      {
+        key: "generated",
+        header: t("payroll.shared.generatedAt"),
+        render: (p) => (p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        render: (p) => (
+          <div className="flex justify-end gap-1">
+            {p.status !== "locked" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void runAction("payroll.preparation.snapshotGenerated", async () => {
+                    await generatePayrollPreparationSnapshot(p.id);
+                  })
+                }
+              >
+                <Play className="h-3.5 w-3.5 mr-1" />
+                {t("payroll.shared.generate")}
+              </Button>
+            )}
+            {p.status === "draft" && p.generatedAt && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void runAction("payroll.preparation.periodApproved", async () => {
+                    await approvePayrollPreparationPeriod(p.id);
+                  })
+                }
+              >
+                <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                {t("payroll.shared.approve")}
+              </Button>
+            )}
+            {p.status === "approved" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void runAction("payroll.preparation.periodLocked", async () => {
+                    await lockPayrollPreparationPeriod(p.id);
+                  })
+                }
+              >
+                <Lock className="h-3.5 w-3.5 mr-1" />
+                {t("payroll.shared.lock")}
+              </Button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [t, runAction],
+  );
 
-  const snapshotColumns: Column<PayrollPreparationSnapshotRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    {
-      key: "attendance",
-      header: "Attendance",
-      render: (r) => `${r.attendedDays} present / ${r.absentDays} absent / ${r.scheduledDays} scheduled`,
-    },
-    {
-      key: "leave",
-      header: "Leave",
-      render: (r) => `${r.leaveDays}d (${r.paidLeaveDays} paid, ${r.unpaidLeaveDays} unpaid)`,
-    },
-    {
-      key: "overtime",
-      header: "Overtime",
-      render: (r) => `${r.overtimeHours}h`,
-    },
-    {
-      key: "review",
-      header: "Review",
-      render: (r) => (r.reviewRequired ? <Badge variant="destructive">Required</Badge> : "—"),
-    },
-  ];
+  const snapshotColumns: Column<PayrollPreparationSnapshotRow>[] = useMemo(
+    () => [
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      {
+        key: "attendance",
+        header: t("payroll.attendance.title"),
+        render: (r) =>
+          t("payroll.preparation.attendancePresent", {
+            present: r.attendedDays,
+            absent: r.absentDays,
+            scheduled: r.scheduledDays,
+          }),
+      },
+      {
+        key: "leave",
+        header: t("payroll.tabs.leave"),
+        render: (r) =>
+          t("payroll.preparation.leaveSummary", {
+            days: r.leaveDays,
+            paid: r.paidLeaveDays,
+            unpaid: r.unpaidLeaveDays,
+          }),
+      },
+      {
+        key: "overtime",
+        header: t("payroll.tabs.overtime"),
+        render: (r) => t("payroll.preparation.overtimeSummary", { hours: r.overtimeHours }),
+      },
+      {
+        key: "review",
+        header: t("payroll.shared.review"),
+        render: (r) =>
+          r.reviewRequired ? <Badge variant="destructive">{t("payroll.shared.required")}</Badge> : "—",
+      },
+    ],
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Payroll Preparation</h2>
-        <p className="text-sm text-muted-foreground">
-          Consolidate approved attendance, leave, and overtime into payroll-ready snapshots.
-        </p>
+        <h2 className="text-lg font-semibold">{t("payroll.preparation.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("payroll.preparation.subtitle")}</p>
       </div>
 
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-end">
           {outlets.length > 1 && (
             <div className="space-y-1 min-w-[180px]">
-              <Label className="text-xs">Outlet</Label>
+              <Label className="text-xs">{t("payroll.shared.outlet")}</Label>
               <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -266,15 +286,15 @@ export default function Preparation() {
             </div>
           )}
           <div className="space-y-1 min-w-[200px]">
-            <Label className="text-xs">View period</Label>
+            <Label className="text-xs">{t("payroll.preparation.viewPeriod")}</Label>
             <Select value={selectedPeriodId} onValueChange={setSelectedPeriodId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select period" />
+                <SelectValue placeholder={t("payroll.shared.selectPeriod")} />
               </SelectTrigger>
               <SelectContent>
                 {periods.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
-                    {p.periodLabel ?? `${p.periodStart} → ${p.periodEnd}`} ({p.status})
+                    {p.periodLabel ?? `${p.periodStart} → ${p.periodEnd}`} ({t(`payroll.shared.${p.status}`, { defaultValue: p.status })})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -285,12 +305,12 @@ export default function Preparation() {
 
       <Tabs defaultValue="periods">
         <TabsList>
-          <TabsTrigger value="periods">Periods</TabsTrigger>
+          <TabsTrigger value="periods">{t("payroll.preparation.periods")}</TabsTrigger>
           <TabsTrigger value="snapshot" disabled={!selectedPeriodId}>
-            Snapshot
+            {t("payroll.preparation.snapshot")}
           </TabsTrigger>
           <TabsTrigger value="summary" disabled={!selectedPeriodId}>
-            Summary
+            {t("payroll.preparation.summary")}
           </TabsTrigger>
         </TabsList>
 
@@ -298,7 +318,7 @@ export default function Preparation() {
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setPeriodOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              New period
+              {t("payroll.shared.newPeriod")}
             </Button>
           </div>
           <DataTable
@@ -306,7 +326,7 @@ export default function Preparation() {
             columns={periodColumns}
             rowKey={(p) => p.id}
             loading={loading}
-            emptyMessage="No preparation periods"
+            emptyMessage={t("payroll.preparation.emptyPeriods")}
             defaultPageSize={15}
           />
         </TabsContent>
@@ -315,15 +335,16 @@ export default function Preparation() {
           {selectedPeriod && (
             <p className="text-sm text-muted-foreground mb-3">
               {selectedPeriod.periodLabel ?? `${selectedPeriod.periodStart} → ${selectedPeriod.periodEnd}`} ·{" "}
-              <span className="capitalize">{selectedPeriod.status}</span>
-              {selectedPeriod.generatedAt && ` · Generated ${new Date(selectedPeriod.generatedAt).toLocaleString()}`}
+              <span className="capitalize">{t(`payroll.shared.${selectedPeriod.status}`, { defaultValue: selectedPeriod.status })}</span>
+              {selectedPeriod.generatedAt &&
+                ` · ${t("payroll.preparation.generatedAt", { date: new Date(selectedPeriod.generatedAt).toLocaleString() })}`}
             </p>
           )}
           <DataTable
             data={snapshots}
             columns={snapshotColumns}
             rowKey={(r) => r.id}
-            emptyMessage="Generate a snapshot to view employee rows"
+            emptyMessage={t("payroll.preparation.emptySnapshot")}
             defaultPageSize={25}
           />
         </TabsContent>
@@ -333,35 +354,35 @@ export default function Preparation() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Employees</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{t("payroll.shared.employeesCount")}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-2xl font-bold">{summary.employeeCount}</CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Attendance Days</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{t("payroll.preparation.attendanceDaysCard")}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-2xl font-bold">{summary.attendanceDays}</CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Leave Days</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{t("payroll.preparation.leaveDaysCard")}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-2xl font-bold">{summary.leaveDays}</CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Overtime Hours</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{t("payroll.preparation.overtimeHoursCard")}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-2xl font-bold">{summary.overtimeHours}</CardContent>
               </Card>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Select a period and generate a snapshot.</p>
+            <p className="text-sm text-muted-foreground">{t("payroll.preparation.selectPeriodSnapshot")}</p>
           )}
           {summary && summary.reviewRequiredCount > 0 && (
             <p className="text-sm text-destructive mt-3">
-              {summary.reviewRequiredCount} employee(s) require review before payroll processing.
+              {t("payroll.preparation.reviewRequiredCount", { count: summary.reviewRequiredCount })}
             </p>
           )}
         </TabsContent>
@@ -370,11 +391,11 @@ export default function Preparation() {
       <Dialog open={periodOpen} onOpenChange={setPeriodOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New preparation period</DialogTitle>
+            <DialogTitle>{t("payroll.preparation.newPeriod")}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>Start</Label>
+              <Label>{t("payroll.shared.startDate")}</Label>
               <Input
                 type="date"
                 value={periodForm.periodStart}
@@ -382,7 +403,7 @@ export default function Preparation() {
               />
             </div>
             <div className="space-y-1">
-              <Label>End</Label>
+              <Label>{t("payroll.shared.endDate")}</Label>
               <Input
                 type="date"
                 value={periodForm.periodEnd}
@@ -392,9 +413,9 @@ export default function Preparation() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPeriodOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitPeriod()}>Create</Button>
+            <Button onClick={() => void submitPeriod()}>{t("payroll.shared.create")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

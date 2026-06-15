@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   downloadPayslipPdf,
   generatePayslips,
@@ -26,6 +25,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Download, FileText, Play, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +43,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 }
 
 export default function Payslips() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -75,11 +77,11 @@ export default function Payslips() {
       setPayslips(slipList);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load payslips");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId, filterEmployeeId, filterStatus, filterPeriodFrom, filterPeriodTo]);
+  }, [outletId, filterEmployeeId, filterStatus, filterPeriodFrom, filterPeriodTo, t]);
 
   useEffect(() => {
     void load();
@@ -92,10 +94,10 @@ export default function Payslips() {
   const generateForRun = async (runId: number) => {
     try {
       const created = await generatePayslips(runId);
-      toast.success(`Generated ${created.length} payslip(s)`);
+      toast.success(t("payroll.payslips.generatedCount", { count: created.length }));
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Generate failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.generateFailed"));
     }
   };
 
@@ -109,120 +111,134 @@ export default function Payslips() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Download failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.downloadFailed"));
     }
   };
 
-  const runColumns: Column<PayrollRunV2Row>[] = [
-    {
-      key: "period",
-      header: "Period",
-      render: (r) =>
-        r.preparationPeriod
-          ? `${r.preparationPeriod.periodStart} → ${r.preparationPeriod.periodEnd}`
-          : `#${r.payrollPreparationPeriodId}`,
-    },
-    { key: "id", header: "Run ID", render: (r) => r.id },
-    {
-      key: "status",
-      header: "Status",
-      render: (r) => <Badge variant={statusVariant(r.status)}>{r.status}</Badge>,
-    },
-    {
-      key: "payslips",
-      header: "Payslips",
-      render: (r) => payslipCountForRun(r.id),
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      className: "text-right",
-      render: (r) => (
-        <Button size="sm" onClick={() => void generateForRun(r.id)}>
-          <Play className="h-3.5 w-3.5 mr-1" />
-          Generate Payslips
-        </Button>
-      ),
-    },
-  ];
+  const runColumns: Column<PayrollRunV2Row>[] = useMemo(
+    () => [
+      {
+        key: "period",
+        header: t("payroll.shared.period"),
+        render: (r) =>
+          r.preparationPeriod
+            ? `${r.preparationPeriod.periodStart} → ${r.preparationPeriod.periodEnd}`
+            : `#${r.payrollPreparationPeriodId}`,
+      },
+      { key: "id", header: t("payroll.shared.runId"), render: (r) => r.id },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (r) => (
+          <Badge variant={statusVariant(r.status)}>
+            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "payslips",
+        header: t("payroll.payslips.title"),
+        render: (r) => payslipCountForRun(r.id),
+      },
+      {
+        key: "actions",
+        header: t("payroll.shared.actions"),
+        className: "text-right",
+        render: (r) => (
+          <Button size="sm" onClick={() => void generateForRun(r.id)}>
+            <Play className="h-3.5 w-3.5 mr-1" />
+            {t("payroll.payslips.generatePayslips")}
+          </Button>
+        ),
+      },
+    ],
+    [t],
+  );
 
-  const slipColumns: Column<PayrollPayslipRow>[] = [
-    { key: "no", header: "Payslip No", sortable: true, render: (p) => p.payslipNo },
-    {
-      key: "employee",
-      header: "Employee",
-      render: (p) => p.employee?.fullName ?? `#${p.employeeId}`,
-    },
-    {
-      key: "period",
-      header: "Period",
-      render: (p) =>
-        p.payrollPeriod ? `${p.payrollPeriod.periodStart} → ${p.payrollPeriod.periodEnd}` : "—",
-    },
-    { key: "net", header: "Net", render: (p) => formatIDR(p.netSalary) },
-    {
-      key: "status",
-      header: "Status",
-      render: (p) => <Badge variant={statusVariant(p.status)}>{p.status}</Badge>,
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      className: "text-right",
-      render: (p) => (
-        <div className="flex justify-end gap-1 flex-wrap">
-          {p.pdfAvailable && (
-            <Button size="sm" variant="outline" onClick={() => void download(p.id, p.payslipNo)}>
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {p.status === "generated" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                try {
-                  await publishPayslip(p.id);
-                  toast.success("Published");
-                  await load();
-                } catch (e) {
-                  toast.error(e instanceof ApiHttpError ? e.message : "Publish failed");
-                }
-              }}
-            >
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {p.pdfAvailable && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                try {
-                  await regeneratePayslip(p.id);
-                  toast.success("PDF regenerated");
-                  await load();
-                } catch (e) {
-                  toast.error(e instanceof ApiHttpError ? e.message : "Regenerate failed");
-                }
-              }}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const slipColumns: Column<PayrollPayslipRow>[] = useMemo(
+    () => [
+      { key: "no", header: t("payroll.payslips.payslipNo"), sortable: true, render: (p) => p.payslipNo },
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        render: (p) => p.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: p.employeeId }),
+      },
+      {
+        key: "period",
+        header: t("payroll.shared.period"),
+        render: (p) =>
+          p.payrollPeriod ? `${p.payrollPeriod.periodStart} → ${p.payrollPeriod.periodEnd}` : "—",
+      },
+      { key: "net", header: t("payroll.shared.net"), render: (p) => formatIDR(p.netSalary) },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (p) => (
+          <Badge variant={statusVariant(p.status)}>
+            {t(`payroll.shared.${p.status}`, { defaultValue: p.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "actions",
+        header: t("payroll.shared.actions"),
+        className: "text-right",
+        render: (p) => (
+          <div className="flex justify-end gap-1 flex-wrap">
+            {p.pdfAvailable && (
+              <Button size="sm" variant="outline" onClick={() => void download(p.id, p.payslipNo)}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {p.status === "generated" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    await publishPayslip(p.id);
+                    toast.success(t("payroll.shared.published_status"));
+                    await load();
+                  } catch (e) {
+                    toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.publishFailed"));
+                  }
+                }}
+              >
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {p.pdfAvailable && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await regeneratePayslip(p.id);
+                    toast.success(t("payroll.payslips.pdfRegenerated"));
+                    await load();
+                  } catch (e) {
+                    toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.regenerateFailed"));
+                  }
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [t, load],
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        <h2 className="text-lg font-semibold">Payslips</h2>
+        <h2 className="text-lg font-semibold">{t("payroll.payslips.title")}</h2>
         {outlets.length > 1 && (
           <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Outlet" />
+              <SelectValue placeholder={t("payroll.shared.outlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -237,21 +253,20 @@ export default function Payslips() {
 
       <Tabs defaultValue="runs">
         <TabsList>
-          <TabsTrigger value="runs">Payroll Runs</TabsTrigger>
-          <TabsTrigger value="list">Payslip List</TabsTrigger>
+          <TabsTrigger value="runs">{t("payroll.payslips.runsTab")}</TabsTrigger>
+          <TabsTrigger value="list">{t("payroll.payslips.listTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="runs" className="mt-4 space-y-3">
           <Card className="p-4 text-sm text-muted-foreground">
             <FileText className="h-4 w-4 inline mr-2" />
-            Only <strong>finalized</strong> payroll runs can generate payslips. Amounts are snapshotted at
-            generation time.
+            {t("payroll.payslips.finalizedHint")}
           </Card>
           <DataTable
             data={finalizedRuns}
             columns={runColumns}
             rowKey={(r) => r.id}
-            emptyMessage={loading ? "Loading…" : "No finalized payroll runs"}
+            emptyMessage={loading ? t("payroll.shared.loading") : t("payroll.payslips.emptyRuns")}
             defaultPageSize={10}
           />
         </TabsContent>
@@ -259,16 +274,16 @@ export default function Payslips() {
         <TabsContent value="list" className="mt-4 space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">Employee</Label>
+              <Label className="text-xs">{t("payroll.shared.employee")}</Label>
               <Select
                 value={filterEmployeeId || "__all__"}
                 onValueChange={(v) => setFilterEmployeeId(v === "__all__" ? "" : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="All" />
+                  <SelectValue placeholder={t("payroll.shared.all")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="__all__">{t("payroll.shared.all")}</SelectItem>
                   {employees.map((e) => (
                     <SelectItem key={e.id} value={String(e.id)}>
                       {e.fullName}
@@ -278,25 +293,25 @@ export default function Payslips() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Status</Label>
+              <Label className="text-xs">{t("payroll.shared.status")}</Label>
               <Select value={filterStatus || "__all__"} onValueChange={(v) => setFilterStatus(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
-                  <SelectItem value="generated">Generated</SelectItem>
-                  <SelectItem value="published">Published</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="__all__">{t("payroll.shared.all")}</SelectItem>
+                  <SelectItem value="generated">{t("payroll.shared.generated")}</SelectItem>
+                  <SelectItem value="published">{t("payroll.shared.published_status")}</SelectItem>
+                  <SelectItem value="draft">{t("payroll.shared.draft")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Period from</Label>
+              <Label className="text-xs">{t("payroll.shared.periodFrom")}</Label>
               <Input type="date" value={filterPeriodFrom} onChange={(e) => setFilterPeriodFrom(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Period to</Label>
+              <Label className="text-xs">{t("payroll.shared.periodTo")}</Label>
               <Input type="date" value={filterPeriodTo} onChange={(e) => setFilterPeriodTo(e.target.value)} />
             </div>
           </div>
@@ -304,7 +319,7 @@ export default function Payslips() {
             data={payslips}
             columns={slipColumns}
             rowKey={(p) => p.id}
-            emptyMessage={loading ? "Loading…" : "No payslips"}
+            emptyMessage={loading ? t("payroll.shared.loading") : t("payroll.payslips.emptyList")}
             defaultPageSize={15}
           />
         </TabsContent>

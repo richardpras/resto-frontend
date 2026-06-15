@@ -15,15 +15,18 @@ import {
   type ProcurementReconciliationReport,
 } from "@/lib/api-integration/accountingEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 
 export function StatusBadge({ status }: { status?: string }) {
+  const { t } = useErpTranslation();
   const tone =
     status === "balanced"
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
       : status === "variance"
         ? "bg-destructive/15 text-destructive"
         : "bg-amber-500/15 text-amber-800 dark:text-amber-200";
-  return <Badge variant="outline" className={tone}>{status ?? "unknown"}</Badge>;
+  return <Badge variant="outline" className={tone}>{status ?? t("accounting.recon.statusUnknown")}</Badge>;
 }
 
 function MetricRow({ label, value }: { label: string; value: number | string | undefined }) {
@@ -40,54 +43,59 @@ function LiabilitySection({
   outstanding,
   glBalance,
   variance,
+  labels,
 }: {
   title: string;
   outstanding?: number;
   glBalance?: number;
   variance?: number;
+  labels: { outstanding: string; glBalance: string; variance: string };
 }) {
   return (
     <div className="space-y-1 pt-2">
       <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      <MetricRow label="Outstanding" value={outstanding} />
-      <MetricRow label="GL Balance" value={glBalance} />
-      <MetricRow label="Variance" value={variance} />
+      <MetricRow label={labels.outstanding} value={outstanding} />
+      <MetricRow label={labels.glBalance} value={glBalance} />
+      <MetricRow label={labels.variance} value={variance} />
     </div>
   );
 }
 
 function ApCard({ data }: { data: ApReconciliationReport }) {
+  const { t } = useErpTranslation();
   return (
     <Card className="p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Accounts Payable</h3>
+        <h3 className="font-semibold">{t("accounting.recon.accountsPayable")}</h3>
         <StatusBadge status={data.status} />
       </div>
-      <MetricRow label="Subledger" value={data.subledger} />
-      <MetricRow label="GL Balance" value={data.glBalance} />
-      <MetricRow label="Difference" value={data.difference} />
+      <MetricRow label={t("accounting.recon.subledger")} value={data.subledger} />
+      <MetricRow label={t("accounting.recon.glBalance")} value={data.glBalance} />
+      <MetricRow label={t("accounting.recon.difference")} value={data.difference} />
     </Card>
   );
 }
 
 function ProcurementCard({ data }: { data: ProcurementReconciliationReport }) {
+  const { t } = useErpTranslation();
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Procurement</h3>
+        <h3 className="font-semibold">{t("accounting.recon.procurement")}</h3>
         <StatusBadge status={data.status} />
       </div>
-      <MetricRow label="Posted GRN Total" value={data.postedGrnTotal} />
-      <MetricRow label="Posted Invoice Total" value={data.postedInvoiceTotal} />
-      <MetricRow label="Posted Payment Total" value={data.postedPaymentTotal} />
-      <div className="text-xs text-muted-foreground pt-2">GRNI</div>
-      <MetricRow label="GRNI GL" value={data.grni.glBalance as number | undefined} />
-      <MetricRow label="GRNI Difference" value={data.grni.difference as number | undefined} />
+      <MetricRow label={t("accounting.recon.postedGrnTotal")} value={data.postedGrnTotal} />
+      <MetricRow label={t("accounting.recon.postedInvoiceTotal")} value={data.postedInvoiceTotal} />
+      <MetricRow label={t("accounting.recon.postedPaymentTotal")} value={data.postedPaymentTotal} />
+      <div className="text-xs text-muted-foreground pt-2">{t("accounting.recon.grni")}</div>
+      <MetricRow label={t("accounting.recon.grniGl")} value={data.grni.glBalance as number | undefined} />
+      <MetricRow label={t("accounting.recon.grniDifference")} value={data.grni.difference as number | undefined} />
     </Card>
   );
 }
 
 export function GiftCardCard({ data }: { data: GiftCardReconciliationReport }) {
+  const { t } = useErpTranslation();
   const giftCardOutstanding = data.giftCardLiabilityOutstanding;
   const giftCardGl = data.giftCardLiabilityGLBalance ?? data.giftCardLiabilityBalance;
   const giftCardVariance = data.giftCardLiabilityVariance;
@@ -95,60 +103,70 @@ export function GiftCardCard({ data }: { data: GiftCardReconciliationReport }) {
   const storeCreditGl = data.storeCreditLiabilityGLBalance ?? data.storeCreditLiabilityBalance;
   const storeCreditVariance = data.storeCreditLiabilityVariance;
 
+  const liabilityLabels = {
+    outstanding: t("accounting.recon.outstanding"),
+    glBalance: t("accounting.recon.glBalance"),
+    variance: t("accounting.recon.variance"),
+  };
+
   return (
     <Card className="p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Gift Cards</h3>
+        <h3 className="font-semibold">{t("accounting.recon.giftCards")}</h3>
         <StatusBadge status={data.status} />
       </div>
 
       <LiabilitySection
-        title="Gift Card Liability (2130)"
+        title={t("accounting.recon.giftCardLiability")}
         outstanding={giftCardOutstanding}
         glBalance={giftCardGl}
         variance={giftCardVariance}
+        labels={liabilityLabels}
       />
 
       <LiabilitySection
-        title="Store Credit Liability (2135)"
+        title={t("accounting.recon.storeCreditLiability")}
         outstanding={storeCreditOutstanding}
         glBalance={storeCreditGl}
         variance={storeCreditVariance}
+        labels={liabilityLabels}
       />
 
       <div className="space-y-1 pt-2 border-t border-border/40">
-        <p className="text-xs font-medium text-muted-foreground">Aggregate</p>
-        <MetricRow label="Outstanding" value={data.subledgerOutstanding} />
-        <MetricRow label="GL Balance" value={data.glLiabilityBalance} />
-        <MetricRow label="Variance" value={data.difference} />
+        <p className="text-xs font-medium text-muted-foreground">{t("accounting.recon.aggregate")}</p>
+        <MetricRow label={t("accounting.recon.outstanding")} value={data.subledgerOutstanding} />
+        <MetricRow label={t("accounting.recon.glBalance")} value={data.glLiabilityBalance} />
+        <MetricRow label={t("accounting.recon.variance")} value={data.difference} />
       </div>
 
-      <div className="text-xs text-muted-foreground pt-2 border-t border-border/40">Activity</div>
-      <MetricRow label="Redeemed (subledger)" value={data.redeemedAmount} />
-      <MetricRow label="Pending settlements" value={data.pendingSettlements} />
-      <MetricRow label="Settled settlements" value={data.settledSettlements} />
+      <div className="text-xs text-muted-foreground pt-2 border-t border-border/40">{t("accounting.recon.activity")}</div>
+      <MetricRow label={t("accounting.recon.redeemedSubledger")} value={data.redeemedAmount} />
+      <MetricRow label={t("accounting.recon.pendingSettlements")} value={data.pendingSettlements} />
+      <MetricRow label={t("accounting.recon.settledSettlements")} value={data.settledSettlements} />
       {(data.pendingGlIssuances ?? 0) > 0 && (
-        <MetricRow label="Pending GL issuances" value={data.pendingGlIssuances} />
+        <MetricRow label={t("accounting.recon.pendingGlIssuances")} value={data.pendingGlIssuances} />
       )}
     </Card>
   );
 }
 
 function PayrollCard({ data }: { data: PayrollReconciliationReport }) {
+  const { t } = useErpTranslation();
   return (
     <Card className="p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Payroll</h3>
+        <h3 className="font-semibold">{t("accounting.recon.payroll")}</h3>
         <StatusBadge status={data.status as string | undefined} />
       </div>
-      <MetricRow label="Subledger" value={data.subledger as number | undefined} />
-      <MetricRow label="GL Balance" value={data.glBalance as number | undefined} />
-      <MetricRow label="Difference" value={data.difference as number | undefined} />
+      <MetricRow label={t("accounting.recon.subledger")} value={data.subledger as number | undefined} />
+      <MetricRow label={t("accounting.recon.glBalance")} value={data.glBalance as number | undefined} />
+      <MetricRow label={t("accounting.recon.difference")} value={data.difference as number | undefined} />
     </Card>
   );
 }
 
 export default function AccountingReconciliation() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [loading, setLoading] = useState(false);
   const [ap, setAp] = useState<ApReconciliationReport | null>(null);
@@ -171,7 +189,7 @@ export default function AccountingReconciliation() {
       setPayroll(payData);
       setGiftCards(giftCardData);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load reconciliation reports");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.recon.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -184,9 +202,9 @@ export default function AccountingReconciliation() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Subledger vs GL tie-out for AP, procurement, payroll, and gift cards.</p>
+        <p className="text-sm text-muted-foreground">{t("accounting.recon.subtitle")}</p>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
+          {loading ? t("common:common.loading") : t("common:common.refresh")}
         </Button>
       </div>
       <div className="grid lg:grid-cols-2 xl:grid-cols-4 gap-4">

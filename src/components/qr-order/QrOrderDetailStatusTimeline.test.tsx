@@ -5,8 +5,8 @@ import { QrOrderStatusTimeline } from "./QrOrderStatusTimeline";
 
 describe("QrOrderDetailStatusTimeline", () => {
   it("highlights the active timeline step", () => {
-    render(<QrOrderStatusTimeline customerStatus="preparing" timelineStep={2} />);
-    expect(screen.getByTestId("qr-timeline-step-preparing")).toHaveAttribute("data-active", "true");
+    render(<QrOrderStatusTimeline customerStatus="cooking" timelineStep={2} />);
+    expect(screen.getByTestId("qr-timeline-step-cooking")).toHaveAttribute("data-active", "true");
   });
 
   it("shows cancelled state clearly", () => {
@@ -17,7 +17,7 @@ describe("QrOrderDetailStatusTimeline", () => {
   it("shows adjusted cashier message", () => {
     render(<QrOrderStatusTimeline customerStatus="adjusted" timelineStep={1} />);
     expect(screen.getByTestId("qr-order-status-adjusted")).toHaveTextContent(
-      /Pesanan Anda telah diperbarui oleh kasir/i,
+      /updated by the cashier/i,
     );
   });
 });

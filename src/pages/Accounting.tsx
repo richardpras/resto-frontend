@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { useAccountingStore } from "@/stores/accountingStore";
 import { useAuthStore } from "@/stores/authStore";
 import { canViewFinancialStatements } from "@/domain/permissionGates";
@@ -30,19 +32,6 @@ type AccountingTabKey =
 
 const FINANCIAL_STATEMENT_TABS: AccountingTabKey[] = ["ledger", "tb", "pl", "bs", "cf"];
 
-const TAB_META: Record<AccountingTabKey, { label: string }> = {
-  coa: { label: "Chart of Accounts" },
-  journal: { label: "Journal Entries" },
-  periods: { label: "Accounting Periods" },
-  health: { label: "Health" },
-  ledger: { label: "General Ledger" },
-  tb: { label: "Trial Balance" },
-  pl: { label: "Profit & Loss" },
-  bs: { label: "Balance Sheet" },
-  cf: { label: "Cash Flow" },
-  recon: { label: "Reconciliation" },
-};
-
 const OPERATIONAL_TAB_ORDER: AccountingTabKey[] = [
   "coa",
   "journal",
@@ -65,6 +54,7 @@ const ACCOUNTING_TAB_KEYS: AccountingTabKey[] = [
 ];
 
 export default function Accounting() {
+  const { t } = useErpTranslation();
   const [searchParams] = useSearchParams();
   const refreshFromApi = useAccountingStore((s) => s.refreshFromApi);
   const user = useAuthStore((s) => s.user);
@@ -93,23 +83,21 @@ export default function Accounting() {
 
   useEffect(() => {
     void refreshFromApi().catch((e) => {
-      toast.error(e instanceof Error ? e.message : "Failed to load accounting data");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.loadFailed"));
     });
-  }, [refreshFromApi]);
+  }, [refreshFromApi, t]);
 
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Accounting & Financial Reports</h1>
-        <p className="text-muted-foreground text-sm">
-          Chart of accounts, journal entries, ledger and financial statements.
-        </p>
+        <h1 className="text-2xl font-bold">{t("accounting.title")}</h1>
+        <p className="text-muted-foreground text-sm">{t("accounting.subtitle")}</p>
       </div>
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AccountingTabKey)}>
         <TabsList className="flex-wrap h-auto">
           {visibleTabs.map((key) => (
             <TabsTrigger key={key} value={key}>
-              {TAB_META[key].label}
+              {t(`accounting.tabs.${key}`)}
             </TabsTrigger>
           ))}
         </TabsList>

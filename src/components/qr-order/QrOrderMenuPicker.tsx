@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { listMenuItems, type MenuItemApi } from "@/lib/api-integration/endpoints";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   outletId: number;
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function QrOrderMenuPicker({ outletId, onSelect }: Props) {
+  const { t } = useOpsTranslation();
   const [search, setSearch] = useState("");
 
   const { data: menuItems = [], isLoading } = useQuery({
@@ -26,7 +28,7 @@ export function QrOrderMenuPicker({ outletId, onSelect }: Props) {
   );
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading menu...</p>;
+    return <p className="text-sm text-muted-foreground">{t("qrStaff.menuPicker.loading")}</p>;
   }
 
   return (
@@ -37,7 +39,7 @@ export function QrOrderMenuPicker({ outletId, onSelect }: Props) {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search menu..."
+          placeholder={t("qrStaff.menuPicker.searchPlaceholder")}
           className="w-full pl-10 pr-3 py-2 rounded-lg border border-border bg-background text-sm"
         />
       </div>

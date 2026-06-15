@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import { PrinterStationRoutePanel } from "@/components/settings/PrinterStationRo
 const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: 0 };
 
 export default function PrinterSettings() {
+  const { t } = useTranslation("common");
   const authUser = useAuthStore((s) => s.user);
   const capabilities = getUserCapabilities(authUser);
   const printers = useSettingsStore((s) => s.printers);
@@ -89,9 +91,9 @@ export default function PrinterSettings() {
   }, [historyOutletId, outlets, startBridgeMonitoring, stopBridgeMonitoring, capabilities.hardwareBridge]);
 
   const save = async () => {
-    if (!form.name.trim()) return toast.error("Printer name required");
-    if (!form.outletId || form.outletId < 1) return toast.error("Select outlet");
-    if (form.connection === "lan" && !form.ip?.trim()) return toast.error("IP address required for LAN");
+    if (!form.name.trim()) return toast.error(t("settings.printers.nameRequired"));
+    if (!form.outletId || form.outletId < 1) return toast.error(t("settings.printers.outletRequired"));
+    if (form.connection === "lan" && !form.ip?.trim()) return toast.error(t("settings.printers.ipRequired"));
     try {
       const payload = {
         ...form,
@@ -101,20 +103,20 @@ export default function PrinterSettings() {
       };
       await saveProfile(payload);
       await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
-      toast.success("Printer saved");
+      toast.success(t("settings.printers.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common.saveFailed"));
     }
   };
 
-  const test = () => toast.success("Test print sent (simulated)");
+  const test = () => toast.success(t("settings.printers.testSent"));
 
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="font-semibold">Printer Setup</h2>
+          <h2 className="font-semibold">{t("settings.printers.title")}</h2>
           <Button
             type="button"
             onClick={() => {
@@ -123,7 +125,7 @@ export default function PrinterSettings() {
             }}
           >
             <Plus className="h-4 w-4 mr-2" />
-            Add Printer
+            {t("settings.printers.add")}
           </Button>
         </div>
         <Table>
@@ -151,13 +153,13 @@ export default function PrinterSettings() {
                       size="icon"
                       variant="ghost"
                       onClick={() => {
-                        if (!confirm("Delete printer?")) return;
+                        if (!confirm(t("settings.printers.deleteConfirm"))) return;
                         void (async () => {
                           try {
                             await removePrinterCascade(p.id);
                             if (getApiAccessToken()) await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
                           } catch (e) {
-                            toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+                            toast.error(e instanceof ApiHttpError ? e.message : t("common.deleteFailed"));
                           }
                         })();
                       }}
@@ -458,44 +460,44 @@ export default function PrinterSettings() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Printer</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("settings.printers.dialogTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+              <div className="space-y-2"><Label>{t("common.name")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Type</Label>
+                  <Label>{t("common.type")}</Label>
                   <Select value={form.printerType} onValueChange={(v: "kitchen" | "cashier") => setForm({ ...form, printerType: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="kitchen">Kitchen</SelectItem>
-                      <SelectItem value="cashier">Cashier</SelectItem>
+                      <SelectItem value="kitchen">{t("settings.printers.kitchen")}</SelectItem>
+                      <SelectItem value="cashier">{t("settings.printers.cashier")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Connection</Label>
+                  <Label>{t("settings.printers.connection")}</Label>
                   <Select value={form.connection} onValueChange={(v: "lan" | "bluetooth") => setForm({ ...form, connection: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lan">LAN / IP</SelectItem>
-                      <SelectItem value="bluetooth">Bluetooth</SelectItem>
+                      <SelectItem value="lan">{t("settings.printers.lan")}</SelectItem>
+                      <SelectItem value="bluetooth">{t("settings.printers.bluetooth")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               {form.connection === "lan" ? (
-                <div className="space-y-2"><Label>IP Address</Label><Input placeholder="192.168.1.50" value={form.ip || ""} onChange={(e) => setForm({ ...form, ip: e.target.value })} /></div>
+                <div className="space-y-2"><Label>{t("settings.printers.ipAddress")}</Label><Input placeholder="192.168.1.50" value={form.ip || ""} onChange={(e) => setForm({ ...form, ip: e.target.value })} /></div>
               ) : (
-                <div className="space-y-2"><Label>Bluetooth Device</Label><Input placeholder="POS-58" value={form.bluetoothDevice || ""} onChange={(e) => setForm({ ...form, bluetoothDevice: e.target.value })} /></div>
+                <div className="space-y-2"><Label>{t("settings.printers.bluetoothDevice")}</Label><Input placeholder="POS-58" value={form.bluetoothDevice || ""} onChange={(e) => setForm({ ...form, bluetoothDevice: e.target.value })} /></div>
               )}
               <div className="space-y-2">
-                <Label>Outlet</Label>
+                <Label>{t("settings.printers.outlet")}</Label>
                 <Select
                   value={form.outletId > 0 ? String(form.outletId) : ""}
                   onValueChange={(v) => setForm({ ...form, outletId: Number(v) })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select outlet" />
+                    <SelectValue placeholder={t("settings.printers.selectOutlet")} />
                   </SelectTrigger>
                   <SelectContent>
                     {outlets.map((o) => (
@@ -517,8 +519,8 @@ export default function PrinterSettings() {
               )}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSavingProfile}>Cancel</Button>
-              <Button type="button" onClick={() => void save()} disabled={isSavingProfile}>{isSavingProfile ? "Saving…" : "Save"}</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSavingProfile}>{t("common.cancel")}</Button>
+              <Button type="button" onClick={() => void save()} disabled={isSavingProfile}>{isSavingProfile ? t("common.saving") : t("common.saveShort")}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const statusBadgeClass: Record<ReservationApi["status"], string> = {
   draft: "bg-muted text-muted-foreground",
@@ -38,16 +39,6 @@ const statusBadgeClass: Record<ReservationApi["status"], string> = {
   completed: "bg-success/10 text-success",
   cancelled: "bg-destructive/10 text-destructive",
   no_show: "bg-muted text-muted-foreground line-through",
-};
-
-const statusLabel: Record<ReservationApi["status"], string> = {
-  draft: "Draft",
-  confirmed: "Confirmed",
-  checked_in: "Checked in",
-  seated: "Seated",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  no_show: "No show",
 };
 
 function formatDateTime(iso: string | null): string {
@@ -64,6 +55,7 @@ function canManageAllocation(status: ReservationApi["status"]): boolean {
 }
 
 export default function Reservations() {
+  const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const queryClient = useQueryClient();
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
@@ -121,7 +113,7 @@ export default function Reservations() {
   );
 
   const assignableTables = useMemo(
-    () => floorTables.filter((t) => t.status === "active" && !allocatedTableIds.has(t.id)),
+    () => floorTables.filter((table) => table.status === "active" && !allocatedTableIds.has(table.id)),
     [floorTables, allocatedTableIds],
   );
 
@@ -139,14 +131,16 @@ export default function Reservations() {
     setFormTime("18:00");
   }, [createOpen]);
 
+  const statusLabel = (status: ReservationApi["status"]) => t(`reservations.status.${status}`);
+
   const onCreate = async () => {
     if (!outletReady || !formName.trim() || !formDate || !formTime) {
-      toast.error("Fill required fields");
+      toast.error(t("reservations.fillRequired"));
       return;
     }
     const partySize = Number(formParty);
     if (!Number.isFinite(partySize) || partySize < 1) {
-      toast.error("Invalid party size");
+      toast.error(t("reservations.invalidPartySize"));
       return;
     }
     const reservationAt = new Date(`${formDate}T${formTime}`).toISOString();
@@ -162,55 +156,55 @@ export default function Reservations() {
       invalidateList();
       setCreateOpen(false);
       setSelectedId(created.id);
-      toast.success("Reservation created");
+      toast.success(t("reservations.created"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Create failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.createFailed"));
     } finally {
       setSaving(false);
     }
   };
 
-  const runLifecycleAction = async (label: string, action: () => Promise<ReservationApi>) => {
+  const runLifecycleAction = async (successKey: string, action: () => Promise<ReservationApi>) => {
     try {
       await action();
       invalidateList();
-      toast.success(label);
+      toast.success(t(successKey));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : `${label} failed`);
+      toast.error(e instanceof ApiHttpError ? e.message : t("shared.somethingWrong"));
     }
   };
 
   const onConfirm = async (id: number) => {
-    await runLifecycleAction("Reservation confirmed", () => confirmReservation(id));
+    await runLifecycleAction("reservations.confirmedToast", () => confirmReservation(id));
   };
 
   const onCancel = async (id: number) => {
-    await runLifecycleAction("Reservation cancelled", () => cancelReservation(id));
+    await runLifecycleAction("reservations.cancelledToast", () => cancelReservation(id));
   };
 
   const onCheckIn = async (id: number) => {
-    await runLifecycleAction("Guest checked in", () => checkInReservation(id));
+    await runLifecycleAction("reservations.checkedIn", () => checkInReservation(id));
   };
 
   const onSeat = async (id: number) => {
-    await runLifecycleAction("Guest seated", () => seatReservation(id));
+    await runLifecycleAction("reservations.seated", () => seatReservation(id));
   };
 
   const onComplete = async (id: number) => {
-    await runLifecycleAction("Reservation completed", () => completeReservation(id));
+    await runLifecycleAction("reservations.completedToast", () => completeReservation(id));
   };
 
   const onNoShow = async (id: number) => {
-    await runLifecycleAction("Marked as no show", () => markNoShowReservation(id));
+    await runLifecycleAction("reservations.noShowToast", () => markNoShowReservation(id));
   };
 
   const onStartService = async (id: number) => {
     try {
       const result = await startReservationService(id);
       invalidateList();
-      toast.success(`Service started · Order #${result.linkedOrderId}`);
+      toast.success(t("reservations.serviceStarted", { id: result.linkedOrderId }));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Start service failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.serviceFailed"));
     }
   };
 
@@ -220,9 +214,9 @@ export default function Reservations() {
       await allocateReservationTable(selectedId, { tableId: Number(assignTableId) });
       setAssignTableId("");
       await refetchAllocations();
-      toast.success("Table assigned");
+      toast.success(t("reservations.tableAssigned"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Assign failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.assignFailed"));
     }
   };
 
@@ -231,17 +225,17 @@ export default function Reservations() {
     try {
       await unallocateReservationTable(selectedId, row.tableId);
       await refetchAllocations();
-      toast.success("Table removed");
+      toast.success(t("reservations.tableRemoved"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Remove failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.removeFailed"));
     }
   };
 
   if (!authed) {
-    return <div className="p-6 text-sm text-muted-foreground">Sign in to manage reservations.</div>;
+    return <div className="p-6 text-sm text-muted-foreground">{t("reservations.signIn")}</div>;
   }
   if (!outletReady) {
-    return <div className="p-6 text-sm text-muted-foreground">Select an outlet to manage reservations.</div>;
+    return <div className="p-6 text-sm text-muted-foreground">{t("reservations.selectOutlet")}</div>;
   }
 
   const activeDetail = detail ?? rows.find((r) => r.id === selectedId) ?? null;
@@ -252,21 +246,19 @@ export default function Reservations() {
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CalendarDays className="h-6 w-6" /> Reservations
+            <CalendarDays className="h-6 w-6" /> {t("reservations.title")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Create bookings without table assignment; assign tables when ready.
-          </p>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("reservations.subtitle")}</p>
         </div>
         <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> New reservation
+          <Plus className="h-4 w-4 mr-1" /> {t("reservations.newReservation")}
         </Button>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading reservations…</p>
+        <p className="text-sm text-muted-foreground">{t("reservations.loading")}</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No reservations for this outlet.</p>
+        <p className="text-sm text-muted-foreground">{t("reservations.empty")}</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
@@ -279,9 +271,9 @@ export default function Reservations() {
               <div className="font-semibold">{row.customerName}</div>
               <div className="text-xs text-muted-foreground mt-1">{row.reservationCode}</div>
               <div className="text-sm mt-2">{formatDateTime(row.reservationAt)}</div>
-              <div className="text-sm text-muted-foreground">{row.partySize} guests</div>
+              <div className="text-sm text-muted-foreground">{t("reservations.guests", { n: row.partySize })}</div>
               <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-md font-medium ${statusBadgeClass[row.status]}`}>
-                {statusLabel[row.status]}
+                {statusLabel(row.status)}
               </span>
             </button>
           ))}
@@ -291,17 +283,19 @@ export default function Reservations() {
       <Dialog open={selectedId !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Reservation detail</DialogTitle>
+            <DialogTitle>{t("reservations.detailTitle")}</DialogTitle>
           </DialogHeader>
           {activeDetail && (
             <div className="space-y-4 text-sm">
               <div>
                 <div className="font-medium text-base">{activeDetail.customerName}</div>
                 <div className="text-muted-foreground">{activeDetail.customerPhone ?? "—"}</div>
-                <div className="mt-1">{formatDateTime(activeDetail.reservationAt)} · {activeDetail.partySize} pax</div>
+                <div className="mt-1">
+                  {formatDateTime(activeDetail.reservationAt)} · {t("reservations.partySize", { n: activeDetail.partySize })}
+                </div>
                 <div className="mt-2">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusBadgeClass[activeDetail.status]}`}>
-                    {statusLabel[activeDetail.status]}
+                    {statusLabel(activeDetail.status)}
                   </span>
                 </div>
               </div>
@@ -310,23 +304,23 @@ export default function Reservations() {
                 {activeDetail.status === "draft" && (
                   <>
                     <Button type="button" size="sm" variant="secondary" onClick={() => onConfirm(activeDetail.id)}>
-                      Confirm
+                      {t("reservations.confirm")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" onClick={() => onCancel(activeDetail.id)}>
-                      Cancel
+                      {t("shared.cancel")}
                     </Button>
                   </>
                 )}
                 {activeDetail.status === "confirmed" && (
                   <>
                     <Button type="button" size="sm" variant="secondary" onClick={() => onCheckIn(activeDetail.id)}>
-                      Check in
+                      {t("reservations.checkIn")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" onClick={() => onCancel(activeDetail.id)}>
-                      Cancel
+                      {t("shared.cancel")}
                     </Button>
                     <Button type="button" size="sm" variant="destructive" onClick={() => onNoShow(activeDetail.id)}>
-                      No show
+                      {t("reservations.noShow")}
                     </Button>
                   </>
                 )}
@@ -338,39 +332,39 @@ export default function Reservations() {
                     disabled={allocations.length === 0}
                     onClick={() => onSeat(activeDetail.id)}
                   >
-                    Seat guest
+                    {t("reservations.seatGuest")}
                   </Button>
                 )}
                 {activeDetail.status === "seated" && (
                   <>
                     {!activeDetail.linkedOrderId ? (
                       <Button type="button" size="sm" variant="secondary" onClick={() => onStartService(activeDetail.id)}>
-                        Start service
+                        {t("reservations.startService")}
                       </Button>
                     ) : (
                       <div className="w-full space-y-2">
                         <p className="text-xs text-muted-foreground">
-                          Linked order #{activeDetail.linkedOrderId}
+                          {t("reservations.linkedOrder", { id: activeDetail.linkedOrderId })}
                           {activeDetail.serviceStartedAt
-                            ? ` · started ${formatDateTime(activeDetail.serviceStartedAt)}`
+                            ? ` · ${t("reservations.startedAt", { at: formatDateTime(activeDetail.serviceStartedAt) })}`
                             : ""}
                         </p>
                         <Button type="button" size="sm" variant="outline" asChild>
-                          <Link to="/pos">Open POS</Link>
+                          <Link to="/pos">{t("reservations.openPos")}</Link>
                         </Button>
                       </div>
                     )}
                     <Button type="button" size="sm" variant="secondary" onClick={() => onComplete(activeDetail.id)}>
-                      Complete
+                      {t("reservations.complete")}
                     </Button>
                   </>
                 )}
               </div>
 
               <div className="border-t pt-4">
-                <h3 className="font-semibold mb-2">Allocated tables</h3>
+                <h3 className="font-semibold mb-2">{t("reservations.allocatedTables")}</h3>
                 {allocations.length === 0 ? (
-                  <p className="text-muted-foreground text-xs mb-3">No tables assigned yet.</p>
+                  <p className="text-muted-foreground text-xs mb-3">{t("reservations.noTablesAssigned")}</p>
                 ) : (
                   <ul className="space-y-2 mb-3">
                     {allocations.map((a) => (
@@ -379,7 +373,7 @@ export default function Reservations() {
                         className="flex items-center justify-between rounded-lg border px-3 py-2"
                       >
                         <span>
-                          {a.tableName ?? `Table ${a.tableId}`}
+                          {a.tableName ?? t("reservations.tableFallback", { id: a.tableId })}
                           {a.tableCode ? ` (${a.tableCode})` : ""}
                         </span>
                         {allocationAllowed && (
@@ -387,7 +381,7 @@ export default function Reservations() {
                             type="button"
                             size="icon"
                             variant="ghost"
-                            aria-label="Remove table"
+                            aria-label={t("reservations.removeTableAria")}
                             onClick={() => onRemove(a)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -401,30 +395,28 @@ export default function Reservations() {
                 {allocationAllowed && (
                   <div className="flex flex-wrap gap-2 items-end">
                     <div className="flex-1 min-w-[140px]">
-                      <Label className="text-xs">Assign table</Label>
+                      <Label className="text-xs">{t("reservations.assignTable")}</Label>
                       <Select value={assignTableId} onValueChange={setAssignTableId}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select table" />
+                          <SelectValue placeholder={t("reservations.selectTable")} />
                         </SelectTrigger>
                         <SelectContent>
-                          {assignableTables.map((t: FloorTableApi) => (
-                            <SelectItem key={t.id} value={String(t.id)}>
-                              {t.name}
-                              {t.capacity != null ? ` (${t.capacity} seats)` : ""}
+                          {assignableTables.map((table: FloorTableApi) => (
+                            <SelectItem key={table.id} value={String(table.id)}>
+                              {table.name}
+                              {table.capacity != null ? ` (${t("reservations.seats", { n: table.capacity })})` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <Button type="button" size="sm" disabled={!assignTableId} onClick={onAssign}>
-                      <UserPlus className="h-4 w-4 mr-1" /> Assign table
+                      <UserPlus className="h-4 w-4 mr-1" /> {t("reservations.assignTable")}
                     </Button>
                   </div>
                 )}
                 {!allocationAllowed && (
-                  <p className="text-xs text-muted-foreground">
-                    Table assignment is locked for this reservation status.
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t("reservations.tableLocked")}</p>
                 )}
               </div>
             </div>
@@ -435,38 +427,38 @@ export default function Reservations() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New reservation</DialogTitle>
+            <DialogTitle>{t("reservations.createTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Customer name</Label>
+              <Label>{t("reservations.customerName")}</Label>
               <Input value={formName} onChange={(e) => setFormName(e.target.value)} />
             </div>
             <div>
-              <Label>Phone</Label>
+              <Label>{t("reservations.phone")}</Label>
               <Input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} />
             </div>
             <div>
-              <Label>Party size</Label>
+              <Label>{t("reservations.partySizeLabel")}</Label>
               <Input type="number" min={1} value={formParty} onChange={(e) => setFormParty(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Date</Label>
+                <Label>{t("reservations.date")}</Label>
                 <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
               </div>
               <div>
-                <Label>Time</Label>
+                <Label>{t("reservations.time")}</Label>
                 <Input type="time" value={formTime} onChange={(e) => setFormTime(e.target.value)} />
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {t("shared.cancel")}
             </Button>
             <Button type="button" disabled={saving} onClick={onCreate}>
-              Create
+              {t("shared.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

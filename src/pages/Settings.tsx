@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MerchantSettings from "./settings/MerchantSettings";
 import OutletsSettings from "./settings/OutletsSettings";
@@ -32,6 +33,7 @@ const SETTINGS_TAB_KEYS = [
 ] as const;
 
 export default function Settings() {
+  const { t } = useTranslation("common");
   const [searchParams, setSearchParams] = useSearchParams();
   const [syncing, setSyncing] = useState(false);
   const requestedTab = normalizeSettingsTabKey(searchParams.get("tab"));
@@ -93,33 +95,33 @@ export default function Settings() {
         if (e instanceof ApiHttpError) {
           if (e.status === 401) {
             setApiAccessToken(undefined);
-            toast.error("Not authenticated. Sign in to load settings from the server.");
+            toast.error(t("settings.notAuthenticated"));
           } else if (e.status === 403) {
-            toast.error("You do not have permission to view settings (settings.view).");
+            toast.error(t("settings.noPermission"));
           } else {
             toast.error(e.message);
           }
         } else {
-          toast.error("Failed to load settings from API.");
+          toast.error(t("settings.loadFailed"));
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, t]);
 
   const reloadFromServer = async () => {
     if (!getApiAccessToken()) {
-      toast.message("Not signed in", { description: "Open /login or set VITE_API_ACCESS_TOKEN to sync with the API." });
+      toast.message(t("settings.notSignedInTitle"), { description: t("settings.notSignedInDesc") });
       return;
     }
     setSyncing(true);
     try {
       await loadTabData(activeTab, true);
-      toast.success("Settings reloaded from server");
+      toast.success(t("settings.reloaded"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Reload failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.reloadFailed"));
     } finally {
       setSyncing(false);
     }
@@ -129,8 +131,8 @@ export default function Settings() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground text-sm">Configure merchant, outlets, taxes, printers and system behavior.</p>
+          <h1 className="text-2xl font-bold">{t("settings.pageTitle")}</h1>
+          <p className="text-muted-foreground text-sm">{t("settings.pageSubtitle")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -138,17 +140,17 @@ export default function Settings() {
             variant="secondary"
             size="sm"
             disabled={syncing}
-            aria-label="Reload settings from server"
+            aria-label={t("settings.reloadAria")}
             onClick={() => void reloadFromServer()}
           >
             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            <span className="ml-2 hidden sm:inline">Reload from server</span>
+            <span className="ml-2 hidden sm:inline">{t("settings.reloadFromServer")}</span>
           </Button>
           <Button asChild variant="outline" size="sm">
-            <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />Users & Permissions</Link>
+            <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />{t("settings.usersPermissions")}</Link>
           </Button>
           <Button asChild variant="ghost" size="sm">
-            <Link to="/login?redirect=/settings">Sign in</Link>
+            <Link to="/login?redirect=/settings">{t("settings.signIn")}</Link>
           </Button>
         </div>
       </div>
@@ -171,16 +173,16 @@ export default function Settings() {
         className="w-full"
       >
         <TabsList className="flex flex-wrap h-auto justify-start">
-          <TabsTrigger value="merchant">Merchant</TabsTrigger>
-          <TabsTrigger value="outlets">Outlets</TabsTrigger>
-          <TabsTrigger value="taxes">Taxes</TabsTrigger>
-          <TabsTrigger value="printers">Printers</TabsTrigger>
-          <TabsTrigger value="payments">Payment Methods</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
-          <TabsTrigger value="integration">Integrations</TabsTrigger>
-          <TabsTrigger value="numbering">Numbering</TabsTrigger>
-          <TabsTrigger value="banks">Bank Accounts</TabsTrigger>
-          <TabsTrigger value="receipt">Receipts</TabsTrigger>
+          <TabsTrigger value="merchant">{t("settings.tabs.merchant")}</TabsTrigger>
+          <TabsTrigger value="outlets">{t("settings.tabs.outlets")}</TabsTrigger>
+          <TabsTrigger value="taxes">{t("settings.tabs.taxes")}</TabsTrigger>
+          <TabsTrigger value="printers">{t("settings.tabs.printers")}</TabsTrigger>
+          <TabsTrigger value="payments">{t("settings.tabs.payments")}</TabsTrigger>
+          <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger>
+          <TabsTrigger value="integration">{t("settings.tabs.integration")}</TabsTrigger>
+          <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger>
+          <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger>
+          <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger>
         </TabsList>
         <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>

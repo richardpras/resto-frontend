@@ -10,6 +10,7 @@ import { RoutePageSkeleton } from "@/components/skeletons/route/RoutePageSkeleto
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
+import { LocaleSync } from "@/hooks/useLocaleSync";
 import { PERMISSIONS } from "@/stores/authStore";
 import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
 
@@ -103,6 +104,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <LocaleSync />
         <Routes>
           <Route
             path="/login"

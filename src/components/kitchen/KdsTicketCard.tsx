@@ -5,7 +5,6 @@ import type { KitchenBoardColumn } from "@/domain/kitchenWorkflow";
 import {
   elapsedMinutesSince,
   elapsedUrgency,
-  formatServiceModeLabel,
   hasItemNotes,
   ticketElapsedReferenceDate,
 } from "@/domain/kitchenWorkflow";
@@ -18,6 +17,8 @@ import {
 } from "@/domain/kdsUrgency";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
 import type { KdsFocusMode } from "@/hooks/useKdsFocusMode";
+import { translateKitchenServiceMode } from "@/components/kitchen/kitchenBoardI18n";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -83,6 +84,7 @@ function KdsTicketCardComponent({
   onCancel,
   onItemIssue,
 }: Props) {
+  const { t } = useOpsTranslation();
   const styles = FOCUS_STYLES[focusMode];
   const refDate = ticketElapsedReferenceDate(ticket);
   const minutes = elapsedMinutesSince(refDate, nowMs);
@@ -120,7 +122,7 @@ function KdsTicketCardComponent({
         <div className="min-w-0 flex-1">
           <p className={cn("font-extrabold tracking-tight text-kds-fg truncate", styles.order)}>{orderLabel}</p>
           <div className="flex flex-wrap items-center gap-2 mt-0.5">
-            <p className="text-xs text-kds-muted-fg truncate">Ticket {ticket.ticketNo}</p>
+            <p className="text-xs text-kds-muted-fg truncate">{t("kitchen.ticketNo", { no: ticket.ticketNo })}</p>
             {showStationBadge && ticket.station ? (
               <span
                 className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-kds-muted text-kds-fg border border-kds-card-border"
@@ -131,7 +133,7 @@ function KdsTicketCardComponent({
             ) : null}
           </div>
           {ticket.tableNumber ? (
-            <p className="text-sm font-medium text-kds-muted-fg mt-1">Table {ticket.tableNumber}</p>
+            <p className="text-sm font-medium text-kds-muted-fg mt-1">{t("kitchen.table", { name: ticket.tableNumber })}</p>
           ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -150,7 +152,7 @@ function KdsTicketCardComponent({
               className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-200 border border-emerald-400/40"
               data-testid="kitchen-ready-badge"
             >
-              Ready
+              {t("kitchen.readyBadge")}
             </span>
           ) : urgency !== "normal" ? (
             <AlertTriangle className={cn("h-5 w-5", kdsUrgencyTimerClass(urgency))} aria-hidden />
@@ -160,12 +162,12 @@ function KdsTicketCardComponent({
 
       <div className="p-4 flex-1 flex flex-col gap-3">
         <p className="text-xs uppercase tracking-wide text-kds-muted-fg">
-          {formatServiceModeLabel(ticket.serviceMode)}
+          {translateKitchenServiceMode(t, ticket.serviceMode)}
         </p>
 
         <div className="space-y-2.5">
           {ticket.items.length === 0 ? (
-            <p className="text-sm text-kds-muted-fg italic">No items yet</p>
+            <p className="text-sm text-kds-muted-fg italic">{t("kitchen.noItemsYet")}</p>
           ) : (
             ticket.items.map((item) => (
               <div key={item.id} className="flex items-start gap-2 group/row">
@@ -183,7 +185,7 @@ function KdsTicketCardComponent({
                     {canReportItemRecovery ? (
                       <button
                         type="button"
-                        aria-label="Item issue"
+                        aria-label={t("kitchen.itemIssueAria")}
                         disabled={recoverySubmitting || isSubmitting}
                         className="shrink-0 p-2 rounded-lg text-kds-muted-fg hover:bg-kds-muted hover:text-kds-fg opacity-80 group-hover/row:opacity-100"
                         onClick={() => onItemIssue(ticket.orderId, item.orderItemId, item.name)}
@@ -235,7 +237,7 @@ function KdsTicketCardComponent({
           type="button"
           onClick={() => onCancel(ticket.id)}
           disabled={isSubmitting || recoverySubmitting}
-          aria-label="Cancel ticket"
+          aria-label={t("kitchen.cancelTicketAria")}
           className={cn(
             "px-4 rounded-xl border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-40",
             styles.action,

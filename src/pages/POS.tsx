@@ -33,6 +33,7 @@ import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { showInventoryPolicySuccessToast } from "@/features/pos/posInventoryPolicyToast";
+import { POS_AUTO_ORDER_CODE } from "@/features/pos/posOrderCode";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
@@ -112,6 +113,7 @@ import {
 } from "@/features/pos/posStockError";
 import { PosPaymentStockErrorAlert } from "@/components/pos/PosPaymentStockErrorAlert";
 import { PosOpenBillRecoveryBanner } from "@/components/pos/PosOpenBillRecoveryBanner";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -168,6 +170,7 @@ function operationalChannelFromOrder(order: Order | null): string {
 }
 
 export default function POS() {
+  const { t } = useOpsTranslation();
   const authUser = useAuthStore((s) => s.user);
   const showReconcile = canReconcilePayments(authUser);
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
@@ -510,7 +513,7 @@ export default function POS() {
   );
   const selectedTableLabel =
     selectedTable && tables.length > 0
-      ? tables.find((t) => String(t.id) === String(selectedTable))?.name ?? `Table #${selectedTable}`
+      ? tables.find((t) => String(t.id) === String(selectedTable))?.name ?? t("pos.tableNumber", { id: selectedTable })
       : null;
 
   const outletOrderFields = useMemo((): Pick<CreateOrderPayload, "outletId"> => {
@@ -520,9 +523,22 @@ export default function POS() {
 
   const orderContextReady = typeof activeOutletId === "number" && activeOutletId >= 1;
 
+  const orderTypeLabel = (type: string) => {
+    if (type === "Dine-in") return t("pos.orderTypes.dine_in");
+    if (type === "Takeaway") return t("pos.orderTypes.takeaway");
+    if (type === "Online") return t("pos.orderTypes.online");
+    return type;
+  };
+
+  const categoryLabel = (category: string) => {
+    if (category === "All") return t("shared.all");
+    if (category === "Uncategorized") return t("pos.uncategorized");
+    return category;
+  };
+
   function requireOutletOrderContext(): boolean {
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error("Select an outlet in the header.");
+      toast.error(t("shared.selectOutlet"));
       return false;
     }
     return true;
@@ -533,7 +549,7 @@ export default function POS() {
       toast.error(e.message);
       return;
     }
-    toast.error("Something went wrong. Try again.");
+    toast.error(t("shared.somethingWrong"));
   }
 
   function beginCheckoutAttempt(scope: string): string {
@@ -581,7 +597,7 @@ export default function POS() {
     setShowQrisModal(false);
     setSelectedCheckoutCode(null);
     void paymentResetAsync();
-    toast.error(formatPosStockErrorMessage(stockError));
+    toast.error(formatPosStockErrorMessage(stockError, stockEnforcementMode));
     return true;
   }
 
@@ -657,10 +673,33 @@ export default function POS() {
 
   const clearQrOrderContext = () => setQrOrderContext(null);
 
+  const paymentExtras = useMemo(
+    () => ({
+      qrOrderRequestId: qrOrderContext?.requestId ? Number(qrOrderContext.requestId) : undefined,
+    }),
+    [qrOrderContext?.requestId],
+  );
+
+  function startNewPosOrder(): void {
+    clearCheckoutRecoveryState();
+    checkoutAttemptIdRef.current = null;
+    setCurrentOrderId(null);
+    resetCart();
+    clearQrOrderContext();
+    setShowPayment(false);
+    setShowSplit(false);
+    setShowConfirmSent(false);
+    setSelectedCheckoutCode(null);
+    setShowStaticQrisModal(false);
+    setShowQrisModal(false);
+    setPendingGatewayPayments([]);
+    void paymentResetAsync();
+  }
+
   async function attachMemberToOpenOrder(member: Member | null) {
     if (!currentOrderId) return;
     if (currentOpenOrder?.paymentStatus === "paid") {
-      toast.error("Member cannot be changed after payment is complete.");
+      toast.error(t("pos.memberLocked"));
       return;
     }
     try {
@@ -689,7 +728,7 @@ export default function POS() {
   async function applySelectedVoucher() {
     if (!currentOrderId || !selectedMemberVoucherId) return;
     if (currentOpenOrder?.paymentStatus === "paid") {
-      toast.error("Voucher cannot be changed after payment is complete.");
+      toast.error(t("pos.voucherLocked"));
       return;
     }
     setVoucherLoading(true);
@@ -697,7 +736,7 @@ export default function POS() {
       const result = await applyOrderVoucher(currentOrderId, Number(selectedMemberVoucherId));
       setVoucherPreview(result.preview);
       await fetchOrderRemote(currentOrderId);
-      toast.success("Voucher applied.");
+      toast.success(t("pos.voucherApplied"));
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -708,7 +747,7 @@ export default function POS() {
   async function removeAppliedVoucher() {
     if (!currentOrderId) return;
     if (currentOpenOrder?.paymentStatus === "paid") {
-      toast.error("Voucher cannot be changed after payment is complete.");
+      toast.error(t("pos.voucherLocked"));
       return;
     }
     setVoucherLoading(true);
@@ -717,7 +756,7 @@ export default function POS() {
       setVoucherPreview(result.preview);
       setSelectedMemberVoucherId("");
       await fetchOrderRemote(currentOrderId);
-      toast.success("Voucher removed.");
+      toast.success(t("pos.voucherRemoved"));
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -739,7 +778,7 @@ export default function POS() {
     if (!requireOutletOrderContext()) return;
     setSubmitting(true);
     try {
-      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const code = POS_AUTO_ORDER_CODE;
       const payload: CreateOrderPayload = {
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
@@ -758,7 +797,7 @@ export default function POS() {
       resetCart();
       clearQrOrderContext();
       setShowConfirmSent(true);
-      toast.success(`Order ${storedOrder.code} sent to kitchen!`, { icon: "🍳" });
+      toast.success(t("pos.orderSentKitchen", { code: storedOrder.code }), { icon: "🍳" });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -775,7 +814,7 @@ export default function POS() {
   const handlePayNow = () => {
     if (cart.length === 0) return;
     if (paymentAckRequired) {
-      toast.error("Fix or remove out-of-stock items before paying again.");
+      toast.error(t("pos.fixStock"));
       return;
     }
     if (currentOrderId && isUnpaidOpenBill(currentOpenOrder)) {
@@ -799,7 +838,7 @@ export default function POS() {
 
     if (paymentTransaction?.status === "pending") {
       if (gatewayMethod && shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, apiMethod)) {
-        toast.error("A QR payment is still pending for this method. Use Retry, Expire, or Change payment method.");
+        toast.error(t("pos.qrPending"));
         return;
       }
       try {
@@ -824,9 +863,9 @@ export default function POS() {
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
         if (apiMethod === "qris" && tx.qrString) {
           setShowQrisModal(true);
-          toast.success("QRIS ready. Ask customer to scan the QR.");
+          toast.success(t("pos.qrisReady"));
         } else {
-          toast.success("Payment checkout created. Ask customer to complete payment.");
+          toast.success(t("pos.checkoutCreated"));
         }
       } catch (e) {
         toastApiError(e);
@@ -857,13 +896,13 @@ export default function POS() {
           return;
         }
         if (!shouldResumeOpenBillCheckout(recoveryOrderId, storedOrder)) {
-          toast.error("This bill is already paid or cancelled. Start a new order instead.");
+          toast.error(t("pos.billPaid"));
           return;
         }
         setCurrentOrderId(storedOrder.id);
         reusing = true;
       } else {
-        const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+        const code = POS_AUTO_ORDER_CODE;
         const payload: CreateOrderPayload = {
           tenantId: POS_TENANT_ID,
           ...outletOrderFields,
@@ -908,7 +947,10 @@ export default function POS() {
             pendingGatewayPayments.length > 0
               ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
               : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
-          await addOrderPaymentsRemote(storedOrder.id, cashBatch, { idempotencyKey: paymentIdempotencyKey });
+          await addOrderPaymentsRemote(storedOrder.id, cashBatch, {
+            idempotencyKey: paymentIdempotencyKey,
+            ...paymentExtras,
+          });
           setPendingGatewayPayments([]);
         }
         await settleGiftCardAfterDirectPayment(storedOrder.id, giftCardSettlementIds);
@@ -928,7 +970,7 @@ export default function POS() {
         setShowPayment(false);
         setSelectedCheckoutCode(null);
         setPendingGatewayPayments([]);
-        toast.success(`Order ${storedOrder.code} paid & sent to kitchen!`, { icon: "✅" });
+        toast.success(t("pos.orderPaidKitchen", { code: storedOrder.code }), { icon: "✅" });
         showInventoryPolicySuccessToast(stockEnforcementMode);
         return;
       }
@@ -936,8 +978,8 @@ export default function POS() {
       if (manualQrisMethod) {
         setCurrentOrderId(storedOrder.id);
         setShowStaticQrisModal(true);
-        toast.message("Show outlet QRIS to customer", {
-          description: "Confirm payment only after you verify the transfer.",
+        toast.message(t("pos.showQris"), {
+          description: t("pos.verifyTransfer"),
         });
         return;
       }
@@ -967,9 +1009,9 @@ export default function POS() {
       if (gatewayPayment.method === "qris" && tx.qrString) {
         setQrisModalSuppressedTxId(null);
         setShowQrisModal(true);
-        toast.success("QRIS ready. Ask customer to scan the QR.");
+        toast.success(t("pos.qrisReady"));
       } else {
-        toast.success("Payment checkout created. Ask customer to complete payment.");
+        toast.success(t("pos.checkoutCreated"));
       }
     } catch (e) {
       if (!(await handleCheckoutPaymentFailure(e))) {
@@ -1010,7 +1052,10 @@ export default function POS() {
           : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
       const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(currentOrderId);
       checkoutAttemptIdRef.current = paymentIdempotencyKey;
-      await addOrderPaymentsRemote(currentOrderId, batch, { idempotencyKey: paymentIdempotencyKey });
+      await addOrderPaymentsRemote(currentOrderId, batch, {
+        idempotencyKey: paymentIdempotencyKey,
+        ...paymentExtras,
+      });
       await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
       setPendingGatewayPayments([]);
       setShowStaticQrisModal(false);
@@ -1030,7 +1075,7 @@ export default function POS() {
       clearQrOrderContext();
       setShowPayment(false);
       setSelectedCheckoutCode(null);
-      toast.success("Static QRIS payment recorded.");
+      toast.success(t("pos.staticQrisRecorded"));
       showInventoryPolicySuccessToast(stockEnforcementMode);
     } catch (e) {
       if (!(await handleCheckoutPaymentFailure(e))) {
@@ -1100,7 +1145,7 @@ export default function POS() {
 
   const applyPointsRedemption = () => {
     if (!selectedCustomer) {
-      toast.error("Select a member linked to CRM customer first.");
+      toast.error(t("shared.selectMemberCrm"));
       return;
     }
     const requested = Math.max(0, Number(redeemPointsInput || 0));
@@ -1110,12 +1155,12 @@ export default function POS() {
 
   const applyGiftCardRedemption = async () => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error("Select an outlet before applying a gift card.");
+      toast.error(t("shared.selectOutletGiftCard"));
       return;
     }
     const code = giftCardCodeInput.trim();
     if (!code) {
-      toast.error("Enter a gift card or store credit code.");
+      toast.error(t("shared.enterGiftCardCode"));
       return;
     }
     setGiftCardApplyLoading(true);
@@ -1130,12 +1175,12 @@ export default function POS() {
       const availableBalance = Number(issuance.balanceAmount ?? 0);
       const requestedAmount = giftCardAmountInput.trim() === "" ? 0 : Number(giftCardAmountInput);
       if (giftCardAmountInput.trim() !== "" && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
-        toast.error("Enter a valid gift card amount.");
+        toast.error(t("shared.invalidGiftCardAmount"));
         return;
       }
       const appliedAmount = resolveGiftCardApplyAmount(requestedAmount, availableBalance, baseTotal);
       if (appliedAmount <= 0) {
-        toast.error("Insufficient gift card or store credit balance.");
+        toast.error(t("shared.insufficientGiftCard"));
         return;
       }
       setAppliedGiftCardState({
@@ -1146,7 +1191,7 @@ export default function POS() {
         status: typeof issuance.status === "string" ? issuance.status : undefined,
         expiresAt: typeof issuance.expiresAt === "string" ? issuance.expiresAt : null,
       });
-      toast.success("Gift card applied.");
+      toast.success(t("shared.giftCardApplied"));
     } catch (error) {
       setAppliedGiftCardState(null);
       const message = error instanceof ApiHttpError ? mapGiftCardApiError(error.message) : mapGiftCardApiError(
@@ -1176,7 +1221,7 @@ export default function POS() {
     const perPerson = Math.ceil(total / count);
     setSplitPersons(
       Array.from({ length: count }, (_, i) => ({
-        label: `Person ${i + 1}`,
+        label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
         totalDue: i === count - 1 ? total - perPerson * (count - 1) : perPerson,
@@ -1187,7 +1232,7 @@ export default function POS() {
   const buildItemSplit = (count: number) => {
     setSplitPersons(
       Array.from({ length: count }, (_, i) => ({
-        label: `Person ${i + 1}`,
+        label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
         totalDue: 0,
@@ -1255,7 +1300,7 @@ export default function POS() {
     if (!requireOutletOrderContext()) return;
     if (!allSplitPaid) return;
     if (!byItemAllocationComplete) {
-      toast.error("Assign every unit of each line across people before completing.");
+      toast.error(t("shared.assignAllUnitsToast"));
       return;
     }
     const draftPaymentSum = splitPersons.reduce(
@@ -1270,7 +1315,7 @@ export default function POS() {
     }
     setSubmitting(true);
     try {
-      const code = "POS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const code = POS_AUTO_ORDER_CODE;
       const { order: created } = await createOrderRemote({
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
@@ -1296,7 +1341,7 @@ export default function POS() {
       const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method, checkoutMethods));
       const giftCardSettlementIds = await redeemGiftCardForOrder(created.id);
       const paidOrder = immediatePayments.length > 0
-        ? await addOrderPaymentsRemote(created.id, immediatePayments)
+        ? await addOrderPaymentsRemote(created.id, immediatePayments, paymentExtras)
         : fresh;
       if (immediatePayments.length > 0) {
         await settleGiftCardAfterDirectPayment(created.id, giftCardSettlementIds);
@@ -1317,12 +1362,12 @@ export default function POS() {
         paymentPollTransactionStatus(tx.id);
         setShowSplit(false);
         setShowPayment(true);
-        toast.success("Split bill saved. Complete the gateway checkout to finish payment.", { icon: "💰" });
+        toast.success(t("shared.splitSavedGateway"), { icon: "💰" });
         return;
       }
       resetCart();
       setShowSplit(false);
-      toast.success("Split bill order saved!", { icon: "💰" });
+      toast.success(t("shared.splitOrderSaved"), { icon: "💰" });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -1351,7 +1396,7 @@ export default function POS() {
     setPayingPersonIdx(null);
     setSplitPayMethod(null);
     if (recorded) {
-      toast.success(`${recorded.label} paid ${formatRp(recorded.amount)} via ${method}`);
+      toast.success(t("shared.paidVia", { label: recorded.label, amount: formatRp(recorded.amount), method }));
     }
   };
 
@@ -1364,6 +1409,7 @@ export default function POS() {
       try {
         await addOrderPaymentsRemote(currentOrderId, paymentsToCommit, {
           idempotencyKey: openBillCheckoutIdempotencyKey(currentOrderId),
+          ...paymentExtras,
         });
         if (selectedCustomer && appliedPoints > 0) {
           await enqueueRedemption({
@@ -1383,7 +1429,7 @@ export default function POS() {
         setSelectedCheckoutCode(null);
         setShowQrisModal(false);
         void paymentResetAsync();
-        toast.success("Payment completed.");
+        toast.success(t("shared.paymentCompleted"));
         showInventoryPolicySuccessToast(stockEnforcementMode);
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
@@ -1444,7 +1490,7 @@ export default function POS() {
           await abandonPendingGatewayCheckout();
           setSelectedCheckoutCode(code);
           setShowStaticQrisModal(false);
-          toast.success("Previous online checkout cancelled. You can complete payment with the new method.");
+          toast.success(t("shared.previousCheckoutCancelled"));
         } catch (error) {
           toastApiError(error);
         }
@@ -1461,7 +1507,7 @@ export default function POS() {
         await abandonPendingGatewayCheckout();
         setSelectedCheckoutCode(null);
         setShowStaticQrisModal(false);
-        toast.success("Choose Cash, static QRIS, or another enabled method below.");
+        toast.success(t("shared.chooseCashMethod"));
       } catch (error) {
         toastApiError(error);
       }
@@ -1479,10 +1525,10 @@ export default function POS() {
     canRetryGatewayCheckout && selectedApiMethod
       ? gatewayRetryLabel(selectedApiMethod)
       : submitting || paymentIsSubmitting
-        ? "Processing Payment..."
+        ? t("shared.processingPayment")
         : paymentAckRequired
-          ? "Review cart to retry"
-          : "Complete Payment";
+          ? t("pos.reviewCart")
+          : t("shared.completePayment");
 
   const paymentCheckoutAmount =
     pendingGatewayPayments.length > 0
@@ -1515,18 +1561,25 @@ export default function POS() {
       </div>
       {qrOrderContext ? (
         <div
-          className="px-4 py-2 border-b border-primary/20 bg-primary/5 text-xs font-semibold tracking-wide text-primary"
+          className="px-4 py-2 border-b border-primary/20 bg-primary/5 text-xs font-semibold tracking-wide text-primary flex items-center justify-between gap-2"
           data-testid="pos-qr-order-badge"
         >
-          QR ORDER • {qrOrderContext.requestCode}
-          {qrOrderContext.tableName ? ` • Table ${qrOrderContext.tableName}` : ""}
+          <span>
+            {t("pos.qrOrder", { code: qrOrderContext.requestCode })}{qrOrderContext.tableName ? t("pos.qrOrderTable", { name: qrOrderContext.tableName }) : ""}
+          </span>
+          <span className="text-[10px] font-medium uppercase text-primary/80" data-testid="pos-stock-mode-badge">
+            {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
+          </span>
         </div>
       ) : (
         <div
-          className="px-4 py-2 border-b border-border/40 bg-muted/20 text-xs font-semibold tracking-wide text-muted-foreground"
+          className="px-4 py-2 border-b border-border/40 bg-muted/20 text-xs font-semibold tracking-wide text-muted-foreground flex items-center justify-between gap-2"
           data-testid="pos-direct-source-badge"
         >
-          Direct POS
+          <span>{t("pos.directPos")}</span>
+          <span className="text-[10px] font-medium uppercase" data-testid="pos-stock-mode-badge">
+            {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
+          </span>
         </div>
       )}
       <div className="flex flex-1 min-h-0">
@@ -1536,16 +1589,16 @@ export default function POS() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
-              type="text" placeholder="Search menu..." value={search}
+              type="text" placeholder={t("pos.searchMenu")} value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
           <div className="flex gap-1.5 bg-card rounded-xl p-1 border border-border">
-            {orderTypes.map((t) => (
-              <button key={t} onClick={() => setOrderType(t)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${orderType === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >{t}</button>
+            {orderTypes.map((type) => (
+              <button key={type} onClick={() => setOrderType(type)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${orderType === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >{orderTypeLabel(type)}</button>
             ))}
           </div>
         </div>
@@ -1554,33 +1607,33 @@ export default function POS() {
           {categories.map((c) => (
             <button key={c} onClick={() => setActiveCat(c)}
               className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${activeCat === c ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}
-            >{c}</button>
+            >{categoryLabel(c)}</button>
           ))}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {(!activeOutletId || activeOutletId < 1) && (
             <div className="mb-4 p-4 rounded-xl border border-border bg-muted/20 text-sm text-muted-foreground text-center">
-              Select an outlet in the header to load the menu for that location.
+              {t("pos.loadMenuOutlet")}
             </div>
           )}
-          <SkeletonBusyRegion busy={!!menuLoading} className="min-h-[12rem]" label="Loading menu">
+          <SkeletonBusyRegion busy={!!menuLoading} className="min-h-[12rem]" label={t("pos.loadingMenu")}>
             {menuLoading && <PosMenuGridSkeleton items={8} />}
             {menuError && !menuLoading && (
             <div className="flex flex-col items-center justify-center h-48 gap-2 text-center px-4">
-              <p className="text-sm text-destructive">Could not load menu from the server.</p>
+              <p className="text-sm text-destructive">{t("pos.couldNotLoadMenu")}</p>
               <button
                 type="button"
                 onClick={() => void refetchMenu()}
                 className="text-sm font-medium text-primary underline"
               >
-                Retry
+                {t("shared.retry")}
               </button>
             </div>
           )}
             {!menuLoading && !menuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm text-center px-4">
-              No menu items mapped for this outlet (check Menu → Outlet Settings and menu_item_outlets).
+              {t("pos.noMenuItems")}
             </div>
           )}
             {!menuLoading && !menuError && menuItems.length > 0 && (
@@ -1610,8 +1663,8 @@ export default function POS() {
       <div className="w-[340px] lg:w-[380px] bg-card border-l flex flex-col shrink-0 hidden md:flex">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-foreground">Current Order</h2>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-lg">{orderType} • {totalItems} items</span>
+            <h2 className="font-bold text-foreground">{t("pos.currentOrder")}</h2>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-lg">{t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}</span>
           </div>
           {currentOrderId && typeof activeOutletId === "number" && activeOutletId >= 1 ? (
             <div className="mb-3">
@@ -1628,12 +1681,12 @@ export default function POS() {
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input type="text" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                <input type="text" placeholder={t("pos.customerName")} value={customerName} onChange={(e) => setCustomerName(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
               </div>
               <div className="relative flex-1">
                 <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input type="text" placeholder="Phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                <input type="text" placeholder={t("pos.phone")} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
               </div>
             </div>
@@ -1663,25 +1716,25 @@ export default function POS() {
                 disabled={typeof activeOutletId !== "number" || activeOutletId < 1}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                + Select member (optional)
+                {t("pos.selectMember")}
               </button>
             )}
             <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
               <div className="flex items-center gap-1.5">
                 <Gift className="h-3.5 w-3.5 text-primary" />
-                <p className="text-[11px] font-semibold text-foreground">Gift card / store credit</p>
+                <p className="text-[11px] font-semibold text-foreground">{t("pos.giftCard")}</p>
               </div>
               <div className="flex gap-2">
                 <input
                   value={giftCardCodeInput}
                   onChange={(e) => setGiftCardCodeInput(e.target.value)}
-                  placeholder="Gift card code"
+                  placeholder={t("pos.giftCardCode")}
                   className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
                 />
                 <input
                   value={giftCardAmountInput}
                   onChange={(e) => setGiftCardAmountInput(e.target.value)}
-                  placeholder="Amount (optional)"
+                  placeholder={t("pos.giftCardAmount")}
                   className="w-28 rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
                 />
                 <button
@@ -1690,55 +1743,55 @@ export default function POS() {
                   disabled={giftCardApplyLoading || typeof activeOutletId !== "number"}
                   className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
-                  {giftCardApplyLoading ? "..." : "Apply"}
+                  {giftCardApplyLoading ? "..." : t("pos.apply")}
                 </button>
               </div>
               {appliedGiftCardState ? (
                 <div className="rounded-lg bg-primary/5 px-2 py-1.5 text-[11px] space-y-0.5">
                   <p className="text-muted-foreground">
-                    Code: <span className="font-semibold text-foreground">{appliedGiftCardState.code}</span>
+                    {t("shared.giftCardCodeLabel")} <span className="font-semibold text-foreground">{appliedGiftCardState.code}</span>
                   </p>
                   <p className="text-muted-foreground">
-                    Available: <span className="font-semibold text-foreground">{formatRp(appliedGiftCardState.availableBalance)}</span>
-                    {" • "}Applied: <span className="font-semibold text-primary">{formatRp(appliedGiftCardState.appliedAmount)}</span>
-                    {" • "}Remaining: <span className="font-semibold text-foreground">{formatRp(remainingAppliedGiftCardBalance)}</span>
+                    {t("shared.giftCardAvailableLabel")} <span className="font-semibold text-foreground">{formatRp(appliedGiftCardState.availableBalance)}</span>
+                    {" • "}{t("shared.giftCardAppliedLabel")} <span className="font-semibold text-primary">{formatRp(appliedGiftCardState.appliedAmount)}</span>
+                    {" • "}{t("shared.giftCardRemainingLabel")} <span className="font-semibold text-foreground">{formatRp(remainingAppliedGiftCardBalance)}</span>
                   </p>
                   <button
                     type="button"
                     onClick={clearAppliedGiftCard}
                     className="text-[10px] text-muted-foreground hover:text-foreground"
                   >
-                    Remove gift card
+                    {t("pos.removeGiftCard")}
                   </button>
                 </div>
               ) : (
-                <p className="text-[10px] text-muted-foreground">Enter a code to validate balance before checkout.</p>
+                <p className="text-[10px] text-muted-foreground">{t("pos.giftCardHint")}</p>
               )}
             </div>
             {selectedMember && (
               <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
                 <p className="text-[11px] text-muted-foreground">
-                  Points: <span className="font-semibold text-foreground">{availablePoints}</span>
+                  {t("pos.points")}: <span className="font-semibold text-foreground">{availablePoints}</span>
                 </p>
                 <div className="flex gap-2">
                   <input
                     value={redeemPointsInput}
                     onChange={(e) => setRedeemPointsInput(e.target.value)}
-                    placeholder="Redeem points"
+                    placeholder={t("pos.redeemPoints")}
                     className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
                   />
                   <button onClick={applyPointsRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
-                    Apply
+                    {t("pos.apply")}
                   </button>
                 </div>
                 <div className="space-y-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-2.5">
                   <div className="flex items-center gap-1.5">
                     <Gift className="h-3.5 w-3.5 text-primary" />
-                    <p className="text-[11px] font-semibold text-foreground">Member voucher</p>
+                    <p className="text-[11px] font-semibold text-foreground">{t("pos.memberVoucher")}</p>
                   </div>
                   {!currentOrderId ? (
                     <p className="text-[10px] text-muted-foreground">
-                      Confirm or open an order before applying a voucher.
+                      {t("pos.voucherHint")}
                     </p>
                   ) : currentOpenOrder?.voucher ? (
                     <div className="space-y-2">
@@ -1757,11 +1810,11 @@ export default function POS() {
                         disabled={voucherLoading || currentOpenOrder.paymentStatus === "paid"}
                         className="w-full rounded-lg border border-border px-2 py-1.5 text-xs font-medium disabled:opacity-50"
                       >
-                        Remove voucher
+                        {t("pos.removeVoucher")}
                       </button>
                     </div>
                   ) : memberVouchers.length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground">No usable vouchers for this member.</p>
+                    <p className="text-[10px] text-muted-foreground">{t("pos.noVouchers")}</p>
                   ) : (
                     <>
                       <select
@@ -1769,10 +1822,10 @@ export default function POS() {
                         onChange={(e) => setSelectedMemberVoucherId(e.target.value)}
                         className="w-full rounded-lg border border-border/60 bg-background px-2 py-1.5 text-xs"
                       >
-                        <option value="">Select voucher...</option>
+                        <option value="">{t("pos.selectVoucher")}</option>
                         {memberVouchers.map((row) => (
                           <option key={row.id} value={row.id}>
-                            {row.voucherCode} — {row.voucher?.name ?? "Voucher"} ({formatVoucherDiscountPreview(row)})
+                            {row.voucherCode} — {row.voucher?.name ?? t("pos.voucher")} ({formatVoucherDiscountPreview(row)})
                           </option>
                         ))}
                       </select>
@@ -1782,7 +1835,7 @@ export default function POS() {
                         disabled={!selectedMemberVoucherId || voucherLoading || currentOpenOrder?.paymentStatus === "paid"}
                         className="w-full rounded-lg bg-primary text-primary-foreground px-2 py-1.5 text-xs font-medium disabled:opacity-50"
                       >
-                        Apply voucher
+                        {t("pos.applyVoucher")}
                       </button>
                     </>
                   )}
@@ -1793,12 +1846,12 @@ export default function POS() {
               <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
                 <option value="">Select table...</option>
-                {selectableTables.map((t) => (
-                  <option key={t.id} value={t.id}>
+                {selectableTables.map((table) => (
+                  <option key={table.id} value={table.id}>
                     {t.name} ({t.seats} seats)
                     {t.status === "reserved" ? " • Reserved" : ""}
                     {t.signals?.hasReservation && t.status !== "reserved" ? " • Reservation" : ""}
-                    {((t.signals?.openBillCount ?? 0) > 0 || t.status === "occupied") ? " • Open bill" : ""}
+                    {((table.signals?.openBillCount ?? 0) > 0 || table.status === "occupied") ? t("pos.tableOpenBill") : ""}
                   </option>
                 ))}
               </select>
@@ -1811,8 +1864,8 @@ export default function POS() {
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <ShoppingCartEmpty />
-                <p className="text-sm mt-3">No items yet</p>
-                <p className="text-xs">Tap menu items to add</p>
+                <p className="text-sm mt-3">{t("pos.noItemsYet")}</p>
+                <p className="text-xs">{t("pos.tapToAdd")}</p>
               </div>
             ) : (
               cart.map((item) => (
@@ -1847,7 +1900,7 @@ export default function POS() {
                         rows={1}
                         value={item.notes}
                         onChange={(e) => updateNotes(item.id, e.target.value)}
-                        placeholder="Add notes (e.g. no spicy)"
+                        placeholder={t("pos.addNotes")}
                         className="w-full resize-y min-h-9 max-h-28 text-xs px-3 py-2 rounded-lg bg-muted border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 leading-snug [field-sizing:content]"
                       />
                     </motion.div>
@@ -1870,7 +1923,7 @@ export default function POS() {
               {applicablePromos.length > 1 && (
                 <button onClick={() => setShowPromoList(!showPromoList)}
                   className="text-[10px] font-medium text-emerald-600 hover:text-emerald-700 underline whitespace-nowrap">
-                  {applicablePromos.length} promos
+                  {t("pos.promosCount", { n: applicablePromos.length })}
                 </button>
               )}
               {manualPromo && (
@@ -1913,28 +1966,28 @@ export default function POS() {
             />
           ) : null}
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>{t("shared.subtotal")}</span><span>{formatRp(subtotal)}</span></div>
             {discount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium"><span>Discount</span><span>-{formatRp(discount)}</span></div>
+              <div className="flex justify-between text-emerald-600 font-medium"><span>{t("shared.discount")}</span><span>-{formatRp(discount)}</span></div>
             )}
             {voucherDiscount > 0 && (
               <div className="flex justify-between text-emerald-600 font-medium">
-                <span>Voucher Discount</span>
+                <span>{t("pos.voucherDiscount")}</span>
                 <span>-{formatRp(voucherDiscount)}</span>
               </div>
             )}
             {appliedPoints > 0 && (
-              <div className="flex justify-between text-primary font-medium"><span>Loyalty Redemption</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
+              <div className="flex justify-between text-primary font-medium"><span>{t("pos.loyaltyRedemption")}</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
             )}
             {appliedGiftCard > 0 && (
               <div className="flex justify-between text-primary font-medium">
-                <span>Gift Card / Store Credit{appliedGiftCardState?.code ? ` (${appliedGiftCardState.code})` : ""}</span>
+                <span>{t("pos.giftCardCredit")}{appliedGiftCardState?.code ? ` (${appliedGiftCardState.code})` : ""}</span>
                 <span>-{formatRp(appliedGiftCard)}</span>
               </div>
             )}
-            <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>{t("pos.taxPercent")}</span><span>{formatRp(tax)}</span></div>
             <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50">
-              <span>Estimated Total</span>
+              <span>{t("pos.estimatedTotal")}</span>
               <span>{formatRp(total)}</span>
             </div>
           </div>
@@ -1947,17 +2000,17 @@ export default function POS() {
                   disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-accent text-accent-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 >
-                  <ChefHat className="h-4 w-4" /> Confirm Order
+                  <ChefHat className="h-4 w-4" /> {t("pos.confirmOrder")}
                 </button>
                 <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-                  <CreditCard className="h-4 w-4" /> Pay Now
+                  <CreditCard className="h-4 w-4" /> {t("pos.payNow")}
                 </button>
               </>
             ) : (
               <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
-                Pay {formatRp(total)}
+                {t("pos.payAmount", { amount: formatRp(total) })}
               </button>
             )}
           </div>
@@ -1974,23 +2027,23 @@ export default function POS() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ChefHat className="h-5 w-5 text-primary" />
-              Send order to kitchen?
+              {t("pos.sendKitchenTitle")}
             </DialogTitle>
             <DialogDescription>
-              This will confirm the order as unpaid and notify the kitchen.
+              {t("pos.sendKitchenDesc")}
             </DialogDescription>
             <div className="grid gap-1.5 text-sm pt-2">
               <div>
-                <span className="text-muted-foreground">Items:</span>{" "}
+                <span className="text-muted-foreground">{t("pos.itemsLabel")}:</span>{" "}
                 <span className="font-medium text-foreground">{totalItems}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Total:</span>{" "}
+                <span className="text-muted-foreground">{t("shared.total")}:</span>{" "}
                 <span className="font-semibold text-foreground">{formatRp(total)}</span>
               </div>
               {orderType === "Dine-in" && selectedTableLabel ? (
                 <div>
-                  <span className="text-muted-foreground">Table:</span>{" "}
+                  <span className="text-muted-foreground">{t("pos.tableLabel")}:</span>{" "}
                   <span className="font-medium text-foreground">{selectedTableLabel}</span>
                 </div>
               ) : null}
@@ -1998,10 +2051,10 @@ export default function POS() {
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" disabled={submitting} onClick={() => setShowConfirmOrderDialog(false)}>
-              Cancel
+              {t("shared.cancel")}
             </Button>
             <Button type="button" disabled={submitting} onClick={() => void confirmSendToKitchenFromDialog()}>
-              {submitting ? "Sending…" : "Send to kitchen"}
+              {submitting ? t("pos.sending") : t("pos.sendToKitchen")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2012,16 +2065,16 @@ export default function POS() {
         {showConfirmSent && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowConfirmSent(false)}>
+            onClick={() => startNewPosOrder()}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
               onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-8 max-w-sm w-full text-center pos-shadow-md">
               <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
                 <ChefHat className="h-8 w-8 text-success" />
               </div>
-              <h3 className="text-lg font-bold text-foreground mb-1">Order Sent to Kitchen!</h3>
-              <p className="text-sm text-muted-foreground mb-4">The kitchen team has been notified. Payment can be collected later.</p>
-              <button onClick={() => setShowConfirmSent(false)} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm">
-                New Order
+              <h3 className="text-lg font-bold text-foreground mb-1">{t("pos.orderSentTitle")}</h3>
+              <p className="text-sm text-muted-foreground mb-4">{t("pos.orderSentSubtitle")}</p>
+              <button onClick={() => startNewPosOrder()} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm">
+                {t("pos.newOrder")}
               </button>
             </motion.div>
           </motion.div>
@@ -2041,7 +2094,7 @@ export default function POS() {
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-foreground">Payment</h3>
+                <h3 className="text-lg font-bold text-foreground">{t("shared.payment")}</h3>
                 <button
                   onClick={() => {
                     if (submitting || paymentIsSubmitting) return;
@@ -2055,10 +2108,10 @@ export default function POS() {
                 </button>
               </div>
               <div className="text-center mb-6">
-                <p className="text-sm text-muted-foreground">Total Amount</p>
+                <p className="text-sm text-muted-foreground">{t("shared.totalAmount")}</p>
                 <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
                 {splitCheckoutActive ? (
-                  <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("shared.splitGatewayPortion")}</p>
                 ) : null}
               </div>
               {paymentStockError ? (
@@ -2083,7 +2136,7 @@ export default function POS() {
               />
               <button onClick={initSplitBill}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
-                <SplitSquareHorizontal className="h-4 w-4" /> Split Bill
+                <SplitSquareHorizontal className="h-4 w-4" /> {t("shared.splitBill")}
               </button>
               <button
                 onClick={() => void completeDirectPayment()}
@@ -2096,53 +2149,52 @@ export default function POS() {
               </button>
               {currentOrderId ? (
                 <p className="mb-3 text-[11px] text-muted-foreground text-center">
-                  Checkout order <span className="font-medium text-foreground">{currentOpenOrder?.code ?? currentOrderId}</span>
-                  {gatewayCheckoutPending ? " · QR payment pending" : ""}
+                  {t("shared.checkoutOrder", { code: currentOpenOrder?.code ?? currentOrderId ?? "" })}{gatewayCheckoutPending ? t("shared.qrPaymentPending") : ""}
                 </p>
               ) : null}
               {paymentTransaction && selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod) && (
                 <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
-                  <p className="font-semibold text-foreground">Online Checkout</p>
-                  <p className="text-muted-foreground">Status: <span className="font-medium text-foreground">{paymentTransaction.status}</span></p>
+                  <p className="font-semibold text-foreground">{t("shared.onlineCheckout")}</p>
+                  <p className="text-muted-foreground">{t("shared.statusColon")} <span className="font-medium text-foreground">{paymentTransaction.status}</span></p>
                   {paymentTransaction.status === "paid" && (
-                    <p className="rounded-lg bg-success/10 px-2 py-1 text-success">Payment completed. Refreshing order payment...</p>
+                    <p className="rounded-lg bg-success/10 px-2 py-1 text-success">{t("shared.paymentRefreshing")}</p>
                   )}
                   {paymentTransaction.status === "expired" && (
-                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Previous QR attempt expired. Use Retry QRIS Payment on the same order.</p>
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">{t("shared.qrExpired")}</p>
                   )}
                   {paymentTransaction.status === "failed" && (
-                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">Previous QR attempt failed. Retry on the same order or choose another method.</p>
+                    <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">{t("shared.qrFailed")}</p>
                   )}
                   {paymentTransaction.status === "cancelled" && (
-                    <p className="rounded-lg bg-muted px-2 py-1 text-muted-foreground">Previous QR attempt was cancelled or superseded.</p>
+                    <p className="rounded-lg bg-muted px-2 py-1 text-muted-foreground">{t("shared.qrCancelled")}</p>
                   )}
                   {paymentTransaction.checkoutUrl && (
                     <a href={paymentTransaction.checkoutUrl} target="_blank" rel="noreferrer" className="text-primary underline">
-                      Open checkout
+                      {t("shared.openCheckout")}
                     </a>
                   )}
                   {paymentTransaction.deeplinkUrl && (
                     <a href={paymentTransaction.deeplinkUrl} target="_blank" rel="noreferrer" className="block text-primary underline">
-                      Open payment app
+                      {t("shared.openPaymentApp")}
                     </a>
                   )}
                   {paymentTransaction.qrString && (
                     <pre className="rounded bg-muted p-2 whitespace-pre-wrap break-all">{paymentTransaction.qrString}</pre>
                   )}
                   {paymentTransaction.vaNumber && (
-                    <p className="text-muted-foreground">VA: <span className="font-medium text-foreground">{paymentTransaction.vaNumber}</span></p>
+                    <p className="text-muted-foreground">{t("shared.va")} <span className="font-medium text-foreground">{paymentTransaction.vaNumber}</span></p>
                   )}
-                  <p className="text-muted-foreground">Expires in: <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span></p>
+                  <p className="text-muted-foreground">{t("shared.expiresInColon")} <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span></p>
                   {paymentError && <p className="text-destructive">{paymentError}</p>}
                   <div className="flex gap-2">
                     <button onClick={() => void handleGatewayRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{gatewayRetryLabel(paymentTransaction.method)}</button>
                     {showReconcile ? (
-                      <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Reconcile</button>
+                      <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{t("shared.reconcile")}</button>
                     ) : null}
-                    <button onClick={() => void paymentExpire(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">Expire</button>
+                    <button onClick={() => void paymentExpire(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{t("shared.expire")}</button>
                     {allowSandboxSimulation && (
                       <button onClick={() => void paymentSimulateSandboxPaid(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-amber-500/30 px-2 py-1 text-amber-700 dark:text-amber-300">
-                        Simulate Sandbox Payment
+                        {t("shared.simulateSandbox")}
                       </button>
                     )}
                   </div>
@@ -2160,7 +2212,7 @@ export default function POS() {
         expirySeconds={paymentExpiryCountdown}
         status={paymentTransaction?.status ?? "pending"}
         orderLabel={currentOpenOrder?.code ?? currentOrderId ?? undefined}
-        outletLabel={typeof activeOutletId === "number" ? `Outlet ${activeOutletId}` : undefined}
+        outletLabel={typeof activeOutletId === "number" ? t("shared.outlet", { id: activeOutletId }) : undefined}
         isSubmitting={paymentIsSubmitting}
         error={paymentError}
         onRequestClose={() => {
@@ -2171,8 +2223,8 @@ export default function POS() {
         }}
         checkoutHint={
           splitCheckoutActive
-            ? "Customer cancelled QR? Tap Change payment method, then complete the remaining split portion with Cash or another method."
-            : "Customer cancelled QR? Tap Change payment method or choose Cash below."
+            ? t("shared.qrisSplitCheckoutHint")
+            : t("shared.qrisCheckoutHint")
         }
         onChangePaymentMethod={handleChangePaymentMethodFromQris}
         onRetry={() => void (paymentTransaction ? handleGatewayRetry(paymentTransaction.id) : Promise.resolve())}
@@ -2188,7 +2240,7 @@ export default function POS() {
           setProviderSimulating(true);
           try {
             await paymentSimulateViaProvider(paymentTransaction.id);
-            toast.success("Provider simulation dispatched. Waiting for Xendit webhook callback.");
+            toast.success(t("shared.providerSimDispatched"));
           } catch (error) {
             toastApiError(error);
           } finally {
@@ -2224,12 +2276,12 @@ export default function POS() {
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-6 w-full max-w-lg pos-shadow-md max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-foreground">Split Bill</h3>
+                <h3 className="text-lg font-bold text-foreground">{t("shared.splitBill")}</h3>
                 <button onClick={() => setShowSplit(false)} className="p-1 rounded-lg hover:bg-muted"><X className="h-5 w-5 text-muted-foreground" /></button>
               </div>
 
               <div className="text-center mb-5">
-                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-sm text-muted-foreground">{t("shared.total")}</p>
                 <p className="text-2xl font-bold text-foreground">{formatRp(total)}</p>
               </div>
 
@@ -2237,11 +2289,11 @@ export default function POS() {
               <div className="flex gap-2 mb-4">
                 <button onClick={() => { setSplitMethod("equal"); buildEqualSplit(splitCount); }}
                   className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${splitMethod === "equal" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                  Equal Split
+                  {t("shared.equalSplit")}
                 </button>
                 <button onClick={() => { setSplitMethod("by-item"); buildItemSplit(splitCount); }}
                   className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${splitMethod === "by-item" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                  Split by Item
+                  {t("shared.splitByItem")}
                 </button>
               </div>
 
@@ -2258,7 +2310,7 @@ export default function POS() {
                 </button>
                 <div className="text-center">
                   <p className="text-2xl font-bold text-foreground">{splitCount}</p>
-                  <p className="text-xs text-muted-foreground">people</p>
+                  <p className="text-xs text-muted-foreground">{t("shared.people")}</p>
                 </div>
                 <button onClick={() => {
                   const c = Math.min(10, splitCount + 1);
@@ -2275,11 +2327,11 @@ export default function POS() {
               {splitMethod === "by-item" && (
                 <div className="mb-5 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Use − / + to assign quantities. Each person total includes their share of tax/discount on assigned items.
+                    {t("shared.splitByItemHint")}
                   </p>
                   {!byItemAllocationComplete && (
                     <p className="text-xs text-amber-900 dark:text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
-                      Assign all units of every item before you can complete split payments.
+                      {t("shared.assignAllItemsWarning")}
                     </p>
                   )}
                   {splitPersons.map((person, pIdx) => (
@@ -2344,11 +2396,11 @@ export default function POS() {
                         <span className="text-sm font-bold text-foreground">{formatRp(person.totalDue)}</span>
                         {isPaid ? (
                           <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success shrink-0">
-                            ✓ Paid ({methodSummary})
+                            {t("shared.paidWithMethods", { methods: methodSummary })}
                           </span>
                         ) : hasDraftPayment ? (
                           <span className="px-3 py-1 rounded-lg text-xs font-medium bg-muted text-foreground shrink-0">
-                            {formatRp(paid)} recorded ({methodSummary})
+                            {t("shared.recordedWithMethods", { amount: formatRp(paid), methods: methodSummary })}
                           </span>
                         ) : null}
                         {!isPaid && (
@@ -2360,19 +2412,19 @@ export default function POS() {
                             }}
                             className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
                           >
-                            {hasDraftPayment ? "Add more" : "Add Payment"}
+                            {hasDraftPayment ? t("shared.addMore") : t("shared.addPayment")}
                           </button>
                         )}
                         {hasDraftPayment && (
                           <button
                             type="button"
-                            title="Clear this person’s draft payment so you can pick another method"
+                            title={t("shared.clearDraftPayment")}
                             onClick={() => undoSplitPersonDraftPayment(i)}
                             disabled={submitting}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 disabled:opacity-40"
                           >
                             <Undo2 className="h-3.5 w-3.5" />
-                            Change
+                            {t("shared.change")}
                           </button>
                         )}
                       </div>
@@ -2388,7 +2440,7 @@ export default function POS() {
                           >
                             <div className="bg-accent/30 rounded-xl p-4 border border-accent">
                               <p className="text-sm font-semibold text-foreground mb-3">
-                                Pay for {person.label}: {formatRp(person.totalDue)}
+                                {t("shared.payFor", { label: person.label, amount: formatRp(person.totalDue) })}
                               </p>
                               <PaymentMethodTileGrid
                                 className="mb-3"
@@ -2409,7 +2461,7 @@ export default function POS() {
                                   onClick={() => setPayingPersonIdx(null)}
                                   className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
                                 >
-                                  Cancel
+                                  {t("shared.cancel")}
                                 </button>
                                 <button
                                   type="button"
@@ -2417,7 +2469,7 @@ export default function POS() {
                                   disabled={!splitPayMethod}
                                   className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
                                 >
-                                  Confirm Payment
+                                  {t("shared.confirmPayment")}
                                 </button>
                               </div>
                             </div>
@@ -2435,12 +2487,12 @@ export default function POS() {
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
               >
                 {submitting
-                  ? "Saving…"
+                  ? t("shared.saving")
                   : !byItemAllocationComplete && splitMethod === "by-item"
-                    ? "Assign all item units"
+                    ? t("shared.assignAllItemUnits")
                     : allSplitPaid
-                      ? "Complete Split Order"
-                      : `${splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length}/${splitPersons.length} Paid`}
+                      ? t("shared.completeSplitOrder")
+                      : t("shared.paidProgressTitle", { paid: splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length, total: splitPersons.length })}
               </button>
             </motion.div>
           </motion.div>
@@ -2456,24 +2508,24 @@ export default function POS() {
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
               className="bg-card rounded-2xl w-full max-w-md p-5 pos-shadow-md"
               onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-semibold mb-3">Select member</h3>
+              <h3 className="font-semibold mb-3">{t("pos.selectMemberTitle")}</h3>
               <input
                 autoFocus value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
-                placeholder="Search phone, name, or member no..."
+                placeholder={t("pos.memberSearchPlaceholder")}
                 className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm mb-3"
               />
               <div className="mb-3 rounded-xl border border-border/60 p-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Quick create member</p>
+                <p className="text-xs font-medium text-muted-foreground">{t("pos.quickCreateMember")}</p>
                 <input
                   value={quickMemberName}
                   onChange={(e) => setQuickMemberName(e.target.value)}
-                  placeholder="Full name"
+                  placeholder={t("pos.fullName")}
                   className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
                 />
                 <input
                   value={quickMemberPhone}
                   onChange={(e) => setQuickMemberPhone(e.target.value)}
-                  placeholder="Phone"
+                  placeholder={t("pos.phone")}
                   className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
                 />
                 <button
@@ -2481,7 +2533,7 @@ export default function POS() {
                   disabled={quickMemberSaving || typeof activeOutletId !== "number"}
                   onClick={() => {
                     if (!quickMemberName.trim() || !quickMemberPhone.trim() || typeof activeOutletId !== "number") {
-                      toast.error("Name and phone are required");
+                      toast.error(t("pos.namePhoneRequired"));
                       return;
                     }
                     setQuickMemberSaving(true);
@@ -2500,12 +2552,12 @@ export default function POS() {
                   }}
                   className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
                 >
-                  {quickMemberSaving ? "Saving..." : "Create & attach"}
+                  {quickMemberSaving ? t("shared.saving") : t("pos.createAndAttach")}
                 </button>
               </div>
               <div className="max-h-72 overflow-y-auto space-y-1">
                 {membersLoading && (
-                  <p className="text-xs text-muted-foreground px-1 py-1">Searching members...</p>
+                  <p className="text-xs text-muted-foreground px-1 py-1">{t("pos.searchingMembers")}</p>
                 )}
                 {searchResults.map((m) => (
                     <button key={m.id}
@@ -2526,7 +2578,7 @@ export default function POS() {
               </div>
               <button onClick={() => { setShowMemberPicker(false); setMemberSearch(""); }}
                 className="mt-3 w-full py-2 rounded-xl bg-muted text-sm font-medium hover:bg-accent">
-                Cancel
+                {t("shared.cancel")}
               </button>
             </motion.div>
           </motion.div>

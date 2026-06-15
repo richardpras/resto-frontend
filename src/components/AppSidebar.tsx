@@ -1,5 +1,6 @@
 import { Store, LogOut, Lock } from "lucide-react";
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarFooter, SidebarHeader, SidebarLogoRail,
@@ -8,10 +9,12 @@ import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { buildAdminItems, buildMainItems, buildManagementItems } from "@/components/sidebar/sidebarNavConfig";
+import { translateNavItems } from "@/components/sidebar/sidebarNavI18n";
 import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
 import { SidebarNavMenu } from "@/components/sidebar/SidebarNavMenu";
 
 export function AppSidebar() {
+  const { t } = useTranslation("common");
   const { user, hasPermission, logout, lock } = useAuthStore();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const fetchUnreadCount = useNotificationStore((s) => s.fetchUnreadCount);
@@ -23,16 +26,16 @@ export function AppSidebar() {
   }, [user, activeOutletId, fetchUnreadCount]);
 
   const mainItems = useMemo(
-    () => filterNavItems(buildMainItems(), user, hasPermission),
-    [user, hasPermission],
+    () => translateNavItems(filterNavItems(buildMainItems(), user, hasPermission), t),
+    [user, hasPermission, t],
   );
   const managementItems = useMemo(
-    () => filterNavItems(buildManagementItems(user), user, hasPermission),
-    [user, hasPermission],
+    () => translateNavItems(filterNavItems(buildManagementItems(user), user, hasPermission), t),
+    [user, hasPermission, t],
   );
   const adminItems = useMemo(
-    () => filterNavItems(buildAdminItems(user), user, hasPermission),
-    [user, hasPermission],
+    () => translateNavItems(filterNavItems(buildAdminItems(user), user, hasPermission), t),
+    [user, hasPermission, t],
   );
 
   const renderGroup = (label: string, items: ReturnType<typeof filterNavItems>) => {
@@ -66,16 +69,18 @@ export function AppSidebar() {
             <div>
               <h2 className="text-sm font-bold text-sidebar-foreground">RestoHub</h2>
               <p className="text-[11px] text-sidebar-foreground/50">
-                {user?.outletIds.length === 1 ? "Single outlet" : `${user?.outletIds.length ?? 0} outlets`}
+                {user?.outletIds.length === 1
+                  ? t("sidebar.singleOutlet")
+                  : t("sidebar.outletsCount", { count: user?.outletIds.length ?? 0 })}
               </p>
             </div>
           </div>
         </SidebarHeader>
 
         <SidebarContent className="px-2">
-          {renderGroup("Operations", mainItems)}
-          {renderGroup("Management", managementItems)}
-          {renderGroup("Administration", adminItems)}
+          {renderGroup(t("sidebar.operations"), mainItems)}
+          {renderGroup(t("sidebar.management"), managementItems)}
+          {renderGroup(t("sidebar.administration"), adminItems)}
         </SidebarContent>
 
         <SidebarFooter className="p-3 space-y-1">
@@ -84,18 +89,18 @@ export function AppSidebar() {
               <span className="text-xs font-semibold text-sidebar-primary">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.name ?? "Guest"}</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.name ?? t("sidebar.guest")}</p>
               <p className="text-[11px] text-sidebar-foreground/50">{user?.role ?? "—"}</p>
             </div>
           </div>
           <div className="flex gap-1">
             {user?.pinSet ? (
               <button type="button" onClick={() => lock()} className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-                <Lock className="h-3 w-3" /> Lock
+                <Lock className="h-3 w-3" /> {t("sidebar.lock")}
               </button>
             ) : null}
             <button type="button" onClick={logout} className={`${user?.pinSet ? "flex-1" : "w-full"} flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors`}>
-              <LogOut className="h-3 w-3" /> Logout
+              <LogOut className="h-3 w-3" /> {t("sidebar.logout")}
             </button>
           </div>
         </SidebarFooter>

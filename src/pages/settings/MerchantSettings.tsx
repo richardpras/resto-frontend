@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,10 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSettingsStore } from "@/stores/settingsStore";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchMerchantSettings } from "@/lib/api-integration/settingsDomainEndpoints";
+import { applyAppLocale, normalizeAppLocale } from "@/i18n";
 import { Store, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function MerchantSettings() {
+  const { t } = useTranslation("common");
   const { merchant, updateMerchant } = useSettingsStore();
   const [form, setForm] = useState(merchant);
   const [saving, setSaving] = useState(false);
@@ -21,20 +24,22 @@ export default function MerchantSettings() {
   }, [merchant]);
 
   const save = async () => {
-    if (!form.name.trim()) return toast.error("Merchant name required");
-    if (!form.email.includes("@")) return toast.error("Valid email required");
+    if (!form.name.trim()) return toast.error(t("settings.merchant.nameRequired"));
+    if (!form.email.includes("@")) return toast.error(t("settings.merchant.emailInvalid"));
     updateMerchant(form);
+    applyAppLocale(normalizeAppLocale(form.language));
     if (!getApiAccessToken()) {
-      toast.success("Saved locally (sign in to sync with server)");
+      toast.success(t("settings.merchant.savedLocally"));
       return;
     }
     setSaving(true);
     try {
       const saved = await patchMerchantSettings(form);
       updateMerchant(saved);
-      toast.success("Merchant saved to server");
+      applyAppLocale(normalizeAppLocale(saved.language));
+      toast.success(t("settings.merchant.savedToServer"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Could not save to server");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.merchant.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -43,12 +48,12 @@ export default function MerchantSettings() {
   return (
     <div className="grid lg:grid-cols-3 gap-6">
       <Card className="lg:col-span-2">
-        <CardHeader><CardTitle>Merchant Profile</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("settings.merchant.title")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Merchant Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="space-y-2"><Label>{t("settings.merchant.merchantName")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="space-y-2">
-              <Label>Business Type</Label>
+              <Label>{t("settings.merchant.businessType")}</Label>
               <Select value={form.businessType} onValueChange={(v) => setForm({ ...form, businessType: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -61,14 +66,14 @@ export default function MerchantSettings() {
               </Select>
             </div>
           </div>
-          <div className="space-y-2"><Label>Address</Label><Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+          <div className="space-y-2"><Label>{t("settings.merchant.address")}</Label><Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-            <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div className="space-y-2"><Label>{t("settings.merchant.phone")}</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            <div className="space-y-2"><Label>{t("settings.merchant.email")}</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
           </div>
           <div className="grid md:grid-cols-3 gap-4 pt-2 border-t">
             <div className="space-y-2">
-              <Label>Currency</Label>
+              <Label>{t("settings.merchant.currency")}</Label>
               <Select value={form.currency} onValueChange={(v) => setForm({ ...form, currency: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -80,7 +85,7 @@ export default function MerchantSettings() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Timezone</Label>
+              <Label>{t("settings.merchant.timezone")}</Label>
               <Select value={form.timezone} onValueChange={(v) => setForm({ ...form, timezone: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -92,30 +97,36 @@ export default function MerchantSettings() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Language</Label>
-              <Select value={form.language} onValueChange={(v) => setForm({ ...form, language: v })}>
+              <Label>{t("settings.merchant.language")}</Label>
+              <Select
+                value={form.language}
+                onValueChange={(v) => {
+                  setForm({ ...form, language: v });
+                  applyAppLocale(normalizeAppLocale(v));
+                }}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="id">Bahasa Indonesia</SelectItem>
+                  <SelectItem value="en">{t("language.en")}</SelectItem>
+                  <SelectItem value="id">{t("language.id")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setForm(merchant)} disabled={saving}>
-              Reset
+              {t("common.reset")}
             </Button>
             <Button onClick={() => void save()} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {saving ? "Saving…" : "Save Changes"}
+              {saving ? t("common.saving") : t("common.save")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Logo</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("settings.merchant.logoTitle")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="aspect-square rounded-2xl bg-muted/30 border-2 border-dashed flex flex-col items-center justify-center gap-2">
             <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -124,8 +135,8 @@ export default function MerchantSettings() {
             <p className="text-sm font-medium">{form.name}</p>
             <p className="text-xs text-muted-foreground">{form.businessType}</p>
           </div>
-          <Button variant="outline" className="w-full"><Upload className="h-4 w-4 mr-2" />Upload Logo</Button>
-          <p className="text-xs text-muted-foreground text-center">PNG/JPG, recommended 512×512</p>
+          <Button variant="outline" className="w-full"><Upload className="h-4 w-4 mr-2" />{t("settings.merchant.uploadLogo")}</Button>
+          <p className="text-xs text-muted-foreground text-center">{t("settings.merchant.logoHint")}</p>
         </CardContent>
       </Card>
     </div>

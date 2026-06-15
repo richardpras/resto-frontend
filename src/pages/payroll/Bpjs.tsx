@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   createBpjsConfig,
   listBpjsConfigs,
@@ -31,6 +30,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +41,7 @@ function formatIDR(value: number | null | undefined): string {
 }
 
 export default function Bpjs() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -87,11 +89,11 @@ export default function Bpjs() {
       setProfiles(prof);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load BPJS data");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.loadBpjsFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
   useEffect(() => {
     void loadData();
@@ -105,7 +107,7 @@ export default function Bpjs() {
 
   const submitConfig = async () => {
     if (!configForm.effectiveDate) {
-      toast.error("Effective date is required");
+      toast.error(t("payroll.shared.effectiveRequired"));
       return;
     }
     try {
@@ -121,11 +123,11 @@ export default function Bpjs() {
         jkmCompanyRate: Number(configForm.jkmCompanyRate),
         status: configForm.status,
       });
-      toast.success("BPJS configuration saved");
+      toast.success(t("payroll.bpjs.configSaved"));
       setConfigOpen(false);
       await loadData();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to save configuration");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.configSaveFailed"));
     }
   };
 
@@ -144,7 +146,7 @@ export default function Bpjs() {
 
   const submitEnroll = async () => {
     if (!enrollForm.employeeId) {
-      toast.error("Select an employee");
+      toast.error(t("payroll.shared.selectEmployeeRequired"));
       return;
     }
     const payload = {
@@ -161,42 +163,49 @@ export default function Bpjs() {
       } else {
         await upsertBpjsProfile(payload);
       }
-      toast.success("BPJS enrollment saved");
+      toast.success(t("payroll.bpjs.enrollmentSaved"));
       setEnrollOpen(false);
       await loadData();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to save enrollment");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.enrollmentSaveFailed"));
     }
   };
 
-  const configColumns: Column<BpjsConfigRow>[] = [
-    { key: "effectiveDate", header: "Effective", sortable: true },
-    {
-      key: "kesehatanEmployeeRate",
-      header: "Kesehatan (EE/ER %)",
-      render: (r) => `${r.kesehatanEmployeeRate} / ${r.kesehatanCompanyRate}`,
-    },
-    {
-      key: "jhtEmployeeRate",
-      header: "JHT (EE/ER %)",
-      render: (r) => `${r.jhtEmployeeRate} / ${r.jhtCompanyRate}`,
-    },
-    {
-      key: "jpEmployeeRate",
-      header: "JP (EE/ER %)",
-      render: (r) => `${r.jpEmployeeRate} / ${r.jpCompanyRate}`,
-    },
-    {
-      key: "jkkCompanyRate",
-      header: "JKK / JKM %",
-      render: (r) => `${r.jkkCompanyRate} / ${r.jkmCompanyRate}`,
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (r) => <Badge variant={r.status === "active" ? "default" : "secondary"}>{r.status}</Badge>,
-    },
-  ];
+  const configColumns: Column<BpjsConfigRow>[] = useMemo(
+    () => [
+      { key: "effectiveDate", header: t("payroll.shared.effectiveLabel"), sortable: true },
+      {
+        key: "kesehatanEmployeeRate",
+        header: t("payroll.shared.kesehatanEeEr"),
+        render: (r) => `${r.kesehatanEmployeeRate} / ${r.kesehatanCompanyRate}`,
+      },
+      {
+        key: "jhtEmployeeRate",
+        header: t("payroll.shared.jhtEeEr"),
+        render: (r) => `${r.jhtEmployeeRate} / ${r.jhtCompanyRate}`,
+      },
+      {
+        key: "jpEmployeeRate",
+        header: t("payroll.shared.jpEeEr"),
+        render: (r) => `${r.jpEmployeeRate} / ${r.jpCompanyRate}`,
+      },
+      {
+        key: "jkkCompanyRate",
+        header: t("payroll.shared.jkkJkm"),
+        render: (r) => `${r.jkkCompanyRate} / ${r.jkmCompanyRate}`,
+      },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (r) => (
+          <Badge variant={r.status === "active" ? "default" : "secondary"}>
+            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+          </Badge>
+        ),
+      },
+    ],
+    [t],
+  );
 
   const enrollmentRows = useMemo(() => {
     return employees.map((e) => {
@@ -207,53 +216,54 @@ export default function Bpjs() {
 
   type EnrollmentRow = { employee: OrganizationEmployeeRow; profile: BpjsProfileRow | null };
 
-  const enrollColumns: Column<EnrollmentRow>[] = [
-    { key: "employee", header: "Employee", render: (r) => r.employee.fullName, sortable: true },
-    { key: "bpjsKesehatanNo", header: "Kesehatan No", render: (r) => r.profile?.bpjsKesehatanNo ?? "—" },
-    { key: "bpjsTkNo", header: "TK No", render: (r) => r.profile?.bpjsTkNo ?? "—" },
-    {
-      key: "flags",
-      header: "Programs",
-      render: (r) => (
-        <span className="flex gap-1 flex-wrap">
-          {r.profile?.bpjsKesehatanEnabled && <Badge variant="outline">Kesehatan</Badge>}
-          {r.profile?.bpjsTkEnabled && <Badge variant="outline">TK</Badge>}
-          {!r.profile?.bpjsKesehatanEnabled && !r.profile?.bpjsTkEnabled && (
-            <span className="text-muted-foreground text-xs">Not enrolled</span>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: "bpjsSalaryBase",
-      header: "Salary Base",
-      render: (r) => formatIDR(r.profile?.bpjsSalaryBase ?? null),
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <Button size="sm" variant="ghost" onClick={() => openEnroll(r.employee, r.profile)}>
-          <Pencil className="h-3.5 w-3.5 mr-1" />
-          {r.profile ? "Edit" : "Enroll"}
-        </Button>
-      ),
-    },
-  ];
+  const enrollColumns: Column<EnrollmentRow>[] = useMemo(
+    () => [
+      { key: "employee", header: t("payroll.shared.employee"), render: (r) => r.employee.fullName, sortable: true },
+      { key: "bpjsKesehatanNo", header: t("payroll.shared.bpjsKesehatanNo"), render: (r) => r.profile?.bpjsKesehatanNo ?? "—" },
+      { key: "bpjsTkNo", header: t("payroll.shared.bpjsTkNo"), render: (r) => r.profile?.bpjsTkNo ?? "—" },
+      {
+        key: "flags",
+        header: t("payroll.shared.programs"),
+        render: (r) => (
+          <span className="flex gap-1 flex-wrap">
+            {r.profile?.bpjsKesehatanEnabled && <Badge variant="outline">Kesehatan</Badge>}
+            {r.profile?.bpjsTkEnabled && <Badge variant="outline">TK</Badge>}
+            {!r.profile?.bpjsKesehatanEnabled && !r.profile?.bpjsTkEnabled && (
+              <span className="text-muted-foreground text-xs">{t("payroll.shared.notEnrolled")}</span>
+            )}
+          </span>
+        ),
+      },
+      {
+        key: "bpjsSalaryBase",
+        header: t("payroll.shared.salaryBase"),
+        render: (r) => formatIDR(r.profile?.bpjsSalaryBase ?? null),
+      },
+      {
+        key: "actions",
+        header: "",
+        render: (r) => (
+          <Button size="sm" variant="ghost" onClick={() => openEnroll(r.employee, r.profile)}>
+            <Pencil className="h-3.5 w-3.5 mr-1" />
+            {r.profile ? t("payroll.shared.edit") : t("payroll.shared.enroll")}
+          </Button>
+        ),
+      },
+    ],
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">BPJS</h2>
-          <p className="text-sm text-muted-foreground">
-            Configure contribution rates and employee enrollment for Kesehatan and Ketenagakerjaan.
-          </p>
+          <h2 className="text-lg font-semibold">{t("payroll.bpjs.title")}</h2>
+          <p className="text-sm text-muted-foreground">{t("payroll.bpjs.subtitle")}</p>
         </div>
         {outlets.length > 1 && (
           <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Outlet" />
+              <SelectValue placeholder={t("payroll.shared.outlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -268,32 +278,39 @@ export default function Bpjs() {
 
       <Tabs defaultValue="configuration">
         <TabsList>
-          <TabsTrigger value="configuration">Configuration</TabsTrigger>
-          <TabsTrigger value="enrollment">Employee Enrollment</TabsTrigger>
+          <TabsTrigger value="configuration">{t("payroll.shared.configuration")}</TabsTrigger>
+          <TabsTrigger value="enrollment">{t("payroll.shared.employeeEnrollment")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="configuration" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => setConfigOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              New rate schedule
+              {t("payroll.shared.newRateSchedule")}
             </Button>
           </div>
-          <DataTable columns={configColumns} data={configs} loading={loading} emptyMessage="No BPJS configurations yet." />
+          <DataTable
+            columns={configColumns}
+            data={configs}
+            rowKey={(r) => String(r.id)}
+            loading={loading}
+            emptyMessage={t("payroll.shared.noBpjsConfigs")}
+          />
         </TabsContent>
 
         <TabsContent value="enrollment" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openEnroll()}>
               <Plus className="h-4 w-4 mr-1" />
-              Enroll employee
+              {t("payroll.shared.enrollEmployee")}
             </Button>
           </div>
           <DataTable
             columns={enrollColumns}
             data={enrollmentRows}
+            rowKey={(r) => String(r.employee.id)}
             loading={loading}
-            emptyMessage="No employees for this outlet."
+            emptyMessage={t("payroll.shared.noEmployeesOutlet")}
           />
         </TabsContent>
       </Tabs>
@@ -301,11 +318,11 @@ export default function Bpjs() {
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>New BPJS rate schedule</DialogTitle>
+            <DialogTitle>{t("payroll.shared.newBpjsSchedule")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
-              <Label>Effective date</Label>
+              <Label>{t("payroll.shared.effectiveDate")}</Label>
               <Input
                 type="date"
                 value={configForm.effectiveDate}
@@ -314,62 +331,62 @@ export default function Bpjs() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Kesehatan employee %</Label>
+                <Label>{t("payroll.shared.kesehatanEmployeePct")}</Label>
                 <Input
                   value={configForm.kesehatanEmployeeRate}
                   onChange={(e) => setConfigForm((f) => ({ ...f, kesehatanEmployeeRate: e.target.value }))}
                 />
               </div>
               <div>
-                <Label>Kesehatan company %</Label>
+                <Label>{t("payroll.shared.kesehatanCompanyPct")}</Label>
                 <Input
                   value={configForm.kesehatanCompanyRate}
                   onChange={(e) => setConfigForm((f) => ({ ...f, kesehatanCompanyRate: e.target.value }))}
                 />
               </div>
               <div>
-                <Label>JHT employee %</Label>
+                <Label>{t("payroll.shared.jhtEmployeePct")}</Label>
                 <Input value={configForm.jhtEmployeeRate} onChange={(e) => setConfigForm((f) => ({ ...f, jhtEmployeeRate: e.target.value }))} />
               </div>
               <div>
-                <Label>JHT company %</Label>
+                <Label>{t("payroll.shared.jhtCompanyPct")}</Label>
                 <Input value={configForm.jhtCompanyRate} onChange={(e) => setConfigForm((f) => ({ ...f, jhtCompanyRate: e.target.value }))} />
               </div>
               <div>
-                <Label>JP employee %</Label>
+                <Label>{t("payroll.shared.jpEmployeePct")}</Label>
                 <Input value={configForm.jpEmployeeRate} onChange={(e) => setConfigForm((f) => ({ ...f, jpEmployeeRate: e.target.value }))} />
               </div>
               <div>
-                <Label>JP company %</Label>
+                <Label>{t("payroll.shared.jpCompanyPct")}</Label>
                 <Input value={configForm.jpCompanyRate} onChange={(e) => setConfigForm((f) => ({ ...f, jpCompanyRate: e.target.value }))} />
               </div>
               <div>
-                <Label>JKK company %</Label>
+                <Label>{t("payroll.shared.jkkCompanyPct")}</Label>
                 <Input value={configForm.jkkCompanyRate} onChange={(e) => setConfigForm((f) => ({ ...f, jkkCompanyRate: e.target.value }))} />
               </div>
               <div>
-                <Label>JKM company %</Label>
+                <Label>{t("payroll.shared.jkmCompanyPct")}</Label>
                 <Input value={configForm.jkmCompanyRate} onChange={(e) => setConfigForm((f) => ({ ...f, jkmCompanyRate: e.target.value }))} />
               </div>
             </div>
             <div>
-              <Label>Status</Label>
+              <Label>{t("payroll.shared.status")}</Label>
               <Select value={configForm.status} onValueChange={(v) => setConfigForm((f) => ({ ...f, status: v }))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">active</SelectItem>
-                  <SelectItem value="inactive">inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitConfig()}>Save</Button>
+            <Button onClick={() => void submitConfig()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -377,18 +394,20 @@ export default function Bpjs() {
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editProfile ? "Edit BPJS enrollment" : "Enroll employee"}</DialogTitle>
+            <DialogTitle>
+              {editProfile ? t("payroll.shared.editBpjsEnrollment") : t("payroll.shared.enrollEmployee")}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
-              <Label>Employee</Label>
+              <Label>{t("payroll.shared.employee")}</Label>
               <Select
                 value={enrollForm.employeeId}
                 onValueChange={(v) => setEnrollForm((f) => ({ ...f, employeeId: v }))}
                 disabled={!!editProfile}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
+                  <SelectValue placeholder={t("payroll.shared.selectEmployee")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -400,14 +419,14 @@ export default function Bpjs() {
               </Select>
             </div>
             <div>
-              <Label>BPJS Kesehatan number</Label>
+              <Label>{t("payroll.shared.bpjsKesehatanNo")}</Label>
               <Input
                 value={enrollForm.bpjsKesehatanNo}
                 onChange={(e) => setEnrollForm((f) => ({ ...f, bpjsKesehatanNo: e.target.value }))}
               />
             </div>
             <div>
-              <Label>BPJS TK number</Label>
+              <Label>{t("payroll.shared.bpjsTkNo")}</Label>
               <Input value={enrollForm.bpjsTkNo} onChange={(e) => setEnrollForm((f) => ({ ...f, bpjsTkNo: e.target.value }))} />
             </div>
             <div className="flex gap-4">
@@ -417,7 +436,7 @@ export default function Bpjs() {
                   checked={enrollForm.bpjsKesehatanEnabled}
                   onChange={(e) => setEnrollForm((f) => ({ ...f, bpjsKesehatanEnabled: e.target.checked }))}
                 />
-                Kesehatan enabled
+                {t("payroll.shared.kesehatanEnabled")}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -425,14 +444,14 @@ export default function Bpjs() {
                   checked={enrollForm.bpjsTkEnabled}
                   onChange={(e) => setEnrollForm((f) => ({ ...f, bpjsTkEnabled: e.target.checked }))}
                 />
-                TK enabled
+                {t("payroll.shared.tkEnabled")}
               </label>
             </div>
             <div>
-              <Label>BPJS salary base (optional override)</Label>
+              <Label>{t("payroll.shared.salaryBaseOverride")}</Label>
               <Input
                 type="number"
-                placeholder="Uses basic + allowance if empty"
+                placeholder={t("payroll.shared.salaryBasePlaceholder")}
                 value={enrollForm.bpjsSalaryBase}
                 onChange={(e) => setEnrollForm((f) => ({ ...f, bpjsSalaryBase: e.target.value }))}
               />
@@ -440,9 +459,9 @@ export default function Bpjs() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEnrollOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitEnroll()}>Save</Button>
+            <Button onClick={() => void submitEnroll()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -33,9 +33,9 @@ describe("POS gift card redemption flow", () => {
   });
 
   it("displays gift card code, balances, and applied amount in checkout UI", () => {
-    expect(posSource).toMatch(/Gift card \/ store credit/i);
-    expect(posSource).toMatch(/Available:/);
-    expect(posSource).toMatch(/Applied:/);
-    expect(posSource).toMatch(/Remaining:/);
+    expect(posSource).toMatch(/pos\.giftCard/);
+    expect(posSource).toMatch(/shared\.giftCardAvailableLabel/);
+    expect(posSource).toMatch(/shared\.giftCardAppliedLabel/);
+    expect(posSource).toMatch(/shared\.giftCardRemainingLabel/);
   });
 });

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Bell, ChevronLeft } from "lucide-react";
 import type { QrOrderPublicLookup } from "@/lib/api-integration/qrOrderPublicEndpoints";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { QrOrderQrCodeDisplay } from "./QrOrderQrCodeDisplay";
 import { QrOrderStatusTimeline } from "./QrOrderStatusTimeline";
 
@@ -25,6 +26,7 @@ export function QrOrderDetailView({
   enableCallCashier = true,
   backToMenuHref,
 }: Props) {
+  const { t } = useOpsTranslation();
   const lookupUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/qr/order/${encodeURIComponent(order.orderCode)}`
@@ -35,14 +37,20 @@ export function QrOrderDetailView({
       <div className="sticky top-0 bg-card border-b border-border z-10">
         <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
           {backToMenuHref ? (
-            <Link to={backToMenuHref} className="p-1.5 rounded-xl hover:bg-muted" aria-label="Back to menu">
+            <Link
+              to={backToMenuHref}
+              className="p-1.5 rounded-xl hover:bg-muted"
+              aria-label={t("qrCustomer.backToMenu")}
+            >
               <ChevronLeft className="h-5 w-5 text-foreground" />
             </Link>
           ) : null}
           <div className="min-w-0">
-            <h1 className="text-base font-bold text-foreground truncate">Order {order.orderCode}</h1>
+            <h1 className="text-base font-bold text-foreground truncate">
+              {t("qrCustomer.orderCode", { code: order.orderCode })}
+            </h1>
             {isAdditionalOrder && (
-              <p className="text-xs text-primary font-medium">Pesanan Tambahan / Additional Order</p>
+              <p className="text-xs text-primary font-medium">{t("qrCustomer.additionalOrder")}</p>
             )}
           </div>
         </div>
@@ -50,12 +58,12 @@ export function QrOrderDetailView({
 
       <div className="max-w-lg mx-auto p-4 space-y-4 pb-8">
         <div className="bg-card rounded-2xl p-4 border border-border text-center">
-          <p className="text-xs text-muted-foreground mb-1">Order Code</p>
+          <p className="text-xs text-muted-foreground mb-1">{t("qrCustomer.orderCodeLabel")}</p>
           <p className="text-2xl font-bold text-primary tracking-wider" data-testid="qr-order-code">
             {order.orderCode}
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            {order.outletName} · Meja {order.tableName}
+            {t("qrCustomer.outletTable", { outlet: order.outletName, table: order.tableName })}
           </p>
           <p className="text-sm font-medium text-foreground mt-2" data-testid="qr-order-status-label">
             {order.customerStatusLabel}
@@ -67,12 +75,12 @@ export function QrOrderDetailView({
           )}
           {order.linkedPosOrder?.orderCode && (
             <p className="text-xs text-muted-foreground mt-2" data-testid="qr-order-linked-pos">
-              Linked POS: <span className="font-mono text-foreground">{order.linkedPosOrder.orderCode}</span>
+              {t("qrCustomer.linkedPos", { code: order.linkedPosOrder.orderCode })}
             </p>
           )}
           {order.openBill && (
             <p className="text-xs mt-1" data-testid="qr-order-open-bill">
-              Open Bill: <span className="font-semibold text-foreground">{order.openBill.status}</span>
+              {t("qrCustomer.openBill", { status: order.openBill.status })}
               {order.paymentStatus ? ` (${order.paymentStatus})` : null}
             </p>
           )}
@@ -90,7 +98,7 @@ export function QrOrderDetailView({
 
         {(order.removedItems?.length ?? 0) > 0 && (
           <div className="bg-card rounded-2xl p-4 border border-border text-sm">
-            <p className="font-semibold mb-2">Removed</p>
+            <p className="font-semibold mb-2">{t("qrCustomer.removedSection")}</p>
             <ul className="space-y-1 text-muted-foreground">
               {order.removedItems?.map((item, index) => (
                 <li key={`removed-${index}`}>
@@ -104,7 +112,7 @@ export function QrOrderDetailView({
 
         {(order.addedItems?.length ?? 0) > 0 && (
           <div className="bg-card rounded-2xl p-4 border border-border text-sm">
-            <p className="font-semibold mb-2">Added</p>
+            <p className="font-semibold mb-2">{t("qrCustomer.addedSection")}</p>
             <ul className="space-y-1 text-muted-foreground">
               {order.addedItems?.map((item, index) => (
                 <li key={`added-${index}`}>+ {item.name ?? item.to}</li>
@@ -114,7 +122,7 @@ export function QrOrderDetailView({
         )}
 
         <div className="bg-card rounded-2xl p-4 border border-border">
-          <h2 className="text-sm font-semibold text-foreground mb-3">Status</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-3">{t("qrCustomer.statusSection")}</h2>
           <QrOrderStatusTimeline
             customerStatus={order.customerStatus}
             timelineStep={order.timelineStep}
@@ -123,7 +131,7 @@ export function QrOrderDetailView({
         </div>
 
         <div className="bg-card rounded-2xl p-4 border border-border">
-          <h2 className="text-sm font-semibold text-foreground mb-3">Items</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-3">{t("qrCustomer.itemsSection")}</h2>
           <div className="space-y-2" data-testid="qr-order-items">
             {order.items.map((item, index) => (
               <div key={`${item.name}-${index}`} className="flex justify-between gap-3 text-sm">
@@ -141,43 +149,44 @@ export function QrOrderDetailView({
           </div>
           <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-sm">
             <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span>
+              <span>{t("qrCustomer.subtotal")}</span>
               <span>{formatRp(order.subtotal)}</span>
             </div>
             {(order.promo ?? 0) > 0 && (
               <div className="flex justify-between text-muted-foreground">
-                <span>Promo{order.promoLabel ? ` (${order.promoLabel})` : ""}</span>
+                <span>
+                  {t("qrCustomer.promo")}
+                  {order.promoLabel ? ` (${order.promoLabel})` : ""}
+                </span>
                 <span>-{formatRp(order.promo ?? 0)}</span>
               </div>
             )}
             {order.discount > 0 && (
               <div className="flex justify-between text-muted-foreground">
-                <span>Discount</span>
+                <span>{t("qrCustomer.discount")}</span>
                 <span>-{formatRp(order.discount)}</span>
               </div>
             )}
             {(order.tax ?? 0) > 0 && (
               <div className="flex justify-between text-muted-foreground">
-                <span>Tax</span>
+                <span>{t("qrCustomer.tax")}</span>
                 <span>{formatRp(order.tax ?? 0)}</span>
               </div>
             )}
             {(order.service ?? 0) > 0 && (
               <div className="flex justify-between text-muted-foreground">
-                <span>Service</span>
+                <span>{t("qrCustomer.service")}</span>
                 <span>{formatRp(order.service ?? 0)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-foreground text-base pt-1">
-              <span>Total</span>
+              <span>{t("qrCustomer.total")}</span>
               <span data-testid="qr-order-total">{formatRp(order.total)}</span>
             </div>
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground text-center px-2">
-          Tunjukkan kode atau QR ini ke kasir jika diperlukan.
-        </p>
+        <p className="text-xs text-muted-foreground text-center px-2">{t("qrCustomer.showCodeHint")}</p>
 
         {enableCallCashier && onCallCashier && ["pending_review", "under_review", "adjusted"].includes(order.customerStatus) && (
           <button
@@ -186,7 +195,7 @@ export function QrOrderDetailView({
             onClick={onCallCashier}
             className="w-full py-3 rounded-2xl border border-primary text-primary font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            <Bell className="h-4 w-4" /> Call Cashier
+            <Bell className="h-4 w-4" /> {t("qrCustomer.callCashier")}
           </button>
         )}
 
@@ -196,7 +205,7 @@ export function QrOrderDetailView({
             className="block w-full py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm text-center"
             data-testid="qr-order-back-to-menu"
           >
-            Order More
+            {t("qrCustomer.orderMore")}
           </Link>
         )}
       </div>

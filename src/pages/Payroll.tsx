@@ -7,6 +7,8 @@ import Engine from "./payroll/Engine";
 import Leave from "./payroll/Leave";
 import AttendanceReview from "./payroll/AttendanceReview";
 import { toast } from "sonner";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { usePayrollStore } from "@/stores/payrollStore";
 import Employees from "./payroll/Employees";
 import Attendance from "./payroll/Attendance";
@@ -27,27 +29,27 @@ import PayrollRunPage from "./payroll/PayrollRun";
 import { useAuthStore } from "@/stores/authStore";
 import { getVisiblePayrollTabs, hasPayrollFullAccess, type PayrollTabKey } from "@/domain/permissionGates";
 
-const TAB_META: Record<PayrollTabKey, { label: string; icon: typeof Calculator }> = {
-  payroll: { label: "Payroll", icon: Calculator },
-  employees: { label: "Employees", icon: Users },
-  "shift-assignments": { label: "Assignments", icon: CalendarRange },
-  scheduling: { label: "Scheduling", icon: CalendarClock },
-  attendance: { label: "Attendance", icon: Clock },
-  "attendance-review": { label: "Review", icon: ClipboardCheck },
-  leave: { label: "Leave", icon: Palmtree },
-  overtime: { label: "Overtime", icon: Timer },
-  preparation: { label: "Preparation", icon: FileStack },
-  engine: { label: "Engine", icon: Cog },
-  adjustments: { label: "Adjustments", icon: Wallet },
-  shifts: { label: "Shifts", icon: CalendarDays },
-  loans: { label: "Loans", icon: Banknote },
-  "cash-advances": { label: "Cash Advances", icon: HandCoins },
-  payslips: { label: "Payslips", icon: FileText },
-  bpjs: { label: "BPJS", icon: Shield },
-  tax: { label: "Tax", icon: Receipt },
-  reimbursements: { label: "Reimbursements", icon: ReceiptText },
-  closing: { label: "Closing", icon: LockKeyhole },
-  posting: { label: "Posting", icon: BookOpen },
+const TAB_ICONS: Record<PayrollTabKey, typeof Calculator> = {
+  payroll: Calculator,
+  employees: Users,
+  "shift-assignments": CalendarRange,
+  scheduling: CalendarClock,
+  attendance: Clock,
+  "attendance-review": ClipboardCheck,
+  leave: Palmtree,
+  overtime: Timer,
+  preparation: FileStack,
+  engine: Cog,
+  adjustments: Wallet,
+  shifts: CalendarDays,
+  loans: Banknote,
+  "cash-advances": HandCoins,
+  payslips: FileText,
+  bpjs: Shield,
+  tax: Receipt,
+  reimbursements: ReceiptText,
+  closing: LockKeyhole,
+  posting: BookOpen,
 };
 
 const TAB_REFRESH_KEYS: Partial<Record<PayrollTabKey, "employees" | "attendance" | "payrolls" | "overtime" | "adjustments" | "shifts" | "loans">> = {
@@ -62,6 +64,7 @@ const TAB_REFRESH_KEYS: Partial<Record<PayrollTabKey, "employees" | "attendance"
 };
 
 export default function Payroll() {
+  const { t } = useErpTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const visibleTabs = useMemo(() => getVisiblePayrollTabs(user), [user]);
@@ -114,23 +117,21 @@ export default function Payroll() {
     }
     if (tasks.length === 0) return;
     void Promise.all(tasks).catch((e) => {
-      toast.error(e instanceof Error ? e.message : "Failed to refresh payroll data from API");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.loadFailed"));
     });
-  }, [visibleTabs, refreshByKey]);
+  }, [visibleTabs, refreshByKey, t]);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Payroll Management</h1>
+        <h1 className="text-2xl font-bold">{t("payroll.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          {payrollFull
-            ? "Employees, attendance, overtime, allowances, payroll processing & payslips"
-            : "HR modules available for your role — payroll processing requires payroll.manage"}
+          {payrollFull ? t("payroll.fullAccessSubtitle") : t("payroll.limitedAccessSubtitle")}
         </p>
       </div>
 
       {visibleTabs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">You do not have permission to view any payroll modules.</p>
+        <p className="text-sm text-muted-foreground">{t("payroll.noPermission")}</p>
       ) : (
       <Tabs
         value={activeTab}
@@ -146,11 +147,10 @@ export default function Payroll() {
       >
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
           {visibleTabs.map((key) => {
-            const meta = TAB_META[key];
-            const Icon = meta.icon;
+            const Icon = TAB_ICONS[key];
             return (
               <TabsTrigger key={key} value={key} className="gap-1.5 text-xs">
-                <Icon className="h-3.5 w-3.5" />{meta.label}
+                <Icon className="h-3.5 w-3.5" />{t(`payroll.tabs.${key}`)}
               </TabsTrigger>
             );
           })}

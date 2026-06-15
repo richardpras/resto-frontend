@@ -12,6 +12,8 @@ import { useInventoryStore } from "@/stores/inventoryStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getProcurementSummary, type ProcurementSummary, type SupplierPayableRow } from "@/lib/api-integration/purchaseEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, Receipt, Search, Check, Send, Ban, Eye } from "lucide-react";
 import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
@@ -25,22 +27,6 @@ const statusColors: Record<InvoiceStatus, string> = {
   void: "bg-destructive/15 text-destructive border-destructive/30",
 };
 
-const statusLabel: Record<InvoiceStatus, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  approved: "Approved",
-  partial: "Partially Paid",
-  paid: "Paid",
-  void: "Void",
-};
-
-const matchLabel: Record<string, string> = {
-  matched: "Matched",
-  matched_with_tolerance: "Matched (Tol.)",
-  mismatch: "Mismatch",
-  blocked: "Blocked",
-};
-
 const matchColors: Record<string, string> = {
   matched: "bg-success/15 text-success border-success/30",
   matched_with_tolerance: "bg-info/15 text-info border-info/30",
@@ -49,6 +35,7 @@ const matchColors: Record<string, string> = {
 };
 
 export default function PurchaseInvoices() {
+  const { t } = useErpTranslation();
   const {
     invoices,
     addInvoice,
@@ -135,8 +122,8 @@ export default function PurchaseInvoices() {
   const handleSaveDraft = async () => {
     const po = purchaseOrders.find((p) => p.id === selectedPO);
     const gr = goodsReceipts.find((g) => g.id === selectedGR);
-    if (!po || !gr) { toast.error("Select PO and posted GRN"); return; }
-    if (gr.status !== "posted") { toast.error("Only posted GRNs can be invoiced"); return; }
+    if (!po || !gr) { toast.error(t("purchases.inv.selectPoGrn")); return; }
+    if (gr.status !== "posted") { toast.error(t("purchases.inv.postedGrnOnly")); return; }
 
     const items = gr.items
       .map((i) => ({
@@ -145,20 +132,24 @@ export default function PurchaseInvoices() {
       }))
       .filter((i) => i.qty > 0);
 
-    const id = await addInvoice({
-      purchaseOrderId: po.id,
-      goodsReceiptId: gr.id,
-      supplierInvoiceNo: supplierInvoiceNo || undefined,
-      date,
-      dueDate: dueDate || undefined,
-      tax: tax > 0 ? tax : undefined,
-      taxPercentage: tax <= 0 ? taxPercentage : undefined,
-      items,
-    });
-    toast.success("Draft invoice created");
-    setFormOpen(false);
-    await loadDashboard();
-    return id;
+    try {
+      const id = await addInvoice({
+        purchaseOrderId: po.id,
+        goodsReceiptId: gr.id,
+        supplierInvoiceNo: supplierInvoiceNo || undefined,
+        date,
+        dueDate: dueDate || undefined,
+        tax: tax > 0 ? tax : undefined,
+        taxPercentage: tax <= 0 ? taxPercentage : undefined,
+        items,
+      });
+      toast.success(t("purchases.inv.draftCreated"));
+      setFormOpen(false);
+      await loadDashboard();
+      return id;
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "—";
@@ -184,26 +175,33 @@ export default function PurchaseInvoices() {
 
   const selectedGr = goodsReceipts.find((g) => g.id === selectedGR);
 
+  const summaryCards = summary ? [
+    { label: t("purchases.inv.summary.outstandingAp"), value: summary.outstandingPayables.toLocaleString() },
+    { label: t("purchases.inv.summary.overdue"), value: summary.overdueInvoices },
+    { label: t("purchases.inv.summary.draft"), value: summary.draftInvoices },
+    { label: t("purchases.inv.summary.submitted"), value: summary.submittedInvoices },
+    { label: t("purchases.inv.summary.approved"), value: summary.approvedInvoices },
+    { label: t("purchases.inv.summary.paid"), value: summary.paidInvoices },
+  ] : [];
+
+  const invoiceStatusLabel = (status: InvoiceStatus) => {
+    if (status === "partial") return t("purchases.status.partial");
+    return t(`purchases.status.${status}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Purchase Invoices</h1>
-          <p className="text-sm text-muted-foreground">AP invoice workflow — draft → submit → approve</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("purchases.inv.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("purchases.inv.subtitle")}</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> New Invoice</Button>
+        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> {t("purchases.inv.newInvoice")}</Button>
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {[
-            { label: "Outstanding AP", value: summary.outstandingPayables.toLocaleString() },
-            { label: "Overdue", value: summary.overdueInvoices },
-            { label: "Draft", value: summary.draftInvoices },
-            { label: "Submitted", value: summary.submittedInvoices },
-            { label: "Approved", value: summary.approvedInvoices },
-            { label: "Paid", value: summary.paidInvoices },
-          ].map((item) => (
+          {summaryCards.map((item) => (
             <Card key={item.label}>
               <CardContent className="p-3">
                 <p className="text-xs text-muted-foreground">{item.label}</p>
@@ -216,36 +214,36 @@ export default function PurchaseInvoices() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="outstanding">Outstanding</TabsTrigger>
-          <TabsTrigger value="payables">Supplier Payables</TabsTrigger>
+          <TabsTrigger value="invoices">{t("purchases.inv.tabs.invoices")}</TabsTrigger>
+          <TabsTrigger value="outstanding">{t("purchases.inv.tabs.outstanding")}</TabsTrigger>
+          <TabsTrigger value="payables">{t("purchases.inv.tabs.payables")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="invoices" className="space-y-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search invoice…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder={t("purchases.inv.searchPlaceholder")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Card>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>PO / GRN</TableHead>
-                    <TableHead>Due</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Outstanding</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("purchases.inv.columns.invoiceNo")}</TableHead>
+                    <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.poGrn")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.due")}</TableHead>
+                    <TableHead>{t("purchases.shared.total")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.outstanding")}</TableHead>
+                    <TableHead>{t("purchases.shared.status")}</TableHead>
+                    <TableHead className="text-right">{t("purchases.shared.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                        <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />No invoices yet
+                        <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />{t("purchases.inv.empty")}
                       </TableCell>
                     </TableRow>
                   )}
@@ -258,10 +256,10 @@ export default function PurchaseInvoices() {
                       <TableCell className="text-sm font-medium">{inv.total.toLocaleString()}</TableCell>
                       <TableCell className="text-sm">{(inv.outstandingAmount ?? inv.remainingAmount).toLocaleString()}</TableCell>
                       <TableCell className="space-x-1">
-                        <Badge variant="outline" className={statusColors[inv.status]}>{statusLabel[inv.status]}</Badge>
+                        <Badge variant="outline" className={statusColors[inv.status]}>{invoiceStatusLabel(inv.status)}</Badge>
                         {inv.matchStatus && (
                           <Badge variant="outline" className={matchColors[inv.matchStatus] ?? "bg-muted text-muted-foreground"}>
-                            {matchLabel[inv.matchStatus] ?? inv.matchStatus}
+                            {t(`purchases.matchStatus.${inv.matchStatus}`, { defaultValue: inv.matchStatus })}
                           </Badge>
                         )}
                         {["approved", "partial", "paid"].includes(inv.status) && (
@@ -278,7 +276,7 @@ export default function PurchaseInvoices() {
                         )}
                         {inv.status === "submitted" && (
                           <>
-                            <Button size="sm" onClick={() => void approveInvoice(inv.id).then(() => { toast.success("Approved"); return loadDashboard(); })}><Check className="h-3 w-3" /></Button>
+                            <Button size="sm" onClick={() => void approveInvoice(inv.id).then(() => { toast.success(t("purchases.inv.approved")); return loadDashboard(); })}><Check className="h-3 w-3" /></Button>
                             <Button size="sm" variant="destructive" onClick={() => void voidInvoice(inv.id).then(loadDashboard)}><Ban className="h-3 w-3" /></Button>
                           </>
                         )}
@@ -297,10 +295,10 @@ export default function PurchaseInvoices() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Due</TableHead>
-                    <TableHead>Outstanding</TableHead>
+                    <TableHead>{t("purchases.inv.columns.invoiceNo")}</TableHead>
+                    <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.due")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.outstanding")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -324,11 +322,11 @@ export default function PurchaseInvoices() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Invoices</TableHead>
-                    <TableHead>Outstanding</TableHead>
-                    <TableHead>Overdue</TableHead>
-                    <TableHead>Last Invoice</TableHead>
+                    <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.invoices")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.outstanding")}</TableHead>
+                    <TableHead>{t("purchases.inv.summary.overdue")}</TableHead>
+                    <TableHead>{t("purchases.inv.columns.lastInvoice")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -350,13 +348,13 @@ export default function PurchaseInvoices() {
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create Draft Invoice</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.inv.createDraft")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">PO *</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.po")}</label>
                 <Select value={selectedPO} onValueChange={handlePOSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select PO" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.inv.form.selectPo")} /></SelectTrigger>
                   <SelectContent>
                     {eligiblePOs.map((po) => (
                       <SelectItem key={po.id} value={po.id}>{po.poNumber}</SelectItem>
@@ -365,9 +363,9 @@ export default function PurchaseInvoices() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Posted GRN *</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.postedGrn")}</label>
                 <Select value={selectedGR} onValueChange={handleGRSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select GRN" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.inv.form.selectGrn")} /></SelectTrigger>
                   <SelectContent>
                     {eligibleGRs.map((gr) => (
                       <SelectItem key={gr.id} value={gr.id}>{gr.grnNumber}</SelectItem>
@@ -376,23 +374,23 @@ export default function PurchaseInvoices() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Supplier Invoice No</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.supplierInvoiceNo")}</label>
                 <Input value={supplierInvoiceNo} onChange={(e) => setSupplierInvoiceNo(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Invoice Date</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.invoiceDate")}</label>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Due Date</label>
-                <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} placeholder="Auto from payment terms" />
+                <label className="text-sm font-medium">{t("purchases.inv.form.dueDate")}</label>
+                <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} placeholder={t("purchases.inv.form.dueDatePlaceholder")} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Tax % (PPN)</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.taxPercent")}</label>
                 <Input type="number" min={0} max={100} value={taxPercentage} onChange={(e) => setTaxPercentage(Number(e.target.value))} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Tax Amount (override)</label>
+                <label className="text-sm font-medium">{t("purchases.inv.form.taxOverride")}</label>
                 <Input type="number" min={0} value={tax} onChange={(e) => setTax(Number(e.target.value))} />
               </div>
             </div>
@@ -402,9 +400,9 @@ export default function PurchaseInvoices() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>Item</TableHead>
-                      <TableHead>Received</TableHead>
-                      <TableHead>Invoice Qty</TableHead>
+                      <TableHead>{t("purchases.grn.item")}</TableHead>
+                      <TableHead>{t("purchases.inv.form.received")}</TableHead>
+                      <TableHead>{t("purchases.inv.form.invoiceQty")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -433,8 +431,8 @@ export default function PurchaseInvoices() {
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={() => void handleSaveDraft()}>Save Draft</Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>{t("purchases.shared.cancel")}</Button>
+              <Button onClick={() => void handleSaveDraft()}>{t("purchases.shared.saveDraft")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -442,14 +440,14 @@ export default function PurchaseInvoices() {
 
       <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Invoice Detail — {viewedInvoice?.invoiceNumber}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.inv.detailTitle")} — {viewedInvoice?.invoiceNumber}</DialogTitle></DialogHeader>
           {viewedInvoice && (
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Supplier:</span> {getSupplierName(viewedInvoice.supplierId)}</div>
-                <div><span className="text-muted-foreground">Total:</span> {viewedInvoice.total.toLocaleString()}</div>
-                <div><span className="text-muted-foreground">PO / GRN:</span> {viewedInvoice.poReference} / {viewedInvoice.grReference}</div>
-                <div><span className="text-muted-foreground">Due:</span> {viewedInvoice.dueDate ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.shared.supplier")}:</span> {getSupplierName(viewedInvoice.supplierId)}</div>
+                <div><span className="text-muted-foreground">{t("purchases.shared.total")}:</span> {viewedInvoice.total.toLocaleString()}</div>
+                <div><span className="text-muted-foreground">{t("purchases.inv.columns.poGrn")}:</span> {viewedInvoice.poReference} / {viewedInvoice.grReference}</div>
+                <div><span className="text-muted-foreground">{t("purchases.inv.columns.due")}:</span> {viewedInvoice.dueDate ?? "—"}</div>
               </div>
               <PostingStatusIndicator postingStatus={viewedInvoice.postingStatus} />
             </div>

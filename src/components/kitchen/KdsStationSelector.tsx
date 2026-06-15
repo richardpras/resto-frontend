@@ -1,4 +1,5 @@
 import type { KdsStationId, KdsStationOption } from "@/hooks/useKdsStationFilter";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -8,12 +9,14 @@ type Props = {
 };
 
 export function KdsStationSelector({ availableStations, station, onStationChange }: Props) {
+  const { t } = useOpsTranslation();
+
   return (
     <div
       className="inline-flex rounded-xl border border-kds-card-border bg-kds-card p-0.5"
       data-testid="kds-station-selector"
       role="tablist"
-      aria-label="Kitchen station"
+      aria-label={t("kitchen.stationAria")}
     >
       {availableStations.map((opt) => (
         <button
@@ -30,7 +33,7 @@ export function KdsStationSelector({ availableStations, station, onStationChange
               : "text-kds-muted-fg hover:text-kds-fg",
           )}
         >
-          {opt.label}
+          {opt.id === "all" ? t("kitchen.stationAll") : opt.label}
         </button>
       ))}
     </div>

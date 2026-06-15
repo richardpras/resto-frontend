@@ -1,4 +1,5 @@
 import { recordApiError } from "@/lib/diagnostics/diagnosticsBuffer";
+import i18n, { normalizeAppLocale } from "@/i18n";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "http://127.0.0.1:8000/api/v1";
@@ -136,6 +137,9 @@ export async function apiRequest<T>(
   }
   if (!mergedHeaders.has("Accept")) {
     mergedHeaders.set("Accept", "application/json");
+  }
+  if (!mergedHeaders.has("Accept-Language")) {
+    mergedHeaders.set("Accept-Language", normalizeAppLocale(i18n.language));
   }
   if (token && !mergedHeaders.has("Authorization")) {
     mergedHeaders.set("Authorization", `Bearer ${token}`);

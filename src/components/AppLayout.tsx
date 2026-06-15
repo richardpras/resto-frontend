@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Wifi, WifiOff, Lock } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { LockScreen } from "@/components/auth/LockScreen";
@@ -13,8 +14,10 @@ import { useOutletStore } from "@/stores/outletStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
 import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation("common");
   const [online] = useState(true);
   const { user, locked, lock } = useAuthStore();
   const location = useLocation();
@@ -75,7 +78,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-30"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <SidebarTrigger aria-label="Toggle sidebar" />
+              <SidebarTrigger aria-label={t("header.toggleSidebar")} />
               {(selectorOutlets?.length ?? 0) > 0 && (
                 <div className="hidden sm:flex items-center gap-2 min-w-[200px] max-w-[min(360px,40vw)]">
                   <Select
@@ -86,8 +89,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       if (row) setActiveOutletContext(row.id, row.code ?? null);
                     }}
                   >
-                    <SelectTrigger className="h-9 text-xs" aria-label="Active outlet">
-                      <SelectValue placeholder="Outlet" />
+                    <SelectTrigger className="h-9 text-xs" aria-label={t("header.activeOutlet")}>
+                      <SelectValue placeholder={t("header.outletPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       {(selectorOutlets ?? []).map((o) => (
@@ -106,19 +109,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-3">
+              <LanguageSwitcher variant="header" />
               {online ? (
                 <div className="flex items-center gap-1.5 text-success text-xs font-medium">
                   <Wifi className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Online</span>
+                  <span className="hidden sm:inline">{t("header.online")}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 text-warning text-xs font-medium animate-pulse-soft">
                   <WifiOff className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Offline</span>
+                  <span className="hidden sm:inline">{t("header.offline")}</span>
                 </div>
               )}
               {user.pinSet ? (
-                <button type="button" onClick={() => lock()} className="p-2 rounded-lg hover:bg-muted transition-colors" title="Lock screen">
+                <button type="button" onClick={() => lock()} className="p-2 rounded-lg hover:bg-muted transition-colors" title={t("header.lockScreen")}>
                   <Lock className="h-4 w-4 text-muted-foreground" />
                 </button>
               ) : null}

@@ -16,9 +16,9 @@ describe("Accounting gift card reconciliation UI", () => {
 
   it("renders gift card reconciliation card with variance status", () => {
     expect(source).toMatch(/GiftCardCard/);
-    expect(source).toMatch(/Subledger outstanding/);
-    expect(source).toMatch(/GL liability/);
-    expect(source).toMatch(/Variance/);
+    expect(source).toMatch(/accounting\.recon\.outstanding/);
+    expect(source).toMatch(/accounting\.recon\.glBalance/);
+    expect(source).toMatch(/accounting\.recon\.variance/);
     expect(source).toMatch(/StatusBadge/);
   });
 });

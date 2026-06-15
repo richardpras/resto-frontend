@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ async function syncAllBanksToApi(): Promise<void> {
 }
 
 export default function BankSettings() {
+  const { t } = useTranslation("common");
   const banks = useSettingsStore((s) => s.banks);
   const upsertBank = useSettingsStore((s) => s.upsertBank);
   const setDefaultBank = useSettingsStore((s) => s.setDefaultBank);
@@ -29,7 +31,7 @@ export default function BankSettings() {
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (!form.bankName.trim() || !form.accountNumber.trim()) return toast.error("Bank name & account number required");
+    if (!form.bankName.trim() || !form.accountNumber.trim()) return toast.error(t("settings.banks.required"));
     const wasInList = useSettingsStore.getState().banks.some((b) => b.id === form.id);
     upsertBank(form);
     if (form.isDefault) setDefaultBank(form.id);
@@ -37,7 +39,7 @@ export default function BankSettings() {
     setSaving(true);
     try {
       if (!getApiAccessToken()) {
-        toast.success("Bank account saved locally");
+        toast.success(t("settings.banks.savedLocally"));
         setOpen(false);
         return;
       }
@@ -48,10 +50,10 @@ export default function BankSettings() {
       }
       if (form.isDefault) await syncAllBanksToApi();
       await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
-      toast.success("Bank account saved");
+      toast.success(t("settings.banks.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -61,14 +63,14 @@ export default function BankSettings() {
     <Card>
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="font-semibold">Bank & Finance</h2>
-          <Button type="button" onClick={() => { setForm({ ...empty, id: newId() }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Account</Button>
+          <h2 className="font-semibold">{t("settings.banks.title")}</h2>
+          <Button type="button" onClick={() => { setForm({ ...empty, id: newId() }); setOpen(true); }}><Plus className="h-4 w-4 mr-2" />{t("settings.banks.add")}</Button>
         </div>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Bank</TableHead><TableHead>Account Name</TableHead><TableHead>Account Number</TableHead>
-              <TableHead>Default</TableHead><TableHead className="w-32"></TableHead>
+              <TableHead>{t("settings.banks.bankName")}</TableHead><TableHead>{t("settings.banks.accountName")}</TableHead><TableHead>{t("settings.banks.accountNumber")}</TableHead>
+              <TableHead>{t("common.default")}</TableHead><TableHead className="w-32"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -77,7 +79,7 @@ export default function BankSettings() {
                 <TableCell className="font-medium">{b.bankName}</TableCell>
                 <TableCell>{b.accountName}</TableCell>
                 <TableCell className="font-mono text-sm">{b.accountNumber}</TableCell>
-                <TableCell>{b.isDefault && <Badge><Star className="h-3 w-3 mr-1" />Default</Badge>}</TableCell>
+                <TableCell>{b.isDefault && <Badge><Star className="h-3 w-3 mr-1" />{t("common.default")}</Badge>}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     {!b.isDefault && (
@@ -93,11 +95,11 @@ export default function BankSettings() {
                               await syncAllBanksToApi();
                               await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
                             } catch (e) {
-                              toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+                              toast.error(e instanceof ApiHttpError ? e.message : t("settings.banks.updateFailed"));
                             }
                           })();
                         }}
-                      >Set Default</Button>
+                      >{t("settings.banks.setDefault")}</Button>
                     )}
                     <Button type="button" size="icon" variant="ghost" onClick={() => { setForm(b); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                     <Button
@@ -105,13 +107,13 @@ export default function BankSettings() {
                       size="icon"
                       variant="ghost"
                       onClick={() => {
-                        if (!confirm("Delete?")) return;
+                        if (!confirm(t("common.deleteConfirm"))) return;
                         void (async () => {
                           try {
                             await removeBankCascade(b.id);
                             if (getApiAccessToken()) await ensureSectionsLoaded(["banks"], { force: true, staleMs: 0 });
                           } catch (e) {
-                            toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+                            toast.error(e instanceof ApiHttpError ? e.message : t("common.deleteFailed"));
                           }
                         })();
                       }}
@@ -125,19 +127,19 @@ export default function BankSettings() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Bank Account</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("settings.banks.dialogTitle")}</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              <div className="space-y-2"><Label>Bank Name</Label><Input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} /></div>
-              <div className="space-y-2"><Label>Account Name</Label><Input value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} /></div>
-              <div className="space-y-2"><Label>Account Number</Label><Input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} /></div>
+              <div className="space-y-2"><Label>{t("settings.banks.bankName")}</Label><Input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} /></div>
+              <div className="space-y-2"><Label>{t("settings.banks.accountName")}</Label><Input value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} /></div>
+              <div className="space-y-2"><Label>{t("settings.banks.accountNumber")}</Label><Input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} /></div>
               <label className="flex items-center gap-2 text-sm pt-1">
                 <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
-                Set as default account
+                {t("settings.banks.setDefaultAccount")}
               </label>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>{t("common.cancel")}</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? t("common.saving") : t("common.saveShort")}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

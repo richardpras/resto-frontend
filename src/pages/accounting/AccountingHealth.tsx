@@ -22,6 +22,8 @@ import {
   type HealthSeverity,
 } from "@/lib/api-integration/accountingEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -40,20 +42,23 @@ function severityBadgeVariant(severity?: HealthSeverity): "default" | "secondary
   return "outline";
 }
 
-function severityLabel(severity?: HealthSeverity): string {
-  if (!severity) return "unknown";
-  return severity.charAt(0).toUpperCase() + severity.slice(1);
-}
-
 const AGING_BUCKET_ORDER = ["0-1h", "1-4h", "4-24h", "1-3d", "3d+"];
 
 export default function AccountingHealth() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [health, setHealth] = useState<AccountingHealth | null>(null);
   const [trends, setTrends] = useState<AccountingHealthTrends | null>(null);
   const [settings, setSettings] = useState<AccountingSettings | null>(null);
   const [failures, setFailures] = useState<AccountingPostingFailureRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const severityLabel = (severity?: HealthSeverity): string => {
+    if (!severity) return t("accounting.health.severityLabels.unknown");
+    return t(`accounting.health.severityLabels.${severity}`, {
+      defaultValue: severity.charAt(0).toUpperCase() + severity.slice(1),
+    });
+  };
 
   const scope = useMemo(
     () => (typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : undefined),
@@ -66,7 +71,7 @@ export default function AccountingHealth() {
       const end = new Date();
       const start = new Date();
       start.setDate(end.getDate() - 30);
-      const [h, s, f, t] = await Promise.all([
+      const [h, s, f, tr] = await Promise.all([
         getAccountingHealth(scope),
         getAccountingSettings(scope),
         listAccountingPostingFailures("pending"),
@@ -79,13 +84,13 @@ export default function AccountingHealth() {
       setHealth(h);
       setSettings(s);
       setFailures(f);
-      setTrends(t);
+      setTrends(tr);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load accounting health");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.health.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, [scope, t]);
 
   useEffect(() => {
     void load();
@@ -95,20 +100,20 @@ export default function AccountingHealth() {
     try {
       const updated = await updateAccountingSettings({ revenuePostingMode: mode, ...(scope ?? {}) });
       setSettings(updated);
-      toast.success("Revenue posting mode updated");
+      toast.success(t("accounting.health.modeUpdated"));
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update settings");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.health.updateSettingsFailed"));
     }
   };
 
   const handleRetry = async (id: string) => {
     try {
       await retryAccountingPostingFailure(id);
-      toast.success("Posting retry succeeded");
+      toast.success(t("accounting.health.retrySucceeded"));
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Retry failed");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.health.retryFailed"));
     }
   };
 
@@ -126,7 +131,7 @@ export default function AccountingHealth() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Accounting Health</h2>
+          <h2 className="text-lg font-semibold">{t("accounting.health.title")}</h2>
           {health?.healthSeverity && (
             <Badge variant={severityBadgeVariant(health.healthSeverity)}>
               {severityLabel(health.healthSeverity)}
@@ -134,21 +139,21 @@ export default function AccountingHealth() {
           )}
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+          <RefreshCw className="h-4 w-4 mr-1" /> {t("common:common.refresh")}
         </Button>
       </div>
 
       {health && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <MetricCard label="Health Score" value={health.healthScore} />
-            <MetricCard label="Failed Postings" value={health.failedPostings} />
-            <MetricCard label="Severity" value={severityLabel(health.healthSeverity)} />
-            <MetricCard label="Gift Card Variance" value={health.giftCardVariance ?? 0} />
-            <MetricCard label="Inventory Δ" value={health.inventoryValuationDifference ?? 0} />
-            <MetricCard label="Payroll Variance" value={health.payrollVariance ?? 0} />
-            <MetricCard label="Procurement Variance" value={health.procurementVariance ?? 0} />
-            <MetricCard label="Missing Mappings" value={health.missingMappings} />
+            <MetricCard label={t("accounting.health.healthScore")} value={health.healthScore} />
+            <MetricCard label={t("accounting.health.failedPostings")} value={health.failedPostings} />
+            <MetricCard label={t("accounting.health.severity")} value={severityLabel(health.healthSeverity)} />
+            <MetricCard label={t("accounting.health.giftCardVariance")} value={health.giftCardVariance ?? 0} />
+            <MetricCard label={t("accounting.health.inventoryDelta")} value={health.inventoryValuationDifference ?? 0} />
+            <MetricCard label={t("accounting.health.payrollVariance")} value={health.payrollVariance ?? 0} />
+            <MetricCard label={t("accounting.health.procurementVariance")} value={health.procurementVariance ?? 0} />
+            <MetricCard label={t("accounting.health.missingMappings")} value={health.missingMappings} />
           </div>
 
           {(health.priorityQueue?.length ?? 0) > 0 && (
@@ -156,7 +161,7 @@ export default function AccountingHealth() {
               <CardContent className="p-4 space-y-3">
                 <p className="text-sm font-medium flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-warning" />
-                  Priority Action Queue
+                  {t("accounting.health.priorityQueue")}
                 </p>
                 <div className="space-y-2">
                   {health.priorityQueue?.map((item) => (
@@ -171,7 +176,7 @@ export default function AccountingHealth() {
                       <div className="flex items-center gap-2">
                         <Badge variant={severityBadgeVariant(item.priority)}>{severityLabel(item.priority)}</Badge>
                         <Button type="button" variant="link" size="sm" className="h-auto p-0" asChild>
-                          <Link to={item.actionUrl}>Open</Link>
+                          <Link to={item.actionUrl}>{t("accounting.health.open")}</Link>
                         </Button>
                       </div>
                     </div>
@@ -184,7 +189,7 @@ export default function AccountingHealth() {
           <div className="grid md:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4 space-y-3">
-                <p className="text-sm font-medium">Failure Aging Distribution</p>
+                <p className="text-sm font-medium">{t("accounting.health.failureAging")}</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {AGING_BUCKET_ORDER.map((bucket) => (
                     <div key={bucket} className="rounded-lg border p-2 text-center">
@@ -198,9 +203,9 @@ export default function AccountingHealth() {
 
             <Card>
               <CardContent className="p-4 space-y-3">
-                <p className="text-sm font-medium">Top Failure Sources</p>
+                <p className="text-sm font-medium">{t("accounting.health.topFailureSources")}</p>
                 {(health.topFailureSources?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-muted-foreground">No pending failures.</p>
+                  <p className="text-sm text-muted-foreground">{t("accounting.health.noPendingFailures")}</p>
                 ) : (
                   <ul className="space-y-2">
                     {health.topFailureSources?.map((row) => (
@@ -217,10 +222,10 @@ export default function AccountingHealth() {
 
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm font-medium mb-3">Posting Failures Trend (30 days)</p>
+              <p className="text-sm font-medium mb-3">{t("accounting.health.postingFailuresTrend")}</p>
               <div className="h-48">
                 {trendChartData.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No snapshot data yet. Daily snapshots run via accounting:health-snapshot.</p>
+                  <p className="text-sm text-muted-foreground">{t("accounting.health.noSnapshotData")}</p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trendChartData}>
@@ -240,7 +245,7 @@ export default function AccountingHealth() {
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <p className="text-sm font-medium">Revenue Posting Mode</p>
+          <p className="text-sm font-medium">{t("accounting.health.revenuePostingMode")}</p>
           <Select
             value={settings?.revenuePostingMode ?? "realtime"}
             onValueChange={(v) => void handleModeChange(v as "realtime" | "shift_close")}
@@ -249,35 +254,35 @@ export default function AccountingHealth() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="realtime">Realtime (order payment)</SelectItem>
-              <SelectItem value="shift_close">Shift Close (batch)</SelectItem>
+              <SelectItem value="realtime">{t("accounting.health.realtimeMode")}</SelectItem>
+              <SelectItem value="shift_close">{t("accounting.health.shiftCloseMode")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Only one revenue posting path is active. Realtime posts on payment; Shift Close posts during shift close.
+            {t("accounting.health.revenuePostingHint")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="p-0">
-          <p className="p-3 text-sm font-medium border-b">Posting Failures</p>
+          <p className="p-3 text-sm font-medium border-b">{t("accounting.health.postingFailures")}</p>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead>Source</TableHead>
-                <TableHead>Error</TableHead>
-                <TableHead>Age</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("accounting.health.source")}</TableHead>
+                <TableHead>{t("accounting.health.error")}</TableHead>
+                <TableHead>{t("accounting.health.age")}</TableHead>
+                <TableHead>{t("accounting.health.created")}</TableHead>
+                <TableHead>{t("common:common.status")}</TableHead>
+                <TableHead className="text-right">{t("accounting.health.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {failures.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No pending failures.
+                    {t("accounting.health.noPendingFailures")}
                   </TableCell>
                 </TableRow>
               )}
@@ -300,7 +305,7 @@ export default function AccountingHealth() {
                   <TableCell className="text-right">
                     {row.status === "pending" && (
                       <Button size="sm" variant="outline" onClick={() => void handleRetry(row.id)}>
-                        Retry
+                        {t("accounting.health.retry")}
                       </Button>
                     )}
                   </TableCell>

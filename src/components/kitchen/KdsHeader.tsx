@@ -4,6 +4,7 @@ import { KdsFocusModeToggle } from "@/components/kitchen/KdsFocusModeToggle";
 import { KdsStationSelector } from "@/components/kitchen/KdsStationSelector";
 import type { KdsFocusMode } from "@/hooks/useKdsFocusMode";
 import type { KdsStationId, KdsStationOption } from "@/hooks/useKdsStationFilter";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   outletName: string | null;
@@ -46,15 +47,17 @@ export function KdsHeader({
   station,
   onStationChange,
 }: Props) {
+  const { t } = useOpsTranslation();
+
   return (
     <header
       className="shrink-0 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-kds-card-border"
       data-testid="kds-header"
     >
       <div className="min-w-0">
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-kds-fg">Kitchen Display</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-kds-fg">{t("kitchen.title")}</h1>
         <p className="text-sm sm:text-base text-kds-muted-fg truncate" data-testid="kds-outlet-name">
-          {outletName ?? "No outlet selected"}
+          {outletName ?? t("shared.noOutletSelected")}
         </p>
       </div>
 
@@ -87,7 +90,7 @@ export function KdsHeader({
           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-kds-card-border bg-kds-card text-sm font-semibold text-kds-fg hover:bg-kds-muted transition-colors min-h-[44px]"
         >
           {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          {isFullscreen ? t("kitchen.exitFullscreen") : t("kitchen.fullscreen")}
         </button>
       </div>
     </header>

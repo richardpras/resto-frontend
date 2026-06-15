@@ -11,6 +11,8 @@ import { usePurchaseStore } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getApAgingReport, getProcurementSummary, getSupplierStatement, type ApAgingReport, type ProcurementSummary, type SupplierStatement } from "@/lib/api-integration/purchaseEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, Search, Check, Upload, Ban, Eye } from "lucide-react";
 import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
@@ -22,7 +24,10 @@ const statusColors = {
   void: "bg-destructive/15 text-destructive border-destructive/30",
 } as const;
 
+type PaymentMethod = "cash" | "bank_transfer" | "giro" | "check" | "other";
+
 export default function PurchasePayments() {
+  const { t } = useErpTranslation();
   const {
     supplierPayments,
     invoices,
@@ -47,7 +52,7 @@ export default function PurchasePayments() {
   const [viewId, setViewId] = useState<string | null>(null);
   const [supplierId, setSupplierId] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer" | "giro" | "check" | "other">("bank_transfer");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [referenceNo, setReferenceNo] = useState("");
   const [amount, setAmount] = useState(0);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
@@ -106,23 +111,27 @@ export default function PurchasePayments() {
   };
 
   const handleSave = async () => {
-    if (!supplierId || amount <= 0) { toast.error("Supplier and amount required"); return; }
+    if (!supplierId || amount <= 0) { toast.error(t("purchases.pay.supplierRequired")); return; }
     const allocRows = Object.entries(allocations)
       .filter(([, v]) => v > 0)
       .map(([invoiceId, allocatedAmount]) => ({ invoiceId, allocatedAmount }));
-    if (allocRows.length === 0) { toast.error("Allocate to at least one invoice"); return; }
+    if (allocRows.length === 0) { toast.error(t("purchases.pay.allocateRequired")); return; }
 
-    await addSupplierPayment({
-      supplierId,
-      paymentDate,
-      paymentMethod,
-      referenceNo: referenceNo || undefined,
-      amount,
-      allocations: allocRows,
-    });
-    toast.success("Payment draft created");
-    setFormOpen(false);
-    await loadDashboard();
+    try {
+      await addSupplierPayment({
+        supplierId,
+        paymentDate,
+        paymentMethod,
+        referenceNo: referenceNo || undefined,
+        amount,
+        allocations: allocRows,
+      });
+      toast.success(t("purchases.pay.draftCreated"));
+      setFormOpen(false);
+      await loadDashboard();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const filtered = supplierPayments.filter((p) =>
@@ -134,25 +143,29 @@ export default function PurchasePayments() {
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? `Supplier #${id}`;
 
+  const summaryCards = summary ? [
+    { label: t("purchases.pay.summary.outstandingAp"), value: summary.apOutstandingAmount.toLocaleString() },
+    { label: t("purchases.pay.summary.apPaid"), value: summary.apPaidAmount.toLocaleString() },
+    { label: t("purchases.pay.summary.postedPayments"), value: summary.postedPayments },
+    { label: t("purchases.pay.summary.totalPayments"), value: summary.totalPayments },
+    { label: t("purchases.pay.summary.voided"), value: summary.voidedPayments },
+  ] : [];
+
+  const paymentStatusLabel = (status: keyof typeof statusColors) => t(`purchases.status.${status}`);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Supplier Payments</h1>
-          <p className="text-sm text-muted-foreground">Draft → Approve → Post payment allocations</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("purchases.pay.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("purchases.pay.subtitle")}</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> New Payment</Button>
+        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> {t("purchases.pay.newPayment")}</Button>
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            { label: "Outstanding AP", value: summary.apOutstandingAmount.toLocaleString() },
-            { label: "AP Paid", value: summary.apPaidAmount.toLocaleString() },
-            { label: "Posted Payments", value: summary.postedPayments },
-            { label: "Total Payments", value: summary.totalPayments },
-            { label: "Voided", value: summary.voidedPayments },
-          ].map((item) => (
+          {summaryCards.map((item) => (
             <Card key={item.label}><CardContent className="p-3"><p className="text-xs text-muted-foreground">{item.label}</p><p className="text-lg font-semibold">{item.value}</p></CardContent></Card>
           ))}
         </div>
@@ -160,27 +173,27 @@ export default function PurchasePayments() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="aging">AP Aging</TabsTrigger>
-          <TabsTrigger value="statement">Supplier Statement</TabsTrigger>
+          <TabsTrigger value="payments">{t("purchases.pay.tabs.payments")}</TabsTrigger>
+          <TabsTrigger value="aging">{t("purchases.pay.tabs.aging")}</TabsTrigger>
+          <TabsTrigger value="statement">{t("purchases.pay.tabs.statement")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payments" className="space-y-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search payment…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder={t("purchases.pay.searchPlaceholder")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Card><CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30">
-                  <TableHead>Payment #</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Allocated</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("purchases.pay.columns.paymentNo")}</TableHead>
+                  <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                  <TableHead>{t("purchases.shared.date")}</TableHead>
+                  <TableHead>{t("purchases.shared.total")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.allocated")}</TableHead>
+                  <TableHead>{t("purchases.shared.status")}</TableHead>
+                  <TableHead className="text-right">{t("purchases.shared.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -192,12 +205,12 @@ export default function PurchasePayments() {
                     <TableCell>{pay.amount.toLocaleString()}</TableCell>
                     <TableCell>{pay.allocatedAmount.toLocaleString()}</TableCell>
                     <TableCell className="space-x-1">
-                      <Badge variant="outline" className={statusColors[pay.status]}>{pay.status}</Badge>
+                      <Badge variant="outline" className={statusColors[pay.status]}>{paymentStatusLabel(pay.status)}</Badge>
                       {pay.status === "posted" && <PostingStatusBadge postingStatus={pay.postingStatus} />}
                     </TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button size="sm" variant="ghost" onClick={() => setViewId(pay.id)}><Eye className="h-3.5 w-3.5" /></Button>
-                      {pay.status === "draft" && <Button size="sm" variant="outline" onClick={() => void approveSupplierPaymentAction(pay.id).then(loadDashboard)}>Approve</Button>}
+                      {pay.status === "draft" && <Button size="sm" variant="outline" onClick={() => void approveSupplierPaymentAction(pay.id).then(loadDashboard)}>{t("purchases.shared.approve")}</Button>}
                       {pay.status === "approved" && <Button size="sm" onClick={() => void postSupplierPaymentAction(pay.id).then(loadDashboard)}><Upload className="h-3 w-3" /></Button>}
                       {(pay.status === "draft" || pay.status === "approved" || pay.status === "posted") && pay.status !== "void" && (
                         <Button size="sm" variant="destructive" onClick={() => void voidSupplierPaymentAction(pay.id).then(loadDashboard)}><Ban className="h-3 w-3" /></Button>
@@ -215,13 +228,13 @@ export default function PurchasePayments() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30">
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Current</TableHead>
-                  <TableHead>1-30</TableHead>
-                  <TableHead>31-60</TableHead>
-                  <TableHead>61-90</TableHead>
-                  <TableHead>90+</TableHead>
-                  <TableHead>Total</TableHead>
+                  <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.current")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.days1to30")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.days31to60")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.days61to90")}</TableHead>
+                  <TableHead>{t("purchases.pay.columns.days90plus")}</TableHead>
+                  <TableHead>{t("purchases.shared.total")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -243,16 +256,16 @@ export default function PurchasePayments() {
 
         <TabsContent value="statement" className="space-y-4">
           <Select value={statementSupplierId} onValueChange={setStatementSupplierId}>
-            <SelectTrigger className="max-w-sm"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+            <SelectTrigger className="max-w-sm"><SelectValue placeholder={t("purchases.pay.form.selectSupplier")} /></SelectTrigger>
             <SelectContent>
               {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
           {statement && (
             <div className="grid md:grid-cols-3 gap-3">
-              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Invoiced</p><p className="text-lg font-semibold">{statement.totalInvoiced.toLocaleString()}</p></CardContent></Card>
-              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Paid</p><p className="text-lg font-semibold">{statement.totalPaid.toLocaleString()}</p></CardContent></Card>
-              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Outstanding</p><p className="text-lg font-semibold">{statement.outstanding.toLocaleString()}</p></CardContent></Card>
+              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.invoiced")}</p><p className="text-lg font-semibold">{statement.totalInvoiced.toLocaleString()}</p></CardContent></Card>
+              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.paid")}</p><p className="text-lg font-semibold">{statement.totalPaid.toLocaleString()}</p></CardContent></Card>
+              <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.outstanding")}</p><p className="text-lg font-semibold">{statement.outstanding.toLocaleString()}</p></CardContent></Card>
             </div>
           )}
         </TabsContent>
@@ -260,45 +273,43 @@ export default function PurchasePayments() {
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Create Payment</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.pay.createPayment")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Supplier *</label>
+                <label className="text-sm font-medium">{t("purchases.shared.supplier")} *</label>
                 <Select value={supplierId} onValueChange={handleSupplierSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.pay.form.selectSupplier")} /></SelectTrigger>
                   <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Payment Date</label>
+                <label className="text-sm font-medium">{t("purchases.pay.form.paymentDate")}</label>
                 <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Method</label>
-                <Select value={paymentMethod} onValueChange={(v: typeof paymentMethod) => setPaymentMethod(v)}>
+                <label className="text-sm font-medium">{t("purchases.pay.form.method")}</label>
+                <Select value={paymentMethod} onValueChange={(v: PaymentMethod) => setPaymentMethod(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="giro">Giro</SelectItem>
-                    <SelectItem value="check">Check</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    {(["cash", "bank_transfer", "giro", "check", "other"] as const).map((m) => (
+                      <SelectItem key={m} value={m}>{t(`purchases.pay.methods.${m}`)}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Reference No</label>
+                <label className="text-sm font-medium">{t("purchases.pay.form.referenceNo")}</label>
                 <Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Amount *</label>
+                <label className="text-sm font-medium">{t("purchases.pay.form.amount")}</label>
                 <Input type="number" min={0} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
               </div>
             </div>
             {supplierId && payableInvoices.length > 0 && (
               <Table>
-                <TableHeader><TableRow><TableHead>Invoice</TableHead><TableHead>Outstanding</TableHead><TableHead>Allocate</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>{t("purchases.pay.columns.invoice")}</TableHead><TableHead>{t("purchases.inv.columns.outstanding")}</TableHead><TableHead>{t("purchases.pay.columns.allocate")}</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {payableInvoices.map((inv) => {
                     const outstanding = inv.outstandingAmount ?? inv.remainingAmount;
@@ -317,8 +328,8 @@ export default function PurchasePayments() {
               </Table>
             )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={() => void handleSave()}>Save Draft</Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>{t("purchases.shared.cancel")}</Button>
+              <Button onClick={() => void handleSave()}>{t("purchases.shared.saveDraft")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -326,14 +337,14 @@ export default function PurchasePayments() {
 
       <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Payment Detail — {viewedPayment?.paymentNo}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.pay.detailTitle")} — {viewedPayment?.paymentNo}</DialogTitle></DialogHeader>
           {viewedPayment && (
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Supplier:</span> {viewedPayment.supplierName ?? getSupplierName(viewedPayment.supplierId)}</div>
-                <div><span className="text-muted-foreground">Amount:</span> {viewedPayment.amount.toLocaleString()}</div>
-                <div><span className="text-muted-foreground">Date:</span> {viewedPayment.paymentDate}</div>
-                <div><span className="text-muted-foreground">Method:</span> {viewedPayment.paymentMethod}</div>
+                <div><span className="text-muted-foreground">{t("purchases.shared.supplier")}:</span> {viewedPayment.supplierName ?? getSupplierName(viewedPayment.supplierId)}</div>
+                <div><span className="text-muted-foreground">{t("purchases.shared.total")}:</span> {viewedPayment.amount.toLocaleString()}</div>
+                <div><span className="text-muted-foreground">{t("purchases.shared.date")}:</span> {viewedPayment.paymentDate}</div>
+                <div><span className="text-muted-foreground">{t("purchases.pay.form.method")}:</span> {t(`purchases.pay.methods.${viewedPayment.paymentMethod as PaymentMethod}`, { defaultValue: viewedPayment.paymentMethod })}</div>
               </div>
               <PostingStatusIndicator postingStatus={viewedPayment.postingStatus} />
             </div>

@@ -257,7 +257,7 @@ type OrderStore = {
   addOrderPaymentsRemote: (
     id: string,
     payments: OrderPaymentPayload[],
-    extra?: { cashAccountCode?: string; revenueAccountCode?: string; idempotencyKey?: string },
+    extra?: { cashAccountCode?: string; revenueAccountCode?: string; idempotencyKey?: string; qrOrderRequestId?: number },
   ) => Promise<Order>;
   createOrderSplitRemote: (orderId: string, payload: OrderSplitPayload) => Promise<Order>;
   updateOrderSplitRemote: (
@@ -632,6 +632,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         ...(extra?.cashAccountCode ? { cashAccountCode: extra.cashAccountCode } : {}),
         ...(extra?.revenueAccountCode ? { revenueAccountCode: extra.revenueAccountCode } : {}),
         ...(extra?.idempotencyKey ? { idempotencyKey: extra.idempotencyKey } : {}),
+        ...(extra?.qrOrderRequestId ? { qrOrderRequestId: extra.qrOrderRequestId } : {}),
       }, {
         signal: controller.signal,
         headers: createObservabilityHeaders(requestMeta),

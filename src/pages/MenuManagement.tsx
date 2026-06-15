@@ -11,6 +11,7 @@ import { MenuProductionStationField } from "@/components/menu/MenuProductionStat
 import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import type { Outlet } from "@/domain/settingsDomainTypes";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -81,6 +82,7 @@ type MenuItemOutletForm = {
 };
 
 export default function MenuManagement() {
+  const { t } = useOpsTranslation();
   const queryClient = useQueryClient();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [search, setSearch] = useState("");
@@ -143,7 +145,7 @@ export default function MenuManagement() {
       setIngredients(ingredientsData);
       setOutlets(outletsData);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load menu data");
+      toast.error(error instanceof Error ? error.message : t("menu.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -163,7 +165,7 @@ export default function MenuManagement() {
       setAllOutletItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
       await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update menu");
+      toast.error(error instanceof Error ? error.message : t("menu.updateFailed"));
     }
   };
 
@@ -214,10 +216,10 @@ export default function MenuManagement() {
       setItems((prev) => prev.map((item) => (item.id === editingRecipe.menuItemId ? updated : item)));
       setAllOutletItems((prev) => prev.map((item) => (item.id === editingRecipe.menuItemId ? updated : item)));
       await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
-      toast.success("Recipe saved");
+      toast.success(t("menu.recipeSaved"));
       setEditingRecipe(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save recipe");
+      toast.error(error instanceof Error ? error.message : t("menu.recipeSaveFailed"));
     }
   };
 
@@ -248,17 +250,17 @@ export default function MenuManagement() {
 
   const validateEditForm = () => {
     const errors: Partial<Record<keyof EditMenuForm, string>> = {};
-    if (!editForm.name.trim()) errors.name = "Name is required";
-    if (!editForm.category.trim()) errors.category = "Category is required";
+    if (!editForm.name.trim()) errors.name = t("shared.nameRequired");
+    if (!editForm.category.trim()) errors.category = t("menu.categoryRequired");
     if (editForm.price.trim() === "") {
-      errors.price = "Price is required";
+      errors.price = t("menu.priceRequired");
     } else if (isNaN(Number(editForm.price)) || Number(editForm.price) < 0) {
-      errors.price = "Price must be a valid positive number";
+      errors.price = t("menu.priceInvalid");
     }
-    if (!editForm.emoji.trim()) errors.emoji = "Emoji is required";
+    if (!editForm.emoji.trim()) errors.emoji = t("menu.emojiRequired");
     for (const outletRow of editForm.menuItemOutlets) {
       if (outletRow.priceOverride.trim() !== "" && (isNaN(Number(outletRow.priceOverride)) || Number(outletRow.priceOverride) < 0)) {
-        errors.price = "Outlet override price must be a valid positive number";
+        errors.price = t("menu.overridePriceInvalid");
       }
     }
 
@@ -268,17 +270,17 @@ export default function MenuManagement() {
 
   const validateCreateForm = () => {
     const errors: Partial<Record<keyof EditMenuForm, string>> = {};
-    if (!createForm.name.trim()) errors.name = "Name is required";
-    if (!createForm.category.trim()) errors.category = "Category is required";
+    if (!createForm.name.trim()) errors.name = t("shared.nameRequired");
+    if (!createForm.category.trim()) errors.category = t("menu.categoryRequired");
     if (createForm.price.trim() === "") {
-      errors.price = "Price is required";
+      errors.price = t("menu.priceRequired");
     } else if (isNaN(Number(createForm.price)) || Number(createForm.price) < 0) {
-      errors.price = "Price must be a valid positive number";
+      errors.price = t("menu.priceInvalid");
     }
-    if (!createForm.emoji.trim()) errors.emoji = "Emoji is required";
+    if (!createForm.emoji.trim()) errors.emoji = t("menu.emojiRequired");
     for (const outletRow of createForm.menuItemOutlets) {
       if (outletRow.priceOverride.trim() !== "" && (isNaN(Number(outletRow.priceOverride)) || Number(outletRow.priceOverride) < 0)) {
-        errors.price = "Outlet override price must be a valid positive number";
+        errors.price = t("menu.overridePriceInvalid");
       }
     }
 
@@ -309,10 +311,10 @@ export default function MenuManagement() {
       setItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
       setAllOutletItems((prev) => prev.map((item) => (item.id === editingItem.id ? updated : item)));
       await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
-      toast.success("Menu item updated");
+      toast.success(t("menu.itemUpdated"));
       setEditingItem(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update menu item");
+      toast.error(error instanceof Error ? error.message : t("menu.itemUpdateFailed"));
     } finally {
       setSavingEdit(false);
     }
@@ -344,10 +346,10 @@ export default function MenuManagement() {
       setItems((prev) => [created, ...prev]);
       setAllOutletItems((prev) => [created, ...prev]);
       await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
-      toast.success("Menu item created");
+      toast.success(t("menu.itemCreated"));
       setCreatingItem(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create menu item");
+      toast.error(error instanceof Error ? error.message : t("menu.itemCreateFailed"));
     } finally {
       setSavingCreate(false);
     }
@@ -357,13 +359,13 @@ export default function MenuManagement() {
     <div className="p-4 md:p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Menu Management</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{items.length} items</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("menu.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("menu.itemCount", { n: items.length })}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-xs">
             <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">Block insufficient stock</span>
+            <span className="text-muted-foreground">{t("menu.blockInsufficientStock")}</span>
             <button onClick={() => setBlockOnInsufficient(!blockOnInsufficient)}>
               {blockOnInsufficient ? (
                 <ToggleRight className="h-5 w-5 text-primary" />
@@ -376,7 +378,7 @@ export default function MenuManagement() {
             onClick={openCreateModal}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
           >
-            <Plus className="h-4 w-4" /> Add Item
+            <Plus className="h-4 w-4" /> {t("menu.addItem")}
           </button>
         </div>
       </div>
@@ -385,14 +387,14 @@ export default function MenuManagement() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search menu items..."
+          placeholder={t("menu.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>
 
-      <SkeletonBusyRegion busy={loading} className="min-h-[320px]" label="Loading menu">
+      <SkeletonBusyRegion busy={loading} className="min-h-[320px]" label={t("menu.loading")}>
         {loading ? (
           <MenuManagementTableSkeleton />
         ) : (
@@ -400,12 +402,12 @@ export default function MenuManagement() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground border-b bg-muted/30">
-              <th className="p-4 font-medium">Item</th>
-              <th className="p-4 font-medium">Category</th>
-              <th className="p-4 font-medium">Price</th>
-              <th className="p-4 font-medium">Recipe</th>
-              <th className="p-4 font-medium">Status</th>
-              <th className="p-4 font-medium">Actions</th>
+              <th className="p-4 font-medium">{t("menu.columns.item")}</th>
+              <th className="p-4 font-medium">{t("menu.columns.category")}</th>
+              <th className="p-4 font-medium">{t("menu.columns.price")}</th>
+              <th className="p-4 font-medium">{t("menu.columns.recipe")}</th>
+              <th className="p-4 font-medium">{t("menu.columns.status")}</th>
+              <th className="p-4 font-medium">{t("menu.columns.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -431,18 +433,18 @@ export default function MenuManagement() {
                       }`}
                     >
                       <ChefHat className="h-3 w-3" />
-                      {recipeCount > 0 ? `${recipeCount} ingredients` : "No recipe"}
+                      {recipeCount > 0 ? t("menu.ingredientCount", { n: recipeCount }) : t("menu.noRecipe")}
                     </button>
                   </td>
                   <td className="p-4">
                     <button onClick={() => toggleAvailability(item.id)}>
                       {item.available ? (
                         <span className="flex items-center gap-1.5 text-success text-xs font-medium">
-                          <ToggleRight className="h-5 w-5" /> Available
+                          <ToggleRight className="h-5 w-5" /> {t("menu.available")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
-                          <ToggleLeft className="h-5 w-5" /> Unavailable
+                          <ToggleLeft className="h-5 w-5" /> {t("menu.unavailable")}
                         </span>
                       )}
                     </button>
@@ -451,8 +453,8 @@ export default function MenuManagement() {
                     <button
                       onClick={() => openItemEditor(item)}
                       className="p-2 rounded-lg hover:bg-muted transition-colors"
-                      aria-label={`Edit ${item.name}`}
-                      title={`Edit ${item.name}`}
+                      aria-label={t("menu.editAria", { name: item.name })}
+                      title={t("menu.editAria", { name: item.name })}
                     >
                       <Edit2 className="h-4 w-4 text-muted-foreground" />
                     </button>
@@ -486,7 +488,7 @@ export default function MenuManagement() {
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
                   <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                    <ChefHat className="h-5 w-5 text-primary" /> Recipe
+                    <ChefHat className="h-5 w-5 text-primary" /> {t("menu.recipeTitle")}
                   </h2>
                   <p className="text-sm text-muted-foreground">{editingRecipe.menuName}</p>
                 </div>
@@ -499,8 +501,8 @@ export default function MenuManagement() {
                 {editingRecipe.ingredients.length === 0 && (
                   <div className="text-center py-8">
                     <ChefHat className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No ingredients yet</p>
-                    <p className="text-xs text-muted-foreground/60">Add ingredients to track stock usage</p>
+                    <p className="text-sm text-muted-foreground">{t("menu.noIngredients")}</p>
+                    <p className="text-xs text-muted-foreground/60">{t("menu.recipeHint")}</p>
                   </div>
                 )}
 
@@ -514,10 +516,10 @@ export default function MenuManagement() {
                           onChange={(e) => updateIngredientRow(index, "inventoryItemId", e.target.value)}
                           className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                         >
-                          <option value="">Select ingredient...</option>
+                          <option value="">{t("menu.selectIngredient")}</option>
                           {ingredientOptions.map((ing) => (
                             <option key={ing.id} value={ing.id}>
-                              {ing.name} ({ing.stock} {ing.unit} left)
+                              {t("menu.ingredientStockLeft", { name: ing.name, stock: ing.stock, unit: ing.unit })}
                             </option>
                           ))}
                         </select>
@@ -529,7 +531,7 @@ export default function MenuManagement() {
                           min="0"
                           value={ri.quantity || ""}
                           onChange={(e) => updateIngredientRow(index, "quantity", parseFloat(e.target.value) || 0)}
-                          placeholder="Qty"
+                          placeholder={t("menu.qty")}
                           className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/20"
                         />
                       </div>
@@ -550,7 +552,7 @@ export default function MenuManagement() {
                   onClick={addIngredientRow}
                   className="w-full py-2.5 rounded-xl border-2 border-dashed border-border hover:border-primary/30 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-2"
                 >
-                  <Plus className="h-4 w-4" /> Add Ingredient
+                  <Plus className="h-4 w-4" /> {t("menu.addIngredient")}
                 </button>
               </div>
 
@@ -559,13 +561,13 @@ export default function MenuManagement() {
                   onClick={() => setEditingRecipe(null)}
                   className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors"
                 >
-                  Cancel
+                  {t("shared.cancel")}
                 </button>
                 <button
                   onClick={saveRecipe}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
                 >
-                  Save Recipe
+                  {t("menu.saveRecipe")}
                 </button>
               </div>
             </motion.div>
@@ -592,8 +594,8 @@ export default function MenuManagement() {
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
-                  <h2 className="text-lg font-bold text-foreground">Edit Menu Item</h2>
-                  <p className="text-sm text-muted-foreground">Update item details</p>
+                  <h2 className="text-lg font-bold text-foreground">{t("menu.editItem")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("menu.editSubtitle")}</p>
                 </div>
                 <button onClick={() => setEditingItem(null)} className="p-2 rounded-lg hover:bg-muted">
                   <X className="h-4 w-4" />
@@ -602,27 +604,27 @@ export default function MenuManagement() {
 
               <div className="p-5 space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Item Name</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.itemName")}</label>
                   <input
                     value={editForm.name}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                       editErrors.name ? "border-destructive" : "border-border"
                     }`}
-                    placeholder="e.g. Nasi Goreng Special"
+                    placeholder={t("menu.namePlaceholder")}
                   />
                   {editErrors.name && <p className="text-xs text-destructive">{editErrors.name}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Category</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.category")}</label>
                   <input
                     value={editForm.category}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                       editErrors.category ? "border-destructive" : "border-border"
                     }`}
-                    placeholder="e.g. Main Course"
+                    placeholder={t("menu.categoryPlaceholder")}
                   />
                   {editErrors.category && <p className="text-xs text-destructive">{editErrors.category}</p>}
                 </div>
@@ -635,7 +637,7 @@ export default function MenuManagement() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">Price</label>
+                    <label className="text-sm font-medium text-foreground">{t("menu.price")}</label>
                     <input
                       type="number"
                       min="0"
@@ -650,7 +652,7 @@ export default function MenuManagement() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">Emoji</label>
+                    <label className="text-sm font-medium text-foreground">{t("menu.emoji")}</label>
                     <input
                       value={editForm.emoji}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, emoji: e.target.value }))}
@@ -664,7 +666,7 @@ export default function MenuManagement() {
                 </div>
 
                 <div className="space-y-2.5">
-                  <label className="text-sm font-medium text-foreground">Outlet Settings</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.outletSettings")}</label>
                   <div className="space-y-2 max-h-56 overflow-y-auto border border-border/50 rounded-xl p-3 bg-muted/10">
                     {editForm.menuItemOutlets.map((row) => (
                       <div key={row.outletId} className="rounded-lg border border-border/40 p-3 space-y-2 bg-background">
@@ -695,7 +697,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="POS name override"
+                            placeholder={t("menu.posNameOverride")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                           <input
@@ -710,7 +712,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="Price override"
+                            placeholder={t("menu.priceOverride")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                           <input
@@ -723,7 +725,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="Receipt name"
+                            placeholder={t("menu.receiptName")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
@@ -739,14 +741,14 @@ export default function MenuManagement() {
                   disabled={savingEdit}
                   className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
                 >
-                  Cancel
+                  {t("shared.cancel")}
                 </button>
                 <button
                   onClick={saveItemEdit}
                   disabled={savingEdit}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {savingEdit ? "Saving..." : "Save"}
+                  {savingEdit ? t("shared.saving") : t("shared.save")}
                 </button>
               </div>
             </motion.div>
@@ -773,8 +775,8 @@ export default function MenuManagement() {
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
-                  <h2 className="text-lg font-bold text-foreground">Add Menu Item</h2>
-                  <p className="text-sm text-muted-foreground">Create a new item</p>
+                  <h2 className="text-lg font-bold text-foreground">{t("menu.addMenuItem")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("menu.createSubtitle")}</p>
                 </div>
                 <button onClick={() => setCreatingItem(false)} className="p-2 rounded-lg hover:bg-muted">
                   <X className="h-4 w-4" />
@@ -783,27 +785,27 @@ export default function MenuManagement() {
 
               <div className="p-5 space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Item Name</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.itemName")}</label>
                   <input
                     value={createForm.name}
                     onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                       createErrors.name ? "border-destructive" : "border-border"
                     }`}
-                    placeholder="e.g. Nasi Goreng Special"
+                    placeholder={t("menu.namePlaceholder")}
                   />
                   {createErrors.name && <p className="text-xs text-destructive">{createErrors.name}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Category</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.category")}</label>
                   <input
                     value={createForm.category}
                     onChange={(e) => setCreateForm((prev) => ({ ...prev, category: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                       createErrors.category ? "border-destructive" : "border-border"
                     }`}
-                    placeholder="e.g. Main Course"
+                    placeholder={t("menu.categoryPlaceholder")}
                   />
                   {createErrors.category && <p className="text-xs text-destructive">{createErrors.category}</p>}
                 </div>
@@ -816,7 +818,7 @@ export default function MenuManagement() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">Price</label>
+                    <label className="text-sm font-medium text-foreground">{t("menu.price")}</label>
                     <input
                       type="number"
                       min="0"
@@ -831,7 +833,7 @@ export default function MenuManagement() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">Emoji</label>
+                    <label className="text-sm font-medium text-foreground">{t("menu.emoji")}</label>
                     <input
                       value={createForm.emoji}
                       onChange={(e) => setCreateForm((prev) => ({ ...prev, emoji: e.target.value }))}
@@ -845,7 +847,7 @@ export default function MenuManagement() {
                 </div>
 
                 <div className="space-y-2.5">
-                  <label className="text-sm font-medium text-foreground">Outlet Settings</label>
+                  <label className="text-sm font-medium text-foreground">{t("menu.outletSettings")}</label>
                   <div className="space-y-2 max-h-56 overflow-y-auto border border-border/50 rounded-xl p-3 bg-muted/10">
                     {createForm.menuItemOutlets.map((row) => (
                       <div key={row.outletId} className="rounded-lg border border-border/40 p-3 space-y-2 bg-background">
@@ -876,7 +878,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="POS name override"
+                            placeholder={t("menu.posNameOverride")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                           <input
@@ -891,7 +893,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="Price override"
+                            placeholder={t("menu.priceOverride")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                           <input
@@ -904,7 +906,7 @@ export default function MenuManagement() {
                                 ),
                               }))
                             }
-                            placeholder="Receipt name"
+                            placeholder={t("menu.receiptName")}
                             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                           />
                         </div>
@@ -920,14 +922,14 @@ export default function MenuManagement() {
                   disabled={savingCreate}
                   className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
                 >
-                  Cancel
+                  {t("shared.cancel")}
                 </button>
                 <button
                   onClick={saveNewItem}
                   disabled={savingCreate}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {savingCreate ? "Saving..." : "Create"}
+                  {savingCreate ? t("shared.saving") : t("shared.create")}
                 </button>
               </div>
             </motion.div>

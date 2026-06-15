@@ -14,6 +14,8 @@ import { usePurchaseStore, POStatus } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { listWarehouses, type WarehouseApiRow } from "@/lib/api-integration/warehouseEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, Send, Search, Package, Check, Ban, Eye, Lock } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,17 +29,8 @@ const statusColors: Record<POStatus, string> = {
   closed: "bg-muted text-muted-foreground",
 };
 
-const statusLabel: Record<POStatus, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  approved: "Approved",
-  partially_received: "Partially Received",
-  received: "Received",
-  cancelled: "Cancelled",
-  closed: "Closed",
-};
-
 export default function PurchaseOrders() {
+  const { t } = useErpTranslation();
   const [searchParams] = useSearchParams();
   const {
     purchaseOrders,
@@ -140,18 +133,22 @@ export default function PurchaseOrders() {
   };
 
   const handleSaveDraft = async () => {
-    if (!supplierId) { toast.error("Select a supplier"); return; }
-    if (items.length === 0 || items.some((i) => !i.inventoryItemId)) { toast.error("Add valid items"); return; }
+    if (!supplierId) { toast.error(t("purchases.po.selectSupplier")); return; }
+    if (items.length === 0 || items.some((i) => !i.inventoryItemId)) { toast.error(t("purchases.po.addValidItems")); return; }
     const warehousePayload = destinationWarehouseId ? destinationWarehouseId : undefined;
-    if (editId) {
-      await updatePO(editId, { supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
-      toast.success("PO updated");
-    } else {
-      await addPO({ supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
-      toast.success("PO saved as draft");
+    try {
+      if (editId) {
+        await updatePO(editId, { supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
+        toast.success(t("purchases.po.updated"));
+      } else {
+        await addPO({ supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
+        toast.success(t("purchases.po.savedDraft"));
+      }
+      setFormOpen(false);
+      resetForm();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.po.actionFailed"));
     }
-    setFormOpen(false);
-    resetForm();
   };
 
   const runWorkflow = async (action: "submit" | "approve" | "cancel" | "close", poId: string) => {
@@ -160,10 +157,16 @@ export default function PurchaseOrders() {
       if (action === "approve") await approvePO(poId);
       if (action === "cancel") await cancelPO(poId);
       if (action === "close") await closePO(poId);
-      toast.success(`PO ${action}${action === "close" ? "d" : "ed"}`);
+      const msg = {
+        submit: t("purchases.po.workflowSubmitted"),
+        approve: t("purchases.po.workflowApproved"),
+        cancel: t("purchases.po.workflowCancelled"),
+        close: t("purchases.po.workflowClosed"),
+      }[action];
+      toast.success(msg);
       setViewId(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Action failed");
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.po.actionFailed"));
     }
   };
 
@@ -180,17 +183,17 @@ export default function PurchaseOrders() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Purchase Orders</h1>
-          <p className="text-sm text-muted-foreground">Formal procurement orders with approval and receiving progress</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("purchases.po.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("purchases.po.subtitle")}</p>
         </div>
         <Button onClick={openNew} className="gap-2" disabled={!activeOutletId || activeOutletId < 1}>
-          <Plus className="h-4 w-4" /> New PO
+          <Plus className="h-4 w-4" /> {t("purchases.po.newPo")}
         </Button>
       </div>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search PO…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder={t("purchases.po.searchPlaceholder")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       <Card>
@@ -198,19 +201,19 @@ export default function PurchaseOrders() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead>PO Number</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("purchases.po.poNumber")}</TableHead>
+                <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                <TableHead>{t("purchases.po.source")}</TableHead>
+                <TableHead>{t("purchases.po.progress")}</TableHead>
+                <TableHead>{t("purchases.shared.total")}</TableHead>
+                <TableHead>{t("purchases.shared.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                    <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />No purchase orders yet
+                    <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />{t("purchases.po.empty")}
                   </TableCell>
                 </TableRow>
               )}
@@ -227,7 +230,7 @@ export default function PurchaseOrders() {
                   </TableCell>
                   <TableCell className="text-sm font-medium">Rp {getTotal(po).toLocaleString()}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={statusColors[po.status]}>{statusLabel[po.status]}</Badge>
+                    <Badge variant="outline" className={statusColors[po.status]}>{t(`purchases.status.${po.status}`)}</Badge>
                   </TableCell>
                 </TableRow>
               ))}
@@ -239,27 +242,27 @@ export default function PurchaseOrders() {
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editId ? "Edit Purchase Order" : "New Purchase Order"}</DialogTitle>
+            <DialogTitle>{editId ? t("purchases.po.edit") : t("purchases.po.new")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Supplier *</label>
+                <label className="text-sm font-medium">{t("purchases.shared.supplier")} *</label>
                 <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.po.selectSupplierPlaceholder")} /></SelectTrigger>
                   <SelectContent>
                     {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Date</label>
+                <label className="text-sm font-medium">{t("purchases.shared.date")}</label>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Reference PR</label>
+                <label className="text-sm font-medium">{t("purchases.po.referencePr")}</label>
                 <Select value={referencePR} onValueChange={handleSelectPr}>
-                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.shared.optional")} /></SelectTrigger>
                   <SelectContent>
                     {purchaseRequests.filter((p) => p.status === "approved").map((pr) => (
                       <SelectItem key={pr.id} value={pr.prNumber}>{pr.prNumber}</SelectItem>
@@ -268,27 +271,27 @@ export default function PurchaseOrders() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Destination warehouse</label>
+                <label className="text-sm font-medium">{t("purchases.po.destinationWarehouse")}</label>
                 <Select value={destinationWarehouseId || "__none__"} onValueChange={(v) => setDestinationWarehouseId(v === "__none__" ? "" : v)} disabled={warehouses.length === 0}>
-                  <SelectTrigger><SelectValue placeholder={warehouses.length === 0 ? "No warehouses" : "Optional"} /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={warehouses.length === 0 ? t("purchases.po.noWarehouses") : t("purchases.shared.optional")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">None</SelectItem>
+                    <SelectItem value="__none__">{t("purchases.po.none")}</SelectItem>
                     {warehouses.map((w) => <SelectItem key={w.id} value={w.id}>{w.code} — {w.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Notes</label>
+              <label className="text-sm font-medium">{t("purchases.shared.notes")}</label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Items</label>
+              <label className="text-sm font-medium">{t("purchases.po.items")}</label>
               <PurchaseItemTable items={items} onChange={setItems} showPrice showPrComparison />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={() => void handleSaveDraft()}>Save Draft</Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>{t("purchases.shared.cancel")}</Button>
+              <Button onClick={() => void handleSaveDraft()}>{t("purchases.po.saveDraft")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -302,14 +305,14 @@ export default function PurchaseOrders() {
           {viewed && (
             <div className="space-y-4 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant="outline" className={statusColors[viewed.status]}>{statusLabel[viewed.status]}</Badge>
+                <span className="text-muted-foreground">{t("purchases.shared.status")}</span>
+                <Badge variant="outline" className={statusColors[viewed.status]}>{t(`purchases.status.${viewed.status}`)}</Badge>
               </div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span>{getSupplierName(viewed.supplierId)}</span></div>
-              {viewed.referencePR && <div className="flex justify-between"><span className="text-muted-foreground">Related PR</span><span>{viewed.referencePR}</span></div>}
+              <div className="flex justify-between"><span className="text-muted-foreground">{t("purchases.shared.supplier")}</span><span>{getSupplierName(viewed.supplierId)}</span></div>
+              {viewed.referencePR && <div className="flex justify-between"><span className="text-muted-foreground">{t("purchases.po.relatedPr")}</span><span>{viewed.referencePR}</span></div>}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Received / Ordered</span>
+                  <span>{t("purchases.po.receivedOrdered")}</span>
                   <span>{viewed.totalReceivedQty ?? 0} / {viewed.totalOrderedQty ?? 0} ({viewed.completionPercentage ?? 0}%)</span>
                 </div>
                 <Progress value={viewed.completionPercentage ?? 0} />
@@ -318,14 +321,14 @@ export default function PurchaseOrders() {
                 {viewed.items.map((item, idx) => (
                   <div key={idx} className="px-3 py-2 grid grid-cols-4 gap-2 text-xs">
                     <span className="col-span-2">Item #{item.inventoryItemId}</span>
-                    <span>Ord {item.qty}</span>
-                    <span>Rcv {item.receivedQty} · Rem {item.remainingQty ?? Math.max(0, item.qty - item.receivedQty)}</span>
+                    <span>{t("purchases.po.ordered")} {item.qty}</span>
+                    <span>{t("purchases.po.receivedQty")} {item.receivedQty} · {t("purchases.po.remaining")} {item.remainingQty ?? Math.max(0, item.qty - item.receivedQty)}</span>
                   </div>
                 ))}
               </div>
               {viewed.goodsReceipts && viewed.goodsReceipts.length > 0 && (
                 <div>
-                  <p className="text-muted-foreground mb-1">Related GRNs</p>
+                  <p className="text-muted-foreground mb-1">{t("purchases.po.relatedGrns")}</p>
                   <div className="flex flex-wrap gap-1">
                     {viewed.goodsReceipts.map((g) => (
                       <Badge key={g.id} variant="secondary">{g.grnNumber}</Badge>
@@ -336,19 +339,19 @@ export default function PurchaseOrders() {
               <div className="flex flex-wrap gap-2 justify-end pt-2">
                 {viewed.status === "draft" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={() => { setViewId(null); openEdit(viewed.id); }}>Edit</Button>
-                    <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}><Ban className="h-3.5 w-3.5 mr-1" /> Cancel</Button>
-                    <Button size="sm" onClick={() => void runWorkflow("submit", viewed.id)}><Send className="h-3.5 w-3.5 mr-1" /> Submit</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setViewId(null); openEdit(viewed.id); }}>{t("purchases.po.editBtn")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}><Ban className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.cancel")}</Button>
+                    <Button size="sm" onClick={() => void runWorkflow("submit", viewed.id)}><Send className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.submit")}</Button>
                   </>
                 )}
                 {viewed.status === "submitted" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}>Cancel</Button>
-                    <Button size="sm" onClick={() => void runWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
+                    <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}>{t("purchases.po.cancel")}</Button>
+                    <Button size="sm" onClick={() => void runWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.approve")}</Button>
                   </>
                 )}
                 {viewed.status === "received" && (
-                  <Button size="sm" onClick={() => void runWorkflow("close", viewed.id)}><Lock className="h-3.5 w-3.5 mr-1" /> Close</Button>
+                  <Button size="sm" onClick={() => void runWorkflow("close", viewed.id)}><Lock className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.close")}</Button>
                 )}
                 <Button size="sm" variant="ghost" onClick={() => setViewId(null)}><Eye className="h-3.5 w-3.5" /></Button>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { X } from "lucide-react";
 import { parseQrOrderCode } from "@/lib/qrOrderCodeParser";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   open: boolean;
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
+  const { t } = useOpsTranslation();
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +38,7 @@ export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
         () => undefined,
       )
       .catch(() => {
-        if (active) setError("Camera access failed. Use manual search or USB scanner.");
+        if (active) setError(t("qrStaff.scanner.cameraFailed"));
       });
 
     return () => {
@@ -46,7 +48,7 @@ export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
       }
       scannerRef.current = null;
     };
-  }, [open, onClose, onScan]);
+  }, [open, onClose, onScan, t]);
 
   if (!open) return null;
 
@@ -54,15 +56,15 @@ export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
     <div className="fixed inset-0 z-50 bg-foreground/50 backdrop-blur-sm flex items-center justify-center p-4" data-testid="qr-order-scanner-modal">
       <div className="bg-card rounded-2xl border border-border w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="font-semibold text-foreground">Scan QR</h3>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted" aria-label="Close scanner">
+          <h3 className="font-semibold text-foreground">{t("qrStaff.scanner.title")}</h3>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted" aria-label={t("qrStaff.scanner.closeAria")}>
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="p-4">
           <div id="qr-order-scanner-region" className="w-full overflow-hidden rounded-xl" />
           {error && <p className="text-sm text-destructive mt-3">{error}</p>}
-          <p className="text-xs text-muted-foreground mt-3">Point camera at customer order QR code.</p>
+          <p className="text-xs text-muted-foreground mt-3">{t("qrStaff.scanner.hint")}</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const empty: Outlet = {
 };
 
 export default function OutletsSettings() {
+  const { t } = useTranslation("common");
   const outlets = useSettingsStore((s) => s.outlets);
   const outletsLoading = useSettingsStore((s) => s.outletsLoading);
   const outletsError = useSettingsStore((s) => s.outletsError);
@@ -45,29 +47,29 @@ export default function OutletsSettings() {
     setForm({ ...empty });
     setOpen(true);
   };
-  const openEdit = (o: Outlet) => {
-    setForm(o);
+  const openEdit = (outlet: Outlet) => {
+    setForm(outlet);
     setOpen(true);
   };
 
   const save = async () => {
-    if (!form.name.trim()) return toast.error("Outlet name required");
+    if (!form.name.trim()) return toast.error(t("settings.outlets.nameRequired"));
     try {
       await saveOutlet(form);
-      toast.success("Outlet saved");
+      toast.success(t("settings.outlets.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : t("common.saveFailed"));
     }
   };
 
   const onDelete = async (id: number) => {
-    if (!confirm("Delete outlet?")) return;
+    if (!confirm(t("settings.outlets.deleteConfirm"))) return;
     try {
       await deleteOutletById(id);
-      toast.success("Outlet deleted");
+      toast.success(t("settings.outlets.deleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : t("common.deleteFailed"));
     }
   };
 
@@ -75,79 +77,72 @@ export default function OutletsSettings() {
     <Card>
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="font-semibold">Outlets</h2>
+          <h2 className="font-semibold">{t("settings.outlets.title")}</h2>
           {canCreateOutlet && (
             <Button type="button" onClick={openNew}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Outlet
+              {t("settings.outlets.add")}
             </Button>
           )}
         </div>
         {outletsLoading && (
           <p className="text-sm text-muted-foreground" role="status">
-            Loading outlets from server…
+            {t("settings.outlets.loading")}
           </p>
         )}
         {outletsError && (
           <Alert variant="destructive">
-            <AlertTitle>Could not load outlets</AlertTitle>
+            <AlertTitle>{t("settings.outlets.loadError")}</AlertTitle>
             <AlertDescription>{outletsError}</AlertDescription>
           </Alert>
         )}
         {showSignInHint && (
           <Alert>
-            <AlertTitle>Not signed in to the API</AlertTitle>
-            <AlertDescription>
-              Outlets are loaded from the server after authentication. Use <strong>Sign in</strong> or set{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">VITE_API_ACCESS_TOKEN</code> for local dev, then use
-              &quot;Reload from server&quot; on Settings.
-            </AlertDescription>
+            <AlertTitle>{t("settings.outlets.notSignedIn")}</AlertTitle>
+            <AlertDescription>{t("settings.outlets.signInHint")}</AlertDescription>
           </Alert>
         )}
         {showEmptyScopeHint && (
           <Alert>
-            <AlertTitle>No outlets in your access scope</AlertTitle>
-            <AlertDescription>
-              Rows in the <code className="rounded bg-muted px-1 py-0.5 text-xs">outlets</code> table only appear here if
-              this user is linked in <code className="rounded bg-muted px-1 py-0.5 text-xs">user_outlets</code>, or the
-              role has the <code className="rounded bg-muted px-1 py-0.5 text-xs">outlets.view_all</code> permission.
-              Ask an administrator to assign outlets (Users &amp; Permissions) or grant view-all.
-            </AlertDescription>
+            <AlertTitle>{t("settings.outlets.emptyScope")}</AlertTitle>
+            <AlertDescription>{t("settings.outlets.emptyScopeHint")}</AlertDescription>
           </Alert>
         )}
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Manager</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>{t("settings.outlets.code")}</TableHead>
+              <TableHead>{t("common.name")}</TableHead>
+              <TableHead>{t("settings.merchant.address")}</TableHead>
+              <TableHead>{t("settings.merchant.phone")}</TableHead>
+              <TableHead>{t("settings.outlets.manager")}</TableHead>
+              <TableHead>{t("common.status")}</TableHead>
               <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {outlets.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell className="text-muted-foreground font-mono text-xs">{o.id}</TableCell>
-                <TableCell className="font-mono text-xs">{o.code}</TableCell>
-                <TableCell className="font-medium">{o.name}</TableCell>
-                <TableCell className="text-muted-foreground">{o.address}</TableCell>
-                <TableCell>{o.phone}</TableCell>
-                <TableCell>{o.manager}</TableCell>
+            {outlets.map((outlet) => (
+              <TableRow key={outlet.id}>
+                <TableCell className="text-muted-foreground font-mono text-xs">{outlet.id}</TableCell>
+                <TableCell className="font-mono text-xs">{outlet.code}</TableCell>
+                <TableCell className="font-medium">{outlet.name}</TableCell>
+                <TableCell className="text-muted-foreground">{outlet.address}</TableCell>
+                <TableCell>{outlet.phone}</TableCell>
+                <TableCell>{outlet.manager}</TableCell>
                 <TableCell>
-                  <Badge variant={o.status === "active" ? "default" : "secondary"}>{o.status}</Badge>
+                  <Badge variant={outlet.status === "active" ? "default" : "secondary"}>
+                    {outlet.status === "active" ? t("common.active") : t("common.inactive")}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    {canManageOutletSettings(o.id) && (
+                    {canManageOutletSettings(outlet.id) && (
                       <>
-                        <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(o)}>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(outlet)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(o.id)}>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(outlet.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </>
@@ -162,57 +157,59 @@ export default function OutletsSettings() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{form.id > 0 && outlets.some((o) => o.id === form.id) ? "Edit" : "New"} Outlet</DialogTitle>
+              <DialogTitle>
+                {form.id > 0 && outlets.some((outlet) => outlet.id === form.id)
+                  ? t("settings.outlets.editTitle")
+                  : t("settings.outlets.newTitle")}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                Leave <strong>Code</strong> empty to auto-generate (<code>OUT-{"{id}"}</code>) after save.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("settings.outlets.codeHint")}</p>
               <div className="space-y-2">
-                <Label>Code (optional)</Label>
+                <Label>{t("settings.outlets.code")}</Label>
                 <Input
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
-                  placeholder="e.g. o-main"
+                  placeholder={t("settings.outlets.codePlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{t("common.name")}</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>Address</Label>
+                <Label>{t("settings.merchant.address")}</Label>
                 <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Phone</Label>
+                  <Label>{t("settings.merchant.phone")}</Label>
                   <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Manager</Label>
+                  <Label>{t("settings.outlets.manager")}</Label>
                   <Input value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label>{t("common.status")}</Label>
                 <Select value={form.status} onValueChange={(v: "active" | "inactive") => setForm({ ...form, status: v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="active">{t("common.active")}</SelectItem>
+                    <SelectItem value="inactive">{t("common.inactive")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={outletsSubmitting}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="button" onClick={() => void save()} disabled={outletsSubmitting}>
-                {outletsSubmitting ? "Saving…" : "Save"}
+                {outletsSubmitting ? t("common.saving") : t("common.saveShort")}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -14,13 +14,9 @@ import {
   type ProcurementMatchStatus,
 } from "@/lib/api-integration/purchaseEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
-
-const matchLabel: Record<ProcurementMatchStatus, string> = {
-  matched: "Matched",
-  matched_with_tolerance: "Matched (Tol.)",
-  mismatch: "Mismatch",
-  blocked: "Blocked",
-};
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import type { TFunction } from "i18next";
 
 const matchColors: Record<ProcurementMatchStatus, string> = {
   matched: "bg-success/15 text-success border-success/30",
@@ -32,9 +28,11 @@ const matchColors: Record<ProcurementMatchStatus, string> = {
 function ResultsTable({
   rows,
   onRevalidate,
+  t,
 }: {
   rows: ProcurementMatchResultApiRow[];
   onRevalidate: (invoiceId: string) => void;
+  t: TFunction;
 }) {
   return (
     <Card>
@@ -42,21 +40,21 @@ function ResultsTable({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
-              <TableHead>PO</TableHead>
-              <TableHead>GRN</TableHead>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Qty Diff</TableHead>
-              <TableHead>Price Diff</TableHead>
-              <TableHead>Amount Diff</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("purchases.match.columns.po")}</TableHead>
+              <TableHead>{t("purchases.match.columns.grn")}</TableHead>
+              <TableHead>{t("purchases.match.columns.invoice")}</TableHead>
+              <TableHead>{t("purchases.match.columns.qtyDiff")}</TableHead>
+              <TableHead>{t("purchases.match.columns.priceDiff")}</TableHead>
+              <TableHead>{t("purchases.match.columns.amountDiff")}</TableHead>
+              <TableHead>{t("purchases.shared.status")}</TableHead>
+              <TableHead className="text-right">{t("purchases.shared.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                  No match results.
+                  {t("purchases.match.empty")}
                 </TableCell>
               </TableRow>
             )}
@@ -70,12 +68,12 @@ function ResultsTable({
                 <TableCell className="text-sm">{Number(r.amountDifference ?? 0).toLocaleString()}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className={matchColors[r.matchStatus]}>
-                    {matchLabel[r.matchStatus]}
+                    {t(`purchases.matchStatus.${r.matchStatus}`)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="outline" className="gap-1" onClick={() => onRevalidate(r.invoiceId)}>
-                    <RefreshCw className="h-3 w-3" /> Revalidate
+                    <RefreshCw className="h-3 w-3" /> {t("purchases.match.revalidate")}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -88,6 +86,7 @@ function ResultsTable({
 }
 
 export default function ProcurementThreeWayMatch() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [tab, setTab] = useState<"matched" | "mismatch" | "blocked">("matched");
   const [search, setSearch] = useState("");
@@ -119,10 +118,10 @@ export default function ProcurementThreeWayMatch() {
   const onRevalidate = async (invoiceId: string) => {
     try {
       await revalidateProcurementMatchResult({ invoiceId });
-      toast.success("Revalidated.");
+      toast.success(t("purchases.match.revalidated"));
       await load();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to revalidate.");
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.match.revalidateFailed"));
     }
   };
 
@@ -130,26 +129,25 @@ export default function ProcurementThreeWayMatch() {
     <div className="space-y-4">
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search PO/GRN/Invoice…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder={t("purchases.match.searchPlaceholder")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList>
-          <TabsTrigger value="matched">Matched</TabsTrigger>
-          <TabsTrigger value="mismatch">Mismatch</TabsTrigger>
-          <TabsTrigger value="blocked">Blocked</TabsTrigger>
+          <TabsTrigger value="matched">{t("purchases.match.tabs.matched")}</TabsTrigger>
+          <TabsTrigger value="mismatch">{t("purchases.match.tabs.mismatch")}</TabsTrigger>
+          <TabsTrigger value="blocked">{t("purchases.match.tabs.blocked")}</TabsTrigger>
         </TabsList>
         <TabsContent value="matched">
-          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "matched" || r.matchStatus === "matched_with_tolerance")} onRevalidate={onRevalidate} />
+          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "matched" || r.matchStatus === "matched_with_tolerance")} onRevalidate={onRevalidate} t={t} />
         </TabsContent>
         <TabsContent value="mismatch">
-          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "mismatch")} onRevalidate={onRevalidate} />
+          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "mismatch")} onRevalidate={onRevalidate} t={t} />
         </TabsContent>
         <TabsContent value="blocked">
-          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "blocked")} onRevalidate={onRevalidate} />
+          <ResultsTable rows={filtered.filter((r) => r.matchStatus === "blocked")} onRevalidate={onRevalidate} t={t} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-

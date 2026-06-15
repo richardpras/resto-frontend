@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Package, PackageCheck, Receipt, Wallet, ArrowRight, BarChart3 } from "lucide-react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import PurchaseRequests from "./PurchaseRequests";
 import PurchaseOrders from "./PurchaseOrders";
 import GoodsReceipts from "./GoodsReceipts";
@@ -11,7 +12,18 @@ import ProcurementThreeWayMatch from "./ProcurementThreeWayMatch";
 import ProcurementPosting from "./ProcurementPosting";
 import ProcurementAnalytics from "./ProcurementAnalytics";
 
+type PurchaseTab = "pr" | "po" | "grn" | "inv" | "pay";
+
+const FLOW_STEPS: { key: PurchaseTab; flowKey: "pr" | "po" | "grn" | "invoice" | "payment" }[] = [
+  { key: "pr", flowKey: "pr" },
+  { key: "po", flowKey: "po" },
+  { key: "grn", flowKey: "grn" },
+  { key: "inv", flowKey: "invoice" },
+  { key: "pay", flowKey: "payment" },
+];
+
 export default function Purchases() {
+  const { t } = useErpTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") ?? "pr");
 
@@ -22,54 +34,56 @@ export default function Purchases() {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      {/* Flow visualization */}
       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground py-3 px-4 bg-muted/30 rounded-xl border border-border/50">
-        <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "pr" ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-          PR
-        </span>
-        <ArrowRight className="h-3 w-3" />
-        <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "po" ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-          PO
-        </span>
-        <ArrowRight className="h-3 w-3" />
-        <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "grn" ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-          GRN
-        </span>
-        <ArrowRight className="h-3 w-3" />
-        <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "inv" ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-          Invoice
-        </span>
-        <ArrowRight className="h-3 w-3" />
-        <span className={`px-2.5 py-1 rounded-md font-medium transition-colors ${tab === "pay" ? "bg-primary text-primary-foreground" : "bg-background"}`}>
-          Payment
-        </span>
+        {FLOW_STEPS.map((step, index) => (
+          <span key={step.key} className="contents">
+            {index > 0 ? <ArrowRight className="h-3 w-3" /> : null}
+            <span
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                tab === step.key ? "bg-primary text-primary-foreground" : "bg-background"
+              }`}
+            >
+              {t(`purchases.flow.${step.flowKey}`)}
+            </span>
+          </span>
+        ))}
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => { setTab(value); setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("tab", value); return p; }); }}>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          setTab(value);
+          setSearchParams((prev) => {
+            const p = new URLSearchParams(prev);
+            p.set("tab", value);
+            return p;
+          });
+        }}
+      >
         <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
           <TabsTrigger value="pr" className="gap-1.5 text-xs sm:text-sm">
-            <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Purchase</span> Requests
+            <FileText className="h-3.5 w-3.5" /> {t("purchases.tabs.pr")}
           </TabsTrigger>
           <TabsTrigger value="po" className="gap-1.5 text-xs sm:text-sm">
-            <Package className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Purchase</span> Orders
+            <Package className="h-3.5 w-3.5" /> {t("purchases.tabs.po")}
           </TabsTrigger>
           <TabsTrigger value="grn" className="gap-1.5 text-xs sm:text-sm">
-            <PackageCheck className="h-3.5 w-3.5" /> Goods Receipt
+            <PackageCheck className="h-3.5 w-3.5" /> {t("purchases.tabs.grn")}
           </TabsTrigger>
           <TabsTrigger value="inv" className="gap-1.5 text-xs sm:text-sm">
-            <Receipt className="h-3.5 w-3.5" /> Invoices
+            <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.inv")}
           </TabsTrigger>
           <TabsTrigger value="match" className="gap-1.5 text-xs sm:text-sm">
-            <Receipt className="h-3.5 w-3.5" /> 3-Way Match
+            <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.match")}
           </TabsTrigger>
           <TabsTrigger value="posting" className="gap-1.5 text-xs sm:text-sm">
-            <Receipt className="h-3.5 w-3.5" /> Posting
+            <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.posting")}
           </TabsTrigger>
           <TabsTrigger value="analytics" className="gap-1.5 text-xs sm:text-sm">
-            <BarChart3 className="h-3.5 w-3.5" /> Analytics
+            <BarChart3 className="h-3.5 w-3.5" /> {t("purchases.tabs.analytics")}
           </TabsTrigger>
           <TabsTrigger value="pay" className="gap-1.5 text-xs sm:text-sm">
-            <Wallet className="h-3.5 w-3.5" /> Payments
+            <Wallet className="h-3.5 w-3.5" /> {t("purchases.tabs.pay")}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pr"><PurchaseRequests /></TabsContent>

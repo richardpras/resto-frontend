@@ -21,6 +21,7 @@ import {
 } from "@/lib/api-integration/purchaseEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { useSupplierStore } from "@/stores/supplierStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function KpiCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -35,6 +36,7 @@ function KpiCard({ label, value, sub }: { label: string; value: string | number;
 }
 
 export default function ProcurementAnalytics() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { suppliers, fetchSuppliers } = useSupplierStore();
 
@@ -110,21 +112,21 @@ export default function ProcurementAnalytics() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-semibold">Procurement Analytics</h2>
-        {loading && <span className="text-xs text-muted-foreground">Loading…</span>}
+        <h2 className="text-lg font-semibold">{t("purchases.analytics.title")}</h2>
+        {loading && <span className="text-xs text-muted-foreground">{t("purchases.analytics.loading")}</span>}
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KpiCard label="Total Spend" value={fmt(summary.totalSpend)} />
-          <KpiCard label="Outstanding AP" value={fmt(summary.outstandingPayables)} />
-          <KpiCard label="Overdue AP" value={fmt(summary.overduePayables)} />
-          <KpiCard label="Match Rate" value={pct(summary.matchRate)} />
-          <KpiCard label="Posting Rate" value={pct(summary.postingRate)} />
-          <KpiCard label="Avg PO Cycle" value={`${summary.averagePoCycleDays} days`} />
-          <KpiCard label="Avg Supplier Lead Time" value={`${summary.averageSupplierLeadTime ?? 0} days`} />
+          <KpiCard label={t("purchases.analytics.kpi.totalSpend")} value={fmt(summary.totalSpend)} />
+          <KpiCard label={t("purchases.analytics.kpi.outstandingAp")} value={fmt(summary.outstandingPayables)} />
+          <KpiCard label={t("purchases.analytics.kpi.overdueAp")} value={fmt(summary.overduePayables)} />
+          <KpiCard label={t("purchases.analytics.kpi.matchRate")} value={pct(summary.matchRate)} />
+          <KpiCard label={t("purchases.analytics.kpi.postingRate")} value={pct(summary.postingRate)} />
+          <KpiCard label={t("purchases.analytics.kpi.avgPoCycle")} value={t("purchases.analytics.kpi.days", { count: summary.averagePoCycleDays })} />
+          <KpiCard label={t("purchases.analytics.kpi.avgSupplierLeadTime")} value={t("purchases.analytics.kpi.days", { count: summary.averageSupplierLeadTime ?? 0 })} />
           <KpiCard
-            label="Top Supplier"
+            label={t("purchases.analytics.kpi.topSupplier")}
             value={summary.topSupplier?.supplierName ?? "—"}
             sub={summary.topSupplier ? fmt(summary.topSupplier.purchaseAmount) : undefined}
           />
@@ -133,23 +135,23 @@ export default function ProcurementAnalytics() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="kpi" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> KPI</TabsTrigger>
-          <TabsTrigger value="suppliers" className="gap-1"><Users className="h-3.5 w-3.5" /> Suppliers</TabsTrigger>
-          <TabsTrigger value="spend" className="gap-1"><TrendingUp className="h-3.5 w-3.5" /> Spend</TabsTrigger>
-          <TabsTrigger value="payables" className="gap-1"><Wallet className="h-3.5 w-3.5" /> AP</TabsTrigger>
-          <TabsTrigger value="posting" className="gap-1"><FileCheck className="h-3.5 w-3.5" /> Posting</TabsTrigger>
-          <TabsTrigger value="trends" className="gap-1"><LineChart className="h-3.5 w-3.5" /> Trends</TabsTrigger>
+          <TabsTrigger value="kpi" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.kpi")}</TabsTrigger>
+          <TabsTrigger value="suppliers" className="gap-1"><Users className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.suppliers")}</TabsTrigger>
+          <TabsTrigger value="spend" className="gap-1"><TrendingUp className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.spend")}</TabsTrigger>
+          <TabsTrigger value="payables" className="gap-1"><Wallet className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.payables")}</TabsTrigger>
+          <TabsTrigger value="posting" className="gap-1"><FileCheck className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.posting")}</TabsTrigger>
+          <TabsTrigger value="trends" className="gap-1"><LineChart className="h-3.5 w-3.5" /> {t("purchases.analytics.tabs.trends")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="kpi" className="space-y-4">
           {summary && (
             <Card>
               <CardContent className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-muted-foreground">Purchase Orders</span><p className="font-semibold">{summary.totalPurchaseOrders}</p></div>
-                <div><span className="text-muted-foreground">Receipts</span><p className="font-semibold">{summary.totalReceipts}</p></div>
-                <div><span className="text-muted-foreground">Invoices</span><p className="font-semibold">{summary.totalInvoices}</p></div>
-                <div><span className="text-muted-foreground">Payments</span><p className="font-semibold">{summary.totalPayments}</p></div>
-                <div><span className="text-muted-foreground">Avg Invoice Cycle</span><p className="font-semibold">{summary.averageInvoiceCycleDays} days</p></div>
+                <div><span className="text-muted-foreground">{t("purchases.analytics.kpi.purchaseOrders")}</span><p className="font-semibold">{summary.totalPurchaseOrders}</p></div>
+                <div><span className="text-muted-foreground">{t("purchases.analytics.kpi.receipts")}</span><p className="font-semibold">{summary.totalReceipts}</p></div>
+                <div><span className="text-muted-foreground">{t("purchases.analytics.kpi.invoices")}</span><p className="font-semibold">{summary.totalInvoices}</p></div>
+                <div><span className="text-muted-foreground">{t("purchases.analytics.kpi.payments")}</span><p className="font-semibold">{summary.totalPayments}</p></div>
+                <div><span className="text-muted-foreground">{t("purchases.analytics.kpi.avgInvoiceCycle")}</span><p className="font-semibold">{t("purchases.analytics.kpi.days", { count: summary.averageInvoiceCycleDays })}</p></div>
               </CardContent>
             </Card>
           )}
@@ -161,25 +163,25 @@ export default function ProcurementAnalytics() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Spend</TableHead>
-                    <TableHead>PO Count</TableHead>
-                    <TableHead>Avg Lead Time</TableHead>
-                    <TableHead>On-Time %</TableHead>
-                    <TableHead>Invoice Accuracy</TableHead>
-                    <TableHead>Match Rate</TableHead>
+                    <TableHead>{t("purchases.shared.supplier")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.spend")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.poCount")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.avgLeadTime")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.onTime")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.invoiceAccuracy")}</TableHead>
+                    <TableHead>{t("purchases.analytics.suppliers.matchRate")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {supplierRows.length === 0 && (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No supplier data.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{t("purchases.analytics.suppliers.empty")}</TableCell></TableRow>
                   )}
                   {supplierRows.map((row) => (
                     <TableRow key={row.supplierId}>
                       <TableCell className="font-medium">{row.supplierName}</TableCell>
                       <TableCell>{fmt(row.purchaseAmount)}</TableCell>
                       <TableCell>{row.purchaseCount}</TableCell>
-                      <TableCell>{row.averageLeadTime} days</TableCell>
+                      <TableCell>{t("purchases.analytics.kpi.days", { count: row.averageLeadTime })}</TableCell>
                       <TableCell>{pct(row.onTimeDeliveryRate)}</TableCell>
                       <TableCell>{pct(row.invoiceAccuracyRate)}</TableCell>
                       <TableCell>{pct(row.matchRate)}</TableCell>
@@ -194,9 +196,9 @@ export default function ProcurementAnalytics() {
         <TabsContent value="spend" className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <Select value={supplierFilter || "all"} onValueChange={(v) => setSupplierFilter(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-48"><SelectValue placeholder="All suppliers" /></SelectTrigger>
+              <SelectTrigger className="w-48"><SelectValue placeholder={t("purchases.analytics.spend.allSuppliers")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All suppliers</SelectItem>
+                <SelectItem value="all">{t("purchases.analytics.spend.allSuppliers")}</SelectItem>
                 {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -206,7 +208,7 @@ export default function ProcurementAnalytics() {
           <div className="grid md:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-0">
-                <p className="p-3 text-sm font-medium border-b">Monthly Spend</p>
+                <p className="p-3 text-sm font-medium border-b">{t("purchases.analytics.spend.monthlySpend")}</p>
                 <Table>
                   <TableBody>
                     {(spend?.monthlySpend ?? []).map((row) => (
@@ -218,7 +220,7 @@ export default function ProcurementAnalytics() {
             </Card>
             <Card>
               <CardContent className="p-0">
-                <p className="p-3 text-sm font-medium border-b">By Supplier</p>
+                <p className="p-3 text-sm font-medium border-b">{t("purchases.analytics.spend.bySupplier")}</p>
                 <Table>
                   <TableBody>
                     {(spend?.supplierSpend ?? []).slice(0, 10).map((row) => (
@@ -234,12 +236,12 @@ export default function ProcurementAnalytics() {
         <TabsContent value="payables">
           {payables && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <KpiCard label="Current" value={fmt(payables.current)} />
-              <KpiCard label="1–30 Days" value={fmt(payables.days1to30)} />
-              <KpiCard label="31–60 Days" value={fmt(payables.days31to60)} />
-              <KpiCard label="61–90 Days" value={fmt(payables.days61to90)} />
-              <KpiCard label="90+ Days" value={fmt(payables.days90plus)} />
-              <KpiCard label="Total Outstanding" value={fmt(payables.totalOutstanding)} />
+              <KpiCard label={t("purchases.analytics.payables.current")} value={fmt(payables.current)} />
+              <KpiCard label={t("purchases.analytics.payables.days1to30")} value={fmt(payables.days1to30)} />
+              <KpiCard label={t("purchases.analytics.payables.days31to60")} value={fmt(payables.days31to60)} />
+              <KpiCard label={t("purchases.analytics.payables.days61to90")} value={fmt(payables.days61to90)} />
+              <KpiCard label={t("purchases.analytics.payables.days90plus")} value={fmt(payables.days90plus)} />
+              <KpiCard label={t("purchases.analytics.payables.totalOutstanding")} value={fmt(payables.totalOutstanding)} />
             </div>
           )}
         </TabsContent>
@@ -247,13 +249,13 @@ export default function ProcurementAnalytics() {
         <TabsContent value="posting">
           {posting && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KpiCard label="Posted GRNs" value={posting.postedGrnCount} />
-              <KpiCard label="Unposted GRNs" value={posting.unpostedGrnCount} />
-              <KpiCard label="Posted Invoices" value={posting.postedInvoiceCount} />
-              <KpiCard label="Unposted Invoices" value={posting.unpostedInvoiceCount} />
-              <KpiCard label="Posted Payments" value={posting.postedPaymentCount} />
-              <KpiCard label="Unposted Payments" value={posting.unpostedPaymentCount} />
-              <KpiCard label="Posting Rate" value={pct(posting.postingRate)} />
+              <KpiCard label={t("purchases.analytics.postingKpi.postedGrns")} value={posting.postedGrnCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.unpostedGrns")} value={posting.unpostedGrnCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.postedInvoices")} value={posting.postedInvoiceCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.unpostedInvoices")} value={posting.unpostedInvoiceCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.postedPayments")} value={posting.postedPaymentCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.unpostedPayments")} value={posting.unpostedPaymentCount} />
+              <KpiCard label={t("purchases.analytics.postingKpi.postingRate")} value={pct(posting.postingRate)} />
             </div>
           )}
         </TabsContent>
@@ -264,12 +266,12 @@ export default function ProcurementAnalytics() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead>Month</TableHead>
-                    <TableHead>POs</TableHead>
-                    <TableHead>Receipts</TableHead>
-                    <TableHead>Invoices</TableHead>
-                    <TableHead>Payments</TableHead>
-                    <TableHead>Spend</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.month")}</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.pos")}</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.receipts")}</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.invoices")}</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.payments")}</TableHead>
+                    <TableHead>{t("purchases.analytics.trends.spend")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

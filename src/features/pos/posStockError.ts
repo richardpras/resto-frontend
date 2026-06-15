@@ -1,4 +1,5 @@
 import { ApiHttpError } from "@/lib/api-integration/client";
+import type { StockEnforcementMode } from "@/domain/settingsDomainTypes";
 
 export type StockShortageLine = {
   menuItemId: number;
@@ -67,14 +68,19 @@ export function parsePosStockError(error: unknown): PosStockErrorPayload | null 
   };
 }
 
-export function formatPosStockErrorMessage(payload: PosStockErrorPayload): string {
+export function formatPosStockErrorMessage(
+  payload: PosStockErrorPayload,
+  stockEnforcementMode?: StockEnforcementMode | null,
+): string {
   const lines = payload.stock.map(
     (row) => `- ${row.name}: requested ${row.requested}, available ${row.available}`,
   );
   const header = "Cannot complete payment.\n\nSome items are out of stock:";
-  const footer =
-    "\n\nPlease remove item, reduce quantity, or disable stock enforcement in Settings.";
-  return `${header}\n${lines.join("\n")}${footer}`;
+  const modeHint =
+    stockEnforcementMode === "deferred" || stockEnforcementMode === "warning"
+      ? "\n\nStock enforcement is not set to Strict for this outlet. Check Settings → Inventory / POS or outlet override."
+      : "\n\nPlease remove item, reduce quantity, or switch Stock Enforcement Mode in Settings.";
+  return `${header}\n${lines.join("\n")}${modeHint}`;
 }
 
 export function formatOpenBillRecoveryMessage(orderCode: string): string {

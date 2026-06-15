@@ -10,7 +10,6 @@ describe("Recovery page store boundary regression", () => {
   const strictStorePages = [
     "PaymentStatus.tsx",
     "QROrder.tsx",
-    "QROrdersList.tsx",
     "Kitchen.tsx",
   ];
 
@@ -32,7 +31,6 @@ describe("Recovery page store boundary regression", () => {
     const source = readPageSource("QROrdersList.tsx");
     expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.startPolling\)/);
     expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.stopPolling\)/);
-    expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.confirmRequest\)/);
-    expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.rejectRequest\)/);
+    expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.fetchRequests\)/);
   });
 });

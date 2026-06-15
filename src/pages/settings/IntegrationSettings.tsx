@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ import { putIntegrationSettings } from "@/lib/api-integration/settingsDomainEndp
 import { getPaymentHealth, type PaymentHealthReport } from "@/lib/api-integration/paymentEndpoints";
 
 export default function IntegrationSettings() {
+  const { t } = useTranslation("common");
   const { integration, updateIntegration } = useSettingsStore();
   const [form, setForm] = useState(integration);
   const [show, setShow] = useState(false);
@@ -27,11 +29,11 @@ export default function IntegrationSettings() {
     try {
       setPaymentHealth(await getPaymentHealth());
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load payment health");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.integration.healthLoadFailed"));
     } finally {
       setHealthLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     setForm(integration);
@@ -42,10 +44,10 @@ export default function IntegrationSettings() {
   }, [loadPaymentHealth]);
 
   const save = async () => {
-    if (!confirm("Update sensitive integration settings?")) return;
+    if (!confirm(t("settings.integration.updateConfirm"))) return;
     updateIntegration(form);
     if (!getApiAccessToken()) {
-      toast.success("Integrations saved locally (sign in to sync)");
+      toast.success(t("settings.integration.savedLocally"));
       return;
     }
     setSaving(true);
@@ -53,9 +55,9 @@ export default function IntegrationSettings() {
       const saved = await putIntegrationSettings(form);
       updateIntegration(saved);
       setForm(saved);
-      toast.success("Integrations saved to server");
+      toast.success(t("settings.integration.savedToServer"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -63,19 +65,19 @@ export default function IntegrationSettings() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Integrations</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{t("settings.integration.title")}</CardTitle></CardHeader>
       <CardContent className="space-y-4 max-w-2xl">
         {paymentHealth ? (
           <div className="rounded-lg border p-4 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm font-medium">Payment Gateway Health</p>
+              <p className="text-sm font-medium">{t("settings.integration.paymentHealth")}</p>
               <div className="flex gap-2">
               <Button variant="outline" size="sm" asChild>
-                <Link to="/settings/payments/health">Full Dashboard</Link>
+                <Link to="/settings/payments/health">{t("settings.integration.fullDashboard")}</Link>
               </Button>
               <Button variant="outline" size="sm" type="button" onClick={() => void loadPaymentHealth()} disabled={healthLoading}>
                 <RefreshCw className={`h-4 w-4 mr-1 ${healthLoading ? "animate-spin" : ""}`} />
-                Refresh
+                {t("common.refresh")}
               </Button>
               </div>
             </div>
@@ -109,28 +111,28 @@ export default function IntegrationSettings() {
           </div>
         ) : null}
         <div className="space-y-2">
-          <Label>Payment Gateway API Key</Label>
+          <Label>{t("settings.integration.apiKey")}</Label>
           <div className="flex gap-2">
-            <Input type={show ? "text" : "password"} value={form.paymentGatewayKey} onChange={(e) => setForm({ ...form, paymentGatewayKey: e.target.value })} placeholder="sk_live_..." />
+            <Input type={show ? "text" : "password"} value={form.paymentGatewayKey} onChange={(e) => setForm({ ...form, paymentGatewayKey: e.target.value })} placeholder={t("settings.integration.apiKeyPlaceholder")} />
             <Button variant="outline" size="icon" type="button" onClick={() => setShow(!show)}>{show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Webhook URL</Label>
-          <Input value={form.webhookUrl} onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })} placeholder="https://api.example.com/webhook" />
+          <Label>{t("settings.integration.webhookUrl")}</Label>
+          <Input value={form.webhookUrl} onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })} placeholder={t("settings.integration.webhookPlaceholder")} />
         </div>
         <div className="space-y-2">
-          <Label>Print Agent URL</Label>
+          <Label>{t("settings.integration.printAgent")}</Label>
           <Input value={form.printAgentUrl} onChange={(e) => setForm({ ...form, printAgentUrl: e.target.value })} placeholder="http://localhost:9100" />
-          <p className="text-xs text-muted-foreground">Local Print Agent endpoint for LAN/IP thermal printers.</p>
+          <p className="text-xs text-muted-foreground">{t("settings.integration.printAgentHint")}</p>
         </div>
         <div className="space-y-2">
-          <Label>Third-party Notes</Label>
-          <Textarea value={form.thirdPartyNotes} onChange={(e) => setForm({ ...form, thirdPartyNotes: e.target.value })} placeholder="GoFood, GrabFood, ShopeeFood configurations..." />
+          <Label>{t("settings.integration.thirdParty")}</Label>
+          <Textarea value={form.thirdPartyNotes} onChange={(e) => setForm({ ...form, thirdPartyNotes: e.target.value })} placeholder={t("settings.integration.notesPlaceholder")} />
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" type="button" onClick={() => setForm(integration)} disabled={saving}>Reset</Button>
-          <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" type="button" onClick={() => setForm(integration)} disabled={saving}>{t("common.reset")}</Button>
+          <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? t("common.saving") : t("common.saveShort")}</Button>
         </div>
       </CardContent>
     </Card>

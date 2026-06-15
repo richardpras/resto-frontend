@@ -8,9 +8,12 @@ import { formatIDR } from "@/stores/accountingStore";
 import { getCashFlowReport, type CashFlowReport } from "@/lib/api-integration/accountingEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
-import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
+import { canViewFinancialStatements } from "@/domain/permissionGates";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import type { TFunction } from "i18next";
 
-function Section({ title, rows, total }: { title: string; rows: [string, number][]; total?: number }) {
+function Section({ title, rows, total, totalLabel }: { title: string; rows: [string, number][]; total?: number; totalLabel: string }) {
   return (
     <div className="space-y-1">
       <h3 className="text-sm font-semibold">{title}</h3>
@@ -22,7 +25,7 @@ function Section({ title, rows, total }: { title: string; rows: [string, number]
       ))}
       {total !== undefined && (
         <div className="flex justify-between text-sm font-semibold pt-2">
-          <span>Total</span>
+          <span>{totalLabel}</span>
           <span className="font-mono">{formatIDR(total)}</span>
         </div>
       )}
@@ -30,13 +33,20 @@ function Section({ title, rows, total }: { title: string; rows: [string, number]
   );
 }
 
-function toRows(section: Record<string, number>): [string, number][] {
+function cashFlowLineLabel(key: string, t: TFunction): string {
+  const translated = t(`accounting.reports.cashFlowLines.${key}`, { defaultValue: "" });
+  if (translated) return translated;
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+}
+
+function toRows(section: Record<string, number>, t: TFunction): [string, number][] {
   return Object.entries(section)
     .filter(([key]) => key !== "total")
-    .map(([key, value]) => [key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()), value]);
+    .map(([key, value]) => [cashFlowLineLabel(key, t), value]);
 }
 
 export default function CashFlow() {
+  const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
@@ -56,7 +66,7 @@ export default function CashFlow() {
       });
       setReport(data);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load cash flow report");
+      toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadCashFlowFailed"));
     } finally {
       setLoading(false);
     }
@@ -70,7 +80,7 @@ export default function CashFlow() {
   if (!allowed) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+        <p className="text-sm text-muted-foreground">{t("accounting.financialStatementRestricted")}</p>
       </Card>
     );
   }
@@ -79,27 +89,27 @@ export default function CashFlow() {
     <Card className="p-4 space-y-4">
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <Label htmlFor="cf-from">From</Label>
+          <Label htmlFor="cf-from">{t("accounting.reports.from")}</Label>
           <Input id="cf-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
         </div>
         <div>
-          <Label htmlFor="cf-to">To</Label>
+          <Label htmlFor="cf-to">{t("accounting.reports.to")}</Label>
           <Input id="cf-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
         <Button onClick={() => void load()} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
+          {loading ? t("common:common.loading") : t("common:common.refresh")}
         </Button>
       </div>
       {report && (
         <div className="grid md:grid-cols-3 gap-6">
-          <Section title="Operating Activities" rows={toRows(report.operating)} total={report.operating.total} />
-          <Section title="Investing Activities" rows={toRows(report.investing)} total={report.investing.total} />
-          <Section title="Financing Activities" rows={toRows(report.financing)} total={report.financing.total} />
+          <Section title={t("accounting.reports.operatingActivities")} rows={toRows(report.operating, t)} total={report.operating.total} totalLabel={t("accounting.reports.total")} />
+          <Section title={t("accounting.reports.investingActivities")} rows={toRows(report.investing, t)} total={report.investing.total} totalLabel={t("accounting.reports.total")} />
+          <Section title={t("accounting.reports.financingActivities")} rows={toRows(report.financing, t)} total={report.financing.total} totalLabel={t("accounting.reports.total")} />
         </div>
       )}
       {report && (
         <div className="rounded-lg bg-muted/40 p-4 flex justify-between items-center">
-          <span className="font-semibold">Net Cash Change ({report.from} → {report.to})</span>
+          <span className="font-semibold">{t("accounting.reports.netCashChange", { from: report.from, to: report.to })}</span>
           <span className="text-lg font-mono font-bold">{formatIDR(report.netCashChange)}</span>
         </div>
       )}

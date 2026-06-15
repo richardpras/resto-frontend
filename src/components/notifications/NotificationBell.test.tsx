@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { ensureEnglishLocale } from "@/test/i18nTestSetup";
 
 vi.mock("@/stores/notificationStore", () => ({
   useNotificationStore: vi.fn(),
@@ -15,7 +16,8 @@ vi.mock("@/stores/outletStore", () => ({
 import { useNotificationStore } from "@/stores/notificationStore";
 
 describe("NotificationBell", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureEnglishLocale();
     vi.mocked(useNotificationStore).mockImplementation((selector) =>
       selector({
         unreadCount: 3,

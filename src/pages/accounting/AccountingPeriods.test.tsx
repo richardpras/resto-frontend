@@ -15,7 +15,7 @@ describe("AccountingPeriods page integration boundary", () => {
   });
 
   it("renders locked and open status labels", () => {
-    expect(pageSource).toMatch(/Locked/);
-    expect(pageSource).toMatch(/Open/);
+    expect(pageSource).toMatch(/accounting\.periods\.locked/);
+    expect(pageSource).toMatch(/accounting\.periods\.open/);
   });
 });

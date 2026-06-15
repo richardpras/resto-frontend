@@ -45,7 +45,7 @@ describe("Accounting financial statement tab permissions", () => {
     for (const source of FINANCIAL_REPORT_COMPONENTS) {
       expect(source).toMatch(/canViewFinancialStatements/);
       expect(source).toMatch(/if \(!allowed\)/);
-      expect(source).toMatch(/FINANCIAL_STATEMENT_RESTRICTED_MSG/);
+      expect(source).toMatch(/accounting\.financialStatementRestricted/);
     }
   });
 });

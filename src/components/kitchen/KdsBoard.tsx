@@ -1,9 +1,11 @@
 import { memo, useMemo } from "react";
 import type { KitchenBoardColumn } from "@/domain/kitchenWorkflow";
-import { KITCHEN_BOARD_COLUMNS, groupTicketsByBoardColumn, readyColumnBadgeClass } from "@/domain/kitchenWorkflow";
+import { groupTicketsByBoardColumn, readyColumnBadgeClass } from "@/domain/kitchenWorkflow";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
 import type { KdsFocusMode } from "@/hooks/useKdsFocusMode";
 import { KdsTicketCard } from "@/components/kitchen/KdsTicketCard";
+import { translateKitchenBoardColumns } from "@/components/kitchen/kitchenBoardI18n";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -56,6 +58,8 @@ const KdsBoardColumn = memo(function KdsBoardColumn({
   onCancel,
   onItemIssue,
 }: ColumnProps) {
+  const { t } = useOpsTranslation();
+
   return (
     <section
       className={cn(
@@ -85,7 +89,7 @@ const KdsBoardColumn = memo(function KdsBoardColumn({
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain kds-column-scroll">
         <div className="flex flex-col gap-3 p-3">
           {columnTickets.length === 0 ? (
-            <p className="text-sm text-kds-muted-fg text-center py-10">No tickets</p>
+            <p className="text-sm text-kds-muted-fg text-center py-10">{t("kitchen.noTickets")}</p>
           ) : (
             columnTickets.map((ticket) => (
               <KdsTicketCard
@@ -125,6 +129,8 @@ export function KdsBoard({
   onCancel,
   onItemIssue,
 }: Props) {
+  const { t } = useOpsTranslation();
+  const columns = useMemo(() => translateKitchenBoardColumns(t), [t]);
   const grouped = useMemo(() => groupTicketsByBoardColumn(tickets), [tickets]);
 
   return (
@@ -135,7 +141,7 @@ export function KdsBoard({
       )}
       data-testid="kitchen-workflow-board"
     >
-      {KITCHEN_BOARD_COLUMNS.map((column) => (
+      {columns.map((column) => (
         <KdsBoardColumn
           key={column.id}
           column={column}

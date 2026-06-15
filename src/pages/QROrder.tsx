@@ -12,6 +12,7 @@ import {
 } from "@/components/tables/qrScanErrors";
 import { QrOrderMyOrdersSection } from "@/components/qr-order/QrOrderMyOrdersSection";
 import type { QrActiveSessionApi } from "@/lib/api-integration/tableEndpoints";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import {
   addActiveOrderCode,
   setCurrentTableToken,
@@ -55,6 +56,7 @@ type View = "menu" | "cart" | "confirm";
  * Staff monitors QR traffic at `/qr-orders` inside the app shell.
  */
 export default function QROrder() {
+  const { t } = useOpsTranslation();
   const navigate = useNavigate();
   const { qrPublicId } = useParams<{ qrPublicId: string }>();
   const [searchParams] = useSearchParams();
@@ -213,19 +215,23 @@ export default function QROrder() {
 
   const submitOrder = async () => {
     if (!Number.isFinite(activeOutletId) || activeOutletId < 1 || !Number.isFinite(activeTableId) || activeTableId < 1) {
-      toast.error("QR link is invalid. Missing outletId/tableId.");
+      toast.error(t("qrCustomer.invalidQr"));
       return;
     }
     if (!customerName.trim()) {
-      toast.error("Please enter your name before submitting.");
+      toast.error(t("qrCustomer.nameRequired"));
       return;
     }
     if (projectionStatus === "checking") {
-      toast.error("Table availability is still loading. Please wait a moment.");
+      toast.error(t("qrCustomer.tableLoading"));
       return;
     }
     if (projectionStatus === "reserved" || projectionStatus === "cleaning" || projectionStatus === "disabled") {
-      toast.error(`Table is currently ${projectionStatus}. Please ask staff for assistance.`);
+      toast.error(
+        t("qrCustomer.tableUnavailable", {
+          status: t(`qrCustomer.tableStatus.${projectionStatus}`),
+        }),
+      );
       return;
     }
     try {
@@ -253,7 +259,7 @@ export default function QROrder() {
       setCart([]);
       navigate(`/qr/order/${encodeURIComponent(created.requestCode)}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit QR order");
+      toast.error(error instanceof Error ? error.message : t("qrCustomer.submitFailed"));
     }
   };
 
@@ -264,8 +270,8 @@ export default function QROrder() {
           <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">⚠️</span>
           </div>
-          <h1 className="text-xl font-bold text-foreground mb-2">{qrScanErrorTitle(resolveError)}</h1>
-          <p className="text-sm text-muted-foreground">{qrScanErrorMessage(resolveError)}</p>
+          <h1 className="text-xl font-bold text-foreground mb-2">{qrScanErrorTitle(resolveError, t)}</h1>
+          <p className="text-sm text-muted-foreground">{qrScanErrorMessage(resolveError, t)}</p>
         </div>
       </div>
     );
@@ -274,7 +280,7 @@ export default function QROrder() {
   if (resolvingQr && activeOutletId === null) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-loading">
-        <p className="text-sm text-muted-foreground">Opening table menu…</p>
+        <p className="text-sm text-muted-foreground">{t("qrCustomer.openingMenu")}</p>
       </div>
     );
   }
@@ -286,25 +292,25 @@ export default function QROrder() {
         <div className="sticky top-0 bg-card border-b border-border z-10">
           <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
             <button onClick={() => setView("cart")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
-            <h1 className="text-base font-bold text-foreground">Confirm Order</h1>
+            <h1 className="text-base font-bold text-foreground">{t("qrCustomer.confirmOrder")}</h1>
           </div>
         </div>
         <div className="max-w-lg mx-auto p-4 space-y-4">
           <div className="bg-card rounded-2xl p-4 border border-border space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">Your Details</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t("qrCustomer.yourDetails")}</h3>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Name</label>
-              <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Enter your name"
+              <label className="text-xs text-muted-foreground mb-1 block">{t("qrCustomer.name")}</label>
+              <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={t("qrCustomer.namePlaceholder")}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Table Number</label>
+              <label className="text-xs text-muted-foreground mb-1 block">{t("qrCustomer.tableNumber")}</label>
               <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
           </div>
           <div className="bg-card rounded-2xl p-4 border border-border">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Order Summary</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">{t("qrCustomer.orderSummary")}</h3>
             <div className="space-y-2">
               {cart.map((item) => (
                 <div key={item.id} className="flex items-center justify-between text-sm">
@@ -314,17 +320,19 @@ export default function QROrder() {
               ))}
             </div>
             <div className="border-t border-border mt-3 pt-3 space-y-1.5 text-sm">
-              <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatRp(subtotal)}</span></div>
-              <div className="flex justify-between text-muted-foreground"><span>Tax (10%)</span><span>{formatRp(tax)}</span></div>
-              <div className="flex justify-between font-bold text-foreground text-base pt-1"><span>Total</span><span>{formatRp(total)}</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>{t("qrCustomer.subtotal")}</span><span>{formatRp(subtotal)}</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>{t("qrCustomer.taxPercent")}</span><span>{formatRp(tax)}</span></div>
+              <div className="flex justify-between font-bold text-foreground text-base pt-1"><span>{t("qrCustomer.total")}</span><span>{formatRp(total)}</span></div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground px-1">
-            Payment is handled by cashier only. You cannot pay from this screen.
+            {t("qrCustomer.paymentNotice")}
           </p>
           {(projectionStatus === "reserved" || projectionStatus === "cleaning" || projectionStatus === "disabled") && (
             <p className="text-xs text-destructive px-1">
-              This table is currently {projectionStatus}. New QR orders are temporarily blocked.
+              {t("qrCustomer.tableBlocked", {
+                status: t(`qrCustomer.tableStatus.${projectionStatus}`),
+              })}
             </p>
           )}
         </div>
@@ -335,7 +343,7 @@ export default function QROrder() {
               onClick={submitOrder}
               className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              <Send className="h-4 w-4" /> {isSubmitting ? "Submitting..." : `Submit Order • ${formatRp(total)}`}
+              <Send className="h-4 w-4" /> {isSubmitting ? t("qrCustomer.submitting") : t("qrCustomer.submitOrder", { total: formatRp(total) })}
             </button>
           </div>
         </div>
@@ -350,16 +358,16 @@ export default function QROrder() {
         <div className="sticky top-0 bg-card border-b border-border z-10">
           <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
             <button onClick={() => setView("menu")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
-            <h1 className="text-base font-bold text-foreground">Your Cart</h1>
-            <span className="text-xs text-muted-foreground ml-auto bg-muted px-2 py-1 rounded-lg">{totalItems} items</span>
+            <h1 className="text-base font-bold text-foreground">{t("qrCustomer.yourCart")}</h1>
+            <span className="text-xs text-muted-foreground ml-auto bg-muted px-2 py-1 rounded-lg">{t("qrCustomer.itemsCount", { n: totalItems })}</span>
           </div>
         </div>
         <div className="max-w-lg mx-auto p-4 pb-28 space-y-2">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <ShoppingCart className="h-12 w-12 mb-3 opacity-30" />
-              <p className="text-sm font-medium">Your cart is empty</p>
-              <button onClick={() => setView("menu")} className="mt-4 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">Browse Menu</button>
+              <p className="text-sm font-medium">{t("qrCustomer.cartEmpty")}</p>
+              <button onClick={() => setView("menu")} className="mt-4 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">{t("qrCustomer.browseMenu")}</button>
             </div>
           ) : (
             <AnimatePresence>
@@ -370,7 +378,7 @@ export default function QROrder() {
                     <span className="text-2xl">{item.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatRp(item.price)} each</p>
+                      <p className="text-xs text-muted-foreground">{t("qrCustomer.each", { price: formatRp(item.price) })}</p>
                       {item.notes && <p className="text-xs text-primary/70 mt-1 italic">📝 {item.notes}</p>}
                     </div>
                     <p className="text-sm font-bold text-foreground">{formatRp(item.price * item.qty)}</p>
@@ -386,13 +394,13 @@ export default function QROrder() {
                       </button>
                     </div>
                     <button onClick={() => setNotesItem(notesItem === item.id ? null : item.id)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      {item.notes ? "Edit note" : "+ Add note"}
+                      {item.notes ? t("qrCustomer.editNote") : t("qrCustomer.addNote")}
                     </button>
                   </div>
                   <AnimatePresence>
                     {notesItem === item.id && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        <input type="text" placeholder="e.g. No spicy, extra sauce..." value={item.notes} onChange={(e) => updateNotes(item.id, e.target.value)}
+                        <input type="text" placeholder={t("qrCustomer.notePlaceholder")} value={item.notes} onChange={(e) => updateNotes(item.id, e.target.value)}
                           className="mt-3 w-full text-xs px-3 py-2.5 rounded-xl bg-muted border-0 focus:outline-none focus:ring-1 focus:ring-primary/20" autoFocus />
                       </motion.div>
                     )}
@@ -405,10 +413,10 @@ export default function QROrder() {
         {cart.length > 0 && (
           <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">
             <div className="max-w-lg mx-auto space-y-3">
-              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="text-foreground">{formatRp(subtotal)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Tax (10%)</span><span className="text-foreground">{formatRp(tax)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t("qrCustomer.subtotal")}</span><span className="text-foreground">{formatRp(subtotal)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t("qrCustomer.taxPercent")}</span><span className="text-foreground">{formatRp(tax)}</span></div>
               <button onClick={() => setView("confirm")} className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2">
-                Checkout • {formatRp(total)}
+                {t("qrCustomer.checkout", { total: formatRp(total) })}
               </button>
             </div>
           </div>
@@ -422,11 +430,11 @@ export default function QROrder() {
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 bg-card border-b border-border z-10">
         <div className="px-4 pt-4 pb-3 max-w-lg mx-auto">
-          <h1 className="text-lg font-bold text-foreground mb-0.5">🍽️ RestoHub Menu</h1>
-          <p className="text-xs text-muted-foreground">Scan • Order • Enjoy</p>
+          <h1 className="text-lg font-bold text-foreground mb-0.5">{t("qrCustomer.menuTitle")}</h1>
+          <p className="text-xs text-muted-foreground">{t("qrCustomer.tagline")}</p>
           <div className="relative mt-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input type="text" placeholder="Search menu..." value={search} onChange={(e) => setSearch(e.target.value)}
+            <input type="text" placeholder={t("qrCustomer.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
         </div>
@@ -434,7 +442,7 @@ export default function QROrder() {
           {categories.map((c) => (
             <button key={c} onClick={() => setActiveCat(c)}
               className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-              {c}
+              {c === "All" ? t("qrCustomer.categoryAll") : c}
             </button>
           ))}
         </div>
@@ -446,9 +454,9 @@ export default function QROrder() {
             data-testid="qr-active-order-resume"
           >
             <div>
-              <p className="text-sm font-semibold text-foreground">Resume Existing Order</p>
+              <p className="text-sm font-semibold text-foreground">{t("qrCustomer.resumeTitle")}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Table {tableNumber} · {activeSession.activeQrOrder.requestCode}
+                {t("qrCustomer.resumeTable", { n: tableNumber, code: activeSession.activeQrOrder.requestCode })}
               </p>
               <p className="text-sm text-primary font-medium mt-1">
                 {activeSession.activeQrOrder.customerStatusLabel}
@@ -459,19 +467,19 @@ export default function QROrder() {
                 to={`/qr/order/${encodeURIComponent(activeSession.activeQrOrder.requestCode)}`}
                 className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold text-center"
               >
-                View Order
+                {t("qrCustomer.viewOrder")}
               </Link>
               <button
                 type="button"
                 onClick={() => setAppendToRequestCode(activeSession.activeQrOrder?.requestCode ?? null)}
                 className="flex-1 py-2.5 rounded-xl border border-primary text-primary text-sm font-semibold"
               >
-                Add More Items
+                {t("qrCustomer.addMoreItems")}
               </button>
             </div>
             {appendToRequestCode && (
               <p className="text-xs text-muted-foreground">
-                New items will be added to {appendToRequestCode}.
+                {t("qrCustomer.resumeHint", { code: appendToRequestCode })}
               </p>
             )}
           </div>
@@ -501,7 +509,7 @@ export default function QROrder() {
             <button onClick={() => setView("cart")}
               className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-3">
               <ShoppingCart className="h-4 w-4" />
-              View Cart ({totalItems}) • {formatRp(total)}
+              {t("qrCustomer.viewCart", { n: totalItems, total: formatRp(total) })}
             </button>
           </div>
         </div>

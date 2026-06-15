@@ -6,9 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Plus, Trash2 } from "lucide-react";
 import { usePayrollStore } from "@/stores/payrollStore";
 import { DataTable, type Column } from "@/components/DataTable";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { toast } from "sonner";
 
 export default function Shifts() {
+  const { t } = useErpTranslation();
   const { shifts, addShift, removeShift } = usePayrollStore();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -18,7 +21,7 @@ export default function Shifts() {
   });
 
   const submit = async () => {
-    if (!form.startTime || !form.endTime) return toast.error("Start and end time are required");
+    if (!form.startTime || !form.endTime) return toast.error(t("payroll.shifts.startEndRequired"));
     try {
       await addShift({
         employeeId: "",
@@ -27,20 +30,20 @@ export default function Shifts() {
         endTime: form.endTime,
         notes: form.notes,
       });
-      toast.success("Shift template saved");
+      toast.success(t("payroll.shifts.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save shift");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shifts.saveFailed"));
     }
   };
 
   const columns: Column<(typeof shifts)[number]>[] = [
-    { key: "notes", header: "Shift", sortable: true, render: (s) => s.notes || "Unnamed shift" },
-    { key: "startTime", header: "Start", sortable: true },
-    { key: "endTime", header: "End", sortable: true },
+    { key: "notes", header: t("payroll.shifts.shiftCol"), sortable: true, render: (s) => s.notes || t("payroll.shifts.unnamedShift") },
+    { key: "startTime", header: t("payroll.shared.start"), sortable: true },
+    { key: "endTime", header: t("payroll.shared.end"), sortable: true },
     {
       key: "actions",
-      header: "Actions",
+      header: t("payroll.shared.actions"),
       className: "text-right",
       render: (s) => (
         <div className="flex justify-end">
@@ -53,8 +56,8 @@ export default function Shifts() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Shift Scheduling</h2>
-        <Button onClick={() => setOpen(true)} size="sm"><Plus className="h-4 w-4" />Schedule Shift</Button>
+        <h2 className="text-lg font-semibold">{t("payroll.shifts.title")}</h2>
+        <Button onClick={() => setOpen(true)} size="sm"><Plus className="h-4 w-4" />{t("payroll.shifts.scheduleShift")}</Button>
       </div>
 
       <DataTable
@@ -62,32 +65,32 @@ export default function Shifts() {
         columns={columns}
         rowKey={(s) => s.id}
         searchKeys={["notes", "startTime", "endTime"]}
-        emptyMessage="No shift templates"
+        emptyMessage={t("payroll.shifts.empty")}
         defaultPageSize={10}
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Schedule Shift</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("payroll.shifts.scheduleShift")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Start</Label>
+                <Label>{t("payroll.shared.start")}</Label>
                 <Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>End</Label>
+                <Label>{t("payroll.shared.end")}</Label>
                 <Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("payroll.shared.notes")}</Label>
               <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => void submit()}>Save</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("payroll.shared.cancel")}</Button>
+            <Button onClick={() => void submit()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

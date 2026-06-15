@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { ensureEnglishLocale } from "@/test/i18nTestSetup";
 const ALL_PERMISSIONS = [
   "pos.use",
   "menu.manage",
@@ -110,7 +111,8 @@ vi.mock("@/hooks/use-mobile", () => ({
 }));
 
 describe("AppSidebar hidden mode", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureEnglishLocale();
     testNavConfig.permissions = [...ALL_PERMISSIONS];
     testNavConfig.pinSet = true;
     useIsMobileMock.mockReturnValue(false);

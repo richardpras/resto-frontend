@@ -435,6 +435,21 @@ export type CreateOrderApiResult = {
   };
 };
 
+export async function fetchNextOrderCode(
+  outletId: number,
+  options: EndpointRequestOptions = {},
+): Promise<{ code: string; preview: boolean }> {
+  const query = new URLSearchParams({ outletId: String(outletId) });
+  const response = await request<{ data: { code: string; preview: boolean } }>(
+    `/orders/next-code?${query.toString()}`,
+    {
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
 export async function createOrder(
   payload: CreateOrderPayload,
   options: EndpointRequestOptions = {},
@@ -533,6 +548,7 @@ export async function addOrderPayments(
     cashAccountCode?: string;
     revenueAccountCode?: string;
     idempotencyKey?: string;
+    qrOrderRequestId?: number;
   },
   options: EndpointRequestOptions = {},
 ): Promise<OrderApi> {

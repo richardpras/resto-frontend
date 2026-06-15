@@ -53,6 +53,7 @@ import { StaticQrisPaymentModal } from "@/components/payments/StaticQrisPaymentM
 import { useAuthStore } from "@/stores/authStore";
 import { canReconcilePayments } from "@/domain/permissionGates";
 import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const POS_TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -230,6 +231,7 @@ function buildBalancePaymentPayload(order: CashierOrder, apiMethod: string, amou
 }
 
 export default function Cashier() {
+  const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
@@ -332,7 +334,7 @@ export default function Cashier() {
       setOrders(merged.map(mapOrder));
       setSelectedOrderId((prev) => (prev && !merged.some((order) => order.id === prev) ? null : prev));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load open cashier orders");
+      toast.error(error instanceof Error ? error.message : t("cashier.loadOrdersFailed"));
     } finally {
       setLoading(false);
     }
@@ -407,7 +409,7 @@ export default function Cashier() {
     } catch (error) {
       setOpenBill(null);
       setSelectedOpenBillOrderIds(new Set());
-      toast.error(error instanceof Error ? error.message : "Failed to load table open bill.");
+      toast.error(error instanceof Error ? error.message : t("cashier.loadBillFailed"));
     } finally {
       setOpenBillLoading(false);
     }
@@ -425,7 +427,7 @@ export default function Cashier() {
       setPendingGatewayPayments([]);
       try {
         await addOrderPaymentsRemote(gatewayOrderId, paymentsToCommit);
-        toast.success("Payment completed.");
+        toast.success(t("shared.paymentCompleted"));
         await loadOpenOrders();
         setShowPaymentModal(false);
         setShowSplitModal(false);
@@ -452,7 +454,7 @@ export default function Cashier() {
         setSelectedCheckoutCode(null);
         void paymentResetAsync();
         await loadOpenOrders();
-        toast.error(error instanceof ApiHttpError ? error.message : "Failed to record payment");
+        toast.error(error instanceof ApiHttpError ? error.message : t("cashier.recordFailed"));
       }
     })();
   }, [
@@ -516,7 +518,7 @@ export default function Cashier() {
     const perPerson = Math.ceil(balance / 2);
     setSplitPersons(
       Array.from({ length: 2 }, (_, i) => ({
-        label: `Person ${i + 1}`,
+        label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
         totalDue: i === 1 ? balance - perPerson : perPerson,
@@ -544,7 +546,7 @@ export default function Cashier() {
     const perPerson = Math.ceil(balanceDue / count);
     setSplitPersons(
       Array.from({ length: count }, (_, i) => ({
-        label: `Person ${i + 1}`,
+        label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
         totalDue: i === count - 1 ? balanceDue - perPerson * (count - 1) : perPerson,
@@ -555,7 +557,7 @@ export default function Cashier() {
   const buildItemSplit = (count: number) => {
     setSplitPersons(
       Array.from({ length: count }, (_, i) => ({
-        label: `Person ${i + 1}`,
+        label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
         totalDue: 0,
@@ -619,14 +621,14 @@ export default function Cashier() {
     setPayingPersonIdx(null);
     setSplitPayMethod(null);
     if (recorded) {
-      toast.success(`${recorded.label} paid ${formatRp(recorded.amount)} via ${method}`);
+      toast.success(t("shared.paidVia", { label: recorded.label, amount: formatRp(recorded.amount), method }));
     }
   };
 
   /** Draft-only: clears recorded method for this person until you tap Complete split (nothing hits the API). */
   const undoSplitPersonDraftPayment = (personIdx: number) => {
     if (submitting) return;
-    const label = splitPersons[personIdx]?.label ?? "Person";
+    const label = splitPersons[personIdx]?.label ?? t("shared.person", { n: personIdx + 1 });
     setSplitPersons((prev) => prev.map((p, i) => (i === personIdx ? { ...p, payments: [] } : p)));
     if (payingPersonIdx === personIdx) {
       setPayingPersonIdx(null);
@@ -651,12 +653,12 @@ export default function Cashier() {
   const completeCashierSplit = async () => {
     if (submitting || splitPersons.length === 0 || !splitSourceOrder) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error("Select an outlet in the header.");
+      toast.error(t("shared.selectOutlet"));
       return;
     }
     if (!allSplitPaid) return;
     if (!byItemAllocationComplete) {
-      toast.error("Assign every unit of each line across people before completing.");
+      toast.error(t("shared.assignAllUnitsToast"));
       return;
     }
     const draftPaymentSum = splitPersons.reduce(
@@ -704,15 +706,15 @@ export default function Cashier() {
         setSplitPersons([]);
         setPaymentModalOrder(snapshotCashierOrder(storeOrderToCashier(paidOrder)));
         setShowPaymentModal(true);
-        toast.success("Split bill saved. Complete the gateway checkout to finish payment.", { icon: "💰" });
+        toast.success(t("shared.splitSavedGateway"), { icon: "💰" });
         return;
       }
-      toast.success("Split bill payments recorded.", { icon: "💰" });
+      toast.success(t("cashier.splitRecorded"), { icon: "💰" });
       await loadOpenOrders();
       resetSplitState();
       setSelectedOrderId(null);
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Split payment failed");
+      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.splitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -721,12 +723,12 @@ export default function Cashier() {
   const completeCashierPayment = async () => {
     if (!paymentModalOrder || !selectedCheckoutMethod || submitting) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error("Select an outlet in the header.");
+      toast.error(t("shared.selectOutlet"));
       return;
     }
     const amount = paymentModalOrder.balanceDue;
     if (amount <= 0) {
-      toast.error("Nothing to pay.");
+      toast.error(t("shared.nothingToPay"));
       return;
     }
 
@@ -742,7 +744,7 @@ export default function Cashier() {
         isGatewayPaymentMethod(payload.method, checkoutMethods) &&
         shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, payload.method)
       ) {
-        toast.error("A QR payment is still pending for this method. Use Retry, Expire, or Change payment method.");
+        toast.error(t("pos.qrPending"));
         return;
       }
       try {
@@ -752,7 +754,7 @@ export default function Cashier() {
         setPendingGatewayPayments([]);
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
       } catch (error) {
-        toast.error(error instanceof ApiHttpError ? error.message : "Failed to cancel pending checkout");
+        toast.error(error instanceof ApiHttpError ? error.message : t("shared.failedCancelCheckout"));
         return;
       }
     }
@@ -775,12 +777,12 @@ export default function Cashier() {
         if (payload.method === "qris" && tx.qrString) {
           setQrisModalSuppressedTxId(null);
           setShowQrisModal(true);
-          toast.success("QRIS ready. Ask customer to scan the QR.");
+          toast.success(t("pos.qrisReady"));
         } else {
-          toast.success("Payment checkout created. Ask customer to complete payment.");
+          toast.success(t("pos.checkoutCreated"));
         }
       } catch (error) {
-        toast.error(error instanceof ApiHttpError ? error.message : "Payment failed");
+        toast.error(error instanceof ApiHttpError ? error.message : t("cashier.paymentFailed"));
       } finally {
         setSubmitting(false);
       }
@@ -801,7 +803,7 @@ export default function Cashier() {
             : [payload];
         await addOrderPaymentsRemote(paymentModalOrder.id, cashBatch);
         setPendingGatewayPayments([]);
-        toast.success("Payment recorded.");
+        toast.success(t("shared.paymentRecorded"));
         await loadOpenOrders();
         setSelectedOrderId(null);
         closePaymentModal();
@@ -810,14 +812,14 @@ export default function Cashier() {
 
       if (manualQrisMethod) {
         setShowStaticQrisModal(true);
-        toast.message("Show outlet QRIS to customer", {
-          description: "Confirm payment only after you verify the transfer.",
+        toast.message(t("pos.showQris"), {
+          description: t("pos.verifyTransfer"),
         });
         return;
       }
 
       if (!gatewayMethod || !isGatewayPaymentMethod(payload.method, checkoutMethods)) {
-        toast.error("Unsupported payment method.");
+        toast.error(t("shared.unsupportedPayment"));
         return;
       }
 
@@ -844,12 +846,12 @@ export default function Cashier() {
       if (payload.method === "qris" && tx.qrString) {
         setQrisModalSuppressedTxId(null);
         setShowQrisModal(true);
-        toast.success("QRIS ready. Ask customer to scan the QR.");
+        toast.success(t("pos.qrisReady"));
       } else {
-        toast.success("Payment checkout created. Ask customer to complete payment.");
+        toast.success(t("pos.checkoutCreated"));
       }
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Payment failed");
+      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.paymentFailed"));
       setPendingGatewayPayments([]);
       setGatewayOrderId(null);
     } finally {
@@ -882,12 +884,12 @@ export default function Cashier() {
       if (typeof activeOutletId === "number") {
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
       }
-      toast.success("Static QRIS payment recorded.");
+      toast.success(t("pos.staticQrisRecorded"));
       await loadOpenOrders();
       setSelectedOrderId(null);
       closePaymentModal();
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Payment failed");
+      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.paymentFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -927,9 +929,9 @@ export default function Cashier() {
           await abandonCashierPendingGateway();
           setSelectedCheckoutCode(code);
           setShowStaticQrisModal(false);
-          toast.success("Previous online checkout cancelled. You can complete payment with the new method.");
+          toast.success(t("shared.previousCheckoutCancelled"));
         } catch (error) {
-          toast.error(error instanceof ApiHttpError ? error.message : "Failed to switch payment method");
+          toast.error(error instanceof ApiHttpError ? error.message : t("shared.failedSwitchMethod"));
         }
       })();
       return;
@@ -944,9 +946,9 @@ export default function Cashier() {
         await abandonCashierPendingGateway();
         setSelectedCheckoutCode(null);
         setShowStaticQrisModal(false);
-        toast.success("Choose Cash, static QRIS, or another enabled method below.");
+        toast.success(t("shared.chooseCashMethod"));
       } catch (error) {
-        toast.error(error instanceof ApiHttpError ? error.message : "Failed to change payment method");
+        toast.error(error instanceof ApiHttpError ? error.message : t("shared.failedChangeMethod"));
       }
     })();
   };
@@ -961,8 +963,8 @@ export default function Cashier() {
     canRetryGatewayCheckout && selectedApiMethod
       ? gatewayRetryLabel(selectedApiMethod)
       : submitting || paymentIsSubmitting
-        ? "Processing…"
-        : "Complete Payment";
+        ? t("shared.processingPayment")
+        : t("shared.completePayment");
 
   const handleCashierGatewayRetry = async (transactionId: string) => {
     const tx = await paymentRetry(transactionId, {
@@ -994,13 +996,13 @@ export default function Cashier() {
         ? openBill.orders.map((o) => o.id)
         : openBill.orders.filter((o) => selectedOpenBillOrderIds.has(o.id)).map((o) => o.id);
     if (targetOrderIds.length === 0) {
-      toast.error("Choose at least one open-bill order.");
+      toast.error(t("cashier.openBillSelect"));
       return;
     }
 
     const toPay = openBill.orders.filter((o) => targetOrderIds.includes(o.id) && o.remainingPayable > 0);
     if (toPay.length === 0) {
-      toast.message("Selected orders are already settled.");
+      toast.message(t("cashier.openBillSettled"));
       return;
     }
 
@@ -1015,11 +1017,11 @@ export default function Cashier() {
           },
         ]);
       }
-      toast.success("Open bill payment recorded.");
+      toast.success(t("cashier.openBillRecorded"));
       await loadOpenOrders();
       await loadOpenBill();
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Failed to settle open bill.");
+      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.openBillFailed"));
     } finally {
       setOpenBillSettling(false);
     }
@@ -1029,14 +1031,14 @@ export default function Cashier() {
     <div className="p-4 md:p-6 space-y-4">
       {(!activeOutletId || activeOutletId < 1) && (
         <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
-          Select an outlet in the header with a numeric id from <code className="text-xs">outlet_bridge</code> to load cashier queues for that outlet.
+          {t("cashier.selectOutletBridge")}
         </div>
       )}
       <PosSessionPanel outletId={activeOutletId} />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Cashier Payments</h1>
-          <p className="text-sm text-muted-foreground">Dine-in confirmed orders in unpaid or partial status.</p>
+          <h1 className="text-xl font-bold text-foreground">{t("cashier.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("cashier.subtitle")}</p>
         </div>
         <button
           type="button"
@@ -1044,7 +1046,7 @@ export default function Cashier() {
           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+          {t("cashier.refresh")}
         </button>
       </div>
 
@@ -1052,7 +1054,7 @@ export default function Cashier() {
         <div className="space-y-3">
           {orders.length === 0 ? (
             <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
-              No open unpaid dine-in orders.
+              {t("cashier.noOpenOrders")}
             </div>
           ) : (
             orders.map((order) => (
@@ -1071,8 +1073,8 @@ export default function Cashier() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {(order.tableName?.trim() || order.tableNumber)
-                    ? `Table ${order.tableName?.trim() || order.tableNumber}`
-                    : "No table"}{" "}
+                    ? t("cashier.tableLabel", { name: order.tableName?.trim() || order.tableNumber })
+                    : t("shared.noTable")}{" "}
                   {order.customerName ? `• ${order.customerName}` : ""}
                 </p>
               </button>
@@ -1082,13 +1084,13 @@ export default function Cashier() {
 
         <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
           <div className="space-y-2 border-b border-border/60 pb-3">
-            <p className="text-xs text-muted-foreground">Open Bill (table projection)</p>
+            <p className="text-xs text-muted-foreground">{t("cashier.openBillTitle")}</p>
             <select
               value={selectedTableId ?? ""}
               onChange={(e) => setSelectedTableId(e.target.value ? Number(e.target.value) : null)}
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
             >
-              <option value="">Select table</option>
+              <option value="">{t("cashier.selectTable")}</option>
               {openBillTableOptions.map((table) => (
                 <option key={`${table.outletId}-${table.tableId}`} value={table.tableId}>
                   {table.label}
@@ -1096,16 +1098,16 @@ export default function Cashier() {
               ))}
             </select>
             {openBillLoading ? (
-              <p className="text-xs text-muted-foreground">Loading table open bill...</p>
+              <p className="text-xs text-muted-foreground">{t("cashier.loadingOpenBill")}</p>
             ) : openBill ? (
               <div className="space-y-2 rounded-xl border border-border/70 p-3 bg-background/70">
                 <p className="text-sm font-semibold text-foreground">
-                  Table {openBill.table.name} · {openBill.orderCount} order{openBill.orderCount === 1 ? "" : "s"}
+                  {t("cashier.tableOrders", { name: openBill.table.name, n: openBill.orderCount })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Subtotal {formatRp(openBill.subtotal)} · Tax {formatRp(openBill.tax)} · Service {formatRp(openBill.service)}
+                  {t("cashier.subtotalTaxService", { subtotal: formatRp(openBill.subtotal), tax: formatRp(openBill.tax), service: formatRp(openBill.service) })}
                 </p>
-                <p className="text-sm font-bold text-primary">Remaining {formatRp(openBill.remainingPayable)}</p>
+                <p className="text-sm font-bold text-primary">{t("cashier.remaining")} {formatRp(openBill.remainingPayable)}</p>
                 <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
                   {openBill.orders.map((order) => (
                     <label key={order.id} className="flex items-center gap-2 rounded-lg border border-border/50 px-2 py-1.5">
@@ -1133,7 +1135,7 @@ export default function Cashier() {
                         onClick={() => setSelectedOrderId(String(order.id))}
                         className="text-[11px] px-2 py-0.5 rounded border border-border hover:bg-muted"
                       >
-                        Open
+                        {t("cashier.open")}
                       </button>
                     </label>
                   ))}
@@ -1145,7 +1147,7 @@ export default function Cashier() {
                     disabled={openBillSettling}
                     className="py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50"
                   >
-                    Pay selected (cash)
+                    {t("cashier.paySelected")}
                   </button>
                   <button
                     type="button"
@@ -1153,26 +1155,26 @@ export default function Cashier() {
                     disabled={openBillSettling}
                     className="py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-50"
                   >
-                    Pay full table (cash)
+                    {t("cashier.payFullTable")}
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No open bill projection loaded.</p>
+              <p className="text-xs text-muted-foreground">{t("cashier.noOpenBill")}</p>
             )}
           </div>
           {!selectedOrder ? (
-            <p className="text-sm text-muted-foreground">Select an order to collect payment.</p>
+            <p className="text-sm text-muted-foreground">{t("cashier.selectOrder")}</p>
           ) : (
             <>
               <div>
-                <p className="text-xs text-muted-foreground">Order</p>
+                <p className="text-xs text-muted-foreground">{t("cashier.order")}</p>
                 <p className="font-semibold text-foreground">{selectedOrder.code}</p>
                 <p className="text-xs text-muted-foreground">
-                  Total {formatRp(selectedOrder.total)} • Paid {formatRp(selectedOrder.paidTotal)}
+                  {t("cashier.totalPaidLine", { total: formatRp(selectedOrder.total), paid: formatRp(selectedOrder.paidTotal) })}
                 </p>
                 <p className="text-sm font-bold text-primary mt-1">
-                  Balance Due {formatRp(selectedOrder.balanceDue)}
+                  {t("cashier.balanceDueLabel")} {formatRp(selectedOrder.balanceDue)}
                 </p>
               </div>
 
@@ -1191,7 +1193,7 @@ export default function Cashier() {
                   disabled={selectedOrder.balanceDue <= 0}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                 >
-                  Pay balance
+                  {t("cashier.payBalance")}
                 </button>
                 <button
                   type="button"
@@ -1200,7 +1202,7 @@ export default function Cashier() {
                   className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors flex items-center justify-center gap-2"
                 >
                   <SplitSquareHorizontal className="h-4 w-4" />
-                  Split bill
+                  {t("shared.splitBill")}
                 </button>
               </div>
             </>
@@ -1225,16 +1227,16 @@ export default function Cashier() {
               className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md"
             >
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-foreground">Payment</h3>
+                <h3 className="text-lg font-bold text-foreground">{t("shared.payment")}</h3>
                 <button type="button" onClick={() => closePaymentModal()} className="p-1 rounded-lg hover:bg-muted">
                   <X className="h-5 w-5 text-muted-foreground" />
                 </button>
               </div>
               <div className="text-center mb-6">
-                <p className="text-sm text-muted-foreground">Balance due</p>
+                <p className="text-sm text-muted-foreground">{t("shared.balanceDue")}</p>
                 <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
                 {splitCheckoutActive ? (
-                  <p className="text-xs text-muted-foreground mt-1">Split-bill gateway portion (same order)</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("shared.splitGatewayPortion")}</p>
                 ) : null}
               </div>
               <PaymentMethodTileGrid
@@ -1249,7 +1251,7 @@ export default function Cashier() {
                 onClick={initCashierSplitFromPaymentModal}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4"
               >
-                <SplitSquareHorizontal className="h-4 w-4" /> Split bill
+                <SplitSquareHorizontal className="h-4 w-4" /> {t("shared.splitBill")}
               </button>
               <button
                 type="button"
@@ -1259,43 +1261,43 @@ export default function Cashier() {
               >
                 <span className="flex items-center justify-center gap-2">
                   <CheckCircle2 className="h-4 w-4" />{" "}
-                  {submitting || paymentIsSubmitting ? "Processing…" : primaryCashierPaymentLabel}
+                  {submitting || paymentIsSubmitting ? t("shared.processing") : primaryCashierPaymentLabel}
                 </span>
               </button>
               {paymentTransaction && selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod) && (
                 <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
-                  <p className="font-semibold text-foreground">Online Checkout</p>
+                  <p className="font-semibold text-foreground">{t("shared.onlineCheckout")}</p>
                   <p className="text-muted-foreground">
-                    Status: <span className="font-medium text-foreground">{paymentTransaction.status}</span>
+                    {t("shared.statusColon")} <span className="font-medium text-foreground">{paymentTransaction.status}</span>
                   </p>
                   {paymentTransaction.status === "paid" && (
                     <p className="rounded-lg bg-success/10 px-2 py-1 text-success">
-                      Payment completed. Refreshing order payment...
+                      {t("shared.paymentRefreshing")}
                     </p>
                   )}
                   {paymentTransaction.status === "expired" && (
                     <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">
-                      Previous QR attempt expired. Use Retry QRIS Payment on the same order.
+                      {t("shared.qrExpired")}
                     </p>
                   )}
                   {paymentTransaction.status === "failed" && (
                     <p className="rounded-lg bg-destructive/10 px-2 py-1 text-destructive">
-                      Previous QR attempt failed. Retry on the same order or choose another method.
+                      {t("shared.qrFailed")}
                     </p>
                   )}
                   {paymentTransaction.status === "cancelled" && (
                     <p className="rounded-lg bg-muted px-2 py-1 text-muted-foreground">
-                      Previous QR attempt was cancelled or superseded.
+                      {t("shared.qrCancelled")}
                     </p>
                   )}
                   {paymentTransaction.checkoutUrl && (
                     <a href={paymentTransaction.checkoutUrl} target="_blank" rel="noreferrer" className="text-primary underline">
-                      Open checkout
+                      {t("shared.openCheckout")}
                     </a>
                   )}
                   {paymentTransaction.deeplinkUrl && (
                     <a href={paymentTransaction.deeplinkUrl} target="_blank" rel="noreferrer" className="block text-primary underline">
-                      Open payment app
+                      {t("shared.openPaymentApp")}
                     </a>
                   )}
                   {paymentTransaction.qrString && (
@@ -1303,11 +1305,11 @@ export default function Cashier() {
                   )}
                   {paymentTransaction.vaNumber && (
                     <p className="text-muted-foreground">
-                      VA: <span className="font-medium text-foreground">{paymentTransaction.vaNumber}</span>
+                      {t("shared.va")} <span className="font-medium text-foreground">{paymentTransaction.vaNumber}</span>
                     </p>
                   )}
                   <p className="text-muted-foreground">
-                    Expires in: <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span>
+                    {t("shared.expiresInColon")} <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span>
                   </p>
                   {paymentError && <p className="text-destructive">{paymentError}</p>}
                   <div className="flex flex-wrap gap-2">
@@ -1326,7 +1328,7 @@ export default function Cashier() {
                         disabled={paymentIsSubmitting}
                         className="rounded-lg border border-border px-2 py-1"
                       >
-                        Reconcile
+                        {t("shared.reconcile")}
                       </button>
                     ) : null}
                     <button
@@ -1335,7 +1337,7 @@ export default function Cashier() {
                       disabled={paymentIsSubmitting}
                       className="rounded-lg border border-border px-2 py-1"
                     >
-                      Expire
+                      {t("shared.expire")}
                     </button>
                     {allowSandboxSimulation && (
                       <button
@@ -1344,7 +1346,7 @@ export default function Cashier() {
                         disabled={paymentIsSubmitting}
                         className="rounded-lg border border-amber-500/30 px-2 py-1 text-amber-700 dark:text-amber-300"
                       >
-                        Simulate Sandbox Payment
+                        {t("shared.simulateSandbox")}
                       </button>
                     )}
                   </div>
@@ -1362,7 +1364,7 @@ export default function Cashier() {
         expirySeconds={paymentExpiryCountdown}
         status={paymentTransaction?.status ?? "pending"}
         orderLabel={paymentModalOrder?.code}
-        outletLabel={typeof activeOutletId === "number" ? `Outlet ${activeOutletId}` : undefined}
+        outletLabel={typeof activeOutletId === "number" ? t("shared.outlet", { id: activeOutletId }) : undefined}
         isSubmitting={paymentIsSubmitting}
         error={paymentError}
         onRequestClose={() => {
@@ -1374,8 +1376,8 @@ export default function Cashier() {
         onChangePaymentMethod={handleCashierChangePaymentMethodFromQris}
         checkoutHint={
           splitCheckoutActive
-            ? "Customer cancelled QR? Tap Change payment method, then complete the remaining split portion with Cash or another method."
-            : "Customer cancelled QR? Tap Change payment method or choose Cash below."
+            ? t("shared.qrisSplitCheckoutHint")
+            : t("shared.qrisCheckoutHint")
         }
         onRetry={() => void (paymentTransaction ? handleCashierGatewayRetry(paymentTransaction.id) : Promise.resolve())}
         onReconcile={() => void (paymentTransaction ? paymentReconcile(paymentTransaction.id) : Promise.resolve())}
@@ -1390,9 +1392,9 @@ export default function Cashier() {
           setProviderSimulating(true);
           try {
             await paymentSimulateViaProvider(paymentTransaction.id);
-            toast.success("Provider simulation dispatched. Waiting for Xendit webhook callback.");
+            toast.success(t("shared.providerSimDispatched"));
           } catch (error) {
-            toast.error(error instanceof ApiHttpError ? error.message : "Provider simulation failed");
+            toast.error(error instanceof ApiHttpError ? error.message : t("shared.providerSimFailed"));
           } finally {
             setProviderSimulating(false);
           }
@@ -1430,17 +1432,17 @@ export default function Cashier() {
               className="bg-card rounded-2xl p-6 w-full max-w-lg pos-shadow-md max-h-[85vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-foreground">Split Bill</h3>
+                <h3 className="text-lg font-bold text-foreground">{t("shared.splitBill")}</h3>
                 <button type="button" onClick={() => closeSplitModal()} className="p-1 rounded-lg hover:bg-muted">
                   <X className="h-5 w-5 text-muted-foreground" />
                 </button>
               </div>
 
               <div className="text-center mb-5">
-                <p className="text-sm text-muted-foreground">Balance due</p>
+                <p className="text-sm text-muted-foreground">{t("shared.balanceDue")}</p>
                 <p className="text-2xl font-bold text-foreground">{formatRp(splitSourceOrder.balanceDue)}</p>
                 {!splitAllowsByItem && (
-                  <p className="text-xs text-muted-foreground mt-2">Equal split only — partial payments already recorded.</p>
+                  <p className="text-xs text-muted-foreground mt-2">{t("cashier.equalSplitOnly")}</p>
                 )}
               </div>
 
@@ -1455,12 +1457,12 @@ export default function Cashier() {
                     splitMethod === "equal" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  Equal Split
+                  {t("shared.equalSplit")}
                 </button>
                 <button
                   type="button"
                   disabled={!splitAllowsByItem}
-                  title={!splitAllowsByItem ? "Split by item is only available when no payments have been recorded yet." : undefined}
+                  title={!splitAllowsByItem ? t("shared.splitByItemTooltip") : undefined}
                   onClick={() => {
                     setSplitMethod("by-item");
                     buildItemSplit(splitCount);
@@ -1469,7 +1471,7 @@ export default function Cashier() {
                     splitMethod === "by-item" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                   } ${!splitAllowsByItem ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  Split by Item
+                  {t("shared.splitByItem")}
                 </button>
               </div>
 
@@ -1488,7 +1490,7 @@ export default function Cashier() {
                 </button>
                 <div className="text-center">
                   <p className="text-2xl font-bold text-foreground">{splitCount}</p>
-                  <p className="text-xs text-muted-foreground">people</p>
+                  <p className="text-xs text-muted-foreground">{t("shared.people")}</p>
                 </div>
                 <button
                   type="button"
@@ -1507,11 +1509,11 @@ export default function Cashier() {
               {splitMethod === "by-item" && splitAllowsByItem && (
                 <div className="mb-5 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Use − / + to assign quantities. Each person total includes their share of tax/discount on assigned items.
+                    {t("shared.splitByItemHint")}
                   </p>
                   {!byItemAllocationComplete && (
                     <p className="text-xs text-amber-900 dark:text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
-                      Assign all units of every item before you can complete split payments.
+                      {t("shared.assignAllItemsWarning")}
                     </p>
                   )}
                   {splitPersons.map((person, pIdx) => (
@@ -1581,11 +1583,11 @@ export default function Cashier() {
                         <span className="text-sm font-bold text-foreground">{formatRp(person.totalDue)}</span>
                         {isPaid ? (
                           <span className="px-3 py-1 rounded-lg text-xs font-medium bg-success/10 text-success shrink-0">
-                            ✓ Paid ({methodSummary})
+                            {t("shared.paidWithMethods", { methods: methodSummary })}
                           </span>
                         ) : hasDraftPayment ? (
                           <span className="px-3 py-1 rounded-lg text-xs font-medium bg-muted text-foreground shrink-0">
-                            {formatRp(paid)} recorded ({methodSummary})
+                            {t("shared.recordedWithMethods", { amount: formatRp(paid), methods: methodSummary })}
                           </span>
                         ) : null}
                         {!isPaid && (
@@ -1597,19 +1599,19 @@ export default function Cashier() {
                             }}
                             className="px-3 py-1 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
                           >
-                            {hasDraftPayment ? "Add more" : "Add Payment"}
+                            {hasDraftPayment ? t("shared.addMore") : t("shared.addPayment")}
                           </button>
                         )}
                         {hasDraftPayment && (
                           <button
                             type="button"
-                            title="Clear this person’s draft payment so you can pick another method"
+                            title={t("shared.clearDraftPayment")}
                             onClick={() => undoSplitPersonDraftPayment(i)}
                             disabled={submitting}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 disabled:opacity-40"
                           >
                             <Undo2 className="h-3.5 w-3.5" />
-                            Change
+                            {t("shared.change")}
                           </button>
                         )}
                       </div>
@@ -1625,7 +1627,7 @@ export default function Cashier() {
                           >
                             <div className="bg-accent/30 rounded-xl p-4 border border-accent">
                               <p className="text-sm font-semibold text-foreground mb-3">
-                                Pay for {person.label}: {formatRp(person.totalDue)}
+                                {t("shared.payFor", { label: person.label, amount: formatRp(person.totalDue) })}
                               </p>
                               <PaymentMethodTileGrid
                                 className="mb-3"
@@ -1646,7 +1648,7 @@ export default function Cashier() {
                                   onClick={() => setPayingPersonIdx(null)}
                                   className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
                                 >
-                                  Cancel
+                                  {t("shared.cancel")}
                                 </button>
                                 <button
                                   type="button"
@@ -1654,7 +1656,7 @@ export default function Cashier() {
                                   disabled={!splitPayMethod}
                                   className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
                                 >
-                                  Confirm Payment
+                                  {t("shared.confirmPayment")}
                                 </button>
                               </div>
                             </div>
@@ -1675,12 +1677,12 @@ export default function Cashier() {
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
               >
                 {submitting
-                  ? "Saving…"
+                  ? t("shared.saving")
                   : !byItemAllocationComplete && splitMethod === "by-item"
-                    ? "Assign all item units"
+                    ? t("shared.assignAllItemUnits")
                     : allSplitPaid
-                      ? "Complete split & record payments"
-                      : `${splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length}/${splitPersons.length} paid`}
+                      ? t("shared.completeSplitRecord")
+                      : t("shared.paidProgress", { paid: splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length, total: splitPersons.length })}
               </button>
             </motion.div>
           </motion.div>

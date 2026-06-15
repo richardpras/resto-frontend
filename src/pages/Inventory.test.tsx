@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Inventory from "./Inventory";
 
@@ -71,7 +72,11 @@ describe("Inventory page store orchestration", () => {
   });
 
   it("refreshes inventory + movement ledger with outlet scope changes", async () => {
-    const { rerender } = render(<Inventory />);
+    const { rerender } = render(
+      <MemoryRouter>
+        <Inventory />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(mockFetchInventory).toHaveBeenCalledWith({ tenantId: 1, outletId: 2, perPage: 200 });
@@ -79,7 +84,11 @@ describe("Inventory page store orchestration", () => {
     });
 
     activeOutletId = 7;
-    rerender(<Inventory />);
+    rerender(
+      <MemoryRouter>
+        <Inventory />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(mockFetchInventory).toHaveBeenLastCalledWith({ tenantId: 1, outletId: 7, perPage: 200 });
@@ -88,8 +97,12 @@ describe("Inventory page store orchestration", () => {
   });
 
   it("renders movement ledger rows from store data flow", () => {
-    render(<Inventory />);
-    expect(screen.getByText("Movement Ledger")).toBeInTheDocument();
+    render(
+      <MemoryRouter>
+        <Inventory />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Movement Ledger")).toBeTruthy();
     expect(screen.getAllByText("Rice").length).toBeGreaterThan(0);
     expect(screen.getByText("adjustment")).toBeInTheDocument();
     expect(screen.getByText("manual")).toBeInTheDocument();

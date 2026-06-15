@@ -31,24 +31,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TablesBoardSkeleton } from "@/components/skeletons/dashboard/TablesBoardSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 function formatRp(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
 }
 
-const statusConfig = {
-  available: { label: "Available", color: "bg-success/10 text-success border-success/20", dot: "bg-success" },
-  occupied: { label: "Occupied", color: "bg-info/10 text-info border-info/20", dot: "bg-info" },
-  reserved: { label: "Reserved", color: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20", dot: "bg-violet-500" },
-  cleaning: { label: "Cleaning", color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20", dot: "bg-amber-500" },
-  disabled: { label: "Disabled", color: "bg-muted text-muted-foreground border-border/40", dot: "bg-muted-foreground/50" },
-};
-
-function qrStatusLabel(status?: FloorTableApi["qrStatus"]): string {
-  if (status === "ready") return "Ready";
-  if (status === "invalid_url") return "Invalid URL";
-  return "Missing URL";
-}
+const statusColorConfig = {
+  available: { color: "bg-success/10 text-success border-success/20", dot: "bg-success" },
+  occupied: { color: "bg-info/10 text-info border-info/20", dot: "bg-info" },
+  reserved: { color: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20", dot: "bg-violet-500" },
+  cleaning: { color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20", dot: "bg-amber-500" },
+  disabled: { color: "bg-muted text-muted-foreground border-border/40", dot: "bg-muted-foreground/50" },
+} as const;
 
 function qrStatusClass(status?: FloorTableApi["qrStatus"]): string {
   if (status === "ready") return "text-success font-medium";
@@ -68,6 +63,7 @@ function linkedOrderForTable(tableIdStr: string, orders: Order[]) {
 }
 
 export default function Tables() {
+  const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const orders = useOrderStore((s) => s.orders);
   const hasPermission = useAuthStore((s) => s.hasPermission);
@@ -86,6 +82,24 @@ export default function Tables() {
   const [bulkPrintOpen, setBulkPrintOpen] = useState(false);
   const outlets = useSettingsStore((s) => s.outlets);
   const activeOutletName = outlets.find((o) => o.id === activeOutletId)?.name ?? null;
+
+  const statusConfig = useMemo(
+    () =>
+      ({
+        available: { label: t("tables.available"), ...statusColorConfig.available },
+        occupied: { label: t("tables.occupied"), ...statusColorConfig.occupied },
+        reserved: { label: t("tables.reserved"), ...statusColorConfig.reserved },
+        cleaning: { label: t("tables.cleaning"), ...statusColorConfig.cleaning },
+        disabled: { label: t("tables.disabled"), ...statusColorConfig.disabled },
+      }) as Record<keyof typeof statusColorConfig, { label: string; color: string; dot: string }>,
+    [t],
+  );
+
+  const qrStatusLabel = (status?: FloorTableApi["qrStatus"]) => {
+    if (status === "ready") return t("tables.qrReady");
+    if (status === "invalid_url") return t("tables.qrInvalid");
+    return t("tables.qrMissing");
+  };
 
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const authed = Boolean(getApiAccessToken());
@@ -142,13 +156,13 @@ export default function Tables() {
 
   const save = async () => {
     if (!outletReady || !formName.trim()) {
-      toast.error("Name required");
+      toast.error(t("tables.nameRequired"));
       return;
     }
     const capTrim = formCapacity.trim();
     const capacity = capTrim === "" ? null : Number(capTrim);
     if (capacity !== null && (Number.isNaN(capacity) || capacity < 0)) {
-      toast.error("Capacity must be a valid non-negative number");
+      toast.error(t("tables.capacityInvalid"));
       return;
     }
 
@@ -160,7 +174,7 @@ export default function Tables() {
           capacity,
           status: formStatus,
         });
-        toast.success("Table updated");
+        toast.success(t("tables.saved"));
       } else {
         await createFloorTable({
           outletId: activeOutletId!,
@@ -168,44 +182,44 @@ export default function Tables() {
           capacity,
           status: formStatus,
         });
-        toast.success("Table created");
+        toast.success(t("tables.created"));
       }
       invalidate();
       setDialogOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("shared.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   const destroy = async (row: FloorTableApi) => {
-    if (!confirm(`Delete ${row.name}?`)) return;
+    if (!confirm(t("tables.deleteConfirm", { name: row.name }))) return;
     try {
       await deleteFloorTable(row.id);
       invalidate();
-      toast.success("Table deleted");
+      toast.success(t("tables.deleted"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Delete failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("shared.deleteFailed"));
     }
   };
 
   const copyQrUrl = async (row: FloorTableApi) => {
     if (!row.qrUrl) {
-      toast.error("Generate QR first.");
+      toast.error(t("tables.generateFirst"));
       return;
     }
     await navigator.clipboard.writeText(row.qrUrl);
-    toast.success("QR URL copied.");
+    toast.success(t("tables.urlCopied"));
   };
 
   const onGenerateQr = async (row: FloorTableApi) => {
     try {
       await generateTableQr(row.id);
       invalidate();
-      toast.success("QR identity generated.");
+      toast.success(t("tables.qrGenerated"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to generate QR identity");
+      toast.error(e instanceof ApiHttpError ? e.message : t("tables.qrGenerateFailed"));
     }
   };
 
@@ -213,9 +227,9 @@ export default function Tables() {
     try {
       await rotateTableQr(row.id);
       invalidate();
-      toast.success("QR identity regenerated.");
+      toast.success(t("tables.qrRegenerated"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to regenerate QR identity");
+      toast.error(e instanceof ApiHttpError ? e.message : t("tables.qrRegenerateFailed"));
     }
   };
 
@@ -225,7 +239,7 @@ export default function Tables() {
 
   const printTableQr = async (row: FloorTableApi) => {
     if (row.qrStatus !== "ready") {
-      toast.error("QR is not ready. Generate QR and configure Customer App URL in Settings.");
+      toast.error(t("tables.qrNotReady"));
       return;
     }
     try {
@@ -234,19 +248,22 @@ export default function Tables() {
       const printWindow = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
       if (!printWindow) {
         URL.revokeObjectURL(imageUrl);
-        toast.error("Pop-up blocked. Allow pop-ups to print QR.");
+        toast.error(t("tables.popupBlocked"));
         return;
       }
+      const restaurantLabel = t("tables.printRestaurant");
+      const outletLabel = activeOutletName ?? t("shared.noOutletSelected");
+      const scanHint = t("tables.printScanHint");
       printWindow.document.write(`
         <html><head><title>Print QR ${row.name}</title>
         <style>body{font-family:sans-serif;padding:16px;} @media print { body { margin: 0; } }</style>
         </head><body>
         <div style="text-align:center;border:1px solid #ccc;border-radius:8px;padding:16px;max-width:320px;margin:0 auto;">
-          <div style="font-weight:700;font-size:14px;">Restaurant</div>
-          <div style="font-size:12px;color:#555;margin-bottom:8px;">${activeOutletName ?? "Outlet"}</div>
+          <div style="font-weight:700;font-size:14px;">${restaurantLabel}</div>
+          <div style="font-size:12px;color:#555;margin-bottom:8px;">${outletLabel}</div>
           <div style="font-size:22px;font-weight:800;margin-bottom:12px;">${row.name}</div>
           <img src="${imageUrl}" alt="QR" style="width:180px;height:180px;object-fit:contain;" />
-          <div style="font-size:12px;margin-top:12px;">Scan to order from your table</div>
+          <div style="font-size:12px;margin-top:12px;">${scanHint}</div>
           <div style="font-size:10px;color:#666;margin-top:8px;word-break:break-all;">${row.qrUrl ?? ""}</div>
         </div>
         <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
@@ -255,7 +272,7 @@ export default function Tables() {
       printWindow.document.close();
       setTimeout(() => URL.revokeObjectURL(imageUrl), 60_000);
     } catch {
-      toast.error("Failed to print QR.");
+      toast.error(t("tables.printFailed"));
     }
   };
 
@@ -264,16 +281,16 @@ export default function Tables() {
       if (enabled) await enableTableQr(row.id);
       else await disableTableQr(row.id);
       invalidate();
-      toast.success(enabled ? "QR enabled." : "QR disabled.");
+      toast.success(enabled ? t("tables.qrEnabled") : t("tables.qrDisabled"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to update QR status");
+      toast.error(e instanceof ApiHttpError ? e.message : t("tables.qrStatusFailed"));
     }
   };
 
   if (!authed) {
     return (
       <div className="p-4 md:p-6 text-sm text-muted-foreground">
-        Sign in to manage tables from the API.
+        {t("tables.signIn")}
       </div>
     );
   }
@@ -281,7 +298,7 @@ export default function Tables() {
   if (!outletReady) {
     return (
       <div className="p-4 md:p-6 text-sm text-muted-foreground">
-        Select an outlet in the header to view and manage tables.
+        {t("tables.selectOutlet")}
       </div>
     );
   }
@@ -291,17 +308,17 @@ export default function Tables() {
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Users className="h-6 w-6" /> Table Management
+            <Users className="h-6 w-6" /> {t("tables.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {counts.available} available tables from {masterRows.length} master tables
+            {t("tables.subtitle", { available: counts.available, total: masterRows.length })}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {canManage && (
             <>
               <Button type="button" size="sm" onClick={openCreate}>
-                <Plus className="h-4 w-4 mr-1" /> Add table
+                <Plus className="h-4 w-4 mr-1" /> {t("tables.addTable")}
               </Button>
               <Button
                 type="button"
@@ -312,7 +329,7 @@ export default function Tables() {
                   setSelectedIds([]);
                 }}
               >
-                {selectMode ? "Cancel select" : "Select tables"}
+                {selectMode ? t("tables.cancelSelect") : t("tables.selectTables")}
               </Button>
               {selectMode ? (
                 <Button
@@ -323,7 +340,7 @@ export default function Tables() {
                   onClick={() => setBulkPrintOpen(true)}
                 >
                   <Printer className="h-4 w-4 mr-1" />
-                  Print selected QR ({selectedIds.length})
+                  {t("tables.printSelected", { n: selectedIds.length })}
                 </Button>
               ) : null}
             </>
@@ -345,7 +362,7 @@ export default function Tables() {
         </div>
       </div>
 
-      <SkeletonBusyRegion busy={isLoading} label="Loading tables">
+      <SkeletonBusyRegion busy={isLoading} label={t("tables.loading")}>
         {isLoading ? (
           <TablesBoardSkeleton tiles={12} />
         ) : (
@@ -396,7 +413,7 @@ export default function Tables() {
                     <Checkbox
                       checked={selectedIds.includes(table.id)}
                       onCheckedChange={(v) => toggleSelected(table.id, v === true)}
-                      aria-label={`Select ${table.name}`}
+                      aria-label={t("tables.selectTableAria", { name: table.name })}
                     />
                   ) : null}
                   <span className={`h-2.5 w-2.5 rounded-full ${inactive ? "bg-muted-foreground/40" : cfg.dot}`} />
@@ -415,7 +432,8 @@ export default function Tables() {
 
               <div className="p-4">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-                  <Users className="h-3 w-3" /> {table.capacity ?? "—"} seats
+                  <Users className="h-3 w-3" />{" "}
+                  {table.capacity != null ? t("tables.seats", { n: table.capacity }) : "—"}
                 </div>
 
                 <div className="flex flex-wrap gap-1 mb-2">
@@ -424,37 +442,39 @@ export default function Tables() {
                       inactive ? "bg-muted/50 text-muted-foreground border-border" : "bg-primary/10 text-primary border-primary/20"
                     }`}
                   >
-                    Master: {inactive ? "inactive" : "active"}
+                    {t("tables.masterLabel", {
+                      status: inactive ? t("tables.masterInactive") : t("tables.masterActive"),
+                    })}
                   </span>
                 </div>
 
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
                 {table.tableOperationalSignals?.hasReservation && runtimeKey !== "reserved" && (
                   <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full font-medium border border-violet-500/30 text-violet-700 dark:text-violet-300">
-                    Reservation
+                    {t("tables.reservation")}
                   </span>
                 )}
 
                 <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">QR</span>
+                    <span className="text-muted-foreground">{t("tables.qr")}</span>
                     <span className={table.qrEnabled ? "text-success font-medium" : "text-muted-foreground"}>
-                      {table.qrEnabled ? "Enabled" : "Disabled"}
+                      {table.qrEnabled ? t("tables.qrEnabledStatus") : t("tables.qrDisabledStatus")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">QR Status</span>
+                    <span className="text-muted-foreground">{t("tables.qrStatus")}</span>
                     <span className={qrStatusClass(table.qrStatus)}>{qrStatusLabel(table.qrStatus)}</span>
                   </div>
                   <div className="text-[11px] text-muted-foreground break-all">
-                    {table.qrUrl ?? "No QR URL generated"}
+                    {table.qrUrl ?? t("tables.noQrUrl")}
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void onGenerateQr(table)}>
-                      Generate QR
+                      {t("tables.generateQr")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void onRotateQr(table)}>
-                      Regenerate QR
+                      {t("tables.regenerateQr")}
                     </Button>
                     <Button
                       type="button"
@@ -463,18 +483,18 @@ export default function Tables() {
                       className="h-8 text-[11px]"
                       onClick={() => void onToggleQr(table, !table.qrEnabled)}
                     >
-                      {table.qrEnabled ? "Disable QR" : "Enable QR"}
+                      {table.qrEnabled ? t("tables.disableQr") : t("tables.enableQr")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void copyQrUrl(table)}>
-                      Copy URL
+                      {t("tables.copyUrl")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => setPreviewTable(table)}>
                       <QrCode className="h-3 w-3 mr-1" />
-                      Preview QR
+                      {t("tables.previewQr")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => void printTableQr(table)}>
                       <Printer className="h-3 w-3 mr-1" />
-                      Print QR
+                      {t("tables.printQr")}
                     </Button>
                   </div>
                 </div>
@@ -494,17 +514,17 @@ export default function Tables() {
                       }`}
                     >
                       {linkedOrder.paymentStatus === "paid"
-                        ? "Paid"
+                        ? t("tables.paid")
                         : linkedOrder.paymentStatus === "partial"
-                        ? "Partial"
-                        : "Unpaid"}
+                        ? t("tables.partial")
+                        : t("tables.unpaid")}
                     </span>
                   </div>
                 )}
 
                 {!inactive && runtimeKey === "occupied" && (
                   <p className="mt-3 text-[11px] text-muted-foreground">
-                    Table status is projection-based. Settle or close open bill from cashier flow.
+                    {t("tables.projectionHint")}
                   </p>
                 )}
               </div>
@@ -516,7 +536,7 @@ export default function Tables() {
       </SkeletonBusyRegion>
 
       {!isLoading && masterRows.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center mt-12">No tables defined for this outlet. Add one above.</p>
+        <p className="text-sm text-muted-foreground text-center mt-12">{t("tables.empty")}</p>
       )}
 
       <QrPreviewModal
@@ -544,44 +564,44 @@ export default function Tables() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit table" : "New table"}</DialogTitle>
+            <DialogTitle>{editing ? t("tables.editTitle") : t("tables.newTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Table / area name" />
+              <Label>{t("common:common.name")}</Label>
+              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder={t("tables.namePlaceholder")} />
             </div>
             <div className="space-y-2">
-              <Label>Capacity (optional)</Label>
+              <Label>{t("tables.capacity")}</Label>
               <Input
                 inputMode="numeric"
-                placeholder="Seat count"
+                placeholder={t("tables.capacityPlaceholder")}
                 value={formCapacity}
                 onChange={(e) => setFormCapacity(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>{t("common:common.status")}</Label>
               <Select value={formStatus} onValueChange={(v: "active" | "inactive") => setFormStatus(v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("common:common.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("common:common.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Outlet is taken from the header selector (outlet {activeOutletId}).
+              {t("tables.outletFromHeader", { id: activeOutletId })}
             </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
+              {t("shared.cancel")}
             </Button>
             <Button type="button" onClick={() => void save()} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("shared.saving") : t("shared.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

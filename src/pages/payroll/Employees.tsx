@@ -15,6 +15,8 @@ import {
   deleteEmployee as deleteEmployeeApi,
 } from "@/lib/api";
 import { employeeToCreatePayload, employeeToUpdatePayload, type EmployeeFormForApi } from "@/lib/payrollMappers";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { toast } from "sonner";
 
 const empty: EmployeeFormForApi = {
@@ -32,6 +34,7 @@ const empty: EmployeeFormForApi = {
 };
 
 export default function Employees() {
+  const { t } = useErpTranslation();
   const { employees, refreshEmployeesFromApi } = usePayrollStore();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -56,25 +59,25 @@ export default function Employees() {
 
   const submit = async () => {
     if (!form.name || !form.position) {
-      toast.error("Name and position required");
+      toast.error(t("payroll.employees.namePositionRequired"));
       return;
     }
     try {
       if (editId) {
         if (!form.employeeNo.trim()) {
-          toast.error("Employee number is required for updates");
+          toast.error(t("payroll.employees.employeeNoRequired"));
           return;
         }
         await updateEmployeeApi(editId, employeeToUpdatePayload(form));
-        toast.success("Employee updated");
+        toast.success(t("payroll.employees.updated"));
       } else {
         await createEmployeeApi(employeeToCreatePayload(form));
-        toast.success("Employee added");
+        toast.success(t("payroll.employees.added"));
       }
       await refreshEmployeesFromApi();
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.saveFailed"));
     }
   };
 
@@ -82,39 +85,39 @@ export default function Employees() {
     try {
       await deleteEmployeeApi(id);
       await refreshEmployeesFromApi();
-      toast.success("Employee removed");
+      toast.success(t("payroll.employees.removed"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.deleteFailed"));
     }
   };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Employees</h2>
-        <Button onClick={openCreate} size="sm"><Plus className="h-4 w-4" />Add Employee</Button>
+        <h2 className="text-lg font-semibold">{t("payroll.employees.title")}</h2>
+        <Button onClick={openCreate} size="sm"><Plus className="h-4 w-4" />{t("payroll.employees.add")}</Button>
       </div>
 
       <Card className="p-0 border-0 shadow-none">
         <DataTable
           data={employees}
           rowKey={(e) => e.id}
-          searchPlaceholder="Search employee..."
+          searchPlaceholder={t("payroll.employees.searchPlaceholder")}
           searchKeys={["employeeNo", "name", "position", "outlet", "status"]}
-          emptyMessage="No employees (check API token and backend)."
+          emptyMessage={t("payroll.employees.empty")}
           defaultPageSize={10}
           pageSizeOptions={[10, 25, 50]}
           columns={[
-            { key: "employeeNo", header: "No.", sortable: true, render: (e) => <span className="font-mono text-xs text-muted-foreground">{e.employeeNo || "—"}</span> },
-            { key: "name", header: "Name", sortable: true, render: (e) => <span className="font-medium">{e.name}</span> },
-            { key: "position", header: "Position", sortable: true },
-            { key: "outlet", header: "Outlet", sortable: true },
-            { key: "salaryType", header: "Salary Type", sortable: true, render: (e) => <span className="capitalize">{e.salaryType}</span> },
-            { key: "baseSalary", header: "Base Salary", sortable: true, render: (e) => formatIDR(e.baseSalary) },
-            { key: "status", header: "Status", sortable: true, render: (e) => <Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status}</Badge> },
+            { key: "employeeNo", header: t("payroll.employees.no"), sortable: true, render: (e) => <span className="font-mono text-xs text-muted-foreground">{e.employeeNo || "—"}</span> },
+            { key: "name", header: t("payroll.shared.name"), sortable: true, render: (e) => <span className="font-medium">{e.name}</span> },
+            { key: "position", header: t("payroll.employees.position"), sortable: true },
+            { key: "outlet", header: t("payroll.employees.outlet"), sortable: true },
+            { key: "salaryType", header: t("payroll.employees.salaryType"), sortable: true, render: (e) => <span className="capitalize">{t(`payroll.shared.salaryTypes.${e.salaryType}`, { defaultValue: e.salaryType })}</span> },
+            { key: "baseSalary", header: t("payroll.employees.baseSalary"), sortable: true, render: (e) => formatIDR(e.baseSalary) },
+            { key: "status", header: t("payroll.shared.status"), sortable: true, render: (e) => <Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status === "active" ? t("payroll.shared.active") : t("payroll.shared.inactive")}</Badge> },
             {
               key: "actions",
-              header: "Actions",
+              header: t("payroll.shared.actions"),
               className: "text-right",
               render: (e) => (
                 <div className="flex justify-end gap-1">
@@ -130,70 +133,70 @@ export default function Employees() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editId ? "Edit" : "Add"} Employee</DialogTitle>
+            <DialogTitle>{editId ? t("payroll.employees.edit") : t("payroll.employees.add")}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Employee No. {!editId && <span className="text-muted-foreground text-xs">(optional — auto if empty)</span>}</Label>
+              <Label>{t("payroll.employees.employeeNo")} {!editId && <span className="text-muted-foreground text-xs">{t("payroll.employees.employeeNoHint")}</span>}</Label>
               <Input value={form.employeeNo} onChange={(e) => setForm({ ...form, employeeNo: e.target.value })} placeholder="EMP-001" />
             </div>
             <div className="space-y-2">
-              <Label>Full name</Label>
+              <Label>{t("payroll.employees.fullName")}</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Position</Label>
+              <Label>{t("payroll.employees.position")}</Label>
               <Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Outlet</Label>
+              <Label>{t("payroll.employees.outlet")}</Label>
               <Input value={form.outlet} onChange={(e) => setForm({ ...form, outlet: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Hire date</Label>
+              <Label>{t("payroll.employees.hireDate")}</Label>
               <Input type="date" value={form.joinDate} onChange={(e) => setForm({ ...form, joinDate: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Salary Type</Label>
+              <Label>{t("payroll.employees.salaryType")}</Label>
               <Select value={form.salaryType} onValueChange={(v) => setForm({ ...form, salaryType: v as SalaryType })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="hourly">Hourly</SelectItem>
+                  <SelectItem value="monthly">{t("payroll.shared.salaryTypes.monthly")}</SelectItem>
+                  <SelectItem value="daily">{t("payroll.shared.salaryTypes.daily")}</SelectItem>
+                  <SelectItem value="hourly">{t("payroll.shared.salaryTypes.hourly")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>{t("payroll.shared.status")}</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Base salary (IDR)</Label>
+              <Label>{t("payroll.employees.baseSalaryIdr")}</Label>
               <Input type="number" value={form.baseSalary} onChange={(e) => setForm({ ...form, baseSalary: Number(e.target.value) })} />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label>{t("payroll.employees.email")}</Label>
               <Input type="email" value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
+              <Label>{t("payroll.employees.phone")}</Label>
               <Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Overtime rate</Label>
+              <Label>{t("payroll.employees.overtimeRate")}</Label>
               <Input type="number" value={form.overtimeRate} onChange={(e) => setForm({ ...form, overtimeRate: Number(e.target.value) })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => void submit()}>Save</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("payroll.shared.cancel")}</Button>
+            <Button onClick={() => void submit()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

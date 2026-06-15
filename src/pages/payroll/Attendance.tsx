@@ -32,6 +32,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listDepartments, listOrganizationEmployees, type DepartmentRow, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Pencil, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,6 +64,7 @@ function defaultDateRange(): { from: string; to: string } {
 }
 
 export default function Attendance() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const range = useMemo(() => defaultDateRange(), []);
@@ -110,7 +113,7 @@ export default function Attendance() {
       setDepartments(deps.filter((d) => d.isActive));
       setRows(records);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load attendance");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendance.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -137,7 +140,7 @@ export default function Attendance() {
 
   const runImport = async (preview: boolean) => {
     if (!outletId || !csvText.trim()) {
-      toast.error("Select outlet and upload a CSV file");
+      toast.error(t("payroll.attendance.selectOutletCsv"));
       return;
     }
     setImporting(true);
@@ -154,16 +157,16 @@ export default function Attendance() {
       });
       setPreviewRows(result.preview);
       if (preview) {
-        toast.success(`Preview: ${result.preview.length} row(s)`);
+        toast.success(t("payroll.shared.importPreview", { count: result.preview.length }));
       } else {
-        toast.success(`Imported ${result.created}, skipped ${result.skipped}`);
+        toast.success(t("payroll.shared.importedSkipped", { created: result.created, skipped: result.skipped }));
         setImportOpen(false);
         setCsvText("");
         setPreviewRows([]);
         await load();
       }
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Import failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendance.importFailed"));
     } finally {
       setImporting(false);
     }
@@ -188,11 +191,11 @@ export default function Attendance() {
         clockOut: editForm.clockOut || null,
         notes: editForm.notes || null,
       });
-      toast.success("Attendance updated");
+      toast.success(t("payroll.attendance.updated"));
       setEditOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendance.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -201,33 +204,33 @@ export default function Attendance() {
   const columns: Column<AttendanceRecordApiRow>[] = [
     {
       key: "employee",
-      header: "Employee",
+      header: t("payroll.attendance.employee"),
       sortable: true,
-      render: (r) => r.employee?.fullName ?? `Employee #${r.employeeId}`,
+      render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
     },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.attendanceDate },
+    { key: "date", header: t("payroll.shared.date"), sortable: true, render: (r) => r.attendanceDate },
     {
       key: "shift",
-      header: "Shift",
+      header: t("payroll.attendance.shift"),
       render: (r) =>
         r.shift ? `${r.shift.name} (${r.shift.startTime}–${r.shift.endTime})` : "—",
     },
-    { key: "clockIn", header: "Clock In", render: (r) => r.clockIn ?? "—" },
-    { key: "clockOut", header: "Clock Out", render: (r) => r.clockOut ?? "—" },
-    { key: "worked", header: "Worked", render: (r) => formatWorked(r) },
+    { key: "clockIn", header: t("payroll.attendance.clockIn"), render: (r) => r.clockIn ?? "—" },
+    { key: "clockOut", header: t("payroll.attendance.clockOut"), render: (r) => r.clockOut ?? "—" },
+    { key: "worked", header: t("payroll.attendance.worked"), render: (r) => formatWorked(r) },
     {
       key: "status",
-      header: "Status",
+      header: t("payroll.attendance.status"),
       sortable: true,
       render: (r) => (
         <Badge variant={statusVariant(r.status)} className="capitalize">
-          {r.status.replace("_", " ")}
+          {t(`payroll.attendance.statuses.${r.status}`, { defaultValue: r.status.replace("_", " ") })}
         </Badge>
       ),
     },
     {
       key: "source",
-      header: "Source",
+      header: t("payroll.attendance.source"),
       render: (r) => <span className="capitalize text-xs">{r.source.replace("_", " ")}</span>,
     },
     {
@@ -235,7 +238,7 @@ export default function Attendance() {
       header: "",
       className: "text-right w-12",
       render: (r) => (
-        <Button variant="ghost" size="icon" onClick={() => openEdit(r)} aria-label="Edit attendance">
+        <Button variant="ghost" size="icon" onClick={() => openEdit(r)} aria-label={t("payroll.shared.editAttendance")}>
           <Pencil className="h-4 w-4" />
         </Button>
       ),
@@ -245,10 +248,10 @@ export default function Attendance() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between items-center gap-3">
-        <h2 className="text-lg font-semibold">Attendance</h2>
+        <h2 className="text-lg font-semibold">{t("payroll.attendance.title")}</h2>
         <Button size="sm" onClick={() => setImportOpen(true)} disabled={!outletId}>
           <Upload className="h-4 w-4 mr-1" />
-          Import CSV
+          {t("payroll.attendance.import")}
         </Button>
       </div>
 
@@ -256,10 +259,10 @@ export default function Attendance() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {outlets.length > 1 && (
             <div className="space-y-1">
-              <Label className="text-xs">Outlet</Label>
+              <Label className="text-xs">{t("payroll.shared.outlet")}</Label>
               <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Outlet" />
+                  <SelectValue placeholder={t("payroll.shared.outlet")} />
                 </SelectTrigger>
                 <SelectContent>
                   {outlets.map((o) => (
@@ -272,13 +275,13 @@ export default function Attendance() {
             </div>
           )}
           <div className="space-y-1">
-            <Label className="text-xs">Department</Label>
+            <Label className="text-xs">{t("payroll.shared.department")}</Label>
             <Select value={departmentId} onValueChange={setDepartmentId}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">{t("payroll.shared.all")}</SelectItem>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={String(d.id)}>
                     {d.name}
@@ -288,13 +291,13 @@ export default function Attendance() {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Employee</Label>
+            <Label className="text-xs">{t("payroll.shared.employee")}</Label>
             <Select value={employeeId} onValueChange={setEmployeeId}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">{t("payroll.shared.all")}</SelectItem>
                 {employees.map((e) => (
                   <SelectItem key={e.id} value={String(e.id)}>
                     {e.fullName}
@@ -304,27 +307,27 @@ export default function Attendance() {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Status</Label>
+            <Label className="text-xs">{t("payroll.shared.status")}</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">{t("payroll.shared.all")}</SelectItem>
                 {STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {s.replace("_", " ")}
+                    {t(`payroll.attendance.statuses.${s}`, { defaultValue: s.replace("_", " ") })}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">From</Label>
+            <Label className="text-xs">{t("payroll.shared.from")}</Label>
             <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">To</Label>
+            <Label className="text-xs">{t("payroll.shared.to")}</Label>
             <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
         </div>
@@ -336,9 +339,9 @@ export default function Attendance() {
           rowKey={(r) => r.id}
           columns={columns}
           loading={loading}
-          searchPlaceholder="Search employee, date, status..."
+          searchPlaceholder={t("payroll.shared.searchAttendance")}
           searchKeys={["attendanceDate", "status", "source"]}
-          emptyMessage="No attendance records in this range"
+          emptyMessage={t("payroll.shared.emptyAttendance")}
           defaultPageSize={25}
           pageSizeOptions={[10, 25, 50]}
         />
@@ -347,30 +350,29 @@ export default function Attendance() {
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import fingerprint / attendance CSV</DialogTitle>
+            <DialogTitle>{t("payroll.shared.importTitle")}</DialogTitle>
           </DialogHeader>
           <Tabs defaultValue="upload">
             <TabsList>
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-              <TabsTrigger value="mapping">Column mapping</TabsTrigger>
+              <TabsTrigger value="upload">{t("payroll.shared.upload")}</TabsTrigger>
+              <TabsTrigger value="mapping">{t("payroll.shared.columnMapping")}</TabsTrigger>
             </TabsList>
             <TabsContent value="upload" className="space-y-4 pt-3">
               <div className="space-y-2">
-                <Label>CSV file</Label>
+                <Label>{t("payroll.shared.csvFile")}</Label>
                 <Input type="file" accept=".csv,text/csv" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
                 <p className="text-xs text-muted-foreground">
-                  Minimum columns: employee code and timestamp. Multiple punches per day are grouped (earliest = in,
-                  latest = out).
+                  {t("payroll.shared.csvHint")}
                 </p>
               </div>
             </TabsContent>
             <TabsContent value="mapping" className="grid grid-cols-2 gap-3 pt-3">
               <div className="space-y-2">
-                <Label>Employee code column</Label>
+                <Label>{t("payroll.shared.employeeCodeColumn")}</Label>
                 <Input value={codeColumn} onChange={(e) => setCodeColumn(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Timestamp column</Label>
+                <Label>{t("payroll.shared.timestampColumn")}</Label>
                 <Input value={tsColumn} onChange={(e) => setTsColumn(e.target.value)} />
               </div>
             </TabsContent>
@@ -381,11 +383,11 @@ export default function Attendance() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="text-left p-2">Employee</th>
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-left p-2">Clock In</th>
-                    <th className="text-left p-2">Clock Out</th>
-                    <th className="text-left p-2">Status</th>
+                    <th className="text-left p-2">{t("payroll.shared.employee")}</th>
+                    <th className="text-left p-2">{t("payroll.shared.date")}</th>
+                    <th className="text-left p-2">{t("payroll.attendance.clockIn")}</th>
+                    <th className="text-left p-2">{t("payroll.attendance.clockOut")}</th>
+                    <th className="text-left p-2">{t("payroll.attendance.status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -405,13 +407,13 @@ export default function Attendance() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setImportOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
             <Button variant="secondary" disabled={importing || !csvText} onClick={() => void runImport(true)}>
-              Preview
+              {t("payroll.shared.preview")}
             </Button>
             <Button disabled={importing || !csvText} onClick={() => void runImport(false)}>
-              Import
+              {t("payroll.shared.import")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -420,33 +422,33 @@ export default function Attendance() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Correct attendance</DialogTitle>
+            <DialogTitle>{t("payroll.shared.correctAttendance")}</DialogTitle>
           </DialogHeader>
           {editing && (
             <p className="text-sm text-muted-foreground">
-              {editing.employee?.fullName} · {editing.attendanceDate} · Source: {editing.source}
+              {editing.employee?.fullName} · {editing.attendanceDate} · {t("payroll.shared.sourceLabel")}: {editing.source}
             </p>
           )}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Clock in (HH:MM)</Label>
+              <Label>{t("payroll.shared.clockInTime")}</Label>
               <Input type="time" value={editForm.clockIn} onChange={(e) => setEditForm({ ...editForm, clockIn: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Clock out (HH:MM)</Label>
+              <Label>{t("payroll.shared.clockOutTime")}</Label>
               <Input type="time" value={editForm.clockOut} onChange={(e) => setEditForm({ ...editForm, clockOut: e.target.value })} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Notes</Label>
+            <Label>{t("payroll.shared.notes")}</Label>
             <Textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
             <Button onClick={() => void saveEdit()} disabled={saving}>
-              Save
+              {t("payroll.shared.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

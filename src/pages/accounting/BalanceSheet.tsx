@@ -9,9 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
-import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
+import { canViewFinancialStatements } from "@/domain/permissionGates";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 
 export default function BalanceSheet() {
+  const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outlets);
@@ -24,14 +27,14 @@ export default function BalanceSheet() {
     if (!allowed) return;
     void fetchBalanceSheetReport({ to: asOf, outlet })
       .catch((e) => {
-        toast.error(e instanceof Error ? e.message : "Failed to load balance sheet report");
+        toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadBalanceSheetFailed"));
       });
-  }, [allowed, asOf, outlet, fetchBalanceSheetReport]);
+  }, [allowed, asOf, outlet, fetchBalanceSheetReport, t]);
 
   if (!allowed) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+        <p className="text-sm text-muted-foreground">{t("accounting.financialStatementRestricted")}</p>
       </Card>
     );
   }
@@ -40,7 +43,7 @@ export default function BalanceSheet() {
     <div>
       <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3 mb-1">{title}</div>
       {items.length === 0 ? (
-        <div className="text-sm text-muted-foreground pl-6 py-1">No accounts</div>
+        <div className="text-sm text-muted-foreground pl-6 py-1">{t("accounting.reports.noAccounts")}</div>
       ) : items.map((i) => (
         <div key={i.account.id} className="flex justify-between text-sm py-1 pl-6">
           <span>{i.account.name}</span>
@@ -58,68 +61,68 @@ export default function BalanceSheet() {
   return (
     <Card className="p-4 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div><Label>As of Date</Label><Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} /></div>
+        <div><Label>{t("accounting.reports.asOfDate")}</Label><Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} /></div>
         <div>
-          <Label>Outlet</Label>
+          <Label>{t("accounting.reports.outlet")}</Label>
           <Select value={outlet} onValueChange={setOutlet}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Outlets</SelectItem>
+              <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
               {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-end">
           <Badge variant={bs.balanced ? "default" : "destructive"} className="w-full justify-center py-2">
-            {bs.balanced ? "✓ Balanced" : "✗ Out of Balance"}
+            {bs.balanced ? t("accounting.reports.balancedCheck") : t("accounting.reports.outOfBalance")}
           </Badge>
         </div>
         <div className="flex items-end">
-          <Button variant="outline" className="w-full" onClick={() => window.print()}><Download className="h-4 w-4 mr-1" /> Export</Button>
+          <Button variant="outline" className="w-full" onClick={() => window.print()}><Download className="h-4 w-4 mr-1" /> {t("accounting.reports.export")}</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-2">Assets</h3>
-          <Section title="Current Assets" items={bs.currentAssets} />
+          <h3 className="text-lg font-bold mb-2">{t("accounting.reports.assets")}</h3>
+          <Section title={t("accounting.reports.currentAssets")} items={bs.currentAssets} />
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Current Assets</span><span className="font-mono">{formatIDR(totalCurrentAssets)}</span>
+            <span>{t("accounting.reports.totalCurrentAssets")}</span><span className="font-mono">{formatIDR(totalCurrentAssets)}</span>
           </div>
-          <Section title="Fixed Assets" items={bs.fixedAssets} />
+          <Section title={t("accounting.reports.fixedAssets")} items={bs.fixedAssets} />
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Fixed Assets</span><span className="font-mono">{formatIDR(totalFixedAssets)}</span>
+            <span>{t("accounting.reports.totalFixedAssets")}</span><span className="font-mono">{formatIDR(totalFixedAssets)}</span>
           </div>
           <div className="flex justify-between font-bold border-t-2 mt-3 pt-2 text-base bg-primary/5 p-2 rounded">
-            <span>TOTAL ASSETS</span><span className="font-mono">{formatIDR(bs.totalAssets)}</span>
+            <span>{t("accounting.reports.totalAssets")}</span><span className="font-mono">{formatIDR(bs.totalAssets)}</span>
           </div>
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-2">Liabilities & Equity</h3>
-          <Section title="Short-term Liabilities" items={bs.shortLiab} />
+          <h3 className="text-lg font-bold mb-2">{t("accounting.reports.liabilitiesEquity")}</h3>
+          <Section title={t("accounting.reports.shortTermLiabilities")} items={bs.shortLiab} />
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Short-term</span><span className="font-mono">{formatIDR(totalShort)}</span>
+            <span>{t("accounting.reports.totalShortTerm")}</span><span className="font-mono">{formatIDR(totalShort)}</span>
           </div>
-          <Section title="Long-term Liabilities" items={bs.longLiab} />
+          <Section title={t("accounting.reports.longTermLiabilities")} items={bs.longLiab} />
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Long-term</span><span className="font-mono">{formatIDR(totalLong)}</span>
+            <span>{t("accounting.reports.totalLongTerm")}</span><span className="font-mono">{formatIDR(totalLong)}</span>
           </div>
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Liabilities</span><span className="font-mono">{formatIDR(bs.totalLiabilities)}</span>
+            <span>{t("accounting.reports.totalLiabilities")}</span><span className="font-mono">{formatIDR(bs.totalLiabilities)}</span>
           </div>
 
-          <Section title="Equity" items={bs.equity} />
+          <Section title={t("accounting.reports.equity")} items={bs.equity} />
           <div className="flex justify-between text-sm py-1 pl-6">
-            <span>Current Period Net Profit</span>
+            <span>{t("accounting.reports.currentPeriodNetProfit")}</span>
             <span className="font-mono">{formatIDR(bs.netProfit)}</span>
           </div>
           <div className="flex justify-between font-semibold border-t mt-1 pt-1 text-sm">
-            <span>Total Equity</span><span className="font-mono">{formatIDR(bs.totalEquity)}</span>
+            <span>{t("accounting.reports.totalEquity")}</span><span className="font-mono">{formatIDR(bs.totalEquity)}</span>
           </div>
 
           <div className="flex justify-between font-bold border-t-2 mt-3 pt-2 text-base bg-primary/5 p-2 rounded">
-            <span>TOTAL LIAB. & EQUITY</span><span className="font-mono">{formatIDR(bs.totalLiabilities + bs.totalEquity)}</span>
+            <span>{t("accounting.reports.totalLiabEquity")}</span><span className="font-mono">{formatIDR(bs.totalLiabilities + bs.totalEquity)}</span>
           </div>
         </Card>
       </div>

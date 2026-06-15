@@ -191,7 +191,7 @@ export async function postShiftCloseRun(payload: {
 }): Promise<ShiftCloseRunResult> {
   const res = await request<{ data: ShiftCloseRunResult }>("/shift-close/run", {
     method: "POST",
-    body: payload,
+    body: JSON.stringify(payload),
   });
   return res.data;
 }

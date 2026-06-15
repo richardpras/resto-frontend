@@ -6,6 +6,7 @@ import { fetchQrOrderPreview, type QrOrderPreview } from "@/lib/api-integration/
 import { openQrOrderInPosFlow } from "@/components/qr-order/openQrOrderInPosFlow";
 import { rejectQrOrder } from "@/lib/api-integration/qrOrderEndpoints";
 import { useQrOrderPosBridgeStore } from "@/stores/qrOrderPosBridgeStore";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import {
   Sheet,
   SheetContent,
@@ -27,6 +28,7 @@ function formatRp(value: number): string {
 }
 
 export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelled }: Props) {
+  const { t } = useOpsTranslation();
   const navigate = useNavigate();
   const setFromOpenInPos = useQrOrderPosBridgeStore((s) => s.setFromOpenInPos);
   const [preview, setPreview] = useState<QrOrderPreview | null>(null);
@@ -46,7 +48,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
         if (!cancelled) setPreview(data);
       })
       .catch(() => {
-        if (!cancelled) toast.error("Could not load QR order preview");
+        if (!cancelled) toast.error(t("qrStaff.previewModal.loadFailed"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -54,7 +56,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
     return () => {
       cancelled = true;
     };
-  }, [open, requestId]);
+  }, [open, requestId, t]);
 
   const handleOpenInPos = async () => {
     if (!requestId) return;
@@ -63,7 +65,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
       await openQrOrderInPosFlow(requestId, { setFromOpenInPos, navigate });
       onOpenChange(false);
     } catch {
-      toast.error("Could not open order in POS");
+      toast.error(t("qrStaff.previewModal.openFailed"));
     } finally {
       setOpening(false);
     }
@@ -73,12 +75,12 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
     if (!requestId) return;
     setCancelling(true);
     try {
-      await rejectQrOrder(requestId, { reason: "Cancelled by cashier" });
-      toast.success("QR order cancelled");
+      await rejectQrOrder(requestId, { reason: t("qrStaff.previewModal.cancelReason") });
+      toast.success(t("qrStaff.previewModal.cancelSuccess"));
       onOpenChange(false);
       onCancelled?.();
     } catch {
-      toast.error("Could not cancel QR order");
+      toast.error(t("qrStaff.previewModal.cancelFailed"));
     } finally {
       setCancelling(false);
     }
@@ -88,13 +90,13 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto" data-testid="qr-order-preview-drawer">
         <SheetHeader>
-          <SheetTitle>Preview QR Order</SheetTitle>
-          <SheetDescription>Read-only queue preview. Edit, promo, and payment happen in POS.</SheetDescription>
+          <SheetTitle>{t("qrStaff.previewModal.title")}</SheetTitle>
+          <SheetDescription>{t("qrStaff.previewModal.description")}</SheetDescription>
         </SheetHeader>
 
         {loading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading...
+            <Loader2 className="h-5 w-5 animate-spin mr-2" /> {t("qrStaff.previewModal.loading")}
           </div>
         ) : preview ? (
           <div className="space-y-4 mt-4">
@@ -106,17 +108,19 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
                 </span>
               </div>
               <p className="text-sm text-muted-foreground">
-                {preview.tableName ? `Table ${preview.tableName}` : "No table"}
+                {preview.tableName ? t("qrStaff.table", { name: preview.tableName }) : t("qrStaff.noTable")}
                 {preview.customerName ? ` • ${preview.customerName}` : ""}
               </p>
               {preview.createdAt && (
                 <p className="text-xs text-muted-foreground">
-                  Submitted {new Date(preview.createdAt).toLocaleString("id-ID")}
+                  {t("qrStaff.previewModal.submitted", {
+                    at: new Date(preview.createdAt).toLocaleString(),
+                  })}
                 </p>
               )}
               {(preview.customerNotes ?? []).length > 0 && (
                 <div className="text-xs bg-muted/50 rounded-lg p-2">
-                  <p className="font-medium text-foreground mb-1">Customer notes</p>
+                  <p className="font-medium text-foreground mb-1">{t("qrStaff.previewModal.customerNotes")}</p>
                   <ul className="list-disc pl-4 text-muted-foreground space-y-0.5">
                     {preview.customerNotes!.map((note) => (
                       <li key={note}>{note}</li>
@@ -127,7 +131,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-foreground">Items</p>
+              <p className="text-sm font-semibold text-foreground">{t("qrStaff.previewModal.items")}</p>
               {preview.items.map((item) => (
                 <div key={`${item.menuItemId}-${item.id ?? item.name}`} className="flex justify-between text-sm">
                   <span className="text-foreground">
@@ -141,11 +145,11 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
 
             <div className="rounded-xl border border-border p-4 space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-muted-foreground">{t("qrStaff.previewModal.subtotal")}</span>
                 <span>{formatRp(preview.subtotal)}</span>
               </div>
               <div className="flex justify-between font-semibold text-foreground">
-                <span>Total</span>
+                <span>{t("qrStaff.previewModal.total")}</span>
                 <span>{formatRp(preview.total)}</span>
               </div>
             </div>
@@ -158,7 +162,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
                 data-testid="qr-order-open-in-pos-button"
               >
                 {opening ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Open In POS
+                {t("qrStaff.openInPos")}
               </Button>
               <Button
                 type="button"
@@ -166,7 +170,7 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
                 onClick={() => onOpenChange(false)}
                 disabled={opening || cancelling}
               >
-                Close
+                {t("qrStaff.previewModal.close")}
               </Button>
               <Button
                 type="button"
@@ -176,12 +180,12 @@ export function QrOrderPreviewDrawer({ requestId, open, onOpenChange, onCancelle
                 data-testid="qr-order-cancel-button"
               >
                 {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <X className="h-4 w-4 mr-2" />}
-                Cancel Order
+                {t("qrStaff.previewModal.cancelOrder")}
               </Button>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground py-8 text-center">No preview available.</p>
+          <p className="text-sm text-muted-foreground py-8 text-center">{t("qrStaff.previewModal.noPreview")}</p>
         )}
       </SheetContent>
     </Sheet>

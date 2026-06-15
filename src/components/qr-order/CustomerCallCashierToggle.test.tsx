@@ -10,7 +10,7 @@ const baseOrder: QrOrderPublicLookup = {
   tableName: "B01",
   outletName: "Mountain Cafe",
   status: "pending",
-  customerStatus: "waiting_confirmation",
+  customerStatus: "pending_review",
   customerStatusLabel: "Menunggu konfirmasi",
   timelineStep: 0,
   isTerminal: false,

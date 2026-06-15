@@ -85,19 +85,24 @@ type QrOrderPublicLookupResponse = {
 
 export async function fetchQrOrderPublic(
   orderCode: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; lang?: string } = {},
 ): Promise<QrOrderPublicLookup> {
   const encoded = encodeURIComponent(orderCode.trim());
-  const response = await request<QrOrderPublicLookupResponse>(`/public/qr-orders/${encoded}`, {
+  const query = options.lang ? `?lang=${encodeURIComponent(options.lang)}` : "";
+  const response = await request<QrOrderPublicLookupResponse>(`/public/qr-orders/${encoded}${query}`, {
     signal: options.signal,
   });
   return response.data;
 }
 
-export async function approveQrOrderAdjustments(orderCode: string): Promise<QrOrderPublicLookup> {
+export async function approveQrOrderAdjustments(
+  orderCode: string,
+  options: { lang?: string } = {},
+): Promise<QrOrderPublicLookup> {
   const encoded = encodeURIComponent(orderCode.trim());
+  const query = options.lang ? `?lang=${encodeURIComponent(options.lang)}` : "";
   const response = await request<{ data: QrOrderPublicLookup }>(
-    `/public/qr-orders/${encoded}/approve-adjustments`,
+    `/public/qr-orders/${encoded}/approve-adjustments${query}`,
     { method: "POST" },
   );
   return response.data;

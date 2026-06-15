@@ -3,7 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   getPayrollPostingPreview,
   getPayrollPostingStatus,
@@ -16,6 +15,8 @@ import {
   type PayrollRunV2Row,
 } from "@/lib/api-integration/hrEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { BookOpen, Check, ExternalLink, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ function postingBadge(status?: string): "default" | "secondary" | "destructive" 
 }
 
 export default function Posting() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -56,26 +58,29 @@ export default function Posting() {
         setSelectedRunId(String(closed[0].id));
       }
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load payroll runs");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.loadRunsFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId, selectedRunId]);
+  }, [outletId, selectedRunId, t]);
 
-  const loadDetail = useCallback(async (runId: number) => {
-    try {
-      const [prev, status] = await Promise.all([
-        getPayrollPostingPreview(runId),
-        getPayrollPostingStatus(runId),
-      ]);
-      setPreview(prev);
-      setPosting(status);
-    } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load posting preview");
-      setPreview(null);
-      setPosting(null);
-    }
-  }, []);
+  const loadDetail = useCallback(
+    async (runId: number) => {
+      try {
+        const [prev, status] = await Promise.all([
+          getPayrollPostingPreview(runId),
+          getPayrollPostingStatus(runId),
+        ]);
+        setPreview(prev);
+        setPosting(status);
+      } catch (e) {
+        toast.error(formatApiErrorMessage(e, t) || t("payroll.posting.loadPreviewFailed"));
+        setPreview(null);
+        setPosting(null);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     void load();
@@ -99,10 +104,10 @@ export default function Posting() {
     try {
       const row = await postPayrollToAccounting(Number(selectedRunId));
       setPosting(row);
-      toast.success("Payroll posted to accounting");
+      toast.success(t("payroll.shared.postedToAccounting"));
       await refresh();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Posting failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.postingFailed"));
     }
   };
 
@@ -110,10 +115,10 @@ export default function Posting() {
     if (!selectedRunId) return;
     try {
       await reversePayrollPosting(Number(selectedRunId), "Reversed from payroll posting UI");
-      toast.success("Posting reversed");
+      toast.success(t("payroll.shared.postingReversed"));
       await refresh();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Reverse failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.reverseFailed"));
     }
   };
 
@@ -121,7 +126,7 @@ export default function Posting() {
     () => [
       {
         key: "period",
-        header: "Period",
+        header: t("payroll.shared.period"),
         render: (r) =>
           r.preparationPeriod
             ? `${r.preparationPeriod.periodStart} → ${r.preparationPeriod.periodEnd}`
@@ -129,17 +134,19 @@ export default function Posting() {
       },
       {
         key: "net",
-        header: "Employees",
+        header: t("payroll.shared.employeesCount"),
         render: (r) => r.itemCount ?? "—",
       },
       {
         key: "status",
-        header: "Status",
-        render: (r) => <Badge variant="default">{r.status}</Badge>,
+        header: t("payroll.shared.status"),
+        render: (r) => (
+          <Badge variant="default">{t(`payroll.shared.${r.status}`, { defaultValue: r.status })}</Badge>
+        ),
       },
       {
         key: "actions",
-        header: "Actions",
+        header: t("payroll.shared.actions"),
         className: "text-right",
         render: (r) => (
           <Button
@@ -147,22 +154,22 @@ export default function Posting() {
             variant={String(r.id) === selectedRunId ? "default" : "outline"}
             onClick={() => setSelectedRunId(String(r.id))}
           >
-            Select
+            {t("payroll.shared.select")}
           </Button>
         ),
       },
     ],
-    [selectedRunId],
+    [t, selectedRunId],
   );
 
   const lineColumns: Column<PayrollPostingPreviewLine>[] = useMemo(
     () => [
-      { key: "code", header: "Account", render: (l) => `${l.accountCode} — ${l.accountName}` },
-      { key: "debit", header: "Debit", render: (l) => (l.debit > 0 ? formatIDR(l.debit) : "—") },
-      { key: "credit", header: "Credit", render: (l) => (l.credit > 0 ? formatIDR(l.credit) : "—") },
-      { key: "memo", header: "Memo", render: (l) => l.memo },
+      { key: "code", header: t("payroll.shared.account"), render: (l) => `${l.accountCode} — ${l.accountName}` },
+      { key: "debit", header: t("payroll.shared.debit"), render: (l) => (l.debit > 0 ? formatIDR(l.debit) : "—") },
+      { key: "credit", header: t("payroll.shared.credit"), render: (l) => (l.credit > 0 ? formatIDR(l.credit) : "—") },
+      { key: "memo", header: t("payroll.shared.memo"), render: (l) => l.memo },
     ],
-    [],
+    [t],
   );
 
   const currentStatus = posting?.postingStatus ?? preview?.postingStatus ?? "draft";
@@ -170,43 +177,46 @@ export default function Posting() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Payroll Journal Posting</h2>
-        <p className="text-sm text-muted-foreground">Post closed payroll runs to accounting</p>
+        <h2 className="text-lg font-semibold">{t("payroll.posting.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("payroll.posting.subtitle")}</p>
       </div>
 
       <section className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">Closed Payroll Runs</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">{t("payroll.posting.closedRuns")}</h3>
         <DataTable
           data={closedRuns}
           columns={runColumns}
+          rowKey={(r) => String(r.id)}
           loading={loading}
-          emptyMessage="No closed payroll runs available for posting"
+          emptyMessage={t("payroll.posting.emptyClosedRuns")}
         />
       </section>
 
       {preview && selectedRunId && (
         <>
           <section className="flex flex-wrap items-center gap-3">
-            <Badge variant={postingBadge(currentStatus)}>{currentStatus}</Badge>
+            <Badge variant={postingBadge(currentStatus)}>
+              {t(`payroll.shared.${currentStatus}`, { defaultValue: currentStatus })}
+            </Badge>
             {posting?.journal && (
               <Link
                 to="/accounting"
                 className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                Journal {posting.journal.journalNo}
+                {t("payroll.posting.journalLink", { no: posting.journal.journalNo })}
               </Link>
             )}
             {currentStatus !== "posted" && currentStatus !== "reversed" && (
               <Button size="sm" onClick={() => void doPost()} disabled={!preview.balanced}>
                 <Check className="h-3.5 w-3.5 mr-1" />
-                Post to Accounting
+                {t("payroll.posting.postToAccounting")}
               </Button>
             )}
             {currentStatus === "posted" && (
               <Button size="sm" variant="outline" onClick={() => void doReverse()}>
                 <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                Reverse Posting
+                {t("payroll.shared.reversePosting")}
               </Button>
             )}
           </section>
@@ -214,19 +224,19 @@ export default function Posting() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-muted-foreground">Gross Payroll</CardTitle>
+                <CardTitle className="text-xs text-muted-foreground">{t("payroll.shared.grossPayroll")}</CardTitle>
               </CardHeader>
               <CardContent className="font-semibold">{formatIDR(preview.totals.grossPayroll)}</CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-muted-foreground">Net Payroll</CardTitle>
+                <CardTitle className="text-xs text-muted-foreground">{t("payroll.shared.netPayroll")}</CardTitle>
               </CardHeader>
               <CardContent className="font-semibold text-green-600">{formatIDR(preview.totals.netPayroll)}</CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs text-muted-foreground">Total Debit</CardTitle>
+                <CardTitle className="text-xs text-muted-foreground">{t("payroll.posting.totalDebit")}</CardTitle>
               </CardHeader>
               <CardContent className="font-semibold">{formatIDR(preview.totals.debit)}</CardContent>
             </Card>
@@ -234,16 +244,23 @@ export default function Posting() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs text-muted-foreground flex items-center gap-1">
                   <BookOpen className="h-3 w-3" />
-                  Balanced
+                  {t("payroll.shared.balanced")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="font-semibold">{preview.balanced ? "Yes" : "No"}</CardContent>
+              <CardContent className="font-semibold">
+                {preview.balanced ? t("payroll.shared.yes") : t("payroll.shared.no")}
+              </CardContent>
             </Card>
           </div>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-medium text-muted-foreground">Journal Preview</h3>
-            <DataTable data={preview.lines} columns={lineColumns} emptyMessage="No journal lines" />
+            <h3 className="text-sm font-medium text-muted-foreground">{t("payroll.shared.journalPreview")}</h3>
+            <DataTable
+              data={preview.lines}
+              columns={lineColumns}
+              rowKey={(l) => `${l.accountId}-${l.debit}-${l.credit}`}
+              emptyMessage={t("payroll.shared.noJournalLines")}
+            />
           </section>
         </>
       )}

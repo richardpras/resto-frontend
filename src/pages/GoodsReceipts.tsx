@@ -11,6 +11,8 @@ import { usePurchaseStore, GRNStatus } from "@/stores/purchaseStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getProcurementSummary, type ProcurementSummary } from "@/lib/api-integration/purchaseEndpoints";
 import { listWarehouses, type WarehouseApiRow } from "@/lib/api-integration/warehouseEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, PackageCheck, Search, Check, Upload, Ban, Eye } from "lucide-react";
 import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
 import { toast } from "sonner";
@@ -22,14 +24,8 @@ const statusColors: Record<GRNStatus, string> = {
   cancelled: "bg-destructive/15 text-destructive border-destructive/30",
 };
 
-const statusLabel: Record<GRNStatus, string> = {
-  draft: "Draft",
-  received: "Received",
-  posted: "Posted",
-  cancelled: "Cancelled",
-};
-
 export default function GoodsReceipts() {
+  const { t } = useErpTranslation();
   const {
     goodsReceipts,
     addGRN,
@@ -122,8 +118,8 @@ export default function GoodsReceipts() {
 
   const handleCreateDraft = async () => {
     const po = purchaseOrders.find((p) => p.id === selectedPO);
-    if (!po) { toast.error("Select a PO"); return; }
-    if (!warehouseId) { toast.error("Select a warehouse"); return; }
+    if (!po) { toast.error(t("purchases.grn.selectPoRequired")); return; }
+    if (!warehouseId) { toast.error(t("purchases.grn.selectWarehouseRequired")); return; }
 
     const grnItems = po.items.map((i) => ({
       inventoryItemId: i.inventoryItemId,
@@ -132,42 +128,58 @@ export default function GoodsReceipts() {
       unit: i.unit,
     })).filter((i) => i.receivedQty > 0);
 
-    if (grnItems.length === 0) { toast.error("Enter received quantities"); return; }
+    if (grnItems.length === 0) { toast.error(t("purchases.grn.enterReceivedQty")); return; }
 
-    await addGRN({
-      poReference: po.poNumber,
-      warehouseId,
-      date,
-      status: "draft",
-      supplierDeliveryNo: supplierDeliveryNo || undefined,
-      supplierDeliveryDate: supplierDeliveryDate || undefined,
-      vehicleNo: vehicleNo || undefined,
-      driverName: driverName || undefined,
-      receivedBy: receivedBy || undefined,
-      items: grnItems,
-    });
-    toast.success("Draft goods receipt created");
-    setFormOpen(false);
-    await loadSummary();
+    try {
+      await addGRN({
+        poReference: po.poNumber,
+        warehouseId,
+        date,
+        status: "draft",
+        supplierDeliveryNo: supplierDeliveryNo || undefined,
+        supplierDeliveryDate: supplierDeliveryDate || undefined,
+        vehicleNo: vehicleNo || undefined,
+        driverName: driverName || undefined,
+        receivedBy: receivedBy || undefined,
+        items: grnItems,
+      });
+      toast.success(t("purchases.grn.draftCreated"));
+      setFormOpen(false);
+      await loadSummary();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const handleReceive = async (id: string) => {
-    await receiveGRN(id);
-    toast.success("Goods receipt marked as received");
-    await loadSummary();
+    try {
+      await receiveGRN(id);
+      toast.success(t("purchases.grn.markedReceived"));
+      await loadSummary();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const handlePost = async (id: string) => {
-    await postGRN(id);
-    toast.success("Inventory posted");
-    await loadSummary();
+    try {
+      await postGRN(id);
+      toast.success(t("purchases.grn.inventoryPosted"));
+      await loadSummary();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const handleCancel = async (id: string) => {
-    await cancelGRN(id);
-    toast.success("Goods receipt cancelled");
-    setViewId(null);
-    await loadSummary();
+    try {
+      await cancelGRN(id);
+      toast.success(t("purchases.grn.cancelled"));
+      setViewId(null);
+      await loadSummary();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.shared.actionFailed"));
+    }
   };
 
   const getItemName = (id: string) => `Item #${id}`;
@@ -178,27 +190,29 @@ export default function GoodsReceipts() {
 
   const warehouseName = (id?: string) => warehouses.find((w) => w.id === id)?.name ?? (id ? `Warehouse #${id}` : "—");
 
+  const summaryCards = summary ? [
+    { label: t("purchases.grn.summaryDraft"), value: summary.draftReceivings },
+    { label: t("purchases.grn.summaryReceived"), value: summary.receivedReceivings },
+    { label: t("purchases.grn.summaryPosted"), value: summary.postedReceivings },
+    { label: t("purchases.grn.summaryCancelled"), value: summary.cancelledReceivings },
+    { label: t("purchases.grn.summaryTodayPosted"), value: summary.todayReceivings },
+    { label: t("purchases.grn.summaryTodayValue"), value: summary.todayReceivedValue.toLocaleString() },
+    { label: t("purchases.grn.summaryTotalGrn"), value: summary.totalGoodsReceipts },
+  ] : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Goods Receipt</h1>
-          <p className="text-sm text-muted-foreground">Draft → Receive → Post workflow</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("purchases.grn.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("purchases.grn.subtitle")}</p>
         </div>
-        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> New GRN</Button>
+        <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> {t("purchases.grn.newGrn")}</Button>
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {[
-            { label: "Draft", value: summary.draftReceivings },
-            { label: "Received", value: summary.receivedReceivings },
-            { label: "Posted", value: summary.postedReceivings },
-            { label: "Cancelled", value: summary.cancelledReceivings },
-            { label: "Today Posted", value: summary.todayReceivings },
-            { label: "Today Value", value: summary.todayReceivedValue.toLocaleString() },
-            { label: "Total GRN", value: summary.totalGoodsReceipts },
-          ].map((item) => (
+          {summaryCards.map((item) => (
             <Card key={item.label}>
               <CardContent className="p-3">
                 <p className="text-xs text-muted-foreground">{item.label}</p>
@@ -211,7 +225,7 @@ export default function GoodsReceipts() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search GRN…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder={t("purchases.grn.searchPlaceholder")} className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       <Card>
@@ -219,19 +233,19 @@ export default function GoodsReceipts() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead>GRN Number</TableHead>
-                <TableHead>PO Reference</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("purchases.grn.grnNumber")}</TableHead>
+                <TableHead>{t("purchases.grn.poReference")}</TableHead>
+                <TableHead>{t("purchases.shared.date")}</TableHead>
+                <TableHead>{t("purchases.shared.items")}</TableHead>
+                <TableHead>{t("purchases.shared.status")}</TableHead>
+                <TableHead className="text-right">{t("purchases.shared.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                    <PackageCheck className="h-10 w-10 mx-auto mb-2 opacity-30" />No goods receipts yet
+                    <PackageCheck className="h-10 w-10 mx-auto mb-2 opacity-30" />{t("purchases.grn.empty")}
                   </TableCell>
                 </TableRow>
               )}
@@ -240,18 +254,18 @@ export default function GoodsReceipts() {
                   <TableCell className="font-mono font-semibold text-sm">{grn.grnNumber}</TableCell>
                   <TableCell className="text-sm font-mono">{grn.poReference}</TableCell>
                   <TableCell className="text-sm">{grn.date}</TableCell>
-                  <TableCell className="text-sm">{grn.items.length} items</TableCell>
+                  <TableCell className="text-sm">{t("purchases.grn.itemsCount", { count: grn.items.length })}</TableCell>
                   <TableCell className="space-x-1">
-                    <Badge variant="outline" className={statusColors[grn.status]}>{statusLabel[grn.status]}</Badge>
+                    <Badge variant="outline" className={statusColors[grn.status]}>{t(`purchases.status.${grn.status}`)}</Badge>
                     {grn.status === "posted" && <PostingStatusBadge postingStatus={grn.postingStatus} />}
                   </TableCell>
                   <TableCell className="text-right space-x-1">
                     <Button size="sm" variant="ghost" onClick={() => setViewId(grn.id)}><Eye className="h-3.5 w-3.5" /></Button>
                     {grn.status === "draft" && (
-                      <Button size="sm" variant="outline" onClick={() => void handleReceive(grn.id)}>Receive</Button>
+                      <Button size="sm" variant="outline" onClick={() => void handleReceive(grn.id)}>{t("purchases.grn.receive")}</Button>
                     )}
                     {grn.status === "received" && (
-                      <Button size="sm" onClick={() => void handlePost(grn.id)} className="gap-1"><Upload className="h-3.5 w-3.5" /> Post</Button>
+                      <Button size="sm" onClick={() => void handlePost(grn.id)} className="gap-1"><Upload className="h-3.5 w-3.5" /> {t("purchases.grn.post")}</Button>
                     )}
                     {(grn.status === "draft" || grn.status === "received") && (
                       <Button size="sm" variant="destructive" onClick={() => void handleCancel(grn.id)}><Ban className="h-3.5 w-3.5" /></Button>
@@ -266,49 +280,49 @@ export default function GoodsReceipts() {
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create Goods Receipt (Draft)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.grn.createDraft")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">PO Reference *</label>
+                <label className="text-sm font-medium">{t("purchases.grn.poReference")} *</label>
                 <Select value={selectedPO} onValueChange={handlePOSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select PO" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.grn.selectPo")} /></SelectTrigger>
                   <SelectContent>
                     {receivablePOs.map((po) => <SelectItem key={po.id} value={po.id}>{po.poNumber}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Warehouse *</label>
+                <label className="text-sm font-medium">{t("purchases.grn.warehouse")} *</label>
                 <Select value={warehouseId} onValueChange={setWarehouseId}>
-                  <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.grn.selectWarehouse")} /></SelectTrigger>
                   <SelectContent>
                     {warehouses.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Date</label>
+                <label className="text-sm font-medium">{t("purchases.shared.date")}</label>
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Supplier Delivery No</label>
+                <label className="text-sm font-medium">{t("purchases.grn.supplierDeliveryNo")}</label>
                 <Input value={supplierDeliveryNo} onChange={(e) => setSupplierDeliveryNo(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Supplier Delivery Date</label>
+                <label className="text-sm font-medium">{t("purchases.grn.supplierDeliveryDate")}</label>
                 <Input type="date" value={supplierDeliveryDate} onChange={(e) => setSupplierDeliveryDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Vehicle No</label>
+                <label className="text-sm font-medium">{t("purchases.grn.vehicleNo")}</label>
                 <Input value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Driver Name</label>
+                <label className="text-sm font-medium">{t("purchases.grn.driverName")}</label>
                 <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Received By</label>
+                <label className="text-sm font-medium">{t("purchases.grn.receivedBy")}</label>
                 <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
               </div>
             </div>
@@ -321,11 +335,11 @@ export default function GoodsReceipts() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead>Item</TableHead>
-                        <TableHead className="w-24">Ordered</TableHead>
-                        <TableHead className="w-24">Posted</TableHead>
-                        <TableHead className="w-24">Remaining</TableHead>
-                        <TableHead className="w-28">Receive Now</TableHead>
+                        <TableHead>{t("purchases.grn.item")}</TableHead>
+                        <TableHead className="w-24">{t("purchases.grn.ordered")}</TableHead>
+                        <TableHead className="w-24">{t("purchases.grn.postedQty")}</TableHead>
+                        <TableHead className="w-24">{t("purchases.grn.remaining")}</TableHead>
+                        <TableHead className="w-28">{t("purchases.grn.receiveNow")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -357,8 +371,8 @@ export default function GoodsReceipts() {
             })()}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={() => void handleCreateDraft()} className="gap-1"><Check className="h-3.5 w-3.5" /> Save Draft</Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>{t("purchases.shared.cancel")}</Button>
+              <Button onClick={() => void handleCreateDraft()} className="gap-1"><Check className="h-3.5 w-3.5" /> {t("purchases.grn.saveDraft")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -366,29 +380,29 @@ export default function GoodsReceipts() {
 
       <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>GRN Detail — {viewedGrn?.grnNumber}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("purchases.grn.detailTitle")} — {viewedGrn?.grnNumber}</DialogTitle></DialogHeader>
           {viewedGrn && (
             <div className="space-y-4 text-sm">
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className={statusColors[viewedGrn.status]}>{statusLabel[viewedGrn.status]}</Badge>
+                <Badge variant="outline" className={statusColors[viewedGrn.status]}>{t(`purchases.status.${viewedGrn.status}`)}</Badge>
                 <span className="text-muted-foreground">PO: {viewedGrn.poReference}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Warehouse:</span> {warehouseName(viewedGrn.warehouseId)}</div>
-                <div><span className="text-muted-foreground">Delivery No:</span> {viewedGrn.supplierDeliveryNo ?? "—"}</div>
-                <div><span className="text-muted-foreground">Delivery Date:</span> {viewedGrn.supplierDeliveryDate ?? "—"}</div>
-                <div><span className="text-muted-foreground">Vehicle:</span> {viewedGrn.vehicleNo ?? "—"}</div>
-                <div><span className="text-muted-foreground">Driver:</span> {viewedGrn.driverName ?? "—"}</div>
-                <div><span className="text-muted-foreground">Received By:</span> {viewedGrn.receivedBy ?? "—"}</div>
-                <div><span className="text-muted-foreground">Related Invoices:</span> {viewedGrn.relatedInvoiceCount ?? 0}</div>
-                <div><span className="text-muted-foreground">Received Value:</span> {(viewedGrn.receivedValue ?? 0).toLocaleString()}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.warehouse")}:</span> {warehouseName(viewedGrn.warehouseId)}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.deliveryNo")}:</span> {viewedGrn.supplierDeliveryNo ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.deliveryDate")}:</span> {viewedGrn.supplierDeliveryDate ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.vehicle")}:</span> {viewedGrn.vehicleNo ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.driver")}:</span> {viewedGrn.driverName ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.receivedBy")}:</span> {viewedGrn.receivedBy ?? "—"}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.relatedInvoices")}:</span> {viewedGrn.relatedInvoiceCount ?? 0}</div>
+                <div><span className="text-muted-foreground">{t("purchases.grn.receivedValue")}:</span> {(viewedGrn.receivedValue ?? 0).toLocaleString()}</div>
               </div>
 
               {progress && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span>PO Progress</span>
+                    <span>{t("purchases.grn.poProgress")}</span>
                     <span>{progress.completionPercentage}% ({progress.receivedQty}/{progress.orderedQty})</span>
                   </div>
                   <Progress value={progress.completionPercentage} />
@@ -398,10 +412,10 @@ export default function GoodsReceipts() {
               <PostingStatusIndicator postingStatus={viewedGrn.postingStatus} />
 
               <div className="flex justify-end gap-2">
-                {viewedGrn.status === "draft" && <Button onClick={() => void handleReceive(viewedGrn.id)}>Receive</Button>}
-                {viewedGrn.status === "received" && <Button onClick={() => void handlePost(viewedGrn.id)}>Post to Inventory</Button>}
+                {viewedGrn.status === "draft" && <Button onClick={() => void handleReceive(viewedGrn.id)}>{t("purchases.grn.receive")}</Button>}
+                {viewedGrn.status === "received" && <Button onClick={() => void handlePost(viewedGrn.id)}>{t("purchases.grn.postToInventory")}</Button>}
                 {(viewedGrn.status === "draft" || viewedGrn.status === "received") && (
-                  <Button variant="destructive" onClick={() => void handleCancel(viewedGrn.id)}>Cancel</Button>
+                  <Button variant="destructive" onClick={() => void handleCancel(viewedGrn.id)}>{t("purchases.shared.cancel")}</Button>
                 )}
               </div>
             </div>

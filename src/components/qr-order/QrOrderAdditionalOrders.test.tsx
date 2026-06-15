@@ -37,6 +37,6 @@ describe("QrOrderAdditionalOrders", () => {
 
     expect(screen.getByText("QRO-ABC123")).toBeInTheDocument();
     expect(screen.getByText("QRO-XYZ888")).toBeInTheDocument();
-    expect(screen.getByText("Pesanan Tambahan")).toBeInTheDocument();
+    expect(screen.getByText("Additional Order")).toBeInTheDocument();
   });
 });

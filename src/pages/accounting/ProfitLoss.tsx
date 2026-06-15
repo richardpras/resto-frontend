@@ -8,9 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Download, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
-import { canViewFinancialStatements, FINANCIAL_STATEMENT_RESTRICTED_MSG } from "@/domain/permissionGates";
+import { canViewFinancialStatements } from "@/domain/permissionGates";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 
 export default function ProfitLoss() {
+  const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outlets);
@@ -31,14 +34,14 @@ export default function ProfitLoss() {
     if (!allowed) return;
     void fetchProfitLossReport({ from, to, outlet, compareFrom: startPrev, compareTo: endPrev })
       .catch((e) => {
-        toast.error(e instanceof Error ? e.message : "Failed to load P&L report");
+        toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadProfitLossFailed"));
       });
-  }, [allowed, from, to, outlet, startPrev, endPrev, fetchProfitLossReport]);
+  }, [allowed, from, to, outlet, startPrev, endPrev, fetchProfitLossReport, t]);
 
   if (!allowed) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-muted-foreground">{FINANCIAL_STATEMENT_RESTRICTED_MSG}</p>
+        <p className="text-sm text-muted-foreground">{t("accounting.financialStatementRestricted")}</p>
       </Card>
     );
   }
@@ -72,67 +75,67 @@ export default function ProfitLoss() {
   return (
     <Card className="p-4 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        <div><Label>From</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-        <div><Label>To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+        <div><Label>{t("accounting.reports.from")}</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+        <div><Label>{t("accounting.reports.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div>
-          <Label>Outlet</Label>
+          <Label>{t("accounting.reports.outlet")}</Label>
           <Select value={outlet} onValueChange={setOutlet}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Outlets</SelectItem>
+              <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
               {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-end">
           <Button variant={compare ? "default" : "outline"} onClick={() => setCompare(!compare)} className="w-full">
-            {compare ? "Hide" : "Show"} Comparison
+            {compare ? t("accounting.reports.hideComparison") : t("accounting.reports.showComparison")}
           </Button>
         </div>
         <div className="flex items-end">
-          <Button variant="outline" className="w-full" onClick={() => window.print()}><Download className="h-4 w-4 mr-1" /> Export</Button>
+          <Button variant="outline" className="w-full" onClick={() => window.print()}><Download className="h-4 w-4 mr-1" /> {t("accounting.reports.export")}</Button>
         </div>
       </div>
 
       <Card className="p-6 space-y-2">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">Profit & Loss Statement</h3>
+          <h3 className="text-lg font-bold">{t("accounting.reports.profitLossStatement")}</h3>
           <div className="text-xs text-muted-foreground">{from} → {to}</div>
         </div>
 
         {compare && (
           <div className="flex items-center justify-end gap-4 text-xs text-muted-foreground border-b pb-2">
-            <div className="w-32 text-right">Previous</div>
-            <div className="w-40 text-right">Current</div>
-            <div className="w-20">Change</div>
+            <div className="w-32 text-right">{t("accounting.reports.previous")}</div>
+            <div className="w-40 text-right">{t("accounting.reports.current")}</div>
+            <div className="w-20">{t("accounting.reports.change")}</div>
           </div>
         )}
 
-        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">Revenue</div>
+        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">{t("accounting.reports.revenue")}</div>
         {current.revenue.map((r) => {
           const p = previous.revenue.find((x) => x.account.id === r.account.id);
           return <Row key={r.account.id} label={r.account.name} value={r.amount} prev={p?.amount ?? 0} indent />;
         })}
-        <Row label="Total Revenue" value={current.totalRevenue} prev={previous.totalRevenue} bold />
+        <Row label={t("accounting.reports.totalRevenue")} value={current.totalRevenue} prev={previous.totalRevenue} bold />
 
-        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">Cost of Goods Sold</div>
+        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">{t("accounting.reports.costOfGoodsSold")}</div>
         {current.cogs.map((r) => {
           const p = previous.cogs.find((x) => x.account.id === r.account.id);
           return <Row key={r.account.id} label={r.account.name} value={r.amount} prev={p?.amount ?? 0} indent />;
         })}
-        <Row label="Total COGS" value={current.totalCOGS} prev={previous.totalCOGS} bold />
+        <Row label={t("accounting.reports.totalCogs")} value={current.totalCOGS} prev={previous.totalCOGS} bold />
 
-        <Row label="Gross Profit" value={current.grossProfit} prev={previous.grossProfit} bold />
+        <Row label={t("accounting.reports.grossProfit")} value={current.grossProfit} prev={previous.grossProfit} bold />
 
-        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">Operating Expenses</div>
+        <div className="text-xs uppercase text-muted-foreground tracking-wider mt-3">{t("accounting.reports.operatingExpenses")}</div>
         {current.expenses.map((r) => {
           const p = previous.expenses.find((x) => x.account.id === r.account.id);
           return <Row key={r.account.id} label={r.account.name} value={r.amount} prev={p?.amount ?? 0} indent />;
         })}
-        <Row label="Total Expenses" value={current.totalExpenses} prev={previous.totalExpenses} bold />
+        <Row label={t("accounting.reports.totalExpenses")} value={current.totalExpenses} prev={previous.totalExpenses} bold />
 
         <div className={`mt-4 p-4 rounded-lg ${current.netProfit >= 0 ? "bg-emerald-500/10" : "bg-rose-500/10"}`}>
-          <Row label="NET PROFIT" value={current.netProfit} prev={previous.netProfit} bold />
+          <Row label={t("accounting.reports.netProfit")} value={current.netProfit} prev={previous.netProfit} bold />
         </div>
       </Card>
     </Card>

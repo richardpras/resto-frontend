@@ -12,6 +12,7 @@ import { InventoryCardGridSkeleton } from "@/components/skeletons/card/Inventory
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { type InventoryItem, type InventoryPayload, type StockMovement } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -21,13 +22,14 @@ const typeIcon: Record<InventoryItemType, React.ReactNode> = {
   asset: <Armchair className="h-4 w-4" />,
 };
 
-const typeBadge: Record<InventoryItemType, { label: string; className: string }> = {
-  ingredient: { label: "Ingredient", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
-  atk: { label: "ATK", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
-  asset: { label: "Asset", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+const typeBadgeClass: Record<InventoryItemType, string> = {
+  ingredient: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  atk: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  asset: "bg-amber-500/10 text-amber-600 border-amber-500/20",
 };
 
 export default function Inventory() {
+  const { t } = useOpsTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") === "posting" ? "posting" : "items";
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
@@ -68,8 +70,8 @@ export default function Inventory() {
         ]);
       } catch (error) {
         toast({
-          title: "Failed to load inventory",
-          description: error instanceof Error ? error.message : "Unknown error",
+          title: t("inventory.loadFailed"),
+          description: error instanceof Error ? error.message : t("shared.somethingWrong"),
         });
       }
     };
@@ -91,11 +93,11 @@ export default function Inventory() {
   const handleDelete = async (item: InventoryItem) => {
     try {
       await deleteItemRemote(item.id);
-      toast({ title: "Deleted", description: `${item.name} removed from inventory.` });
+      toast({ title: t("inventory.deleted"), description: t("inventory.removed", { name: item.name }) });
     } catch (error) {
       toast({
-        title: "Delete failed",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("shared.deleteFailed"),
+        description: error instanceof Error ? error.message : t("shared.somethingWrong"),
       });
     }
   };
@@ -124,19 +126,21 @@ export default function Inventory() {
     return created.id;
   };
 
+  const typeBadgeLabel = (type: InventoryItemType) => t(`inventory.filters.${type}`);
+
   const tabButtons = useMemo(
     () => [
-      { id: "items" as const, label: "Items" },
-      { id: "posting" as const, label: "Pending Consumption" },
+      { id: "items" as const, label: t("inventory.tabs.items") },
+      { id: "posting" as const, label: t("inventory.tabs.pending") },
     ],
-    [],
+    [t],
   );
 
   return (
     <div className="p-4 md:p-6 max-w-5xl">
       {(!activeOutletId || activeOutletId < 1) && (
         <div className="mb-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
-          Select an outlet with a numeric bridge id to see outlet-specific ledger stock and to seed stock on create. Without it, totals may fall back to legacy fields only.
+          {t("inventory.outletWarning")}
         </div>
       )}
       <div className="flex flex-wrap gap-2 mb-4">
@@ -160,7 +164,7 @@ export default function Inventory() {
         typeof activeOutletId === "number" && activeOutletId >= 1 ? (
           <PendingInventoryConsumptionPanel outletId={activeOutletId} />
         ) : (
-          <p className="text-sm text-muted-foreground">Select an outlet to view pending inventory consumption.</p>
+          <p className="text-sm text-muted-foreground">{t("inventory.selectOutletPending")}</p>
         )
       ) : null}
 
@@ -168,15 +172,15 @@ export default function Inventory() {
       <>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{ingredients.length} items tracked</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("inventory.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("inventory.tracked", { n: ingredients.length })}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setWasteOpen(true)} disabled={!activeOutletId || activeOutletId < 1}>
-            Record Waste
+            {t("inventory.recordWaste")}
           </Button>
           <Button variant="outline" onClick={() => setAdjustOpen(true)} disabled={!activeOutletId || activeOutletId < 1}>
-            Adjustment
+            {t("inventory.adjustment")}
           </Button>
           <Button
             variant="outline"
@@ -186,19 +190,19 @@ export default function Inventory() {
               if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
               try {
                 await recalculateValuations(activeOutletId);
-                toast({ title: "Valuations recalculated" });
+                toast({ title: t("inventory.valuationsRecalc") });
               } catch (error) {
                 toast({
-                  title: "Recalculation failed",
-                  description: error instanceof Error ? error.message : "Unknown error",
+                  title: t("inventory.recalcFailed"),
+                  description: error instanceof Error ? error.message : t("shared.somethingWrong"),
                 });
               }
             })()}
           >
-            <Scale className="h-4 w-4" /> Recalc Valuations
+            <Scale className="h-4 w-4" /> {t("inventory.recalcValuations")}
           </Button>
           <Button onClick={handleCreate} className="gap-2" disabled={!activeOutletId || activeOutletId < 1}>
-            <Plus className="h-4 w-4" /> Add Item
+            <Plus className="h-4 w-4" /> {t("inventory.addItem")}
           </Button>
         </div>
       </div>
@@ -207,25 +211,25 @@ export default function Inventory() {
         <div className="flex items-center gap-3 p-4 rounded-2xl bg-warning/10 border border-warning/20 mb-4">
           <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
           <div>
-            <p className="text-sm font-medium text-foreground">{lowCount} items below minimum stock</p>
-            <p className="text-xs text-muted-foreground">Consider placing a purchase order</p>
+            <p className="text-sm font-medium text-foreground">{t("inventory.lowStock", { n: lowCount })}</p>
+            <p className="text-xs text-muted-foreground">{t("inventory.lowStockHint")}</p>
           </div>
         </div>
       )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(["all", "ingredient", "atk", "asset"] as const).map((t) => (
+        {(["all", "ingredient", "atk", "asset"] as const).map((typeKey) => (
           <button
-            key={t}
-            onClick={() => setFilterType(t)}
+            key={typeKey}
+            onClick={() => setFilterType(typeKey)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-              filterType === t
+              filterType === typeKey
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-card text-muted-foreground border-border hover:border-primary/30"
             }`}
           >
-            {t === "all" ? "All" : typeBadge[t].label} ({counts[t]})
+            {typeKey === "all" ? t("inventory.filters.all") : typeBadgeLabel(typeKey)} ({counts[typeKey]})
           </button>
         ))}
       </div>
@@ -234,14 +238,14 @@ export default function Inventory() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search items..."
+          placeholder={t("inventory.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>
 
-      <SkeletonBusyRegion busy={loading} className="min-h-[200px]" label="Loading inventory">
+      <SkeletonBusyRegion busy={loading} className="min-h-[200px]" label={t("inventory.loading")}>
         {loading ? (
           <InventoryCardGridSkeleton cards={6} />
         ) : (
@@ -249,7 +253,6 @@ export default function Inventory() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {filtered.map((item) => {
           const isLow = item.type !== "asset" && item.stock < item.min;
-          const tb = typeBadge[item.type];
           return (
             <div
               key={item.id}
@@ -261,8 +264,8 @@ export default function Inventory() {
                   <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Badge variant="outline" className={`text-[10px] ${tb.className}`}>
-                    {tb.label}
+                  <Badge variant="outline" className={`text-[10px] ${typeBadgeClass[item.type]}`}>
+                    {typeBadgeLabel(item.type)}
                   </Badge>
                   {isLow && (
                     <span className="flex items-center gap-0.5 text-xs font-medium text-warning ml-1">
@@ -276,7 +279,7 @@ export default function Inventory() {
                 <div>
                   <p className="text-2xl font-bold text-foreground">{item.stock}</p>
                   <p className="text-xs text-muted-foreground">
-                    {item.type !== "asset" ? `Min: ${item.min} ${item.unit}` : item.unit}
+                    {item.type !== "asset" ? t("inventory.min", { min: item.min, unit: item.unit }) : item.unit}
                   </p>
                   {item.price && (
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -314,7 +317,7 @@ export default function Inventory() {
             {!loading && filtered.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No items found</p>
+          <p className="text-sm">{t("inventory.noItems")}</p>
         </div>
       )}
           </>
@@ -323,16 +326,16 @@ export default function Inventory() {
 
       <div className="mt-6">
         <div className="mb-3">
-          <h2 className="text-lg font-semibold text-foreground">Movement Ledger</h2>
-          <p className="text-xs text-muted-foreground">Recent stock movements for current scope</p>
+          <h2 className="text-lg font-semibold text-foreground">{t("inventory.ledgerTitle")}</h2>
+          <p className="text-xs text-muted-foreground">{t("inventory.ledgerSubtitle")}</p>
         </div>
         <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
           <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border/60">
-            <span className="col-span-3">Item</span>
-            <span className="col-span-2">Type</span>
-            <span className="col-span-2 text-right">Qty</span>
-            <span className="col-span-2">Source</span>
-            <span className="col-span-3">Created</span>
+            <span className="col-span-3">{t("inventory.columns.item")}</span>
+            <span className="col-span-2">{t("inventory.columns.type")}</span>
+            <span className="col-span-2 text-right">{t("inventory.columns.qty")}</span>
+            <span className="col-span-2">{t("inventory.columns.source")}</span>
+            <span className="col-span-3">{t("inventory.columns.created")}</span>
           </div>
           {stockMovements.slice(0, 8).map((movement: StockMovement) => (
             <div key={movement.id} className="grid grid-cols-12 gap-2 px-4 py-2 text-sm border-b border-border/40 last:border-b-0">
@@ -344,23 +347,23 @@ export default function Inventory() {
             </div>
           ))}
           {stockMovements.length === 0 && (
-            <div className="px-4 py-6 text-sm text-muted-foreground">No movement records for this outlet scope.</div>
+            <div className="px-4 py-6 text-sm text-muted-foreground">{t("inventory.noMovements")}</div>
           )}
         </div>
       </div>
 
       <div className="mt-6">
         <div className="mb-3">
-          <h2 className="text-lg font-semibold text-foreground">Inventory Valuations</h2>
-          <p className="text-xs text-muted-foreground">Moving-average valuation per ingredient (outlet scope)</p>
+          <h2 className="text-lg font-semibold text-foreground">{t("inventory.valuationTitle")}</h2>
+          <p className="text-xs text-muted-foreground">{t("inventory.valuationSubtitle")}</p>
         </div>
         <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
           <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border/60">
-            <span className="col-span-4">Item</span>
-            <span className="col-span-2 text-right">Qty</span>
-            <span className="col-span-2 text-right">Avg Cost</span>
-            <span className="col-span-2 text-right">Value</span>
-            <span className="col-span-2">Updated</span>
+            <span className="col-span-4">{t("inventory.columns.item")}</span>
+            <span className="col-span-2 text-right">{t("inventory.columns.qty")}</span>
+            <span className="col-span-2 text-right">{t("inventory.columns.avgCost")}</span>
+            <span className="col-span-2 text-right">{t("inventory.columns.value")}</span>
+            <span className="col-span-2">{t("inventory.columns.updated")}</span>
           </div>
           {valuations.slice(0, 12).map((row) => (
             <div key={`${row.ingredientId}-${row.outletId}`} className="grid grid-cols-12 gap-2 px-4 py-2 text-sm border-b border-border/40 last:border-b-0">
@@ -373,7 +376,7 @@ export default function Inventory() {
           ))}
           {valuations.length === 0 && (
             <div className="px-4 py-6 text-sm text-muted-foreground">
-              {valuationsLoading ? "Loading valuations…" : "No valuation rows for this outlet."}
+              {valuationsLoading ? t("inventory.loadingValuations") : t("inventory.noValuations")}
             </div>
           )}
         </div>
@@ -389,7 +392,7 @@ export default function Inventory() {
           if (typeof activeOutletId === "number" && activeOutletId >= 1) {
             await fetchStockMovements({ tenantId: TENANT_ID, outletId: activeOutletId, perPage: 200 });
           }
-          toast({ title: "Waste recorded" });
+          toast({ title: t("inventory.wasteRecorded") });
         }}
       />
       <StockMovementModal
@@ -402,7 +405,7 @@ export default function Inventory() {
           if (typeof activeOutletId === "number" && activeOutletId >= 1) {
             await fetchStockMovements({ tenantId: TENANT_ID, outletId: activeOutletId, perPage: 200 });
           }
-          toast({ title: "Adjustment recorded" });
+          toast({ title: t("inventory.adjustmentRecorded") });
         }}
       />
 

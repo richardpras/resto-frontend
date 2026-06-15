@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router-dom";
+import i18n from "@/i18n";
 import Login from "./Login";
 
 vi.mock("@/domain/environment", () => ({
@@ -21,13 +22,22 @@ vi.mock("@/stores/authStore", async (importOriginal) => {
   };
 });
 
+vi.mock("@/stores/settingsStore", () => ({
+  useSettingsStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      merchant: { language: "en" },
+      updateMerchant: vi.fn(),
+    }),
+}));
+
 import { isDevelopmentEnvironment } from "@/domain/environment";
 
 describe("Login environment hardening", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.mocked(isDevelopmentEnvironment).mockReset();
     loginMock.mockReset();
     loginMock.mockResolvedValue({ ok: true });
+    await i18n.changeLanguage("en");
   });
 
   it("shows demo accounts section when development environment", () => {

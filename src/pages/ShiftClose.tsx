@@ -14,11 +14,13 @@ import {
 import { ShiftClosePreflightCards } from "@/components/shift-close/ShiftClosePreflightCards";
 import { ShiftCloseCashDrawerPanel } from "@/components/shift-close/ShiftCloseCashDrawerPanel";
 import { formatMoney } from "@/lib/format/currency";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
-const STEPS = ["Preflight", "Cash Drawer", "Warnings", "Run Close", "Complete"] as const;
+const STEP_KEYS = ["preflight", "cashDrawer", "warnings", "runClose", "complete"] as const;
 
 export default function ShiftClose() {
+  const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -34,7 +36,7 @@ export default function ShiftClose() {
       const data = await getShiftClosePreflight(activeOutletId, TENANT_ID);
       setPreflight(data);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Preflight failed");
+      toast.error(e instanceof Error ? e.message : t("shiftClose.preflightFailed"));
     } finally {
       setLoading(false);
     }
@@ -69,9 +71,9 @@ export default function ShiftClose() {
       });
       setResult(data);
       setStep(4);
-      toast.success("Shift closed successfully.");
+      toast.success(t("shiftClose.success"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Shift close failed");
+      toast.error(e instanceof Error ? e.message : t("shiftClose.failed"));
     } finally {
       setClosing(false);
     }
@@ -80,8 +82,8 @@ export default function ShiftClose() {
   if (typeof activeOutletId !== "number" || activeOutletId < 1) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Shift Close</h1>
-        <p className="text-sm text-muted-foreground mt-2">Select an outlet to begin.</p>
+        <h1 className="text-2xl font-bold">{t("shiftClose.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("shiftClose.selectOutlet")}</p>
       </div>
     );
   }
@@ -95,22 +97,22 @@ export default function ShiftClose() {
     <div className="p-6 space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <LockKeyhole className="h-6 w-6" /> Shift Close
+          <LockKeyhole className="h-6 w-6" /> {t("shiftClose.title")}
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">End-of-shift preflight, drawer reconciliation, and posting.</p>
+        <p className="text-sm text-muted-foreground mt-1">{t("shiftClose.subtitle")}</p>
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        {STEPS.map((name, i) => (
+        {STEP_KEYS.map((key, i) => (
           <button
-            key={name}
+            key={key}
             type="button"
             onClick={() => i <= step && setStep(i)}
             className={`text-xs px-3 py-1 rounded-full border ${
               i === step ? "bg-primary text-primary-foreground" : i < step ? "bg-muted" : "opacity-50"
             }`}
           >
-            {i + 1}. {name}
+            {i + 1}. {t(`shiftClose.steps.${key}`)}
           </button>
         ))}
       </div>
@@ -119,24 +121,38 @@ export default function ShiftClose() {
         <Card className="p-4 space-y-4">
           <div className="flex items-center gap-2 capitalize">
             {isBlocked ? <AlertTriangle className="h-5 w-5 text-destructive" /> : severity === "warning" ? <AlertTriangle className="h-5 w-5 text-amber-500" /> : <CheckCircle2 className="h-5 w-5 text-green-600" />}
-            <span className="font-medium">Severity: {severity}</span>
+            <span className="font-medium">{t("shiftClose.severity", { severity })}</span>
           </div>
-          {preflight ? <ShiftClosePreflightCards preflight={preflight} /> : <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "No data"}</p>}
+          {preflight ? <ShiftClosePreflightCards preflight={preflight} /> : <p className="text-sm text-muted-foreground">{loading ? t("shared.loading") : t("shared.noData")}</p>}
           {preflight?.openPosSessions?.items?.length ? (
             <ul className="text-xs space-y-1 text-muted-foreground">
               {preflight.openPosSessions.items.map((s) => (
-                <li key={s.id}>{s.cashierName} — opened {s.openedAt ? new Date(s.openedAt).toLocaleString() : "—"} — {formatMoney(s.openingCash)}</li>
+                <li key={s.id}>
+                  {t("shiftClose.openedSession", {
+                    name: s.cashierName,
+                    at: s.openedAt ? new Date(s.openedAt).toLocaleString() : "—",
+                    amount: formatMoney(s.openingCash),
+                  })}
+                </li>
               ))}
             </ul>
           ) : null}
           {qr && (
             <p className="text-xs text-muted-foreground">
-              QR: pending {qr.pending}, under review {qr.underReview}, linked unpaid {qr.linkedUnpaidBills}
+              {t("shiftClose.qrSummary", {
+                pending: qr.pending,
+                review: qr.underReview,
+                unpaid: qr.linkedUnpaidBills,
+              })}
             </p>
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void loadPreflight()} disabled={loading}>Refresh</Button>
-            <Button onClick={() => setStep(1)} disabled={loading || isBlocked || !preflight}>Continue</Button>
+            <Button variant="outline" onClick={() => void loadPreflight()} disabled={loading}>
+              {t("common:common.refresh")}
+            </Button>
+            <Button onClick={() => setStep(1)} disabled={loading || isBlocked || !preflight}>
+              {t("shared.continue")}
+            </Button>
           </div>
         </Card>
       )}
@@ -145,39 +161,45 @@ export default function ShiftClose() {
         <Card className="p-4 space-y-4">
           <ShiftCloseCashDrawerPanel drawer={drawer} actualCash={actualCash} onActualCashChange={setActualCash} />
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(0)}>Back</Button>
-            <Button onClick={goAfterCash}>Continue</Button>
+            <Button variant="outline" onClick={() => setStep(0)}>
+              {t("shared.back")}
+            </Button>
+            <Button onClick={goAfterCash}>{t("shared.continue")}</Button>
           </div>
         </Card>
       )}
 
       {step === 2 && preflight?.severity === "warning" && (
         <Card className="p-4 space-y-4">
-          <p className="text-sm text-amber-700 dark:text-amber-300">Preflight warnings detected. Review before closing anyway.</p>
+          <p className="text-sm text-amber-700 dark:text-amber-300">{t("shiftClose.warningsDetected")}</p>
           <ul className="text-sm list-disc pl-5 space-y-1">
             {(preflight.warnings ?? []).map((w) => (
               <li key={w}>{w.replace(/_/g, " ")}</li>
             ))}
           </ul>
           {isBlocked ? (
-            <p className="text-sm text-destructive">Block policy active — resolve required issues first.</p>
+            <p className="text-sm text-destructive">{t("shiftClose.blockPolicy")}</p>
           ) : (
-            <Button onClick={() => setStep(3)}>Close Anyway — Continue</Button>
+            <Button onClick={() => setStep(3)}>{t("shiftClose.closeAnyway")}</Button>
           )}
-          <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+          <Button variant="outline" onClick={() => setStep(1)}>
+            {t("shared.back")}
+          </Button>
         </Card>
       )}
 
       {step === 3 && (
         <Card className="p-4 space-y-4">
-          <p className="text-sm text-muted-foreground">Inventory and accounting posting will run. This may take a moment.</p>
+          <p className="text-sm text-muted-foreground">{t("shiftClose.runHint")}</p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(preflight?.severity === "warning" ? 2 : 1)} disabled={closing}>Back</Button>
+            <Button variant="outline" onClick={() => setStep(preflight?.severity === "warning" ? 2 : 1)} disabled={closing}>
+              {t("shared.back")}
+            </Button>
             <Button
               onClick={() => void runClose({ confirm: true, force: preflight?.severity === "warning" })}
               disabled={closing || isBlocked}
             >
-              {closing ? "Closing…" : "Confirm & Close Shift"}
+              {closing ? t("shiftClose.closing") : t("shiftClose.confirmClose")}
             </Button>
           </div>
         </Card>
@@ -187,20 +209,42 @@ export default function ShiftClose() {
         <Card className="p-4 space-y-4">
           <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
             <CheckCircle2 className="h-6 w-6" />
-            <span className="font-semibold text-lg">Shift Closed — {result.status ?? "completed"}</span>
+            <span className="font-semibold text-lg">
+              {t("shiftClose.closedTitle", { status: result.status ?? "completed" })}
+            </span>
           </div>
           <div className="text-sm space-y-2">
-            <div className="flex justify-between"><span className="text-muted-foreground">Sales</span><span>{formatMoney(result.totalSales)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Cash variance</span><span>{result.cash.variance != null ? formatMoney(result.cash.variance) : "—"}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Inventory processed</span><span>{result.inventory.processed}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Journal</span><span>{result.journalId ?? "—"}</span></div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("shiftClose.sales")}</span>
+              <span>{formatMoney(result.totalSales)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("shiftClose.cashVariance")}</span>
+              <span>{result.cash.variance != null ? formatMoney(result.cash.variance) : "—"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("shiftClose.inventoryProcessed")}</span>
+              <span>{result.inventory.processed}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("shiftClose.journal")}</span>
+              <span>{result.journalId ?? "—"}</span>
+            </div>
           </div>
           <Button variant="outline" asChild>
             <Link to={`/shift-close?report=${result.runId}`}>
-              <ExternalLink className="h-4 w-4 mr-2" /> View report (run #{result.runId})
+              <ExternalLink className="h-4 w-4 mr-2" /> {t("shiftClose.viewReport", { id: result.runId })}
             </Link>
           </Button>
-          <Button variant="outline" onClick={() => { setStep(0); void loadPreflight(); }}>Start New Close</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setStep(0);
+              void loadPreflight();
+            }}
+          >
+            {t("shiftClose.startNew")}
+          </Button>
         </Card>
       )}
     </div>

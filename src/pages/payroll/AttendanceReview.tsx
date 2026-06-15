@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   approveAttendancePeriod,
   createAttendancePeriod,
@@ -37,6 +36,8 @@ import {
   type AttendanceReviewType,
 } from "@/lib/api-integration/hrEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
@@ -97,6 +98,7 @@ function exportPrepCsv(rows: AttendancePayrollPrepRow[]) {
 }
 
 export default function AttendanceReview() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const range = useMemo(() => defaultRange(), []);
@@ -125,11 +127,11 @@ export default function AttendanceReview() {
       const data = await listAttendanceSummaries({ outletId, fromDate, toDate });
       setSummaries(data);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load summaries");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.loadSummariesFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId, fromDate, toDate]);
+  }, [outletId, fromDate, toDate, t]);
 
   const loadPrep = useCallback(async () => {
     if (!outletId) return;
@@ -143,11 +145,11 @@ export default function AttendanceReview() {
       setPrepMeta(meta);
       setPrepRows(employees);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load payroll preparation");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.loadPrepFailed"));
     } finally {
       setPrepLoading(false);
     }
-  }, [outletId, fromDate, toDate]);
+  }, [outletId, fromDate, toDate, t]);
 
   const loadPeriods = useCallback(async () => {
     if (!outletId) return;
@@ -155,20 +157,20 @@ export default function AttendanceReview() {
     try {
       setPeriods(await listAttendancePeriods(outletId));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load attendance periods");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.loadPeriodsFailed"));
     } finally {
       setPeriodsLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
   const createPeriod = async () => {
     if (!outletId) return;
     try {
       await createAttendancePeriod({ outletId, periodStart: fromDate, periodEnd: toDate });
-      toast.success("Attendance period created");
+      toast.success(t("payroll.attendanceReview.periodCreated"));
       await Promise.all([loadPeriods(), loadPrep()]);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create period");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.createPeriodFailed"));
     }
   };
 
@@ -204,151 +206,165 @@ export default function AttendanceReview() {
     setReviewSaving(true);
     try {
       await reviewAttendanceSummary(reviewTarget.id, { reviewType, notes: reviewNotes || undefined });
-      toast.success("Review saved");
+      toast.success(t("payroll.attendanceReview.reviewSaved"));
       setReviewOpen(false);
       await loadSummaries();
       await loadPrep();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Review failed");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.reviewFailed"));
     } finally {
       setReviewSaving(false);
     }
   };
 
-  const summaryColumns: Column<AttendanceDailySummaryRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    { key: "date", header: "Date", sortable: true, render: (r) => r.attendanceDate },
-    {
-      key: "status",
-      header: "Status",
-      sortable: true,
-      render: (r) => (
-        <Badge variant={statusVariant(r.attendanceStatus)} className="capitalize">
-          {r.attendanceStatus.replace("_", " ")}
-        </Badge>
-      ),
-    },
-    { key: "late", header: "Late (min)", render: (r) => (r.lateMinutes > 0 ? r.lateMinutes : "—") },
-    {
-      key: "early",
-      header: "Early leave (min)",
-      render: (r) => (r.earlyLeaveMinutes > 0 ? r.earlyLeaveMinutes : "—"),
-    },
-    { key: "worked", header: "Worked", render: (r) => formatWorked(r.workedMinutes) },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right w-24",
-      render: (r) =>
-        canReview && (r.requiresReview || isException(r)) ? (
-          <Button variant="outline" size="sm" onClick={() => openReview(r)}>
-            Review
-          </Button>
-        ) : null,
-    },
-  ];
-
-  const periodColumns: Column<AttendancePeriodLockRow>[] = [
-    {
-      key: "period",
-      header: "Period",
-      sortable: true,
-      render: (r) => r.periodLabel ?? `${r.periodStart} → ${r.periodEnd}`,
-    },
-    { key: "employees", header: "Employees", render: (r) => r.employeeCount ?? "—" },
-    {
-      key: "status",
-      header: "Status",
-      render: (r) => (
-        <Badge variant={periodBadgeVariant(r.status)} className="capitalize">
-          {r.status}
-        </Badge>
-      ),
-    },
-    {
-      key: "approvedAt",
-      header: "Approved At",
-      render: (r) => (r.approvedAt ? new Date(r.approvedAt).toLocaleString() : "—"),
-    },
-    {
-      key: "lockedAt",
-      header: "Locked At",
-      render: (r) => (r.lockedAt ? new Date(r.lockedAt).toLocaleString() : "—"),
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right",
-      render: (r) => (
-        <div className="flex justify-end gap-1">
-          {r.status === "draft" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void approveAttendancePeriod(r.id)
-                  .then(() => {
-                    toast.success("Period approved");
-                    return Promise.all([loadPeriods(), loadPrep()]);
-                  })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Approve failed"))
-              }
-            >
-              Approve
+  const summaryColumns: Column<AttendanceDailySummaryRow>[] = useMemo(
+    () => [
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      { key: "date", header: t("payroll.shared.date"), sortable: true, render: (r) => r.attendanceDate },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        sortable: true,
+        render: (r) => (
+          <Badge variant={statusVariant(r.attendanceStatus)} className="capitalize">
+            {t(`payroll.attendance.statuses.${r.attendanceStatus}`, {
+              defaultValue: r.attendanceStatus.replace("_", " "),
+            })}
+          </Badge>
+        ),
+      },
+      { key: "late", header: t("payroll.shared.lateMin"), render: (r) => (r.lateMinutes > 0 ? r.lateMinutes : "—") },
+      {
+        key: "early",
+        header: t("payroll.shared.earlyLeaveMin"),
+        render: (r) => (r.earlyLeaveMinutes > 0 ? r.earlyLeaveMinutes : "—"),
+      },
+      { key: "worked", header: t("payroll.attendance.worked"), render: (r) => formatWorked(r.workedMinutes) },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right w-24",
+        render: (r) =>
+          canReview && (r.requiresReview || isException(r)) ? (
+            <Button variant="outline" size="sm" onClick={() => openReview(r)}>
+              {t("payroll.shared.review")}
             </Button>
-          )}
-          {r.status === "approved" && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() =>
-                void lockAttendancePeriod(r.id)
-                  .then(() => {
-                    toast.success("Period locked");
-                    return Promise.all([loadPeriods(), loadPrep(), loadSummaries()]);
-                  })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Lock failed"))
-              }
-            >
-              Lock
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
+          ) : null,
+      },
+    ],
+    [t, canReview],
+  );
 
-  const prepColumns: Column<AttendancePayrollPrepRow>[] = [
-    { key: "name", header: "Employee", sortable: true, render: (r) => r.fullName ?? `#${r.employeeId}` },
-    { key: "attendanceDays", header: "Attendance days", sortable: true },
-    { key: "absentDays", header: "Absences", sortable: true },
-    { key: "lateCount", header: "Late count", sortable: true },
-    { key: "lateMinutes", header: "Late minutes", sortable: true },
-    { key: "earlyLeaveCount", header: "Early leave", sortable: true },
-    { key: "worked", header: "Worked hours", render: (r) => formatWorked(r.workedMinutes) },
-    { key: "overtimeHours", header: "OT hours", sortable: true, render: (r) => r.overtimeHours ?? 0 },
-    { key: "overtimeMinutes", header: "OT minutes", render: (r) => r.overtimeMinutes ?? 0 },
-  ];
+  const periodColumns: Column<AttendancePeriodLockRow>[] = useMemo(
+    () => [
+      {
+        key: "period",
+        header: t("payroll.shared.period"),
+        sortable: true,
+        render: (r) => r.periodLabel ?? `${r.periodStart} → ${r.periodEnd}`,
+      },
+      { key: "employees", header: t("payroll.shared.employeesCount"), render: (r) => r.employeeCount ?? "—" },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (r) => (
+          <Badge variant={periodBadgeVariant(r.status)} className="capitalize">
+            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "approvedAt",
+        header: t("payroll.shared.approvedAt"),
+        render: (r) => (r.approvedAt ? new Date(r.approvedAt).toLocaleString() : "—"),
+      },
+      {
+        key: "lockedAt",
+        header: t("payroll.shared.lockedAt"),
+        render: (r) => (r.lockedAt ? new Date(r.lockedAt).toLocaleString() : "—"),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        render: (r) => (
+          <div className="flex justify-end gap-1">
+            {r.status === "draft" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void approveAttendancePeriod(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.attendanceReview.periodApproved"));
+                      return Promise.all([loadPeriods(), loadPrep()]);
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.approveFailed")))
+                }
+              >
+                {t("payroll.shared.approve")}
+              </Button>
+            )}
+            {r.status === "approved" && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() =>
+                  void lockAttendancePeriod(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.attendanceReview.periodLocked"));
+                      return Promise.all([loadPeriods(), loadPrep(), loadSummaries()]);
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.lockFailed")))
+                }
+              >
+                {t("payroll.shared.lock")}
+              </Button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [t, loadPeriods, loadPrep, loadSummaries],
+  );
+
+  const prepColumns: Column<AttendancePayrollPrepRow>[] = useMemo(
+    () => [
+      {
+        key: "name",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      { key: "attendanceDays", header: t("payroll.shared.attendanceDays"), sortable: true },
+      { key: "absentDays", header: t("payroll.shared.absences"), sortable: true },
+      { key: "lateCount", header: t("payroll.shared.lateCount"), sortable: true },
+      { key: "lateMinutes", header: t("payroll.shared.lateMin"), sortable: true },
+      { key: "earlyLeaveCount", header: t("payroll.shared.earlyLeave"), sortable: true },
+      { key: "worked", header: t("payroll.shared.workedHours"), render: (r) => formatWorked(r.workedMinutes) },
+      { key: "overtimeHours", header: t("payroll.shared.otHours"), sortable: true, render: (r) => r.overtimeHours ?? 0 },
+      { key: "overtimeMinutes", header: t("payroll.shared.otMinutes"), render: (r) => r.overtimeMinutes ?? 0 },
+    ],
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Attendance Review</h2>
-        <p className="text-sm text-muted-foreground">
-          Daily summaries, exceptions, and read-only payroll preparation metrics.
-        </p>
+        <h2 className="text-lg font-semibold">{t("payroll.attendanceReview.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("payroll.attendanceReview.subtitle")}</p>
       </div>
 
       <Card className="p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {outlets.length > 1 && (
             <div className="space-y-1">
-              <Label className="text-xs">Outlet</Label>
+              <Label className="text-xs">{t("payroll.shared.outlet")}</Label>
               <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -364,11 +380,11 @@ export default function AttendanceReview() {
             </div>
           )}
           <div className="space-y-1">
-            <Label className="text-xs">From</Label>
+            <Label className="text-xs">{t("payroll.shared.from")}</Label>
             <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">To</Label>
+            <Label className="text-xs">{t("payroll.shared.to")}</Label>
             <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -376,7 +392,7 @@ export default function AttendanceReview() {
               variant="outline"
               onClick={() => void Promise.all([loadSummaries(), loadPrep(), loadPeriods()])}
             >
-              Refresh
+              {t("payroll.shared.refresh")}
             </Button>
           </div>
         </div>
@@ -384,10 +400,10 @@ export default function AttendanceReview() {
 
       <Tabs defaultValue="daily">
         <TabsList>
-          <TabsTrigger value="daily">Daily Attendance</TabsTrigger>
-          <TabsTrigger value="exceptions">Exceptions ({exceptions.length})</TabsTrigger>
-          <TabsTrigger value="periods">Attendance Periods</TabsTrigger>
-          <TabsTrigger value="prep">Payroll Preparation</TabsTrigger>
+          <TabsTrigger value="daily">{t("payroll.attendanceReview.dailyAttendance")}</TabsTrigger>
+          <TabsTrigger value="exceptions">{t("payroll.attendanceReview.exceptions")} ({exceptions.length})</TabsTrigger>
+          <TabsTrigger value="periods">{t("payroll.attendanceReview.attendancePeriods")}</TabsTrigger>
+          <TabsTrigger value="prep">{t("payroll.attendanceReview.payrollPreparation")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="daily" className="mt-4">
@@ -396,9 +412,9 @@ export default function AttendanceReview() {
             columns={summaryColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            searchPlaceholder="Search employee or date..."
+            searchPlaceholder={t("payroll.attendanceReview.searchSummary")}
             searchKeys={["attendanceDate"]}
-            emptyMessage="No summaries for this period. Run attendance:generate-summaries or wait for the daily job."
+            emptyMessage={t("payroll.attendanceReview.emptySummaries")}
             defaultPageSize={25}
           />
         </TabsContent>
@@ -409,18 +425,16 @@ export default function AttendanceReview() {
             columns={summaryColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            emptyMessage="No exceptions in this period"
+            emptyMessage={t("payroll.attendanceReview.emptyExceptions")}
             defaultPageSize={25}
           />
         </TabsContent>
 
         <TabsContent value="periods" className="mt-4 space-y-3">
           <div className="flex justify-between items-center gap-2">
-            <p className="text-sm text-muted-foreground">
-              Approve attendance for HR sign-off, then lock before payroll processing.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("payroll.attendanceReview.periodsHint")}</p>
             <Button size="sm" onClick={() => void createPeriod()}>
-              Create period ({fromDate} → {toDate})
+              {t("payroll.attendanceReview.createPeriod", { from: fromDate, to: toDate })}
             </Button>
           </div>
           <DataTable
@@ -428,7 +442,7 @@ export default function AttendanceReview() {
             columns={periodColumns}
             rowKey={(r) => r.id}
             loading={periodsLoading}
-            emptyMessage="No attendance periods yet"
+            emptyMessage={t("payroll.attendanceReview.emptyPeriods")}
             defaultPageSize={10}
           />
         </TabsContent>
@@ -437,10 +451,10 @@ export default function AttendanceReview() {
           <div className="flex justify-between items-center gap-2">
             {prepMeta?.lockStatus ? (
               <Badge variant={periodBadgeVariant(prepMeta.lockStatus)} className="capitalize">
-                Period: {prepMeta.lockStatus}
+                {t("payroll.shared.periodLabel", { status: t(`payroll.shared.${prepMeta.lockStatus}`, { defaultValue: prepMeta.lockStatus }) })}
               </Badge>
             ) : (
-              <span className="text-xs text-muted-foreground">No attendance period for selected range</span>
+              <span className="text-xs text-muted-foreground">{t("payroll.attendanceReview.noPeriodForRange")}</span>
             )}
             <Button
               variant="outline"
@@ -449,7 +463,7 @@ export default function AttendanceReview() {
               onClick={() => exportPrepCsv(prepRows)}
             >
               <Download className="h-4 w-4 mr-1" />
-              Export CSV
+              {t("payroll.shared.exportCsv")}
             </Button>
           </div>
           <DataTable
@@ -457,19 +471,17 @@ export default function AttendanceReview() {
             columns={prepColumns}
             rowKey={(r) => r.employeeId}
             loading={prepLoading}
-            emptyMessage="No preparation data for this period"
+            emptyMessage={t("payroll.attendanceReview.emptyPrep")}
             defaultPageSize={25}
           />
-          <p className="text-xs text-muted-foreground">
-            Read-only metrics for future payroll runs. No deductions or payroll generation in this phase.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("payroll.attendanceReview.prepReadOnlyHint")}</p>
         </TabsContent>
       </Tabs>
 
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Review attendance</DialogTitle>
+            <DialogTitle>{t("payroll.attendanceReview.reviewAttendance")}</DialogTitle>
           </DialogHeader>
           {reviewTarget && (
             <p className="text-sm text-muted-foreground">
@@ -478,30 +490,30 @@ export default function AttendanceReview() {
           )}
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label>Review type</Label>
+              <Label>{t("payroll.shared.reviewType")}</Label>
               <Select value={reviewType} onValueChange={(v) => setReviewType(v as AttendanceReviewType)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="corrected">Corrected</SelectItem>
-                  <SelectItem value="excused_absence">Excused absence</SelectItem>
-                  <SelectItem value="ignored">Ignored</SelectItem>
+                  <SelectItem value="approved">{t("payroll.shared.approved")}</SelectItem>
+                  <SelectItem value="corrected">{t("payroll.shared.corrected")}</SelectItem>
+                  <SelectItem value="excused_absence">{t("payroll.shared.excusedAbsence")}</SelectItem>
+                  <SelectItem value="ignored">{t("payroll.shared.ignored")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("payroll.shared.notes")}</Label>
               <Textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReviewOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
             <Button onClick={() => void submitReview()} disabled={reviewSaving}>
-              Save review
+              {t("payroll.shared.saveReview")}
             </Button>
           </DialogFooter>
         </DialogContent>

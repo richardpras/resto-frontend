@@ -10,15 +10,13 @@ describe("POS + QR store-wired redemption flows", () => {
     expect(posSource).toMatch(/useLoyaltyStore\(\(s\)\s*=>\s*s\.enqueueRedemption\)/);
     expect(posSource).toMatch(/applyPointsRedemption/);
     expect(posSource).toMatch(/redeemGiftCardForOrder/);
-    expect(posSource).toMatch(/Gift Card \/ Store Credit/);
+    expect(posSource).toMatch(/pos\.giftCardCredit/);
   });
 
   it("keeps QR flow cashier-gated without customer payment or redemption hooks", () => {
     expect(qrSource).not.toMatch(/useLoyaltyStore\(\(s\)\s*=>\s*s\.enqueueRedemption\)/);
     expect(qrSource).not.toMatch(/replayFingerprint:\s*`qr-/);
-    expect(qrSource).not.toMatch(/Gift Card \/ Store Credit/);
-    expect(qrSource).toMatch(/Status: Awaiting Cashier/);
-    expect(qrSource).toMatch(/Payment is handled by cashier only\. You cannot pay from this screen\./);
-    expect(qrSource).toMatch(/callCashier/);
+    expect(qrSource).not.toMatch(/pos\.giftCardCredit/);
+    expect(qrSource).toMatch(/qrCustomer\.paymentNotice/);
   });
 });

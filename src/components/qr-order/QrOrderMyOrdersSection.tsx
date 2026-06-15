@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchQrOrderPublic } from "@/lib/api-integration/qrOrderPublicEndpoints";
 import { getActiveOrderCodes } from "@/lib/qrOrderSession";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type OrderSummary = {
   orderCode: string;
@@ -13,7 +14,9 @@ type Props = {
 };
 
 export function QrOrderMyOrdersSection({ tableToken }: Props) {
+  const { t, i18n } = useOpsTranslation();
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const apiLang = i18n.language.startsWith("id") ? "id" : "en";
 
   useEffect(() => {
     let active = true;
@@ -27,7 +30,7 @@ export function QrOrderMyOrdersSection({ tableToken }: Props) {
       const results = await Promise.all(
         codes.map(async (code) => {
           try {
-            const data = await fetchQrOrderPublic(code);
+            const data = await fetchQrOrderPublic(code, { lang: apiLang });
             return { orderCode: data.orderCode, customerStatusLabel: data.customerStatusLabel };
           } catch {
             return null;
@@ -47,13 +50,13 @@ export function QrOrderMyOrdersSection({ tableToken }: Props) {
       active = false;
       clearInterval(timer);
     };
-  }, [tableToken]);
+  }, [tableToken, apiLang]);
 
   if (orders.length === 0) return null;
 
   return (
     <div className="mb-4 bg-card rounded-2xl p-4 border border-border" data-testid="qr-my-orders">
-      <h2 className="text-sm font-semibold text-foreground mb-2">My Orders / Pesanan Saya</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-2">{t("qrStaff.myOrders")}</h2>
       <ul className="space-y-2">
         {orders.map((order, index) => (
           <li key={order.orderCode}>
@@ -64,7 +67,7 @@ export function QrOrderMyOrdersSection({ tableToken }: Props) {
               <span className="font-medium text-foreground">{order.orderCode}</span>
               <span className="text-xs text-muted-foreground text-right">
                 {index > 0 ? (
-                  <span className="block text-primary/80">Pesanan Tambahan</span>
+                  <span className="block text-primary/80">{t("qrCustomer.additionalOrder")}</span>
                 ) : null}
                 {order.customerStatusLabel}
               </span>

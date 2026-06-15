@@ -1,8 +1,8 @@
 import {
   deriveKitchenConnectionStatus,
-  KITCHEN_CONNECTION_LABELS,
   type KitchenConnectionStatus,
 } from "@/domain/kitchenConnectionStatus";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   realtimeConnected: boolean;
@@ -23,6 +23,7 @@ export function KitchenConnectionStatus({
   consecutiveFetchFailures,
   hasBlockingError,
 }: Props) {
+  const { t } = useOpsTranslation();
   const status = deriveKitchenConnectionStatus({
     realtimeConnected,
     pollingActive,
@@ -37,7 +38,7 @@ export function KitchenConnectionStatus({
       data-connection-status={status}
     >
       <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} aria-hidden />
-      {KITCHEN_CONNECTION_LABELS[status]}
+      {t(`kitchen.connection.${status}`)}
     </span>
   );
 }

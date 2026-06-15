@@ -28,12 +28,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_RECOVERY_PRESETS } from "@/domain/orderRecoveryPresets";
 import { cn } from "@/lib/utils";
-
-const KITCHEN_RECOVERY_PRESETS = ORDER_RECOVERY_PRESETS.map((p) =>
-  p.targetStatus === "rejected" ? { ...p, hint: "Kitchen rejection" } : p,
-);
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 export default function Kitchen() {
+  const { t } = useOpsTranslation();
   const displayRootRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, toggleFullscreen } = useKitchenFullscreen(displayRootRef);
   const { focusMode, setFocusMode } = useKdsFocusMode();
@@ -144,7 +142,7 @@ export default function Kitchen() {
     if (!recoveryCtx) return;
     try {
       await reportItemRecovery(recoveryCtx.orderId, recoveryCtx.orderItemId, targetStatus, hint ?? null);
-      toast.success("Recovery recorded");
+      toast.success(t("kitchen.recoveryRecorded"));
       setRecoveryOpen(false);
       setRecoveryCtx(null);
     } catch {
@@ -156,12 +154,12 @@ export default function Kitchen() {
     if (!recoveryCtx) return;
     const trimmed = customReason.trim();
     if (!trimmed) {
-      toast.error("Enter a reason");
+      toast.error(t("kitchen.enterReason"));
       return;
     }
     try {
       await reportItemRecovery(recoveryCtx.orderId, recoveryCtx.orderItemId, "custom_reason", trimmed);
-      toast.success("Recovery recorded");
+      toast.success(t("kitchen.recoveryRecorded"));
       setRecoveryOpen(false);
       setRecoveryCtx(null);
     } catch {
@@ -172,7 +170,7 @@ export default function Kitchen() {
   if (!canUseKitchen) {
     return (
       <div className="p-4 md:p-6 text-sm text-muted-foreground">
-        You do not have permission to access Kitchen Display.
+        {t("kitchen.noPermission")}
       </div>
     );
   }
@@ -192,7 +190,7 @@ export default function Kitchen() {
     >
       {(!activeOutletId || activeOutletId < 1) && (
         <div className="mb-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100">
-          Select an outlet in the header to show this kitchen&apos;s tickets.
+          {t("kitchen.selectOutlet")}
         </div>
       )}
 
@@ -218,15 +216,15 @@ export default function Kitchen() {
       <SkeletonBusyRegion
         busy={isLoading && boardTickets.length === 0}
         className={cn("kds-board-region flex-1 min-h-0 flex flex-col", isFullscreen && "overflow-hidden")}
-        label="Loading kitchen tickets"
+        label={t("kitchen.loadingTickets")}
       >
         {isLoading && boardTickets.length === 0 ? (
           <KitchenTicketBoardSkeleton />
         ) : boardTickets.length === 0 ? (
           <div className="flex flex-col items-center justify-center flex-1 py-24 text-kds-muted-fg rounded-2xl border border-kds-card-border bg-kds-card/40">
             <ChefHat className="h-20 w-20 mb-4 opacity-25" />
-            <p className="text-xl font-semibold text-kds-fg">No active orders</p>
-            <p className="text-sm mt-1">Confirmed orders from POS and QR will appear here</p>
+            <p className="text-xl font-semibold text-kds-fg">{t("kitchen.noActiveOrders")}</p>
+            <p className="text-sm mt-1">{t("kitchen.emptySubtitle")}</p>
           </div>
         ) : (
           <KdsBoard
@@ -249,26 +247,31 @@ export default function Kitchen() {
       <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
         <DialogContent className="max-w-md" data-testid="kitchen-recovery-dialog">
           <DialogHeader>
-            <DialogTitle>Item issue</DialogTitle>
+            <DialogTitle>{t("kitchen.itemIssue")}</DialogTitle>
             {recoveryCtx ? (
               <p className="text-xs text-muted-foreground pt-1">
-                Order #{recoveryCtx.orderId} · {recoveryCtx.itemName}
+                {t("kitchen.orderItem", { orderId: recoveryCtx.orderId, itemName: recoveryCtx.itemName })}
               </p>
             ) : null}
           </DialogHeader>
           {recoveryMode === "preset" ? (
             <div className="grid gap-2">
-              {KITCHEN_RECOVERY_PRESETS.map((p) => (
+              {ORDER_RECOVERY_PRESETS.map((p) => (
                 <Button
-                  key={p.targetStatus + p.label}
+                  key={p.targetStatus}
                   type="button"
                   variant="outline"
                   size="sm"
                   className="justify-start h-auto py-2 text-left"
                   disabled={recoverySubmitting}
-                  onClick={() => void submitRecoveryPreset(p.targetStatus, p.hint)}
+                  onClick={() =>
+                    void submitRecoveryPreset(
+                      p.targetStatus,
+                      p.targetStatus === "rejected" ? t("kitchen.rejectionHint") : p.hint ?? null,
+                    )
+                  }
                 >
-                  {p.label}
+                  {t(`kitchen.recoveryPresets.${p.targetStatus}`)}
                 </Button>
               ))}
               <Button
@@ -278,7 +281,7 @@ export default function Kitchen() {
                 disabled={recoverySubmitting}
                 onClick={() => setRecoveryMode("custom")}
               >
-                Custom reason…
+                {t("kitchen.customReason")}
               </Button>
             </div>
           ) : (
@@ -286,16 +289,16 @@ export default function Kitchen() {
               <Textarea
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}
-                placeholder="Describe the issue"
+                placeholder={t("kitchen.reasonPlaceholder")}
                 rows={3}
                 className="text-sm"
               />
               <DialogFooter className="gap-2 sm:gap-0">
                 <Button type="button" variant="outline" size="sm" onClick={() => setRecoveryMode("preset")}>
-                  Back
+                  {t("shared.back")}
                 </Button>
                 <Button type="button" size="sm" disabled={recoverySubmitting} onClick={() => void submitRecoveryCustom()}>
-                  Submit
+                  {t("kitchen.submit")}
                 </Button>
               </DialogFooter>
             </div>

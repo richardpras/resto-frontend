@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import Payroll from "./Payroll";
 
@@ -44,9 +45,13 @@ vi.mock("@/stores/payrollStore", () => ({
 
 describe("Payroll page", () => {
   it("renders payroll shell and primary actions from local store flow", () => {
-    render(<Payroll />);
+    render(
+      <MemoryRouter>
+        <Payroll />
+      </MemoryRouter>,
+    );
 
-    expect(screen.getByRole("heading", { name: /Payroll Management/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Payroll & HR/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Payroll/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Payroll List/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Generate Payroll/i })).toBeTruthy();

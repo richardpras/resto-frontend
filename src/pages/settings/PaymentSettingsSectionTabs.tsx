@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OutletPaymentSettingsPanel from "@/components/settings/OutletPaymentSettingsPanel";
@@ -11,6 +12,7 @@ import {
 } from "./paymentSettingsSections";
 
 export default function PaymentSettingsSectionTabs() {
+  const { t } = useTranslation("common");
   const [searchParams, setSearchParams] = useSearchParams();
   const urlSection = resolvePaymentSettingsSection(searchParams.get("section"));
   const [section, setSection] = useState<PaymentSettingsSection>(urlSection);
@@ -37,12 +39,12 @@ export default function PaymentSettingsSectionTabs() {
       }}
       className="w-full"
     >
-      <TabsList aria-label="Payment settings sections" className="grid w-full max-w-xl grid-cols-2 h-auto">
+      <TabsList aria-label={t("settings.payments.sectionsAria")} className="grid w-full max-w-xl grid-cols-2 h-auto">
         <TabsTrigger value="outlet" className="text-xs sm:text-sm whitespace-normal py-2">
-          Outlet Payment Settings
+          {t("settings.payments.outletTab")}
         </TabsTrigger>
         <TabsTrigger value="master" className="text-xs sm:text-sm whitespace-normal py-2">
-          Master Payment Methods
+          {t("settings.payments.masterTab")}
         </TabsTrigger>
       </TabsList>
 

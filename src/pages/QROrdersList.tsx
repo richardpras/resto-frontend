@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Camera, Clock, CheckCircle2, Loader2, Package, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import type { TFunction } from "i18next";
 import { useOutletStore } from "@/stores/outletStore";
 import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
 import type { QrOrderRequest } from "@/stores/qrOrderStore";
@@ -18,35 +19,38 @@ import { listQrOrdersWithMeta, type ListQrOrdersMeta } from "@/lib/api-integrati
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { parseQrOrderCode } from "@/lib/qrOrderCodeParser";
 import { useQrOrderPosBridgeStore } from "@/stores/qrOrderPosBridgeStore";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const QUEUE_PAGE_SIZE = 25;
 type QueueTab = "pending" | "inPos";
 
-const statusConfig: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-  pending_cashier_confirmation: { label: "Submitted", color: "bg-warning/10 text-warning", icon: Clock },
-  under_review: { label: "In POS", color: "bg-primary/10 text-primary", icon: Clock },
-  confirmed: { label: "Confirmed", color: "bg-success/10 text-success", icon: CheckCircle2 },
-  paid: { label: "Paid", color: "bg-success/10 text-success", icon: CheckCircle2 },
-  rejected: { label: "Cancelled", color: "bg-destructive/10 text-destructive", icon: XCircle },
-  expired: { label: "Expired", color: "bg-muted text-muted-foreground", icon: XCircle },
-};
-
-function formatAgo(date: Date | null): string {
-  if (!date) return "never";
-  const diffMs = Date.now() - date.getTime();
-  const sec = Math.max(0, Math.floor(diffMs / 1000));
-  if (sec < 60) return `${sec} sec ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min ago`;
-  const hrs = Math.floor(min / 60);
-  return `${hrs} hr ago`;
+function getStatusConfig(t: TFunction): Record<string, { label: string; color: string; icon: typeof Clock }> {
+  return {
+    pending_cashier_confirmation: { label: t("qrStaff.status.submitted"), color: "bg-warning/10 text-warning", icon: Clock },
+    under_review: { label: t("qrStaff.status.in_pos"), color: "bg-primary/10 text-primary", icon: Clock },
+    confirmed: { label: t("qrStaff.status.confirmed"), color: "bg-success/10 text-success", icon: CheckCircle2 },
+    paid: { label: t("qrStaff.status.paid"), color: "bg-success/10 text-success", icon: CheckCircle2 },
+    rejected: { label: t("qrStaff.status.cancelled"), color: "bg-destructive/10 text-destructive", icon: XCircle },
+    expired: { label: t("qrStaff.status.expired"), color: "bg-muted text-muted-foreground", icon: XCircle },
+  };
 }
 
-function urgencyFor(order: QrOrderRequest): { label: string; className: string } {
+function formatAgo(date: Date | null, t: TFunction): string {
+  if (!date) return t("qrStaff.timeNever");
+  const diffMs = Date.now() - date.getTime();
+  const sec = Math.max(0, Math.floor(diffMs / 1000));
+  if (sec < 60) return t("qrStaff.timeSec", { n: sec });
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t("qrStaff.timeMin", { n: min });
+  const hrs = Math.floor(min / 60);
+  return t("qrStaff.timeHr", { n: hrs });
+}
+
+function urgencyFor(order: QrOrderRequest, t: TFunction): { label: string; className: string } {
   const count = order.cashierCallCount ?? 0;
-  if (count >= 3) return { label: "Urgent", className: "bg-destructive/10 text-destructive" };
-  if (count >= 1) return { label: "Called", className: "bg-warning/10 text-warning" };
-  return { label: "Normal", className: "bg-muted text-muted-foreground" };
+  if (count >= 3) return { label: t("qrStaff.urgency.urgent"), className: "bg-destructive/10 text-destructive" };
+  if (count >= 1) return { label: t("qrStaff.urgency.called"), className: "bg-warning/10 text-warning" };
+  return { label: t("qrStaff.urgency.normal"), className: "bg-muted text-muted-foreground" };
 }
 
 type OrderCardProps = {
@@ -55,6 +59,7 @@ type OrderCardProps = {
   openingRequestId: string | null;
   onPreview: (id: string) => void;
   onOpenInPos: (id: string) => void;
+  t: TFunction;
 };
 
 function QrOrderInPosRow({
@@ -63,6 +68,7 @@ function QrOrderInPosRow({
   openingRequestId,
   onPreview,
   onOpenInPos,
+  t,
 }: OrderCardProps) {
   const isOpening = openingRequestId === order.id;
 
@@ -71,16 +77,16 @@ function QrOrderInPosRow({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground truncate">{order.requestCode}</p>
         <p className="text-xs text-muted-foreground truncate">
-          {order.tableName ? `Table ${order.tableName}` : "No table"}
+          {order.tableName ? t("qrStaff.table", { name: order.tableName }) : t("qrStaff.noTable")}
           {order.customerName ? ` · ${order.customerName}` : ""}
-          {` · ${order.items.length} items · ${new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
+          {` · ${t("qrStaff.items", { n: order.items.length })} · ${new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
         </p>
         {order.linkedOrder ? (
           <p className="text-xs text-primary mt-1" data-testid="qr-order-linked-pos">
-            Linked POS Order: {order.linkedOrder.orderNo}
+            {t("qrStaff.linkedPos", { code: order.linkedOrder.orderNo })}
           </p>
         ) : (
-          <p className="text-xs text-muted-foreground mt-1">Source: Customer QR</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("qrStaff.source")}</p>
         )}
       </div>
       <button
@@ -89,7 +95,7 @@ function QrOrderInPosRow({
         onClick={() => onPreview(order.id)}
         className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border border-border"
       >
-        Preview
+        {t("qrStaff.preview")}
       </button>
       <button
         type="button"
@@ -99,7 +105,7 @@ function QrOrderInPosRow({
         data-testid="qr-order-resume-pos-button"
       >
         {isOpening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-        {order.linkedOrder ? "Open POS Bill" : "Resume"}
+        {order.linkedOrder ? t("qrStaff.openPosBill") : t("qrStaff.resume")}
       </button>
     </div>
   );
@@ -111,10 +117,12 @@ function QrOrderQueueCard({
   openingRequestId,
   onPreview,
   onOpenInPos,
+  t,
 }: OrderCardProps) {
+  const statusConfig = getStatusConfig(t);
   const sc = statusConfig[order.status] ?? statusConfig.pending_cashier_confirmation;
   const Icon = sc.icon;
-  const urgency = urgencyFor(order);
+  const urgency = urgencyFor(order, t);
   const isOpening = openingRequestId === order.id;
 
   return (
@@ -134,32 +142,34 @@ function QrOrderQueueCard({
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {order.tableName && `Table ${order.tableName}`}
+            {order.tableName && t("qrStaff.table", { name: order.tableName })}
             {order.customerName && ` • ${order.customerName}`}
             {" • "}{new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
           </p>
           {order.linkedOrder ? (
             <p className="text-xs text-primary mt-1" data-testid="qr-order-linked-pos">
-              Linked POS Order: {order.linkedOrder.orderNo}
+              {t("qrStaff.linkedPos", { code: order.linkedOrder.orderNo })}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground mt-1">Source: Customer QR</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("qrStaff.source")}</p>
           )}
           <div className="flex items-center gap-2 mt-1">
             <span className={`text-[11px] px-2 py-0.5 rounded-lg font-medium ${urgency.className}`}>
               {urgency.label}
             </span>
-            <p className="text-xs text-warning">Called {order.cashierCallCount ?? 0}x</p>
-            <p className="text-xs text-muted-foreground">Last called {formatAgo(order.cashierCalledAt)}</p>
+            <p className="text-xs text-warning">{t("qrStaff.calledCount", { n: order.cashierCallCount ?? 0 })}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("qrStaff.lastCalled", { ago: formatAgo(order.cashierCalledAt, t) })}
+            </p>
           </div>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">{order.items.length} items</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("qrStaff.items", { n: order.items.length })}</span>
       </div>
 
       <div className="flex items-center gap-1 mb-3 flex-wrap">
         {order.items.map((item) => (
           <span key={item.id} className="text-xs bg-muted px-2 py-1 rounded-lg text-muted-foreground">
-            Menu #{item.menuItemId} ×{item.qty}
+            {t("qrStaff.menuItemTag", { id: item.menuItemId, qty: item.qty })}
           </span>
         ))}
       </div>
@@ -172,7 +182,7 @@ function QrOrderQueueCard({
           className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border"
           data-testid="qr-order-preview-button"
         >
-          Preview
+          {t("qrStaff.preview")}
         </button>
         <button
           type="button"
@@ -182,7 +192,7 @@ function QrOrderQueueCard({
           data-testid="qr-order-open-pos-list-button"
         >
           {isOpening ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {order.linkedOrder ? "Open POS Bill" : "Open In POS"}
+          {order.linkedOrder ? t("qrStaff.openPosBill") : t("qrStaff.openInPos")}
         </button>
       </div>
     </motion.div>
@@ -190,6 +200,7 @@ function QrOrderQueueCard({
 }
 
 export default function QROrders() {
+  const { t } = useOpsTranslation();
   const navigate = useNavigate();
   const setFromOpenInPos = useQrOrderPosBridgeStore((s) => s.setFromOpenInPos);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
@@ -234,7 +245,7 @@ export default function QROrders() {
     try {
       await openQrOrderInPosFlow(requestId, { setFromOpenInPos, navigate });
     } catch {
-      toast.error("Could not open order in POS");
+      toast.error(t("qrStaff.openFailed"));
     } finally {
       setOpeningRequestId(null);
     }
@@ -243,7 +254,7 @@ export default function QROrders() {
   const handleSearch = async (rawInput: string) => {
     const parsed = parseQrOrderCode(rawInput);
     if (!parsed) {
-      toast.error("Enter a valid order code (e.g. QRO-XXXXXXXXXX)");
+      toast.error(t("qrStaff.invalidCode"));
       return;
     }
 
@@ -253,7 +264,7 @@ export default function QROrders() {
       setSearchValue(parsed);
       await openQrOrderInPosFlow(found.id, { setFromOpenInPos, navigate });
     } catch (error) {
-      const message = error instanceof ApiHttpError ? error.message : "Order not found or expired";
+      const message = error instanceof ApiHttpError ? error.message : t("qrStaff.notFound");
       toast.error(message);
     } finally {
       setSearching(false);
@@ -363,14 +374,14 @@ export default function QROrders() {
     <div className="p-4 md:p-6 space-y-4">
       {(!activeOutletId || activeOutletId < 1) && (
         <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
-          Select an outlet in the header with a configured numeric id to list QR requests for that outlet.
+          {t("qrStaff.selectOutlet")}
         </div>
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-foreground">QR Orders</h1>
-          <p className="text-sm text-muted-foreground">Search by code, preview, or open orders in POS</p>
+          <h1 className="text-xl font-bold text-foreground">{t("qrStaff.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("qrStaff.subtitle")}</p>
         </div>
       </div>
 
@@ -390,14 +401,14 @@ export default function QROrders() {
           className="px-4 py-2.5 rounded-xl border border-border text-sm font-medium flex items-center gap-2 disabled:opacity-60"
           data-testid="qr-order-scan-button"
         >
-          <Camera className="h-4 w-4" /> Scan QR
+          <Camera className="h-4 w-4" /> {t("qrStaff.scanQr")}
         </button>
       </div>
 
       <div
         className="flex gap-1 p-1 rounded-xl bg-muted w-full sm:w-auto"
         role="tablist"
-        aria-label="QR order queues"
+        aria-label={t("qrStaff.tabsAria")}
       >
         <button
           type="button"
@@ -409,7 +420,7 @@ export default function QROrders() {
           }`}
           data-testid="qr-queue-tab-pending"
         >
-          Pending ({pendingTotal})
+          {t("qrStaff.tabs.pending", { n: pendingTotal })}
         </button>
         <button
           type="button"
@@ -421,35 +432,35 @@ export default function QROrders() {
           }`}
           data-testid="qr-queue-tab-in-pos"
         >
-          In POS ({inPosTotal})
+          {t("qrStaff.tabs.inPos", { n: inPosTotal })}
         </button>
       </div>
 
       {lastSyncAt ? (
         <p className="text-xs text-muted-foreground">
-          Last refresh: {new Date(lastSyncAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          {t("qrStaff.lastRefresh", {
+            at: new Date(lastSyncAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          })}
           {queueTab === "pending" && pendingTotal > requests.length ? (
-            <> · Showing {requests.length} of {pendingTotal} pending</>
+            <> · {t("qrStaff.showingPending", { shown: requests.length, total: pendingTotal })}</>
           ) : null}
           {queueTab === "inPos" && inPosTotal > inPosRequests.length ? (
-            <> · Showing {inPosRequests.length} of {inPosTotal} in POS</>
+            <> · {t("qrStaff.showingInPos", { shown: inPosRequests.length, total: inPosTotal })}</>
           ) : null}
         </p>
       ) : null}
 
       {queueTab === "pending" ? (
         <>
-          <p className="text-xs text-muted-foreground -mt-1">
-            New customer submissions waiting for cashier. Use search to jump to a specific code.
-          </p>
-          <SkeletonBusyRegion busy={initialLoading && requests.length === 0} label="Loading QR requests">
+          <p className="text-xs text-muted-foreground -mt-1">{t("qrStaff.pendingDesc")}</p>
+          <SkeletonBusyRegion busy={initialLoading && requests.length === 0} label={t("qrStaff.loadingPending")}>
             {initialLoading && requests.length === 0 ? (
               <QrOrderCardStackSkeleton cards={3} />
             ) : requests.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <Package className="h-12 w-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">No pending QR requests</p>
-                <p className="text-xs">Search or scan an order code to open in POS</p>
+                <p className="text-sm font-medium">{t("qrStaff.emptyPending")}</p>
+                <p className="text-xs">{t("qrStaff.emptySearch")}</p>
               </div>
             ) : (
               <div className="grid gap-3">
@@ -462,6 +473,7 @@ export default function QROrders() {
                       openingRequestId={openingRequestId}
                       onPreview={openPreview}
                       onOpenInPos={handleOpenInPos}
+                      t={t}
                     />
                   ))}
                 </AnimatePresence>
@@ -474,27 +486,25 @@ export default function QROrders() {
                     data-testid="qr-order-load-more"
                   >
                     {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Load more ({requests.length} of {pendingTotal})
+                    {t("qrStaff.loadMore", { shown: requests.length, total: pendingTotal })}
                   </button>
                 ) : null}
               </div>
             )}
             {backgroundRefreshing && requests.length > 0 ? (
-              <p className="text-xs text-muted-foreground">Refreshing queue...</p>
+              <p className="text-xs text-muted-foreground">{t("qrStaff.refreshing")}</p>
             ) : null}
           </SkeletonBusyRegion>
         </>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground -mt-1">
-            Opened in POS but not paid yet. They are not lost — resume checkout or search by code.
-          </p>
-          <SkeletonBusyRegion busy={inPosLoading && !inPosLoadedOnce} label="Loading in-POS orders">
+          <p className="text-xs text-muted-foreground -mt-1">{t("qrStaff.inPosDesc")}</p>
+          <SkeletonBusyRegion busy={inPosLoading && !inPosLoadedOnce} label={t("qrStaff.loadingInPos")}>
             {inPosLoading && !inPosLoadedOnce ? (
               <QrOrderCardStackSkeleton cards={2} />
             ) : inPosRequests.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-                No orders currently open in POS
+                {t("qrStaff.emptyInPos")}
               </div>
             ) : (
               <div className="flex flex-col gap-1.5 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
@@ -506,6 +516,7 @@ export default function QROrders() {
                     openingRequestId={openingRequestId}
                     onPreview={openPreview}
                     onOpenInPos={handleOpenInPos}
+                    t={t}
                   />
                 ))}
                 {hasMoreInPos ? (
@@ -517,7 +528,7 @@ export default function QROrders() {
                     data-testid="qr-order-load-more-in-pos"
                   >
                     {loadingMoreInPos ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Load more ({inPosRequests.length} of {inPosTotal})
+                    {t("qrStaff.loadMore", { shown: inPosRequests.length, total: inPosTotal })}
                   </button>
                 ) : null}
               </div>

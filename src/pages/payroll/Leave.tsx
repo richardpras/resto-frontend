@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   approveLeaveRequest,
   cancelLeaveRequest,
@@ -40,6 +39,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +52,7 @@ function requestStatusVariant(status: string): "default" | "secondary" | "destru
 }
 
 export default function Leave() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -91,20 +93,20 @@ export default function Leave() {
     if (!outletId) return;
     setLoading(true);
     try {
-      const [t, r, emps] = await Promise.all([
+      const [typeRows, requestRows, emps] = await Promise.all([
         listLeaveTypes(outletId),
         listLeaveRequests({ outletId }),
         listOrganizationEmployees(outletId),
       ]);
-      setTypes(t);
-      setRequests(r);
+      setTypes(typeRows);
+      setRequests(requestRows);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load leave data");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
   const loadBalances = useCallback(async (empId: number) => {
     try {
@@ -112,14 +114,14 @@ export default function Leave() {
       setBalances(rows);
       const edits: Record<number, string> = {};
       for (const b of rows) edits[b.leaveTypeId] = String(b.allocatedDays);
-      for (const t of types) {
-        if (edits[t.id] === undefined) edits[t.id] = "0";
+      for (const lt of types) {
+        if (edits[lt.id] === undefined) edits[lt.id] = "0";
       }
       setAllocEdits(edits);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load balances");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.loadBalancesFailed"));
     }
-  }, [types]);
+  }, [types, t]);
 
   useEffect(() => {
     if (outletId === null && outlets[0]) setOutletId(outlets[0].id);
@@ -134,11 +136,11 @@ export default function Leave() {
     else setBalances([]);
   }, [balanceEmployeeId, loadBalances]);
 
-  const activeTypes = useMemo(() => types.filter((t) => t.isActive), [types]);
+  const activeTypes = useMemo(() => types.filter((lt) => lt.isActive), [types]);
 
   const submitRequest = async () => {
     if (!reqForm.employeeId || !reqForm.leaveTypeId || !reqForm.startDate || !reqForm.endDate) {
-      return toast.error("Fill required fields");
+      return toast.error(t("payroll.shared.fillRequired"));
     }
     try {
       await createLeaveRequest({
@@ -148,17 +150,17 @@ export default function Leave() {
         endDate: reqForm.endDate,
         reason: reqForm.reason || undefined,
       });
-      toast.success("Leave request created");
+      toast.success(t("payroll.leave.requestCreated"));
       setRequestOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create request");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.createRequestFailed"));
     }
   };
 
   const submitType = async () => {
     if (!outletId || !typeForm.code.trim() || !typeForm.name.trim()) {
-      return toast.error("Code and name required");
+      return toast.error(t("payroll.leave.codeNameRequired"));
     }
     try {
       await createLeaveType({
@@ -170,147 +172,153 @@ export default function Leave() {
         paidLeave: typeForm.paidLeave,
         isActive: typeForm.isActive,
       });
-      toast.success("Leave type created");
+      toast.success(t("payroll.leave.typeCreated"));
       setTypeOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create type");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.createTypeFailed"));
     }
   };
 
   const saveBalances = async () => {
-    if (!balanceEmployeeId) return toast.error("Select an employee");
+    if (!balanceEmployeeId) return toast.error(t("payroll.leave.selectEmployeeBalances"));
     try {
       const payload = Object.entries(allocEdits).map(([leaveTypeId, allocatedDays]) => ({
         leaveTypeId: Number(leaveTypeId),
         allocatedDays: Number(allocatedDays),
       }));
       await updateEmployeeLeaveBalances(Number(balanceEmployeeId), payload);
-      toast.success("Balances updated");
+      toast.success(t("payroll.leave.balancesUpdated"));
       await loadBalances(Number(balanceEmployeeId));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to update balances");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.leave.updateBalancesFailed"));
     }
   };
 
-  const requestColumns: Column<LeaveRequestRow>[] = [
-    {
-      key: "employee",
-      header: "Employee",
-      sortable: true,
-      render: (r) => r.employee?.fullName ?? `#${r.employeeId}`,
-    },
-    {
-      key: "type",
-      header: "Type",
-      render: (r) => r.leaveType?.name ?? "—",
-    },
-    {
-      key: "range",
-      header: "Date Range",
-      render: (r) => `${r.startDate} → ${r.endDate}`,
-    },
-    { key: "days", header: "Days", render: (r) => r.totalDays },
-    {
-      key: "status",
-      header: "Status",
-      sortable: true,
-      render: (r) => (
-        <Badge variant={requestStatusVariant(r.status)} className="capitalize">
-          {r.status}
-        </Badge>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "text-right",
-      render: (r) =>
-        r.status === "pending" ? (
-          <div className="flex justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() =>
-                void approveLeaveRequest(r.id)
-                  .then(() => {
-                    toast.success("Approved");
-                    return load();
-                  })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Approve failed"))
-              }
-            >
-              <Check className="h-4 w-4 text-green-600" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setRejectId(r.id);
-                setRejectReason("");
-                setRejectOpen(true);
-              }}
-            >
-              <X className="h-4 w-4 text-destructive" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() =>
-                void cancelLeaveRequest(r.id)
-                  .then(() => {
-                    toast.success("Cancelled");
-                    return load();
-                  })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Cancel failed"))
-              }
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null,
-    },
-  ];
+  const requestColumns: Column<LeaveRequestRow>[] = useMemo(
+    () => [
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        sortable: true,
+        render: (r) => r.employee?.fullName ?? t("payroll.shared.employeeFallback", { id: r.employeeId }),
+      },
+      {
+        key: "type",
+        header: t("payroll.shared.type"),
+        render: (r) => r.leaveType?.name ?? "—",
+      },
+      {
+        key: "range",
+        header: t("payroll.shared.dateRange"),
+        render: (r) => `${r.startDate} → ${r.endDate}`,
+      },
+      { key: "days", header: t("payroll.shared.days"), render: (r) => r.totalDays },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        sortable: true,
+        render: (r) => (
+          <Badge variant={requestStatusVariant(r.status)} className="capitalize">
+            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "text-right",
+        render: (r) =>
+          r.status === "pending" ? (
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() =>
+                  void approveLeaveRequest(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.shared.approved"));
+                      return load();
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.approveFailed")))
+                }
+              >
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setRejectId(r.id);
+                  setRejectReason("");
+                  setRejectOpen(true);
+                }}
+              >
+                <X className="h-4 w-4 text-destructive" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() =>
+                  void cancelLeaveRequest(r.id)
+                    .then(() => {
+                      toast.success(t("payroll.shared.cancelled"));
+                      return load();
+                    })
+                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.cancelFailed")))
+                }
+              >
+                {t("payroll.shared.cancel")}
+              </Button>
+            </div>
+          ) : null,
+      },
+    ],
+    [t, load],
+  );
 
-  const typeColumns: Column<LeaveTypeRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    {
-      key: "deduct",
-      header: "Deduct balance",
-      render: (t) => (t.deductLeaveBalance ? "Yes" : "No"),
-    },
-    {
-      key: "active",
-      header: "Active",
-      render: (t) => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            void updateLeaveType(t.id, { isActive: !t.isActive })
-              .then(() => load())
-              .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Update failed"))
-          }
-        >
-          {t.isActive ? "Active" : "Inactive"}
-        </Button>
-      ),
-    },
-  ];
+  const typeColumns: Column<LeaveTypeRow>[] = useMemo(
+    () => [
+      { key: "code", header: t("payroll.shared.code"), sortable: true },
+      { key: "name", header: t("payroll.shared.name"), sortable: true },
+      {
+        key: "deduct",
+        header: t("payroll.shared.deductBalance"),
+        render: (row) => (row.deductLeaveBalance ? t("payroll.shared.yes") : t("payroll.shared.no")),
+      },
+      {
+        key: "active",
+        header: t("payroll.shared.active"),
+        render: (row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void updateLeaveType(row.id, { isActive: !row.isActive })
+                .then(() => load())
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.saveFailed")))
+            }
+          >
+            {row.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
+          </Button>
+        ),
+      },
+    ],
+    [t, load],
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Leave</h2>
-        <p className="text-sm text-muted-foreground">Leave types, requests, and balances.</p>
+        <h2 className="text-lg font-semibold">{t("payroll.leave.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("payroll.leave.subtitle")}</p>
       </div>
 
       <Card className="p-4">
         {outlets.length > 1 && (
           <div className="max-w-xs space-y-1">
-            <Label className="text-xs">Outlet</Label>
+            <Label className="text-xs">{t("payroll.shared.outlet")}</Label>
             <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
               <SelectTrigger>
                 <SelectValue />
@@ -329,16 +337,16 @@ export default function Leave() {
 
       <Tabs defaultValue="requests">
         <TabsList>
-          <TabsTrigger value="requests">Leave Requests</TabsTrigger>
-          <TabsTrigger value="balances">Leave Balances</TabsTrigger>
-          <TabsTrigger value="types">Leave Types</TabsTrigger>
+          <TabsTrigger value="requests">{t("payroll.leave.requests")}</TabsTrigger>
+          <TabsTrigger value="balances">{t("payroll.leave.balances")}</TabsTrigger>
+          <TabsTrigger value="types">{t("payroll.leave.types")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests" className="mt-4 space-y-3">
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setRequestOpen(true)} disabled={activeTypes.length === 0}>
               <Plus className="h-4 w-4 mr-1" />
-              New request
+              {t("payroll.shared.newRequest")}
             </Button>
           </div>
           <DataTable
@@ -346,7 +354,7 @@ export default function Leave() {
             columns={requestColumns}
             rowKey={(r) => r.id}
             loading={loading}
-            emptyMessage="No leave requests"
+            emptyMessage={t("payroll.leave.emptyRequests")}
             defaultPageSize={25}
           />
         </TabsContent>
@@ -354,10 +362,10 @@ export default function Leave() {
         <TabsContent value="balances" className="mt-4 space-y-4">
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1 min-w-[200px]">
-              <Label className="text-xs">Employee</Label>
+              <Label className="text-xs">{t("payroll.shared.employee")}</Label>
               <Select value={balanceEmployeeId} onValueChange={setBalanceEmployeeId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
+                  <SelectValue placeholder={t("payroll.shared.selectEmployee")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -369,32 +377,32 @@ export default function Leave() {
               </Select>
             </div>
             <Button onClick={() => void saveBalances()} disabled={!balanceEmployeeId}>
-              Save allocations
+              {t("payroll.shared.saveAllocations")}
             </Button>
           </div>
           {balanceEmployeeId && (
             <div className="space-y-3">
-              {types.map((t) => (
-                <div key={t.id} className="flex items-center gap-4 rounded-lg border p-3">
+              {types.map((lt) => (
+                <div key={lt.id} className="flex items-center gap-4 rounded-lg border p-3">
                   <div className="flex-1">
-                    <p className="font-medium text-sm">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.code}</p>
+                    <p className="font-medium text-sm">{lt.name}</p>
+                    <p className="text-xs text-muted-foreground">{lt.code}</p>
                   </div>
                   <div className="w-28 space-y-1">
-                    <Label className="text-xs">Allocated</Label>
+                    <Label className="text-xs">{t("payroll.shared.allocated")}</Label>
                     <Input
                       type="number"
                       min={0}
                       step={0.5}
-                      value={allocEdits[t.id] ?? "0"}
-                      onChange={(e) => setAllocEdits({ ...allocEdits, [t.id]: e.target.value })}
+                      value={allocEdits[lt.id] ?? "0"}
+                      onChange={(e) => setAllocEdits({ ...allocEdits, [lt.id]: e.target.value })}
                     />
                   </div>
                   <div className="text-sm text-muted-foreground w-24">
-                    Used: {balances.find((b) => b.leaveTypeId === t.id)?.usedDays ?? 0}
+                    {t("payroll.shared.used")}: {balances.find((b) => b.leaveTypeId === lt.id)?.usedDays ?? 0}
                   </div>
                   <div className="text-sm w-24">
-                    Left: {balances.find((b) => b.leaveTypeId === t.id)?.remainingDays ?? allocEdits[t.id] ?? 0}
+                    {t("payroll.shared.left")}: {balances.find((b) => b.leaveTypeId === lt.id)?.remainingDays ?? allocEdits[lt.id] ?? 0}
                   </div>
                 </div>
               ))}
@@ -406,24 +414,24 @@ export default function Leave() {
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setTypeOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Add type
+              {t("payroll.shared.addType")}
             </Button>
           </div>
-          <DataTable data={types} columns={typeColumns} rowKey={(t) => t.id} loading={loading} emptyMessage="No leave types" />
+          <DataTable data={types} columns={typeColumns} rowKey={(row) => row.id} loading={loading} emptyMessage={t("payroll.leave.emptyTypes")} />
         </TabsContent>
       </Tabs>
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New leave request</DialogTitle>
+            <DialogTitle>{t("payroll.leave.newRequest")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Employee</Label>
+              <Label>{t("payroll.shared.employee")}</Label>
               <Select value={reqForm.employeeId} onValueChange={(v) => setReqForm({ ...reqForm, employeeId: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder={t("payroll.shared.select")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -435,15 +443,15 @@ export default function Leave() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Leave type</Label>
+              <Label>{t("payroll.leave.leaveType")}</Label>
               <Select value={reqForm.leaveTypeId} onValueChange={(v) => setReqForm({ ...reqForm, leaveTypeId: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue placeholder={t("payroll.shared.select")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {activeTypes.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name}
+                  {activeTypes.map((lt) => (
+                    <SelectItem key={lt.id} value={String(lt.id)}>
+                      {lt.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -451,24 +459,24 @@ export default function Leave() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Start</Label>
+                <Label>{t("payroll.shared.startDate")}</Label>
                 <Input type="date" value={reqForm.startDate} onChange={(e) => setReqForm({ ...reqForm, startDate: e.target.value })} />
               </div>
               <div className="space-y-1">
-                <Label>End</Label>
+                <Label>{t("payroll.shared.endDate")}</Label>
                 <Input type="date" value={reqForm.endDate} onChange={(e) => setReqForm({ ...reqForm, endDate: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Reason</Label>
+              <Label>{t("payroll.shared.reason")}</Label>
               <Textarea value={reqForm.reason} onChange={(e) => setReqForm({ ...reqForm, reason: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRequestOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitRequest()}>Submit</Button>
+            <Button onClick={() => void submitRequest()}>{t("payroll.shared.submit")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -476,31 +484,31 @@ export default function Leave() {
       <Dialog open={typeOpen} onOpenChange={setTypeOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add leave type</DialogTitle>
+            <DialogTitle>{t("payroll.leave.addType")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("payroll.shared.code")}</Label>
               <Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="annual_leave" />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("payroll.shared.name")}</Label>
               <Input value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={typeForm.deductLeaveBalance} onCheckedChange={(c) => setTypeForm({ ...typeForm, deductLeaveBalance: !!c })} />
-              Deduct leave balance
+              {t("payroll.shared.deductBalance")}
             </label>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={typeForm.requiresAttachment} onCheckedChange={(c) => setTypeForm({ ...typeForm, requiresAttachment: !!c })} />
-              Requires attachment
+              {t("payroll.shared.requiresAttachment")}
             </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTypeOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitType()}>Save</Button>
+            <Button onClick={() => void submitType()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -508,12 +516,12 @@ export default function Leave() {
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject leave request</DialogTitle>
+            <DialogTitle>{t("payroll.leave.rejectTitle")}</DialogTitle>
           </DialogHeader>
-          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason (optional)" />
+          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t("payroll.leave.reasonOptional")} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -521,14 +529,14 @@ export default function Leave() {
                 if (rejectId === null) return;
                 void rejectLeaveRequest(rejectId, rejectReason || undefined)
                   .then(() => {
-                    toast.success("Rejected");
+                    toast.success(t("payroll.shared.rejected"));
                     setRejectOpen(false);
                     return load();
                   })
-                  .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Reject failed"));
+                  .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.rejectFailed")));
               }}
             >
-              Reject
+              {t("payroll.shared.reject")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, AlertTriangle, Bell, CheckCircle2, Info } from "lucide-react";
 import {
   DropdownMenu,
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOutletStore } from "@/stores/outletStore";
 import type { UserNotification, UserNotificationSeverity } from "@/lib/api-integration/notificationEndpoints";
+import type { TFunction } from "i18next";
 
 function severityIcon(severity: UserNotificationSeverity) {
   if (severity === "critical") return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
@@ -22,15 +24,15 @@ function severityIcon(severity: UserNotificationSeverity) {
   return <Info className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
-function timeAgo(iso: string | null): string {
+export function formatNotificationTimeAgo(iso: string | null, t: TFunction): string {
   if (!iso) return "";
   const delta = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(delta / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1) return t("notifications.timeJustNow");
+  if (minutes < 60) return t("notifications.timeMinutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  if (hours < 24) return t("notifications.timeHours", { count: hours });
+  return t("notifications.timeDays", { count: Math.floor(hours / 24) });
 }
 
 export function NotificationPreviewRow({
@@ -40,6 +42,8 @@ export function NotificationPreviewRow({
   item: UserNotification;
   onMarkRead: (id: number) => void;
 }) {
+  const { t } = useTranslation("common");
+
   return (
     <DropdownMenuItem
       className="flex flex-col items-start gap-1 py-2.5 cursor-default focus:bg-muted"
@@ -55,7 +59,7 @@ export function NotificationPreviewRow({
             <p className="text-xs text-muted-foreground line-clamp-2">{item.message}</p>
           </div>
         </div>
-        <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(item.createdAt)}</span>
+        <span className="text-[11px] text-muted-foreground shrink-0">{formatNotificationTimeAgo(item.createdAt, t)}</span>
       </div>
       <div className="flex items-center gap-2 pl-5">
         {!item.isRead ? (
@@ -66,14 +70,14 @@ export function NotificationPreviewRow({
             className="h-7 px-2 text-xs"
             onClick={() => void onMarkRead(item.id)}
           >
-            Mark read
+            {t("notifications.markRead")}
           </Button>
         ) : (
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Read</span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("notifications.read")}</span>
         )}
         {item.actionUrl ? (
           <Button type="button" variant="link" size="sm" className="h-7 px-0 text-xs" asChild>
-            <Link to={item.actionUrl}>Open</Link>
+            <Link to={item.actionUrl}>{t("common.open")}</Link>
           </Button>
         ) : null}
       </div>
@@ -82,6 +86,7 @@ export function NotificationPreviewRow({
 }
 
 export function NotificationBell() {
+  const { t } = useTranslation("common");
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const preview = useNotificationStore((s) => s.preview);
@@ -104,7 +109,7 @@ export function NotificationBell() {
       }}
     >
       <DropdownMenuTrigger asChild>
-        <button type="button" className="relative p-2 rounded-lg hover:bg-muted transition-colors" aria-label="Notifications">
+        <button type="button" className="relative p-2 rounded-lg hover:bg-muted transition-colors" aria-label={t("notifications.ariaLabel")}>
           <Bell className="h-4 w-4 text-muted-foreground" />
           {unreadCount > 0 ? (
             <span className="absolute top-1 right-1 min-w-[1rem] h-4 px-1 rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground flex items-center justify-center">
@@ -115,14 +120,14 @@ export function NotificationBell() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-96">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
-          <span>Notifications</span>
-          {unreadCount > 0 ? <Badge variant="secondary">{unreadCount} unread</Badge> : null}
+          <span>{t("notifications.title")}</span>
+          {unreadCount > 0 ? <Badge variant="secondary">{t("notifications.unread", { count: unreadCount })}</Badge> : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {loading && preview.length === 0 ? (
-          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t("notifications.loading")}</DropdownMenuItem>
         ) : preview.length === 0 ? (
-          <DropdownMenuItem disabled>No notifications yet</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t("notifications.empty")}</DropdownMenuItem>
         ) : (
           preview.map((item) => (
             <NotificationPreviewRow
@@ -142,13 +147,13 @@ export function NotificationBell() {
               className="text-xs"
               onClick={() => void markAllRead(activeOutletId)}
             >
-              Mark all read
+              {t("notifications.markAllRead")}
             </Button>
           ) : (
             <span />
           )}
           <Button type="button" variant="link" size="sm" className="text-xs" asChild>
-            <Link to="/notifications">View all</Link>
+            <Link to="/notifications">{t("notifications.viewAll")}</Link>
           </Button>
         </div>
       </DropdownMenuContent>

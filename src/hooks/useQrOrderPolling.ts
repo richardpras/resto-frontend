@@ -3,13 +3,16 @@ import {
   fetchQrOrderPublic,
   type QrOrderPublicLookup,
 } from "@/lib/api-integration/qrOrderPublicEndpoints";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 5_000;
 const TERMINAL_STATUSES = new Set(["served", "completed", "cancelled"]);
 
 const NOTIFY_STATUSES = new Set(["confirmed", "ready", "served"]);
 
 export function useQrOrderPolling(orderCode: string | undefined) {
+  const { t, i18n } = useOpsTranslation();
+  const apiLang = i18n.language.startsWith("id") ? "id" : "en";
   const [order, setOrder] = useState<QrOrderPublicLookup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +25,7 @@ export function useQrOrderPolling(orderCode: string | undefined) {
   useEffect(() => {
     if (!orderCode || orderCode.trim() === "") {
       setLoading(false);
-      setError("Order not found or expired");
+      setError(t("qrCustomer.orderNotFound"));
       return;
     }
 
@@ -31,7 +34,7 @@ export function useQrOrderPolling(orderCode: string | undefined) {
 
     const load = async () => {
       try {
-        const data = await fetchQrOrderPublic(orderCode);
+        const data = await fetchQrOrderPublic(orderCode, { lang: apiLang });
         if (!active) return;
         const previousStatus = orderRef.current?.customerStatus;
         setOrder(data);
@@ -48,10 +51,10 @@ export function useQrOrderPolling(orderCode: string | undefined) {
         ) {
           const title =
             data.customerStatus === "confirmed"
-              ? "Order Confirmed"
+              ? t("qrCustomer.notificationConfirmed")
               : data.customerStatus === "ready"
-                ? "Order Ready"
-                : "Order Delivered";
+                ? t("qrCustomer.notificationReady")
+                : t("qrCustomer.notificationDelivered");
           new Notification(title, { body: data.customerStatusLabel });
         }
 
@@ -62,7 +65,7 @@ export function useQrOrderPolling(orderCode: string | undefined) {
         }
       } catch {
         if (!active) return;
-        setError("Order not found or expired");
+        setError(t("qrCustomer.orderNotFound"));
         setOrder(null);
         setLoading(false);
       }
@@ -74,7 +77,12 @@ export function useQrOrderPolling(orderCode: string | undefined) {
       active = false;
       if (timer !== null) clearTimeout(timer);
     };
-  }, [orderCode]);
+  }, [orderCode, apiLang, t]);
 
-  return { order, loading, error, refresh: () => fetchQrOrderPublic(orderCode ?? "").then(setOrder) };
+  return {
+    order,
+    loading,
+    error,
+    refresh: () => fetchQrOrderPublic(orderCode ?? "", { lang: apiLang }).then(setOrder),
+  };
 }

@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   activateCashAdvance,
   approveCashAdvance,
@@ -33,6 +32,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Check, Play, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +51,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 }
 
 export default function CashAdvances() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -81,22 +83,25 @@ export default function CashAdvances() {
       setAdvances(rows);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load cash advances");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.loadAdvancesFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
-  const loadInstallments = useCallback(async (advanceId: number) => {
-    try {
-      const rows = await listCashAdvanceInstallments(advanceId);
-      setInstallments(rows);
-      setSelectedId(advanceId);
-      setActiveTab("installments");
-    } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load installments");
-    }
-  }, []);
+  const loadInstallments = useCallback(
+    async (advanceId: number) => {
+      try {
+        const rows = await listCashAdvanceInstallments(advanceId);
+        setInstallments(rows);
+        setSelectedId(advanceId);
+        setActiveTab("installments");
+      } catch (e) {
+        toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.loadInstallmentsFailed"));
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     void loadAdvances();
@@ -104,12 +109,15 @@ export default function CashAdvances() {
 
   const selected = useMemo(() => advances.find((a) => a.id === selectedId) ?? null, [advances, selectedId]);
 
-  const empName = (id: number) => employees.find((e) => e.id === id)?.fullName ?? `Employee #${id}`;
+  const empName = useCallback(
+    (id: number) => employees.find((e) => e.id === id)?.fullName ?? t("payroll.shared.employeeFallback", { id }),
+    [employees, t],
+  );
 
   const submitCreate = async () => {
     const amount = Number(form.amount);
     if (!form.employeeId || amount <= 0) {
-      toast.error("Fill required fields");
+      toast.error(t("payroll.shared.fillRequired"));
       return;
     }
     try {
@@ -125,11 +133,11 @@ export default function CashAdvances() {
           : {}),
       };
       await createCashAdvance(payload);
-      toast.success("Cash advance created");
+      toast.success(t("payroll.shared.advanceCreated"));
       setCreateOpen(false);
       await loadAdvances();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create cash advance");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.saveFailed"));
     }
   };
 
@@ -138,85 +146,102 @@ export default function CashAdvances() {
       if (action === "approve") await approveCashAdvance(id);
       if (action === "activate") await activateCashAdvance(id);
       if (action === "cancel") await cancelCashAdvance(id);
-      toast.success(`Cash advance ${action}d`);
+      toast.success(t("payroll.shared.advanceActioned", { action }));
       await loadAdvances();
       if (selectedId === id) await loadInstallments(id);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : `Failed to ${action}`);
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.actionFailed"));
     }
   };
 
-  const advanceColumns: Column<EmployeeCashAdvanceRow>[] = [
-    { key: "advanceNo", header: "Advance No", sortable: true },
-    {
-      key: "employee",
-      header: "Employee",
-      render: (a) => a.employee?.fullName ?? empName(a.employeeId),
-    },
-    { key: "amount", header: "Amount", render: (a) => formatIDR(a.amount) },
-    {
-      key: "repayment",
-      header: "Repayment",
-      render: (a) => (a.repaymentType === "next_payroll" ? "Next payroll" : `Installment (${a.installmentCount}x)`),
-    },
-    { key: "remaining", header: "Remaining", render: (a) => formatIDR(a.remainingAmount) },
-    {
-      key: "status",
-      header: "Status",
-      render: (a) => <Badge variant={statusVariant(a.status)}>{a.status}</Badge>,
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      className: "text-right",
-      render: (a) => (
-        <div className="flex justify-end gap-1 flex-wrap">
-          {a.status === "pending" && (
-            <Button size="sm" variant="outline" onClick={() => void workflowAction("approve", a.id)}>
-              <Check className="h-3 w-3 mr-1" />
-              Approve
+  const advanceColumns: Column<EmployeeCashAdvanceRow>[] = useMemo(
+    () => [
+      { key: "advanceNo", header: t("payroll.shared.advanceNo"), sortable: true },
+      {
+        key: "employee",
+        header: t("payroll.shared.employee"),
+        render: (a) => a.employee?.fullName ?? empName(a.employeeId),
+      },
+      { key: "amount", header: t("payroll.shared.amount"), render: (a) => formatIDR(a.amount) },
+      {
+        key: "repayment",
+        header: t("payroll.shared.repayment"),
+        render: (a) =>
+          a.repaymentType === "next_payroll"
+            ? t("payroll.shared.nextPayrollShort")
+            : t("payroll.shared.installmentNx", { count: a.installmentCount }),
+      },
+      { key: "remaining", header: t("payroll.shared.remaining"), render: (a) => formatIDR(a.remainingAmount) },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (a) => (
+          <Badge variant={statusVariant(a.status)}>
+            {t(`payroll.shared.${a.status}`, { defaultValue: a.status })}
+          </Badge>
+        ),
+      },
+      {
+        key: "actions",
+        header: t("payroll.shared.actions"),
+        className: "text-right",
+        render: (a) => (
+          <div className="flex justify-end gap-1 flex-wrap">
+            {a.status === "pending" && (
+              <Button size="sm" variant="outline" onClick={() => void workflowAction("approve", a.id)}>
+                <Check className="h-3 w-3 mr-1" />
+                {t("payroll.shared.approve")}
+              </Button>
+            )}
+            {a.status === "approved" && (
+              <Button size="sm" variant="outline" onClick={() => void workflowAction("activate", a.id)}>
+                <Play className="h-3 w-3 mr-1" />
+                {t("payroll.shared.activate")}
+              </Button>
+            )}
+            {(a.status === "pending" || a.status === "approved") && (
+              <Button size="sm" variant="ghost" onClick={() => void workflowAction("cancel", a.id)}>
+                <X className="h-3 w-3 mr-1" />
+                {t("payroll.shared.cancel")}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => void loadInstallments(a.id)}>
+              {t("payroll.shared.schedule")}
             </Button>
-          )}
-          {a.status === "approved" && (
-            <Button size="sm" variant="outline" onClick={() => void workflowAction("activate", a.id)}>
-              <Play className="h-3 w-3 mr-1" />
-              Activate
-            </Button>
-          )}
-          {(a.status === "pending" || a.status === "approved") && (
-            <Button size="sm" variant="ghost" onClick={() => void workflowAction("cancel", a.id)}>
-              <X className="h-3 w-3 mr-1" />
-              Cancel
-            </Button>
-          )}
-          <Button size="sm" variant="secondary" onClick={() => void loadInstallments(a.id)}>
-            Schedule
-          </Button>
-        </div>
-      ),
-    },
-  ];
+          </div>
+        ),
+      },
+    ],
+    [t, empName, loadInstallments],
+  );
 
-  const installmentColumns: Column<EmployeeCashAdvanceInstallmentRow>[] = [
-    { key: "no", header: "#", render: (i) => i.installmentNo },
-    { key: "due", header: "Due Date", sortable: true, render: (i) => i.dueDate },
-    { key: "amount", header: "Amount", render: (i) => formatIDR(i.amount) },
-    {
-      key: "status",
-      header: "Status",
-      render: (i) => <Badge variant={i.status === "deducted" ? "default" : "secondary"}>{i.status}</Badge>,
-    },
-  ];
+  const installmentColumns: Column<EmployeeCashAdvanceInstallmentRow>[] = useMemo(
+    () => [
+      { key: "no", header: "#", render: (i) => i.installmentNo },
+      { key: "due", header: t("payroll.shared.dueDate"), sortable: true, render: (i) => i.dueDate },
+      { key: "amount", header: t("payroll.shared.amount"), render: (i) => formatIDR(i.amount) },
+      {
+        key: "status",
+        header: t("payroll.shared.status"),
+        render: (i) => (
+          <Badge variant={i.status === "deducted" ? "default" : "secondary"}>
+            {t(`payroll.shared.${i.status}`, { defaultValue: i.status })}
+          </Badge>
+        ),
+      },
+    ],
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        <h2 className="text-lg font-semibold">Cash Advances</h2>
+        <h2 className="text-lg font-semibold">{t("payroll.cashAdvances.title")}</h2>
         <div className="flex gap-2 items-center">
           {outlets.length > 1 && (
             <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Outlet" />
+                <SelectValue placeholder={t("payroll.shared.outlet")} />
               </SelectTrigger>
               <SelectContent>
                 {outlets.map((o) => (
@@ -229,16 +254,16 @@ export default function CashAdvances() {
           )}
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4 mr-1" />
-            New Advance
+            {t("payroll.shared.newAdvance")}
           </Button>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="advances">Advances</TabsTrigger>
+          <TabsTrigger value="advances">{t("payroll.cashAdvances.tab")}</TabsTrigger>
           <TabsTrigger value="installments" disabled={!selected}>
-            Installments
+            {t("payroll.shared.installments")}
           </TabsTrigger>
         </TabsList>
 
@@ -248,7 +273,7 @@ export default function CashAdvances() {
             columns={advanceColumns}
             rowKey={(a) => a.id}
             searchKeys={["advanceNo", "status"]}
-            emptyMessage={loading ? "Loading…" : "No cash advances"}
+            emptyMessage={loading ? t("payroll.shared.loading") : t("payroll.shared.noAdvances")}
             defaultPageSize={10}
           />
         </TabsContent>
@@ -258,21 +283,23 @@ export default function CashAdvances() {
             <Card className="p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Advance</span>
+                  <span className="text-muted-foreground">{t("payroll.shared.advance")}</span>
                   <p className="font-medium">{selected.advanceNo}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Deducted</span>
+                  <span className="text-muted-foreground">{t("payroll.shared.deducted")}</span>
                   <p className="font-medium">{formatIDR(selected.deductedAmount)}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Remaining</span>
+                  <span className="text-muted-foreground">{t("payroll.shared.remaining")}</span>
                   <p className="font-medium">{formatIDR(selected.remainingAmount)}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Status</span>
+                  <span className="text-muted-foreground">{t("payroll.shared.status")}</span>
                   <p>
-                    <Badge variant={statusVariant(selected.status)}>{selected.status}</Badge>
+                    <Badge variant={statusVariant(selected.status)}>
+                      {t(`payroll.shared.${selected.status}`, { defaultValue: selected.status })}
+                    </Badge>
                   </p>
                 </div>
               </div>
@@ -282,7 +309,7 @@ export default function CashAdvances() {
             data={installments}
             columns={installmentColumns}
             rowKey={(i) => i.id}
-            emptyMessage="Select an advance and open Schedule"
+            emptyMessage={t("payroll.shared.selectAdvanceSchedule")}
             defaultPageSize={12}
           />
         </TabsContent>
@@ -291,14 +318,14 @@ export default function CashAdvances() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Cash Advance</DialogTitle>
+            <DialogTitle>{t("payroll.shared.newCashAdvance")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Employee</Label>
+              <Label>{t("payroll.shared.employee")}</Label>
               <Select value={form.employeeId} onValueChange={(v) => setForm({ ...form, employeeId: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
+                  <SelectValue placeholder={t("payroll.shared.selectEmployee")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -310,11 +337,11 @@ export default function CashAdvances() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label>{t("payroll.shared.amount")}</Label>
               <Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Repayment type</Label>
+              <Label>{t("payroll.shared.repaymentType")}</Label>
               <Select
                 value={form.repaymentType}
                 onValueChange={(v) => setForm({ ...form, repaymentType: v as "next_payroll" | "installment" })}
@@ -323,15 +350,15 @@ export default function CashAdvances() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="next_payroll">Next payroll (single deduction)</SelectItem>
-                  <SelectItem value="installment">Installment (monthly)</SelectItem>
+                  <SelectItem value="next_payroll">{t("payroll.shared.nextPayroll")}</SelectItem>
+                  <SelectItem value="installment">{t("payroll.shared.installmentMonthly")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {form.repaymentType === "installment" && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Installment count</Label>
+                  <Label>{t("payroll.shared.installmentCount")}</Label>
                   <Input
                     type="number"
                     min={1}
@@ -340,7 +367,7 @@ export default function CashAdvances() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Installment amount</Label>
+                  <Label>{t("payroll.shared.installmentAmount")}</Label>
                   <Input
                     type="number"
                     value={form.installmentAmount}
@@ -352,9 +379,9 @@ export default function CashAdvances() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitCreate()}>Save</Button>
+            <Button onClick={() => void submitCreate()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Search } from "lucide-react";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { parseQrOrderCode } from "@/lib/qrOrderCodeParser";
 
 type Props = {
   value: string;
@@ -9,6 +11,7 @@ type Props = {
 };
 
 export function QrOrderSearchBar({ value, onChange, onSubmit, disabled = false }: Props) {
+  const { t } = useOpsTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -18,7 +21,8 @@ export function QrOrderSearchBar({ value, onChange, onSubmit, disabled = false }
   const handleSubmit = () => {
     const trimmed = value.trim();
     if (!trimmed) return;
-    onSubmit(trimmed);
+    const parsed = parseQrOrderCode(trimmed);
+    onSubmit(parsed ?? trimmed);
   };
 
   return (
@@ -37,7 +41,7 @@ export function QrOrderSearchBar({ value, onChange, onSubmit, disabled = false }
               handleSubmit();
             }
           }}
-          placeholder="Search / Scan Order Code (QRO-...)"
+          placeholder={t("qrStaff.searchPlaceholder")}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           data-testid="qr-order-search-input"
           autoComplete="off"
@@ -49,7 +53,7 @@ export function QrOrderSearchBar({ value, onChange, onSubmit, disabled = false }
         onClick={handleSubmit}
         className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
       >
-        Open in POS
+        {t("qrStaff.openInPos")}
       </button>
     </div>
   );

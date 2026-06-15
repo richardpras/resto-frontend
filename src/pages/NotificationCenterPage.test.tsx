@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import NotificationCenter from "@/pages/NotificationCenter";
+import { ensureEnglishLocale } from "@/test/i18nTestSetup";
 
 vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
@@ -21,7 +22,8 @@ vi.mock("@/lib/api-integration/notificationEndpoints", () => ({
 import { listUserNotifications } from "@/lib/api-integration/notificationEndpoints";
 
 describe("NotificationCenter page", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureEnglishLocale();
     vi.mocked(listUserNotifications).mockResolvedValue({
       data: [
         {

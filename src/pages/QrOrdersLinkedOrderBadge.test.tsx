@@ -6,7 +6,7 @@ describe("QrOrders linked order badge", () => {
   it("renders linked POS order line in queue cards", () => {
     const source = readFileSync(resolve(process.cwd(), "src/pages/QROrdersList.tsx"), "utf8");
     expect(source).toContain('data-testid="qr-order-linked-pos"');
-    expect(source).toContain("Linked POS Order:");
-    expect(source).toContain("Open POS Bill");
+    expect(source).toContain('qrStaff.linkedPos');
+    expect(source).toContain('qrStaff.openPosBill');
   });
 });

@@ -9,8 +9,10 @@ import {
   isAdditionalOrder,
 } from "@/lib/qrOrderSession";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 export default function QrOrderDetail() {
+  const { t } = useOpsTranslation();
   const { orderCode } = useParams<{ orderCode: string }>();
   const { order, loading, error } = useQrOrderPolling(orderCode);
   const callCashier = useQrOrderStore((s) => s.callCashier);
@@ -19,7 +21,7 @@ export default function QrOrderDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-order-loading">
-        <p className="text-sm text-muted-foreground">Loading order…</p>
+        <p className="text-sm text-muted-foreground">{t("qrCustomer.loadingOrder")}</p>
       </div>
     );
   }
@@ -28,10 +30,7 @@ export default function QrOrderDetail() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-order-not-found">
         <div className="bg-card rounded-3xl p-8 max-w-sm w-full text-center shadow-lg border border-border">
-          <p className="text-lg font-bold text-foreground mb-2">Order not found or expired</p>
-          <p className="text-sm text-muted-foreground">
-            Pesanan tidak ditemukan atau sudah kedaluwarsa.
-          </p>
+          <p className="text-lg font-bold text-foreground mb-2">{t("qrCustomer.orderNotFound")}</p>
         </div>
       </div>
     );
@@ -44,7 +43,7 @@ export default function QrOrderDetail() {
 
   const onCallCashier = async () => {
     if (!requestId || !tableContext) {
-      toast.error("Unable to call cashier from this device. Show your order code to staff.");
+      toast.error(t("qrCustomer.callCashierDevice"));
       return;
     }
     try {
@@ -52,9 +51,9 @@ export default function QrOrderDetail() {
         outletId: tableContext.outletId,
         tableId: tableContext.tableId,
       });
-      toast.success("Cashier notified — please wait at your table or visit the counter.");
+      toast.success(t("qrCustomer.callCashierOk"));
     } catch (callError) {
-      toast.error(callError instanceof Error ? callError.message : "Could not call cashier");
+      toast.error(callError instanceof Error ? callError.message : t("qrCustomer.callCashierFailed"));
     }
   };
 

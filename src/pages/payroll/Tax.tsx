@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   PTKP_STATUSES,
   createPph21Config,
@@ -32,6 +31,8 @@ import {
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ const DEFAULT_BRACKETS = [
 ];
 
 export default function Tax() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(outlets[0]?.id ?? null);
@@ -93,11 +95,11 @@ export default function Tax() {
       setProfiles(prof);
       setEmployees(emps);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load tax data");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.loadTaxFailed"));
     } finally {
       setLoading(false);
     }
-  }, [outletId]);
+  }, [outletId, t]);
 
   useEffect(() => {
     void loadData();
@@ -111,7 +113,7 @@ export default function Tax() {
 
   const submitConfig = async () => {
     if (!configForm.effectiveDate) {
-      toast.error("Effective date is required");
+      toast.error(t("payroll.shared.effectiveRequired"));
       return;
     }
     try {
@@ -128,11 +130,11 @@ export default function Tax() {
         isActive: configForm.isActive,
         brackets: DEFAULT_BRACKETS,
       });
-      toast.success("PPh21 configuration saved");
+      toast.success(t("payroll.tax.configSaved"));
       setConfigOpen(false);
       await loadData();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to save configuration");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.configSaveFailed"));
     }
   };
 
@@ -149,7 +151,7 @@ export default function Tax() {
 
   const submitProfile = async () => {
     if (!profileForm.employeeId) {
-      toast.error("Select an employee");
+      toast.error(t("payroll.shared.selectEmployeeRequired"));
       return;
     }
     const payload = {
@@ -164,29 +166,36 @@ export default function Tax() {
       } else {
         await upsertEmployeeTaxProfile(payload);
       }
-      toast.success("Tax profile saved");
+      toast.success(t("payroll.shared.taxProfileSaved"));
       setProfileOpen(false);
       await loadData();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to save tax profile");
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.taxProfileSaveFailed"));
     }
   };
 
-  const configColumns: Column<Pph21ConfigRow>[] = [
-    { key: "effectiveDate", header: "Effective", sortable: true },
-    { key: "ptkpTk0", header: "TK/0", render: (r) => formatIDR(r.ptkpTk0) },
-    { key: "ptkpK0", header: "K/0", render: (r) => formatIDR(r.ptkpK0) },
-    {
-      key: "brackets",
-      header: "Brackets",
-      render: (r) => `${r.brackets?.length ?? 0} tiers`,
-    },
-    {
-      key: "isActive",
-      header: "Status",
-      render: (r) => <Badge variant={r.isActive ? "default" : "secondary"}>{r.isActive ? "active" : "inactive"}</Badge>,
-    },
-  ];
+  const configColumns: Column<Pph21ConfigRow>[] = useMemo(
+    () => [
+      { key: "effectiveDate", header: t("payroll.shared.effectiveLabel"), sortable: true },
+      { key: "ptkpTk0", header: "TK/0", render: (r) => formatIDR(r.ptkpTk0) },
+      { key: "ptkpK0", header: "K/0", render: (r) => formatIDR(r.ptkpK0) },
+      {
+        key: "brackets",
+        header: t("payroll.shared.brackets"),
+        render: (r) => t("payroll.shared.tiers", { count: r.brackets?.length ?? 0 }),
+      },
+      {
+        key: "isActive",
+        header: t("payroll.shared.status"),
+        render: (r) => (
+          <Badge variant={r.isActive ? "default" : "secondary"}>
+            {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
+          </Badge>
+        ),
+      },
+    ],
+    [t],
+  );
 
   type EnrollmentRow = { employee: OrganizationEmployeeRow; profile: EmployeeTaxProfileRow | null };
 
@@ -195,45 +204,46 @@ export default function Tax() {
     [employees, profileByEmployee],
   );
 
-  const enrollColumns: Column<EnrollmentRow>[] = [
-    { key: "employee", header: "Employee", render: (r) => r.employee.fullName, sortable: true },
-    { key: "npwp", header: "NPWP", render: (r) => r.profile?.npwpNumber ?? "—" },
-    { key: "ptkp", header: "PTKP", render: (r) => r.profile?.ptkpStatus ?? "—" },
-    {
-      key: "enabled",
-      header: "PPh21",
-      render: (r) =>
-        r.profile?.pph21Enabled ? (
-          <Badge variant="outline">Enabled</Badge>
-        ) : (
-          <span className="text-muted-foreground text-xs">Disabled</span>
+  const enrollColumns: Column<EnrollmentRow>[] = useMemo(
+    () => [
+      { key: "employee", header: t("payroll.shared.employee"), render: (r) => r.employee.fullName, sortable: true },
+      { key: "npwp", header: t("payroll.shared.npwp"), render: (r) => r.profile?.npwpNumber ?? "—" },
+      { key: "ptkp", header: t("payroll.shared.ptkp"), render: (r) => r.profile?.ptkpStatus ?? "—" },
+      {
+        key: "enabled",
+        header: t("payroll.engine.pph21"),
+        render: (r) =>
+          r.profile?.pph21Enabled ? (
+            <Badge variant="outline">{t("payroll.shared.enabled")}</Badge>
+          ) : (
+            <span className="text-muted-foreground text-xs">{t("payroll.shared.disabled")}</span>
+          ),
+      },
+      {
+        key: "actions",
+        header: "",
+        render: (r) => (
+          <Button size="sm" variant="ghost" onClick={() => openProfile(r.employee, r.profile)}>
+            <Pencil className="h-3.5 w-3.5 mr-1" />
+            {r.profile ? t("payroll.shared.edit") : t("payroll.shared.setup")}
+          </Button>
         ),
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <Button size="sm" variant="ghost" onClick={() => openProfile(r.employee, r.profile)}>
-          <Pencil className="h-3.5 w-3.5 mr-1" />
-          {r.profile ? "Edit" : "Setup"}
-        </Button>
-      ),
-    },
-  ];
+      },
+    ],
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">PPh21 Tax</h2>
-          <p className="text-sm text-muted-foreground">
-            Configure PTKP and progressive brackets; maintain employee NPWP and PTKP status.
-          </p>
+          <h2 className="text-lg font-semibold">{t("payroll.tax.title")}</h2>
+          <p className="text-sm text-muted-foreground">{t("payroll.tax.subtitle")}</p>
         </div>
         {outlets.length > 1 && (
           <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Outlet" />
+              <SelectValue placeholder={t("payroll.shared.outlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -248,32 +258,39 @@ export default function Tax() {
 
       <Tabs defaultValue="configuration">
         <TabsList>
-          <TabsTrigger value="configuration">Configuration</TabsTrigger>
-          <TabsTrigger value="profiles">Employee Tax Profile</TabsTrigger>
+          <TabsTrigger value="configuration">{t("payroll.shared.configuration")}</TabsTrigger>
+          <TabsTrigger value="profiles">{t("payroll.shared.employeeTaxProfiles")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="configuration" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => setConfigOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              New tax schedule
+              {t("payroll.shared.newTaxSchedule")}
             </Button>
           </div>
-          <DataTable columns={configColumns} data={configs} loading={loading} emptyMessage="No PPh21 configurations yet." />
+          <DataTable
+            columns={configColumns}
+            data={configs}
+            rowKey={(r) => String(r.id)}
+            loading={loading}
+            emptyMessage={t("payroll.shared.noPph21Configs")}
+          />
         </TabsContent>
 
         <TabsContent value="profiles" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => openProfile()}>
               <Plus className="h-4 w-4 mr-1" />
-              Setup employee
+              {t("payroll.shared.setupEmployee")}
             </Button>
           </div>
           <DataTable
             columns={enrollColumns}
             data={enrollmentRows}
+            rowKey={(r) => String(r.employee.id)}
             loading={loading}
-            emptyMessage="No employees for this outlet."
+            emptyMessage={t("payroll.shared.noEmployeesOutlet")}
           />
         </TabsContent>
       </Tabs>
@@ -281,18 +298,18 @@ export default function Tax() {
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>New PPh21 configuration</DialogTitle>
+            <DialogTitle>{t("payroll.shared.newPph21Config")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
-              <Label>Effective date</Label>
+              <Label>{t("payroll.shared.effectiveDate")}</Label>
               <Input
                 type="date"
                 value={configForm.effectiveDate}
                 onChange={(e) => setConfigForm((f) => ({ ...f, effectiveDate: e.target.value }))}
               />
             </div>
-            <p className="text-xs text-muted-foreground">PTKP values (IDR per year)</p>
+            <p className="text-xs text-muted-foreground">{t("payroll.shared.ptkpValuesHint")}</p>
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
@@ -315,15 +332,13 @@ export default function Tax() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Default progressive brackets (5%–35%) will be applied automatically.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("payroll.shared.bracketsHint")}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitConfig()}>Save</Button>
+            <Button onClick={() => void submitConfig()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -331,18 +346,20 @@ export default function Tax() {
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editProfile ? "Edit tax profile" : "Employee tax profile"}</DialogTitle>
+            <DialogTitle>
+              {editProfile ? t("payroll.shared.editTaxProfile") : t("payroll.shared.employeeTaxProfile")}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
-              <Label>Employee</Label>
+              <Label>{t("payroll.shared.employee")}</Label>
               <Select
                 value={profileForm.employeeId}
                 onValueChange={(v) => setProfileForm((f) => ({ ...f, employeeId: v }))}
                 disabled={!!editProfile}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
+                  <SelectValue placeholder={t("payroll.shared.selectEmployee")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((e) => (
@@ -354,15 +371,15 @@ export default function Tax() {
               </Select>
             </div>
             <div>
-              <Label>NPWP number</Label>
+              <Label>{t("payroll.shared.npwpNumber")}</Label>
               <Input
                 value={profileForm.npwpNumber}
                 onChange={(e) => setProfileForm((f) => ({ ...f, npwpNumber: e.target.value }))}
-                placeholder="Optional"
+                placeholder={t("payroll.shared.optional")}
               />
             </div>
             <div>
-              <Label>PTKP status</Label>
+              <Label>{t("payroll.shared.ptkpStatus")}</Label>
               <Select
                 value={profileForm.ptkpStatus}
                 onValueChange={(v) => setProfileForm((f) => ({ ...f, ptkpStatus: v }))}
@@ -385,14 +402,14 @@ export default function Tax() {
                 checked={profileForm.pph21Enabled}
                 onChange={(e) => setProfileForm((f) => ({ ...f, pph21Enabled: e.target.checked }))}
               />
-              Enable PPh21 deduction
+              {t("payroll.shared.enablePph21")}
             </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProfileOpen(false)}>
-              Cancel
+              {t("payroll.shared.cancel")}
             </Button>
-            <Button onClick={() => void submitProfile()}>Save</Button>
+            <Button onClick={() => void submitProfile()}>{t("payroll.shared.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
