@@ -4,6 +4,7 @@ import { useQrOrderPolling } from "@/hooks/useQrOrderPolling";
 import { QrOrderDetailView } from "@/components/qr-order/QrOrderDetailView";
 import {
   getCurrentTableToken,
+  getGuestSessionToken,
   getOrderRequestId,
   getOrderTableContext,
   isAdditionalOrder,
@@ -50,6 +51,7 @@ export default function QrOrderDetail() {
       await callCashier(requestId, {
         outletId: tableContext.outletId,
         tableId: tableContext.tableId,
+        guestSessionToken: getGuestSessionToken() ?? undefined,
       });
       toast.success(t("qrCustomer.callCashierOk"));
     } catch (callError) {

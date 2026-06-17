@@ -32,6 +32,11 @@ export function QrOrderDetailView({
       ? `${window.location.origin}/qr/order/${encodeURIComponent(order.orderCode)}`
       : `/qr/order/${encodeURIComponent(order.orderCode)}`;
 
+  const showAwaitingPaymentHint =
+    order.customerStatus === "served" &&
+    order.paymentStatus !== "paid" &&
+    (order.openBill != null || order.paymentStatus === "unpaid");
+
   return (
     <div className="min-h-screen bg-background" data-testid="qr-order-detail">
       <div className="sticky top-0 bg-card border-b border-border z-10">
@@ -123,6 +128,14 @@ export function QrOrderDetailView({
 
         <div className="bg-card rounded-2xl p-4 border border-border">
           <h2 className="text-sm font-semibold text-foreground mb-3">{t("qrCustomer.statusSection")}</h2>
+          {showAwaitingPaymentHint ? (
+            <p
+              className="text-sm text-amber-700 dark:text-amber-400 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3"
+              data-testid="qr-order-awaiting-payment-hint"
+            >
+              {t("qrCustomer.awaitingPaymentHint")}
+            </p>
+          ) : null}
           <QrOrderStatusTimeline
             customerStatus={order.customerStatus}
             timelineStep={order.timelineStep}

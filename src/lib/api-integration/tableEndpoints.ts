@@ -51,6 +51,11 @@ export type QrActiveSessionApi = {
   } | null;
 };
 
+export type QrGuestSessionApi = {
+  token: string;
+  expiresAt: string;
+};
+
 export type QrResolvedTableApi = {
   id: number;
   outletId: number;
@@ -60,6 +65,7 @@ export type QrResolvedTableApi = {
   qrEnabled: boolean;
   canonicalUrl: string;
   activeSession?: QrActiveSessionApi;
+  guestSession?: QrGuestSessionApi;
 };
 
 export type CreateFloorTablePayload = {
@@ -132,14 +138,31 @@ export async function disableTableQr(tableId: number): Promise<FloorTableApi> {
   return res.data;
 }
 
-export async function resolveTableQrPublicId(qrPublicId: string): Promise<QrResolvedTableApi> {
-  const res = await request<Envelope<QrResolvedTableApi>>(`/qr/tables/${encodeURIComponent(qrPublicId)}`);
+export async function resolveTableQrPublicId(
+  qrPublicId: string,
+  options?: { guestSessionToken?: string | null },
+): Promise<QrResolvedTableApi> {
+  const headers: Record<string, string> = {};
+  if (options?.guestSessionToken) {
+    headers["X-Qr-Guest-Session"] = options.guestSessionToken;
+  }
+  const res = await request<Envelope<QrResolvedTableApi>>(`/qr/tables/${encodeURIComponent(qrPublicId)}`, {
+    headers,
+  });
   return res.data;
 }
 
-export async function resolveLegacyTableQr(outletId: number, tableId: number): Promise<QrResolvedTableApi> {
+export async function resolveLegacyTableQr(
+  outletId: number,
+  tableId: number,
+  options?: { guestSessionToken?: string | null },
+): Promise<QrResolvedTableApi> {
   const query = `outletId=${encodeURIComponent(String(outletId))}&tableId=${encodeURIComponent(String(tableId))}`;
-  const res = await request<Envelope<QrResolvedTableApi>>(`/qr/legacy-resolve?${query}`);
+  const headers: Record<string, string> = {};
+  if (options?.guestSessionToken) {
+    headers["X-Qr-Guest-Session"] = options.guestSessionToken;
+  }
+  const res = await request<Envelope<QrResolvedTableApi>>(`/qr/legacy-resolve?${query}`, { headers });
   return res.data;
 }
 

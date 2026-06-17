@@ -16,6 +16,8 @@ import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import {
   addActiveOrderCode,
   setCurrentTableToken,
+  setGuestSessionToken,
+  getGuestSessionToken,
   setLastSubmittedOrderCode,
   setOrderRequestId,
   setOrderTableContext,
@@ -84,6 +86,8 @@ export default function QROrder() {
   const [resolvingQr, setResolvingQr] = useState(false);
   const [activeSession, setActiveSession] = useState<QrActiveSessionApi | null>(null);
   const [appendToRequestCode, setAppendToRequestCode] = useState<string | null>(null);
+  const [resolvedQrPublicId, setResolvedQrPublicId] = useState<string | null>(null);
+  const [guestSessionToken, setGuestSessionTokenState] = useState<string | null>(null);
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
   const activeOutletId = resolvedOutletId ?? (Number.isFinite(outletIdParam) ? outletIdParam : null);
@@ -106,8 +110,13 @@ export default function QROrder() {
         setResolvedOutletId(resolved.outletId);
         setResolvedTableId(resolved.tableId);
         setTableNumber(resolved.tableName);
+        setResolvedQrPublicId(resolved.qrPublicId ?? qrPublicId.trim());
         setResolveError(null);
         setCurrentTableToken(qrPublicId.trim());
+        if (resolved.guestSession?.token) {
+          setGuestSessionToken(resolved.guestSession.token);
+          setGuestSessionTokenState(resolved.guestSession.token);
+        }
         setActiveSession(resolved.activeSession ?? null);
         const activeCode = resolved.activeSession?.activeQrOrder?.requestCode ?? null;
         setAppendToRequestCode(activeCode);
@@ -145,7 +154,12 @@ export default function QROrder() {
         setResolvedOutletId(resolved.outletId);
         setResolvedTableId(resolved.tableId);
         setTableNumber(resolved.tableName);
+        setResolvedQrPublicId(resolved.qrPublicId);
         setResolveError(null);
+        if (resolved.guestSession?.token) {
+          setGuestSessionToken(resolved.guestSession.token);
+          setGuestSessionTokenState(resolved.guestSession.token);
+        }
       })
       .catch((error) => {
         if (!active) return;
@@ -222,6 +236,12 @@ export default function QROrder() {
       toast.error(t("qrCustomer.nameRequired"));
       return;
     }
+    const sessionToken = guestSessionToken ?? getGuestSessionToken();
+    const qrPublicIdValue = resolvedQrPublicId ?? (typeof qrPublicId === "string" ? qrPublicId.trim() : "");
+    if (!sessionToken || !qrPublicIdValue) {
+      toast.error(t("qrCustomer.sessionInvalid"));
+      return;
+    }
     if (projectionStatus === "checking") {
       toast.error(t("qrCustomer.tableLoading"));
       return;
@@ -238,6 +258,8 @@ export default function QROrder() {
       const created = await createRequest({
         outletId: activeOutletId,
         tableId: activeTableId,
+        guestSessionToken: sessionToken,
+        qrPublicId: qrPublicIdValue,
         customerName: customerName.trim(),
         ...(appendToRequestCode ? { appendToRequestCode } : {}),
         items: cart.map((item) => ({
@@ -484,7 +506,7 @@ export default function QROrder() {
             )}
           </div>
         )}
-        {tableSessionToken ? <QrOrderMyOrdersSection tableToken={tableSessionToken} /> : null}
+        {guestSessionToken ? <QrOrderMyOrdersSection guestSessionToken={guestSessionToken} /> : null}
         <div className="grid grid-cols-2 gap-3">
           {filtered.map((item) => {
             const inCart = cart.find((c) => c.id === item.id);

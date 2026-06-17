@@ -10,21 +10,47 @@ vi.mock("@/lib/api-integration/qrOrderPublicEndpoints", () => ({
 }));
 
 describe("useQrOrderPolling", () => {
-  it("stops polling after served status", async () => {
-    fetchQrOrderPublic.mockResolvedValue({
-      orderCode: "QRO-DONE123",
-      customerStatus: "served",
-      isTerminal: true,
-    });
+  it(
+    "continues polling when served but not terminal",
+    async () => {
+      fetchQrOrderPublic.mockResolvedValue({
+        orderCode: "QRO-DONE123",
+        customerStatus: "served",
+        isTerminal: false,
+      });
 
-    const { result } = renderHook(() => useQrOrderPolling("QRO-DONE123"));
+      renderHook(() => useQrOrderPolling("QRO-DONE123"));
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchQrOrderPublic).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(fetchQrOrderPublic.mock.calls.length).toBeGreaterThanOrEqual(1));
+      const baseline = fetchQrOrderPublic.mock.calls.length;
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(fetchQrOrderPublic).toHaveBeenCalledTimes(1);
-  });
+      await new Promise((resolve) => setTimeout(resolve, 5_200));
+
+      expect(fetchQrOrderPublic.mock.calls.length).toBeGreaterThan(baseline);
+    },
+    10_000,
+  );
+
+  it(
+    "stops polling when completed and isTerminal true",
+    async () => {
+      fetchQrOrderPublic.mockResolvedValue({
+        orderCode: "QRO-DONE123",
+        customerStatus: "completed",
+        isTerminal: true,
+      });
+
+      const { result } = renderHook(() => useQrOrderPolling("QRO-DONE123"));
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const countAfterLoad = fetchQrOrderPublic.mock.calls.length;
+
+      await new Promise((resolve) => setTimeout(resolve, 5_200));
+
+      expect(fetchQrOrderPublic.mock.calls.length).toBe(countAfterLoad);
+    },
+    10_000,
+  );
 
   it("shows friendly error for invalid order code", async () => {
     fetchQrOrderPublic.mockRejectedValue(new Error("not found"));

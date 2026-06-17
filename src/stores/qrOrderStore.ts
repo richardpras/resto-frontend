@@ -11,6 +11,7 @@ import {
   resolveTableQrPublicId,
   type QrResolvedTableApi,
 } from "@/lib/api-integration/tableEndpoints";
+import { getGuestSessionToken } from "@/lib/qrOrderSession";
 import {
   callQrOrderCashier as apiCallQrOrderCashier,
   confirmQrOrder as apiConfirmQrOrder,
@@ -172,7 +173,7 @@ type QrOrderStore = {
   revalidateRequests: () => Promise<QrOrderRequest[] | null>;
   createRequest: (payload: CreateQrOrderPayload) => Promise<QrOrderRequest>;
   confirmRequest: (id: string, payload?: ConfirmQrOrderPayload) => Promise<QrOrderRequest>;
-  callCashier: (id: string, payload: { outletId: number; tableId: number }) => Promise<QrOrderRequest>;
+  callCashier: (id: string, payload: { outletId: number; tableId: number; guestSessionToken?: string; reason?: string }) => Promise<QrOrderRequest>;
   rejectRequest: (id: string, reason?: string) => Promise<QrOrderRequest>;
   startRealtime: () => void;
   stopRealtime: () => void;
@@ -501,9 +502,10 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
 
   hasApiAccess: () => Boolean(getApiAccessToken()),
 
-  resolveTableFromPublicId: (qrPublicId) => resolveTableQrPublicId(qrPublicId),
-
-  resolveLegacyTable: (outletId, tableId) => resolveLegacyTableQr(outletId, tableId),
+  resolveTableFromPublicId: (qrPublicId) =>
+    resolveTableQrPublicId(qrPublicId, { guestSessionToken: getGuestSessionToken() }),
+  resolveLegacyTable: (outletId, tableId) =>
+    resolveLegacyTableQr(outletId, tableId, { guestSessionToken: getGuestSessionToken() }),
 
   fetchTableOperationalStatus: async (outletId, tableId) => {
     if (!getApiAccessToken() || outletId < 1 || tableId < 1) return "unknown";

@@ -6,9 +6,8 @@ import {
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const POLL_INTERVAL_MS = 5_000;
-const TERMINAL_STATUSES = new Set(["served", "completed", "cancelled"]);
 
-const NOTIFY_STATUSES = new Set(["confirmed", "ready", "served"]);
+const NOTIFY_STATUSES = new Set(["confirmed", "ready", "served", "completed"]);
 
 export function useQrOrderPolling(orderCode: string | undefined) {
   const { t, i18n } = useOpsTranslation();
@@ -54,11 +53,13 @@ export function useQrOrderPolling(orderCode: string | undefined) {
               ? t("qrCustomer.notificationConfirmed")
               : data.customerStatus === "ready"
                 ? t("qrCustomer.notificationReady")
-                : t("qrCustomer.notificationDelivered");
+                : data.customerStatus === "completed"
+                  ? t("qrCustomer.notificationCompleted")
+                  : t("qrCustomer.notificationDelivered");
           new Notification(title, { body: data.customerStatusLabel });
         }
 
-        if (!data.isTerminal && !TERMINAL_STATUSES.has(data.customerStatus)) {
+        if (!data.isTerminal) {
           timer = setTimeout(() => {
             void load();
           }, POLL_INTERVAL_MS);

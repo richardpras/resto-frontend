@@ -79,8 +79,27 @@ export default function SystemSettings() {
         <CardHeader>
           <CardTitle>{t("settings.system.qrOrderingTitle")}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <Row k="enableCallCashier" labelKey="settings.system.callCashier" descKey="settings.system.callCashierDesc" />
+          <div className="flex items-center justify-between gap-4 py-3 border-b last:border-0">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">{t("settings.system.qrPendingTtl")}</Label>
+              <p className="text-xs text-muted-foreground">{t("settings.system.qrPendingTtlDesc")}</p>
+            </div>
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              value={system.qrPendingConfirmationTtlMinutes ?? 20}
+              onChange={(e) => {
+                const value = Math.max(5, Math.min(120, Number(e.target.value) || 20));
+                const next = { ...system, qrPendingConfirmationTtlMinutes: value };
+                updateSystem(next);
+                void persistSystem(next, t("settings.system.qrPendingTtlSaved"));
+              }}
+              className="w-24 rounded-xl"
+            />
+          </div>
         </CardContent>
       </Card>
 

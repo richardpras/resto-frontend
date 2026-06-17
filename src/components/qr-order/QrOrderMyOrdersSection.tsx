@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchQrOrderPublic } from "@/lib/api-integration/qrOrderPublicEndpoints";
-import { getActiveOrderCodes } from "@/lib/qrOrderSession";
+import { fetchGuestSessionOrders } from "@/lib/api-integration/qrOrderPublicEndpoints";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type OrderSummary = {
@@ -10,35 +9,35 @@ type OrderSummary = {
 };
 
 type Props = {
-  tableToken: string;
+  guestSessionToken: string;
 };
 
-export function QrOrderMyOrdersSection({ tableToken }: Props) {
+export function QrOrderMyOrdersSection({ guestSessionToken }: Props) {
   const { t, i18n } = useOpsTranslation();
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const apiLang = i18n.language.startsWith("id") ? "id" : "en";
 
   useEffect(() => {
     let active = true;
-    const codes = getActiveOrderCodes(tableToken);
-    if (codes.length === 0) {
+    if (!guestSessionToken.trim()) {
       setOrders([]);
       return;
     }
 
     const load = async () => {
-      const results = await Promise.all(
-        codes.map(async (code) => {
-          try {
-            const data = await fetchQrOrderPublic(code, { lang: apiLang });
-            return { orderCode: data.orderCode, customerStatusLabel: data.customerStatusLabel };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      if (!active) return;
-      setOrders(results.filter((row): row is OrderSummary => row !== null));
+      try {
+        const data = await fetchGuestSessionOrders(guestSessionToken, { lang: apiLang });
+        if (!active) return;
+        setOrders(
+          data.map((row) => ({
+            orderCode: row.orderCode,
+            customerStatusLabel: row.customerStatusLabel,
+          })),
+        );
+      } catch {
+        if (!active) return;
+        setOrders([]);
+      }
     };
 
     void load();
@@ -50,7 +49,7 @@ export function QrOrderMyOrdersSection({ tableToken }: Props) {
       active = false;
       clearInterval(timer);
     };
-  }, [tableToken, apiLang]);
+  }, [guestSessionToken, apiLang]);
 
   if (orders.length === 0) return null;
 
@@ -58,20 +57,15 @@ export function QrOrderMyOrdersSection({ tableToken }: Props) {
     <div className="mb-4 bg-card rounded-2xl p-4 border border-border" data-testid="qr-my-orders">
       <h2 className="text-sm font-semibold text-foreground mb-2">{t("qrStaff.myOrders")}</h2>
       <ul className="space-y-2">
-        {orders.map((order, index) => (
-          <li key={order.orderCode}>
+        {orders.map((order) => (
+          <li key={order.orderCode} className="flex items-center justify-between gap-2 text-sm">
             <Link
               to={`/qr/order/${encodeURIComponent(order.orderCode)}`}
-              className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 bg-muted/50 hover:bg-muted text-sm transition-colors"
+              className="font-medium text-primary hover:underline truncate"
             >
-              <span className="font-medium text-foreground">{order.orderCode}</span>
-              <span className="text-xs text-muted-foreground text-right">
-                {index > 0 ? (
-                  <span className="block text-primary/80">{t("qrCustomer.additionalOrder")}</span>
-                ) : null}
-                {order.customerStatusLabel}
-              </span>
+              {order.orderCode}
             </Link>
+            <span className="text-xs text-muted-foreground shrink-0">{order.customerStatusLabel}</span>
           </li>
         ))}
       </ul>

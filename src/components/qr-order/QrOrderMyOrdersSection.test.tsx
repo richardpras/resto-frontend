@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QrOrderMyOrdersSection } from "./QrOrderMyOrdersSection";
 
 const fetchGuestSessionOrders = vi.fn();
@@ -10,16 +10,12 @@ vi.mock("@/lib/api-integration/qrOrderPublicEndpoints", () => ({
   fetchGuestSessionOrders: (...args: unknown[]) => fetchGuestSessionOrders(...args),
 }));
 
-describe("QrOrderAdditionalOrders", () => {
-  beforeEach(() => {
-    fetchGuestSessionOrders.mockReset();
+describe("QrOrderMyOrdersSection", () => {
+  it("loads orders from guest session API", async () => {
     fetchGuestSessionOrders.mockResolvedValue([
-      { orderCode: "QRO-ABC123", customerStatus: "waiting_confirmation", customerStatusLabel: "Menunggu konfirmasi", createdAt: null },
-      { orderCode: "QRO-XYZ888", customerStatus: "in_progress", customerStatusLabel: "Sedang diproses", createdAt: null },
+      { orderCode: "QRO-ABC123", customerStatus: "waiting_confirmation", customerStatusLabel: "Waiting", createdAt: null },
     ]);
-  });
 
-  it("lists guest session orders from server", async () => {
     render(
       <MemoryRouter>
         <QrOrderMyOrdersSection guestSessionToken="QGS_TESTTOKEN" />
@@ -27,11 +23,8 @@ describe("QrOrderAdditionalOrders", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("qr-my-orders")).toBeInTheDocument();
+      expect(screen.getByText("QRO-ABC123")).toBeTruthy();
     });
-
-    expect(screen.getByText("QRO-ABC123")).toBeInTheDocument();
-    expect(screen.getByText("QRO-XYZ888")).toBeInTheDocument();
     expect(fetchGuestSessionOrders).toHaveBeenCalledWith("QGS_TESTTOKEN", expect.objectContaining({ lang: "en" }));
   });
 });

@@ -4,13 +4,20 @@ import {
   addActiveOrderCode,
   getActiveOrderCodes,
   getCurrentTableToken,
+  getGuestSessionToken,
   isAdditionalOrder,
   setCurrentTableToken,
+  setGuestSessionToken,
 } from "./qrOrderSession";
 
 describe("QrOrderLocalSession", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it("stores guest session token in localStorage", () => {
+    setGuestSessionToken("QGS_ABC123");
+    expect(getGuestSessionToken()).toBe("QGS_ABC123");
   });
 
   it("scopes active order codes by table token", () => {

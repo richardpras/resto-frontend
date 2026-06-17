@@ -64,6 +64,8 @@ export interface SystemPrefs {
   confirmBeforePayment: boolean;
   enableQROrdering: boolean;
   enableCallCashier: boolean;
+  requireCustomerApprovalForAdjustments?: boolean;
+  qrPendingConfirmationTtlMinutes: number;
   /** @deprecated Use stockEnforcementMode === "strict" */
   enforceStockOnSale: boolean;
   stockEnforcementMode: StockEnforcementMode;

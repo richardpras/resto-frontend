@@ -64,7 +64,6 @@ import {
   iconForCheckoutMethod,
   isCashCheckoutMethod,
   isGatewayCheckoutMethod,
-  isManualQrisCheckoutMethod,
 } from "@/features/pos/paymentMethodCapabilities";
 import { findCheckoutMethod, useOutletCheckoutMethods } from "@/features/pos/useOutletCheckoutMethods";
 import { PaymentMethodTileGrid } from "@/components/pos/PaymentMethodTileGrid";
@@ -105,7 +104,6 @@ import {
   openBillCheckoutIdempotencyKey,
   shouldResumeOpenBillCheckout,
 } from "@/features/pos/posOpenBillCheckout";
-import { isPosPaymentSubmitDisabled } from "@/features/pos/posPaymentSubmitGuards";
 import {
   formatPosStockErrorMessage,
   parsePosStockError,
@@ -114,6 +112,14 @@ import {
 import { PosPaymentStockErrorAlert } from "@/components/pos/PosPaymentStockErrorAlert";
 import { PosOpenBillRecoveryBanner } from "@/components/pos/PosOpenBillRecoveryBanner";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { commitMultiPayment } from "@/features/pos/multiPayment/commitMultiPayment";
+import {
+  buildLegacyDraftLine,
+  isMultiPaymentDraftReady,
+  OrderMultiPaymentPanel,
+} from "@/features/pos/multiPayment/OrderMultiPaymentPanel";
+import { useMultiPaymentDraft } from "@/features/pos/multiPayment/useMultiPaymentDraft";
+import type { PaymentDraftLine } from "@/features/pos/multiPayment/multiPaymentTypes";
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
@@ -176,6 +182,8 @@ export default function POS() {
   const capabilities = useMemo(() => getUserCapabilities(authUser), [authUser]);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const stockEnforcementMode = useSettingsStore((s) => s.system.stockEnforcementMode);
+  const enableMultiPayment = useSettingsStore((s) => s.system.enableMultiPayment);
+  const ensureSettingsSections = useSettingsStore((s) => s.ensureSectionsLoaded);
   useReservationTableProjectionSync();
   const { tables, orders, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
@@ -217,6 +225,8 @@ export default function POS() {
   const [selectedCheckoutCode, setSelectedCheckoutCode] = useState<string | null>(null);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
+  const [pendingManualQrisPayments, setPendingManualQrisPayments] = useState<OrderPaymentPayload[]>([]);
+  const [pendingGatewayLinesAfterManual, setPendingGatewayLinesAfterManual] = useState<PaymentDraftLine[]>([]);
   const [showPromoList, setShowPromoList] = useState(false);
   const [manualPromo, setManualPromo] = useState<AppliedPromo | null>(null);
   const [memberVouchers, setMemberVouchers] = useState<MemberVoucherListRow[]>([]);
@@ -385,6 +395,10 @@ export default function POS() {
   }, []);
 
   useEffect(() => {
+    void ensureSettingsSections(["system"]).catch(() => {});
+  }, [ensureSettingsSections]);
+
+  useEffect(() => {
     if (showPayment) return;
     paymentResetAsync();
   }, [showPayment, paymentResetAsync]);
@@ -499,6 +513,18 @@ export default function POS() {
   const baseTotal = taxableBase + tax;
   const appliedGiftCard = appliedGiftCardAmount(appliedGiftCardState);
   const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
+  const posPaymentBalanceDue = useMemo(() => {
+    if (currentOpenOrder) {
+      const paid = currentOpenOrder.payments.reduce((sum, payment) => sum + payment.amount, 0);
+      return Math.max(0, currentOpenOrder.total - paid);
+    }
+    return total;
+  }, [currentOpenOrder, total]);
+  const paymentDraft = useMultiPaymentDraft(posPaymentBalanceDue);
+  const posPaymentAlreadyPaid = currentOpenOrder
+    ? currentOpenOrder.payments.reduce((sum, payment) => sum + payment.amount, 0)
+    : 0;
+  const posPaymentOrderTotal = currentOpenOrder?.total ?? total;
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
   const selectedCustomer = customers.find(
     (customer) =>
@@ -827,17 +853,49 @@ export default function POS() {
   };
 
   const completeDirectPayment = async () => {
-    if (!selectedCheckoutMethod || submitting || paymentAckRequired) return;
+    if (submitting || paymentAckRequired) return;
     if (!requireOutletOrderContext()) return;
     const idempotencyKey = checkoutAttemptIdRef.current ?? beginCheckoutAttempt("pay-now");
 
-    const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
-    const gatewayMethod = isGatewayCheckoutMethod(selectedCheckoutMethod);
-    const cashMethod = isCashCheckoutMethod(selectedCheckoutMethod);
-    const manualQrisMethod = isManualQrisCheckoutMethod(selectedCheckoutMethod);
+    const amountDue = posPaymentBalanceDue;
+    if (amountDue <= 0) {
+      toast.error(t("shared.nothingToPay"));
+      return;
+    }
+
+    let draftLines: PaymentDraftLine[];
+    if (enableMultiPayment) {
+      if (!isMultiPaymentDraftReady(enableMultiPayment, paymentDraft.lines, amountDue)) {
+        toast.error(t("shared.draftMustMatchBalance"));
+        return;
+      }
+      draftLines = paymentDraft.lines;
+    } else {
+      if (!selectedCheckoutMethod) return;
+      draftLines = [
+        buildLegacyDraftLine(
+          apiMethodFromCheckoutMethod(selectedCheckoutMethod),
+          selectedCheckoutMethod.label,
+          pendingGatewayPayments.length > 0
+            ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+            : amountDue,
+        ),
+      ];
+    }
+
+    const primaryGatewayLine = draftLines.find((line) =>
+      isGatewayPaymentMethod(line.method, checkoutMethods),
+    );
+    const legacyGatewayMethod =
+      selectedCheckoutMethod && isGatewayCheckoutMethod(selectedCheckoutMethod)
+        ? selectedCheckoutMethod
+        : null;
 
     if (paymentTransaction?.status === "pending") {
-      if (gatewayMethod && shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, apiMethod)) {
+      const nextMethod = primaryGatewayLine?.method ?? (legacyGatewayMethod
+        ? apiMethodFromCheckoutMethod(legacyGatewayMethod)
+        : null);
+      if (nextMethod && shouldBlockDuplicateGatewayAttempt(paymentTransaction.method, nextMethod)) {
         toast.error(t("pos.qrPending"));
         return;
       }
@@ -855,13 +913,25 @@ export default function POS() {
       }
     }
 
-    if (gatewayMethod && paymentTransaction && isTerminalGatewayStatus(paymentTransaction.status) && currentOrderId) {
+    if (
+      paymentTransaction &&
+      isTerminalGatewayStatus(paymentTransaction.status) &&
+      currentOrderId &&
+      (pendingGatewayPayments.length > 0 || legacyGatewayMethod)
+    ) {
       setSubmitting(true);
       try {
         const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
-        const tx = await paymentRetry(paymentTransaction.id, { giftCardSettlementIds });
+        const tx = await paymentRetry(paymentTransaction.id, {
+          giftCardSettlementIds,
+          splitPayments:
+            pendingGatewayPayments.length > 0
+              ? splitPaymentsForGatewayCreate(pendingGatewayPayments)
+              : undefined,
+        });
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
-        if (apiMethod === "qris" && tx.qrString) {
+        const retryMethod = primaryGatewayLine?.method ?? apiMethodFromCheckoutMethod(legacyGatewayMethod!);
+        if (retryMethod === "qris" && tx.qrString) {
           setShowQrisModal(true);
           toast.success(t("pos.qrisReady"));
         } else {
@@ -878,7 +948,6 @@ export default function POS() {
     setSubmitting(true);
     try {
       let storedOrder: Order;
-      let reusing = false;
       const recoveryOrderId =
         currentOrderId
         ?? (qrOrderContext?.linkedOrderId ? String(qrOrderContext.linkedOrderId) : null)
@@ -900,7 +969,6 @@ export default function POS() {
           return;
         }
         setCurrentOrderId(storedOrder.id);
-        reusing = true;
       } else {
         const code = POS_AUTO_ORDER_CODE;
         const payload: CreateOrderPayload = {
@@ -910,14 +978,8 @@ export default function POS() {
           source: "pos",
           orderType,
           status: "confirmed",
-          paymentStatus: cashMethod ? "paid" : "unpaid",
-          payments: cashMethod ? [
-            {
-              method: apiMethod,
-              amount: total,
-              paidAt: new Date().toISOString(),
-            },
-          ] : [],
+          paymentStatus: "unpaid",
+          payments: [],
           confirmedAt: new Date().toISOString(),
           ...qrOrderPayloadFields,
           idempotencyKey,
@@ -931,28 +993,38 @@ export default function POS() {
         }
       }
 
+      const orderBalanceDue = Math.max(
+        0,
+        storedOrder.total - storedOrder.payments.reduce((sum, payment) => sum + payment.amount, 0),
+      );
       const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(String(storedOrder.id));
       checkoutAttemptIdRef.current = paymentIdempotencyKey;
+      const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
 
-      const checkoutTotal =
-        pendingGatewayPayments.length > 0
-          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
-          : storedOrder.total;
-
-      if (cashMethod) {
-        const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
-        const needsPaymentRecord = reusing || storedOrder.paymentStatus !== "paid";
-        if (needsPaymentRecord) {
-          const cashBatch =
-            pendingGatewayPayments.length > 0
-              ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
-              : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
-          await addOrderPaymentsRemote(storedOrder.id, cashBatch, {
-            idempotencyKey: paymentIdempotencyKey,
+      const result = await commitMultiPayment({
+        orderId: storedOrder.id,
+        outletId: activeOutletId!,
+        balanceDue: orderBalanceDue,
+        draftLines,
+        checkoutMethods,
+        addOrderPaymentsRemote: (orderId, payments, options) =>
+          addOrderPaymentsRemote(orderId, payments, {
+            ...options,
+            idempotencyKey: options?.idempotencyKey ?? paymentIdempotencyKey,
             ...paymentExtras,
-          });
-          setPendingGatewayPayments([]);
-        }
+          }),
+        paymentCreateTransaction: (payload) =>
+          paymentCreateTransaction({
+            ...payload,
+            outletId: activeOutletId ?? undefined,
+            giftCardSettlementIds:
+              giftCardSettlementIds.length > 0 ? giftCardSettlementIds : payload.giftCardSettlementIds,
+          }),
+        idempotencyKey: paymentIdempotencyKey,
+        giftCardSettlementIds,
+      });
+
+      if (result.outcome === "completed") {
         await settleGiftCardAfterDirectPayment(storedOrder.id, giftCardSettlementIds);
         if (selectedCustomer && appliedPoints > 0) {
           await enqueueRedemption({
@@ -962,6 +1034,7 @@ export default function POS() {
             replayFingerprint: `pos-${storedOrder.id}-${selectedCustomer.id}-${appliedPoints}`,
           });
         }
+        paymentDraft.clearDraft();
         clearCheckoutRecoveryState();
         checkoutAttemptIdRef.current = null;
         setCurrentOrderId(null);
@@ -975,8 +1048,9 @@ export default function POS() {
         return;
       }
 
-      if (manualQrisMethod) {
-        setCurrentOrderId(storedOrder.id);
+      if (result.outcome === "manual_qris_pending") {
+        setPendingManualQrisPayments(result.manualQrisPayments);
+        setPendingGatewayLinesAfterManual(result.pendingGatewayLines ?? []);
         setShowStaticQrisModal(true);
         toast.message(t("pos.showQris"), {
           description: t("pos.verifyTransfer"),
@@ -984,29 +1058,10 @@ export default function POS() {
         return;
       }
 
-      const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
-      const gatewayPayment: OrderPaymentPayload = {
-        method: apiMethod,
-        amount: checkoutTotal,
-        paidAt: new Date().toISOString(),
-      };
-      const tx = await paymentCreateTransaction({
-        orderId: storedOrder.id,
-        outletId: activeOutletId ?? undefined,
-        method: gatewayPayment.method,
-        amount: checkoutTotal,
-        splitPayments:
-          pendingGatewayPayments.length > 0
-            ? splitPaymentsForGatewayCreate(
-                remapSettlementBatchMethod(pendingGatewayPayments, gatewayPayment.method),
-              )
-            : undefined,
-        giftCardSettlementIds: giftCardSettlementIds.length > 0 ? giftCardSettlementIds : undefined,
-      });
-      setPendingGatewayPayments([gatewayPayment]);
+      setPendingGatewayPayments(result.gatewayPayments);
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, storedOrder.id);
-      paymentPollTransactionStatus(tx.id);
-      if (gatewayPayment.method === "qris" && tx.qrString) {
+      paymentPollTransactionStatus(result.transaction.id);
+      if (result.transaction.method === "qris" && result.transaction.qrString) {
         setQrisModalSuppressedTxId(null);
         setShowQrisModal(true);
         toast.success(t("pos.qrisReady"));
@@ -1032,33 +1087,94 @@ export default function POS() {
   };
 
   const confirmStaticQrisPayment = async () => {
-    if (!selectedCheckoutMethod || !currentOrderId || submitting || paymentAckRequired) return;
+    if (!currentOrderId || submitting || paymentAckRequired) return;
     const idempotencyKey = checkoutAttemptIdRef.current ?? beginCheckoutAttempt("static-qris");
-    const apiMethod = apiMethodFromCheckoutMethod(selectedCheckoutMethod);
     setSubmitting(true);
     try {
       if (paymentTransaction?.status === "pending") {
         await paymentExpire(paymentTransaction.id);
         setQrisModalSuppressedTxId(paymentTransaction.id);
       }
-      const checkoutTotal =
-        pendingGatewayPayments.length > 0
-          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
-          : (currentOpenOrder?.total ?? total);
+
+      const manualBatch =
+        pendingManualQrisPayments.length > 0
+          ? pendingManualQrisPayments
+          : selectedCheckoutMethod
+            ? [
+                {
+                  method: apiMethodFromCheckoutMethod(selectedCheckoutMethod),
+                  amount: currentOpenOrder
+                    ? Math.max(
+                        0,
+                        currentOpenOrder.total
+                          - currentOpenOrder.payments.reduce((sum, payment) => sum + payment.amount, 0),
+                      )
+                    : total,
+                  paidAt: new Date().toISOString(),
+                },
+              ]
+            : [];
+
+      if (manualBatch.length === 0) {
+        toast.error(t("shared.nothingToPay"));
+        return;
+      }
+
       const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
-      const batch =
-        pendingGatewayPayments.length > 0
-          ? remapSettlementBatchMethod(pendingGatewayPayments, apiMethod)
-          : [{ method: apiMethod, amount: checkoutTotal, paidAt: new Date().toISOString() }];
       const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(currentOrderId);
       checkoutAttemptIdRef.current = paymentIdempotencyKey;
-      await addOrderPaymentsRemote(currentOrderId, batch, {
+      await addOrderPaymentsRemote(currentOrderId, manualBatch, {
         idempotencyKey: paymentIdempotencyKey,
         ...paymentExtras,
       });
-      await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
-      setPendingGatewayPayments([]);
+      setPendingManualQrisPayments([]);
       setShowStaticQrisModal(false);
+
+      if (pendingGatewayLinesAfterManual.length > 0 && typeof activeOutletId === "number") {
+        const fresh = await fetchOrderRemote(currentOrderId);
+        const freshBalance = Math.max(
+          0,
+          fresh.total - fresh.payments.reduce((sum, payment) => sum + payment.amount, 0),
+        );
+        const gatewayLines = pendingGatewayLinesAfterManual;
+        setPendingGatewayLinesAfterManual([]);
+        const gatewayResult = await commitMultiPayment({
+          orderId: currentOrderId,
+          outletId: activeOutletId,
+          balanceDue: freshBalance,
+          draftLines: gatewayLines,
+          checkoutMethods,
+          addOrderPaymentsRemote: (orderId, payments, options) =>
+            addOrderPaymentsRemote(orderId, payments, {
+              ...options,
+              idempotencyKey: options?.idempotencyKey ?? paymentIdempotencyKey,
+              ...paymentExtras,
+            }),
+          paymentCreateTransaction: (payload) =>
+            paymentCreateTransaction({
+              ...payload,
+              outletId: activeOutletId ?? undefined,
+              giftCardSettlementIds:
+                giftCardSettlementIds.length > 0 ? giftCardSettlementIds : payload.giftCardSettlementIds,
+            }),
+          idempotencyKey: paymentIdempotencyKey,
+          giftCardSettlementIds,
+        });
+        if (gatewayResult.outcome === "gateway_pending") {
+          setPendingGatewayPayments(gatewayResult.gatewayPayments);
+          paymentPollTransactionStatus(gatewayResult.transaction.id);
+          if (gatewayResult.transaction.method === "qris" && gatewayResult.transaction.qrString) {
+            setQrisModalSuppressedTxId(null);
+            setShowQrisModal(true);
+            toast.success(t("pos.qrisReady"));
+          } else {
+            toast.success(t("pos.checkoutCreated"));
+          }
+          return;
+        }
+      }
+
+      await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
       if (selectedCustomer && appliedPoints > 0) {
         await enqueueRedemption({
           customerId: selectedCustomer.id,
@@ -1068,6 +1184,7 @@ export default function POS() {
         });
       }
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+      paymentDraft.clearDraft();
       clearCheckoutRecoveryState();
       checkoutAttemptIdRef.current = null;
       setCurrentOrderId(null);
@@ -1513,13 +1630,14 @@ export default function POS() {
       }
     })();
   };
-  const paymentSubmitDisabled = isPosPaymentSubmitDisabled({
-    selectedCheckoutCode,
-    submitting,
-    paymentIsSubmitting,
-    gatewayCheckoutPending,
-    paymentAckRequired,
-  });
+  const paymentSubmitDisabled =
+    submitting
+    || paymentIsSubmitting
+    || gatewayCheckoutPending
+    || paymentAckRequired
+    || (enableMultiPayment
+      ? !isMultiPaymentDraftReady(enableMultiPayment, paymentDraft.lines, posPaymentBalanceDue)
+      : !selectedCheckoutCode);
 
   const primaryPaymentActionLabel =
     canRetryGatewayCheckout && selectedApiMethod
@@ -1533,7 +1651,7 @@ export default function POS() {
   const paymentCheckoutAmount =
     pendingGatewayPayments.length > 0
       ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
-      : paymentTransaction?.amount ?? total;
+      : paymentTransaction?.amount ?? posPaymentBalanceDue;
   const splitCheckoutActive = pendingGatewayPayments.length > 0;
 
   const handleGatewayRetry = async (transactionId: string) => {
@@ -2108,7 +2226,7 @@ export default function POS() {
                 </button>
               </div>
               <div className="text-center mb-6">
-                <p className="text-sm text-muted-foreground">{t("shared.totalAmount")}</p>
+                <p className="text-sm text-muted-foreground">{t("shared.balanceDue")}</p>
                 <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
                 {splitCheckoutActive ? (
                   <p className="text-xs text-muted-foreground mt-1">{t("shared.splitGatewayPortion")}</p>
@@ -2127,6 +2245,19 @@ export default function POS() {
               {openBillRecoveryCode ? (
                 <PosOpenBillRecoveryBanner orderCode={openBillRecoveryCode} />
               ) : null}
+              <OrderMultiPaymentPanel
+                balanceDue={posPaymentBalanceDue}
+                alreadyPaid={posPaymentAlreadyPaid}
+                orderTotal={posPaymentOrderTotal}
+                draftLines={paymentDraft.lines}
+                checkoutTiles={checkoutTiles}
+                enableMultiPayment={enableMultiPayment}
+                disabled={submitting || paymentIsSubmitting || paymentAckRequired}
+                onAddLine={paymentDraft.addLine}
+                onRemoveLine={paymentDraft.removeLine}
+                onClearDraft={paymentDraft.clearDraft}
+              />
+              {!enableMultiPayment ? (
               <PaymentMethodTileGrid
                 className="mb-6"
                 tiles={checkoutTiles}
@@ -2134,6 +2265,7 @@ export default function POS() {
                 onSelect={handleSelectPaymentMethod}
                 disabled={submitting || paymentIsSubmitting || paymentAckRequired}
               />
+              ) : null}
               <button onClick={initSplitBill}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
                 <SplitSquareHorizontal className="h-4 w-4" /> {t("shared.splitBill")}
@@ -2152,7 +2284,9 @@ export default function POS() {
                   {t("shared.checkoutOrder", { code: currentOpenOrder?.code ?? currentOrderId ?? "" })}{gatewayCheckoutPending ? t("shared.qrPaymentPending") : ""}
                 </p>
               ) : null}
-              {paymentTransaction && selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod) && (
+              {paymentTransaction &&
+                (enableMultiPayment ||
+                  (selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod))) && (
                 <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
                   <p className="font-semibold text-foreground">{t("shared.onlineCheckout")}</p>
                   <p className="text-muted-foreground">{t("shared.statusColon")} <span className="font-medium text-foreground">{paymentTransaction.status}</span></p>

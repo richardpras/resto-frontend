@@ -44,6 +44,14 @@ export type QrOrderOpenBill = {
 export type QrOrderingPublicConfig = {
   enableCallCashier: boolean;
   requireCustomerApprovalForAdjustments?: boolean;
+  pendingConfirmationTtlMinutes?: number;
+};
+
+export type QrGuestSessionOrderSummary = {
+  orderCode: string;
+  customerStatus: string;
+  customerStatusLabel: string;
+  createdAt: string | null;
 };
 
 export type QrOrderPublicLookup = {
@@ -104,6 +112,19 @@ export async function approveQrOrderAdjustments(
   const response = await request<{ data: QrOrderPublicLookup }>(
     `/public/qr-orders/${encoded}/approve-adjustments${query}`,
     { method: "POST" },
+  );
+  return response.data;
+}
+
+export async function fetchGuestSessionOrders(
+  guestSessionToken: string,
+  options: { signal?: AbortSignal; lang?: string } = {},
+): Promise<QrGuestSessionOrderSummary[]> {
+  const encoded = encodeURIComponent(guestSessionToken.trim());
+  const query = options.lang ? `?lang=${encodeURIComponent(options.lang)}` : "";
+  const response = await request<{ data: QrGuestSessionOrderSummary[] }>(
+    `/public/qr-guest-sessions/${encoded}/orders${query}`,
+    { signal: options.signal },
   );
   return response.data;
 }

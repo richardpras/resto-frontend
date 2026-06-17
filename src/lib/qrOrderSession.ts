@@ -1,5 +1,21 @@
 const PREFIX = "qr";
 
+export function setGuestSessionToken(token: string): void {
+  if (typeof window === "undefined" || token.trim() === "") return;
+  window.localStorage.setItem(`${PREFIX}.guestSessionToken`, token.trim());
+}
+
+export function getGuestSessionToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const value = window.localStorage.getItem(`${PREFIX}.guestSessionToken`);
+  return value && value.trim() !== "" ? value : null;
+}
+
+export function clearGuestSessionToken(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(`${PREFIX}.guestSessionToken`);
+}
+
 function storageKeyActiveOrders(tableToken: string): string {
   return `${PREFIX}.activeOrderCodes.${tableToken}`;
 }

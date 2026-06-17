@@ -65,6 +65,7 @@ const EMPTY_SYSTEM: SystemPrefs = {
   confirmBeforePayment: true,
   enableQROrdering: true,
   enableCallCashier: true,
+  qrPendingConfirmationTtlMinutes: 20,
   enforceStockOnSale: false,
   stockEnforcementMode: "deferred",
   allowNegativeStock: true,

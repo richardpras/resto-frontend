@@ -61,6 +61,8 @@ export type QrOrderRequestApi = {
 export type CreateQrOrderPayload = {
   outletId: number;
   tableId: number;
+  guestSessionToken: string;
+  qrPublicId: string;
   customerName: string;
   expiresInMinutes?: number;
   appendToRequestCode?: string;
@@ -170,7 +172,7 @@ export async function confirmQrOrder(
 
 export async function callQrOrderCashier(
   requestId: number | string,
-  payload: { outletId: number; tableId: number },
+  payload: { outletId: number; tableId: number; guestSessionToken?: string; reason?: string },
   options: QrOrderRequestOptions = {},
 ): Promise<QrOrderRequestApi> {
   const response = await request<{ message: string; data: QrOrderRequestApi }>(
