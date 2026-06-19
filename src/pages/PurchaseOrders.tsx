@@ -13,10 +13,13 @@ import { PurchaseItemTable, PurchaseLineItem } from "@/components/PurchaseItemTa
 import { usePurchaseStore, POStatus } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useOutletInventory } from "@/hooks/useOutletInventory";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
+import { usePurchasePermissions } from "@/hooks/usePurchasePermissions";
 import { listWarehouses, type WarehouseApiRow } from "@/lib/api-integration/warehouseEndpoints";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
-import { Plus, Send, Search, Package, Check, Ban, Eye, Lock } from "lucide-react";
+import { Plus, Send, Search, Package, Check, Ban, Eye, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 
 const statusColors: Record<POStatus, string> = {
@@ -38,6 +41,7 @@ export default function PurchaseOrders() {
     updatePO,
     submitPO,
     approvePO,
+    rejectPO,
     cancelPO,
     closePO,
     purchaseRequests,
@@ -46,11 +50,13 @@ export default function PurchaseOrders() {
   } = usePurchaseStore();
   const { suppliers, fetchSuppliers } = useSupplierStore();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  useOutletInventory();
+  const { canApprove } = usePurchasePermissions();
   const [warehouses, setWarehouses] = useState<WarehouseApiRow[]>([]);
 
   useEffect(() => {
     void Promise.all([fetchPurchaseOrders(), fetchPurchaseRequests(), fetchSuppliers()]);
-  }, [fetchPurchaseOrders, fetchPurchaseRequests, fetchSuppliers]);
+  }, [fetchPurchaseOrders, fetchPurchaseRequests, fetchSuppliers, activeOutletId]);
 
   useEffect(() => {
     const poId = searchParams.get("poId");
@@ -79,6 +85,15 @@ export default function PurchaseOrders() {
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<PurchaseLineItem[]>([]);
 
+  const referencePrOptions = useMemo(() => {
+    const approved = purchaseRequests.filter((p) => p.status === "approved");
+    if (!referencePR || approved.some((p) => p.prNumber === referencePR)) {
+      return approved;
+    }
+    const linked = purchaseRequests.find((p) => p.prNumber === referencePR);
+    return linked ? [linked, ...approved] : approved;
+  }, [purchaseRequests, referencePR]);
+
   const resetForm = () => {
     setEditId(null);
     setSupplierId("");
@@ -91,12 +106,12 @@ export default function PurchaseOrders() {
 
   const openNew = () => { resetForm(); setFormOpen(true); };
 
-  const openEdit = (poId: string) => {
+  const openView = (poId: string) => setViewId(poId);
+
+  const openEditForm = (poId: string) => {
     const po = purchaseOrders.find((p) => p.id === poId);
-    if (!po || po.status !== "draft") {
-      setViewId(poId);
-      return;
-    }
+    if (!po || po.status !== "draft") return;
+    setViewId(null);
     setEditId(poId);
     setSupplierId(po.supplierId);
     setDestinationWarehouseId(po.destinationWarehouseId ?? "");
@@ -132,34 +147,55 @@ export default function PurchaseOrders() {
     })));
   };
 
-  const handleSaveDraft = async () => {
-    if (!supplierId) { toast.error(t("purchases.po.selectSupplier")); return; }
-    if (items.length === 0 || items.some((i) => !i.inventoryItemId)) { toast.error(t("purchases.po.addValidItems")); return; }
+  const handleSaveDraft = async (closeAfter = true) => {
+    if (!supplierId) { toast.error(t("purchases.po.selectSupplier")); return false; }
+    if (items.length === 0 || items.some((i) => !i.inventoryItemId)) { toast.error(t("purchases.po.addValidItems")); return false; }
     const warehousePayload = destinationWarehouseId ? destinationWarehouseId : undefined;
     try {
       if (editId) {
         await updatePO(editId, { supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
         toast.success(t("purchases.po.updated"));
       } else {
-        await addPO({ supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
+        const newId = await addPO({ supplierId, destinationWarehouseId: warehousePayload, date, referencePR: referencePR || undefined, notes, items });
+        setEditId(newId);
         toast.success(t("purchases.po.savedDraft"));
       }
+      if (closeAfter) {
+        setFormOpen(false);
+        resetForm();
+      }
+      return true;
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("purchases.po.actionFailed"));
+      return false;
+    }
+  };
+
+  const handleSaveAndSubmit = async () => {
+    const saved = await handleSaveDraft(false);
+    if (!saved || !editId) return;
+    try {
+      await submitPO(editId);
+      toast.success(t("purchases.po.workflowSubmitted"));
       setFormOpen(false);
       resetForm();
+      setViewId(editId);
     } catch (e) {
       toast.error(formatApiErrorMessage(e, t) || t("purchases.po.actionFailed"));
     }
   };
 
-  const runWorkflow = async (action: "submit" | "approve" | "cancel" | "close", poId: string) => {
+  const runWorkflow = async (action: "submit" | "approve" | "reject" | "cancel" | "close", poId: string) => {
     try {
       if (action === "submit") await submitPO(poId);
       if (action === "approve") await approvePO(poId);
+      if (action === "reject") await rejectPO(poId);
       if (action === "cancel") await cancelPO(poId);
       if (action === "close") await closePO(poId);
       const msg = {
         submit: t("purchases.po.workflowSubmitted"),
         approve: t("purchases.po.workflowApproved"),
+        reject: t("purchases.po.workflowRejected"),
         cancel: t("purchases.po.workflowCancelled"),
         close: t("purchases.po.workflowClosed"),
       }[action];
@@ -207,18 +243,19 @@ export default function PurchaseOrders() {
                 <TableHead>{t("purchases.po.progress")}</TableHead>
                 <TableHead>{t("purchases.shared.total")}</TableHead>
                 <TableHead>{t("purchases.shared.status")}</TableHead>
+                <TableHead className="text-right">{t("purchases.shared.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />{t("purchases.po.empty")}
                   </TableCell>
                 </TableRow>
               )}
               {filtered.map((po) => (
-                <TableRow key={po.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openEdit(po.id)}>
+                <TableRow key={po.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openView(po.id)}>
                   <TableCell className="font-mono font-semibold text-sm">{po.poNumber}</TableCell>
                   <TableCell className="text-sm">{getSupplierName(po.supplierId)}</TableCell>
                   <TableCell className="text-sm">{po.sourceType ?? (po.referencePR ? "PR" : "DIRECT")}</TableCell>
@@ -232,6 +269,9 @@ export default function PurchaseOrders() {
                   <TableCell>
                     <Badge variant="outline" className={statusColors[po.status]}>{t(`purchases.status.${po.status}`)}</Badge>
                   </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="ghost" onClick={() => openView(po.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -240,7 +280,7 @@ export default function PurchaseOrders() {
       </Card>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editId ? t("purchases.po.edit") : t("purchases.po.new")}</DialogTitle>
           </DialogHeader>
@@ -264,8 +304,13 @@ export default function PurchaseOrders() {
                 <Select value={referencePR} onValueChange={handleSelectPr}>
                   <SelectTrigger><SelectValue placeholder={t("purchases.shared.optional")} /></SelectTrigger>
                   <SelectContent>
-                    {purchaseRequests.filter((p) => p.status === "approved").map((pr) => (
-                      <SelectItem key={pr.id} value={pr.prNumber}>{pr.prNumber}</SelectItem>
+                    {referencePR && !referencePrOptions.some((p) => p.prNumber === referencePR) && (
+                      <SelectItem value={referencePR}>{referencePR}</SelectItem>
+                    )}
+                    {referencePrOptions.map((pr) => (
+                      <SelectItem key={pr.id} value={pr.prNumber}>
+                        {pr.prNumber}{pr.status === "converted" ? ` (${t("purchases.status.converted")})` : ""}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -291,19 +336,29 @@ export default function PurchaseOrders() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setFormOpen(false)}>{t("purchases.shared.cancel")}</Button>
-              <Button onClick={() => void handleSaveDraft()}>{t("purchases.po.saveDraft")}</Button>
+              <Button variant="secondary" onClick={() => void handleSaveDraft()}>{t("purchases.po.saveDraft")}</Button>
+              {editId && (
+                <Button onClick={() => void handleSaveAndSubmit()} className="gap-1">
+                  <Send className="h-3.5 w-3.5" /> {t("purchases.po.saveAndSubmit")}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!viewed} onOpenChange={(o) => { if (!o) setViewId(null); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{viewed?.poNumber}</DialogTitle>
           </DialogHeader>
           {viewed && (
             <div className="space-y-4 text-sm">
+              {viewed.status === "draft" && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                  {t("purchases.po.submitHint")}
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">{t("purchases.shared.status")}</span>
                 <Badge variant="outline" className={statusColors[viewed.status]}>{t(`purchases.status.${viewed.status}`)}</Badge>
@@ -339,7 +394,7 @@ export default function PurchaseOrders() {
               <div className="flex flex-wrap gap-2 justify-end pt-2">
                 {viewed.status === "draft" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={() => { setViewId(null); openEdit(viewed.id); }}>{t("purchases.po.editBtn")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => openEditForm(viewed.id)}>{t("purchases.po.editBtn")}</Button>
                     <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}><Ban className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.cancel")}</Button>
                     <Button size="sm" onClick={() => void runWorkflow("submit", viewed.id)}><Send className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.submit")}</Button>
                   </>
@@ -347,13 +402,17 @@ export default function PurchaseOrders() {
                 {viewed.status === "submitted" && (
                   <>
                     <Button size="sm" variant="outline" onClick={() => void runWorkflow("cancel", viewed.id)}>{t("purchases.po.cancel")}</Button>
-                    <Button size="sm" onClick={() => void runWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.approve")}</Button>
+                    {canApprove && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => void runWorkflow("reject", viewed.id)}><X className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.reject")}</Button>
+                        <Button size="sm" onClick={() => void runWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.approve")}</Button>
+                      </>
+                    )}
                   </>
                 )}
                 {viewed.status === "received" && (
                   <Button size="sm" onClick={() => void runWorkflow("close", viewed.id)}><Lock className="h-3.5 w-3.5 mr-1" /> {t("purchases.po.close")}</Button>
                 )}
-                <Button size="sm" variant="ghost" onClick={() => setViewId(null)}><Eye className="h-3.5 w-3.5" /></Button>
               </div>
             </div>
           )}

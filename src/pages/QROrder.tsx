@@ -11,8 +11,13 @@ import {
   type QrScanErrorCode,
 } from "@/components/tables/qrScanErrors";
 import { QrOrderMyOrdersSection } from "@/components/qr-order/QrOrderMyOrdersSection";
+import { QrGuestHeaderBar, QrGuestLanguageCorner } from "@/components/qr-order/QrGuestHeaderBar";
+import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import type { QrActiveSessionApi } from "@/lib/api-integration/tableEndpoints";
+import { fetchPublicQrMenu } from "@/lib/api-integration/publicMenuEndpoints";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { appendGuestLangToHref } from "@/i18n/localeResolver";
+import { useGuestLocaleBootstrap } from "@/hooks/useGuestLocaleBootstrap";
 import {
   addActiveOrderCode,
   setCurrentTableToken,
@@ -24,29 +29,15 @@ import {
 } from "@/lib/qrOrderSession";
 
 type MenuItem = {
-  id: string; name: string; price: number; category: string; emoji: string; description: string;
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  emoji: string;
+  imageUrl?: string | null;
+  imageVersion?: number;
 };
 type CartItem = MenuItem & { qty: number; notes: string };
-
-const categories = ["All", "Main Course", "Appetizers", "Drinks", "Desserts", "Sides"];
-const menuItems: MenuItem[] = [
-  { id: "1", name: "Nasi Goreng Special", price: 30000, category: "Main Course", emoji: "🍛", description: "Fried rice with egg, chicken & shrimp crackers" },
-  { id: "2", name: "Ayam Bakar", price: 40000, category: "Main Course", emoji: "🍗", description: "Grilled chicken with signature sambal" },
-  { id: "3", name: "Mie Goreng", price: 25000, category: "Main Course", emoji: "🍝", description: "Stir-fried noodles with vegetables" },
-  { id: "4", name: "Sate Ayam 10pcs", price: 35000, category: "Main Course", emoji: "🥘", description: "Chicken satay with peanut sauce" },
-  { id: "5", name: "Gado-Gado", price: 22000, category: "Appetizers", emoji: "🥗", description: "Mixed vegetables with peanut dressing" },
-  { id: "6", name: "Lumpia Goreng", price: 15000, category: "Appetizers", emoji: "🌯", description: "Crispy spring rolls (4pcs)" },
-  { id: "7", name: "Tahu Goreng", price: 12000, category: "Appetizers", emoji: "🧈", description: "Fried tofu with sweet soy sauce" },
-  { id: "8", name: "Es Teh Manis", price: 10000, category: "Drinks", emoji: "🧊", description: "Sweet iced tea" },
-  { id: "9", name: "Jus Alpukat", price: 18000, category: "Drinks", emoji: "🥑", description: "Creamy avocado juice" },
-  { id: "10", name: "Kopi Susu", price: 20000, category: "Drinks", emoji: "☕", description: "Iced coffee with milk" },
-  { id: "11", name: "Es Jeruk", price: 12000, category: "Drinks", emoji: "🍊", description: "Fresh orange juice with ice" },
-  { id: "12", name: "Pisang Goreng", price: 15000, category: "Desserts", emoji: "🍌", description: "Fried banana fritters (5pcs)" },
-  { id: "13", name: "Es Campur", price: 18000, category: "Desserts", emoji: "🍧", description: "Mixed ice dessert with fruits" },
-  { id: "14", name: "Kerupuk Udang", price: 8000, category: "Sides", emoji: "🦐", description: "Shrimp crackers" },
-  { id: "15", name: "Sambal Extra", price: 5000, category: "Sides", emoji: "🌶️", description: "Extra chili sambal" },
-  { id: "16", name: "Nasi Putih", price: 7000, category: "Sides", emoji: "🍚", description: "Steamed white rice" },
-];
 
 function formatRp(n: number) { return "Rp " + n.toLocaleString("id-ID"); }
 
@@ -59,6 +50,7 @@ type View = "menu" | "cart" | "confirm";
  */
 export default function QROrder() {
   const { t } = useOpsTranslation();
+  useGuestLocaleBootstrap();
   const navigate = useNavigate();
   const { qrPublicId } = useParams<{ qrPublicId: string }>();
   const [searchParams] = useSearchParams();
@@ -88,6 +80,9 @@ export default function QROrder() {
   const [appendToRequestCode, setAppendToRequestCode] = useState<string | null>(null);
   const [resolvedQrPublicId, setResolvedQrPublicId] = useState<string | null>(null);
   const [guestSessionToken, setGuestSessionTokenState] = useState<string | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
   const tableNameParam = searchParams.get("tableName")?.trim() ?? "";
   const [tableNumber, setTableNumber] = useState(tableNameParam || "12");
   const activeOutletId = resolvedOutletId ?? (Number.isFinite(outletIdParam) ? outletIdParam : null);
@@ -181,11 +176,59 @@ export default function QROrder() {
     };
   }, [qrPublicId, outletIdParam, tableIdParam, resolvedOutletId, resolvedTableId, resolveLegacyTable]);
 
+  const menuQrPublicId =
+    resolvedQrPublicId ?? (typeof qrPublicId === "string" && qrPublicId.trim() !== "" ? qrPublicId.trim() : null);
+
+  useEffect(() => {
+    let active = true;
+    if (!menuQrPublicId) {
+      setMenuItems([]);
+      setMenuError(null);
+      setMenuLoading(false);
+      return;
+    }
+    setMenuLoading(true);
+    setMenuError(null);
+    void fetchPublicQrMenu(menuQrPublicId)
+      .then((rows) => {
+        if (!active) return;
+        setMenuItems(
+          rows
+            .filter((row) => row.available !== false)
+            .map((row) => ({
+              id: String(row.id),
+              name: row.name,
+              price: row.price,
+              category: row.category?.trim() ? row.category : "Uncategorized",
+              emoji: row.emoji ?? "🍽️",
+              imageUrl: row.imageUrl ?? null,
+              imageVersion: row.imageVersion,
+            })),
+        );
+      })
+      .catch((error) => {
+        if (!active) return;
+        setMenuItems([]);
+        setMenuError(error instanceof Error ? error.message : t("menu.loadFailed"));
+      })
+      .finally(() => {
+        if (active) setMenuLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [menuQrPublicId, t]);
+
+  const categories = useMemo(() => {
+    const set = new Set(menuItems.map((m) => m.category));
+    return ["All", ...Array.from(set).sort()];
+  }, [menuItems]);
+
   const filtered = useMemo(() =>
     menuItems.filter(
       (m) => (activeCat === "All" || m.category === activeCat) &&
         m.name.toLowerCase().includes(search.toLowerCase())
-    ), [activeCat, search]);
+    ), [activeCat, search, menuItems]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
@@ -279,7 +322,7 @@ export default function QROrder() {
       });
       setLastSubmittedOrderCode(created.requestCode);
       setCart([]);
-      navigate(`/qr/order/${encodeURIComponent(created.requestCode)}`);
+      navigate(appendGuestLangToHref(`/qr/order/${encodeURIComponent(created.requestCode)}`, searchParams));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("qrCustomer.submitFailed"));
     }
@@ -288,6 +331,7 @@ export default function QROrder() {
   if (resolveError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-error">
+        <QrGuestLanguageCorner />
         <div className="bg-card rounded-3xl p-8 max-w-sm w-full text-center shadow-lg border border-border">
           <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">⚠️</span>
@@ -302,6 +346,7 @@ export default function QROrder() {
   if (resolvingQr && activeOutletId === null) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" data-testid="qr-scan-loading">
+        <QrGuestLanguageCorner />
         <p className="text-sm text-muted-foreground">{t("qrCustomer.openingMenu")}</p>
       </div>
     );
@@ -312,9 +357,13 @@ export default function QROrder() {
     return (
       <div className="min-h-screen bg-background">
         <div className="sticky top-0 bg-card border-b border-border z-10">
-          <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
-            <button onClick={() => setView("cart")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
-            <h1 className="text-base font-bold text-foreground">{t("qrCustomer.confirmOrder")}</h1>
+          <div className="px-4 py-3 max-w-lg mx-auto">
+            <QrGuestHeaderBar>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setView("cart")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
+                <h1 className="text-base font-bold text-foreground">{t("qrCustomer.confirmOrder")}</h1>
+              </div>
+            </QrGuestHeaderBar>
           </div>
         </div>
         <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -378,10 +427,14 @@ export default function QROrder() {
     return (
       <div className="min-h-screen bg-background">
         <div className="sticky top-0 bg-card border-b border-border z-10">
-          <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
-            <button onClick={() => setView("menu")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
-            <h1 className="text-base font-bold text-foreground">{t("qrCustomer.yourCart")}</h1>
-            <span className="text-xs text-muted-foreground ml-auto bg-muted px-2 py-1 rounded-lg">{t("qrCustomer.itemsCount", { n: totalItems })}</span>
+          <div className="px-4 py-3 max-w-lg mx-auto">
+            <QrGuestHeaderBar>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setView("menu")} className="p-1.5 rounded-xl hover:bg-muted"><ChevronLeft className="h-5 w-5 text-foreground" /></button>
+                <h1 className="text-base font-bold text-foreground">{t("qrCustomer.yourCart")}</h1>
+                <span className="text-xs text-muted-foreground ml-auto bg-muted px-2 py-1 rounded-lg">{t("qrCustomer.itemsCount", { n: totalItems })}</span>
+              </div>
+            </QrGuestHeaderBar>
           </div>
         </div>
         <div className="max-w-lg mx-auto p-4 pb-28 space-y-2">
@@ -452,9 +505,13 @@ export default function QROrder() {
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 bg-card border-b border-border z-10">
         <div className="px-4 pt-4 pb-3 max-w-lg mx-auto">
-          <h1 className="text-lg font-bold text-foreground mb-0.5">{t("qrCustomer.menuTitle")}</h1>
-          <p className="text-xs text-muted-foreground">{t("qrCustomer.tagline")}</p>
-          <div className="relative mt-3">
+          <QrGuestHeaderBar className="mb-3">
+            <div>
+              <h1 className="text-lg font-bold text-foreground mb-0.5">{t("qrCustomer.menuTitle")}</h1>
+              <p className="text-xs text-muted-foreground">{t("qrCustomer.tagline")}</p>
+            </div>
+          </QrGuestHeaderBar>
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input type="text" placeholder={t("qrCustomer.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
@@ -486,7 +543,10 @@ export default function QROrder() {
             </div>
             <div className="flex gap-2">
               <Link
-                to={`/qr/order/${encodeURIComponent(activeSession.activeQrOrder.requestCode)}`}
+                to={appendGuestLangToHref(
+                  `/qr/order/${encodeURIComponent(activeSession.activeQrOrder.requestCode)}`,
+                  searchParams,
+                )}
                 className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold text-center"
               >
                 {t("qrCustomer.viewOrder")}
@@ -507,15 +567,35 @@ export default function QROrder() {
           </div>
         )}
         {guestSessionToken ? <QrOrderMyOrdersSection guestSessionToken={guestSessionToken} /> : null}
+        {menuLoading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-40 rounded-2xl bg-muted/40 animate-pulse" />
+            ))}
+          </div>
+        ) : menuError ? (
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive text-center">
+            {menuError}
+          </div>
+        ) : menuItems.length === 0 ? (
+          <div className="rounded-2xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            {t("menu.noMenuItems")}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 gap-3">
           {filtered.map((item) => {
             const inCart = cart.find((c) => c.id === item.id);
             return (
               <motion.button key={item.id} whileTap={{ scale: 0.96 }} onClick={() => addToCart(item)}
                 className={`relative bg-card rounded-2xl p-4 border text-left transition-all ${inCart ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}>
-                <span className="text-3xl block mb-2">{item.emoji}</span>
+                <MenuItemImage
+                  imageUrl={item.imageUrl}
+                  imageVersion={item.imageVersion}
+                  emoji={item.emoji}
+                  name={item.name}
+                  size="card"
+                />
                 <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
                 <p className="text-sm font-bold text-primary mt-1.5">{formatRp(item.price)}</p>
                 {inCart && (
                   <span className="absolute top-2 right-2 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">{inCart.qty}</span>
@@ -524,6 +604,7 @@ export default function QROrder() {
             );
           })}
         </div>
+        )}
       </div>
       {totalItems > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">

@@ -54,4 +54,20 @@ describe("LanguageSwitcher", () => {
     expect(updateMerchant).toHaveBeenCalledWith(expect.objectContaining({ language: "id" }));
     expect(patchMerchantSettings).not.toHaveBeenCalled();
   });
+
+  it("guest mode applies locale and persists without merchant update", async () => {
+    localStorage.clear();
+    render(<LanguageSwitcher mode="guest" variant="guest" />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: /language/i }));
+    fireEvent.click(await screen.findByText("Bahasa Indonesia"));
+
+    await waitFor(() => {
+      expect(i18n.language).toBe("id");
+    });
+
+    expect(localStorage.getItem("resto-guest-locale")).toBe("id");
+    expect(updateMerchant).not.toHaveBeenCalled();
+    expect(patchMerchantSettings).not.toHaveBeenCalled();
+  });
 });

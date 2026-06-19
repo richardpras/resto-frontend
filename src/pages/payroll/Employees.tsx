@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { usePayrollStore, formatIDR, type Employee, type SalaryType } from "@/stores/payrollStore";
@@ -131,7 +132,7 @@ export default function Employees() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{editId ? t("payroll.employees.edit") : t("payroll.employees.add")}</DialogTitle>
           </DialogHeader>

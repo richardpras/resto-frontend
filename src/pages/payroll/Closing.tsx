@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -399,7 +400,7 @@ export default function Closing() {
       )}
 
       <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.closePayrollRun")}</DialogTitle>
           </DialogHeader>

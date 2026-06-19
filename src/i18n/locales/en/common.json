@@ -52,6 +52,13 @@
     "returnHome": "Return to Home"
   },
   "sidebar": {
+    "overview": "Summary",
+    "sales": "Sales & Cashier",
+    "floor": "Kitchen & Floor",
+    "menuStock": "Menu & Stock",
+    "customers": "Customers & Promo",
+    "hr": "Staff & Payroll",
+    "finance": "Finance & System",
     "operations": "Operations",
     "management": "Management",
     "administration": "Administration",
@@ -64,16 +71,17 @@
   "nav": {
     "dashboard": "Dashboard",
     "notificationCenter": "Notification Center",
-    "menuIntelligence": "Menu Intelligence",
+    "menuIntelligence": "Menu Analytics",
     "posCashier": "POS Cashier",
-    "openBills": "Open bills",
-    "shiftClose": "Shift Close",
+    "openBills": "Unpaid Bills",
+    "shiftClose": "Close Cashier",
     "orders": "Orders",
     "kitchenDisplay": "Kitchen Display",
     "qrOrders": "QR Orders",
     "tables": "Tables",
-    "reservations": "Reservations",
-    "reservationOps": "Reservation Ops",
+    "reservations": "Reservation List",
+    "reservationOps": "Reservation Monitor",
+    "reservationsMenu": "Reservations",
     "menu": "Menu",
     "menuItems": "Menu Items",
     "menuCosting": "Menu Costing",
@@ -84,6 +92,7 @@
     "loyaltyDashboard": "Loyalty Dashboard",
     "loyaltyPrograms": "Loyalty Programs",
     "giftCards": "Gift Cards",
+    "loyaltyMenu": "Loyalty & Rewards",
     "purchasesMenu": "Purchases",
     "promotions": "Promotions",
     "usersRoles": "Users & Roles",
@@ -91,6 +100,10 @@
     "departments": "Departments",
     "positions": "Positions",
     "payrollMenu": "Payroll",
+    "payrollGroupSetup": "Setup",
+    "payrollGroupDaily": "Daily",
+    "payrollGroupPayroll": "Processing",
+    "payrollGroupClose": "Close",
     "accountingMenu": "Accounting",
     "reportsMenu": "Reports",
     "settings": "Settings",
@@ -227,7 +240,8 @@
       "integration": "Integrations",
       "numbering": "Numbering",
       "banks": "Bank Accounts",
-      "receipt": "Receipts"
+      "receipt": "Receipts",
+      "warehouses": "Warehouses"
     },
     "merchant": {
       "title": "Merchant Profile",
@@ -267,6 +281,28 @@
       "signInHint": "Outlets are loaded from the server after authentication. Use Sign in or set VITE_API_ACCESS_TOKEN for local dev, then use \"Reload from server\" on Settings.",
       "emptyScope": "No outlets in your access scope",
       "emptyScopeHint": "Rows in the outlets table only appear here if this user is linked in user_outlets, or the role has the outlets.view_all permission. Ask an administrator to assign outlets (Users & Permissions) or grant view-all."
+    },
+    "warehouses": {
+      "title": "Warehouses",
+      "subtitle": "Receiving locations per outlet for purchase orders and goods receipts.",
+      "add": "Add Warehouse",
+      "edit": "Edit Warehouse",
+      "code": "Code",
+      "name": "Name",
+      "status": "Status",
+      "actions": "Actions",
+      "active": "Active",
+      "inactive": "Inactive",
+      "empty": "No warehouses for this outlet.",
+      "loading": "Loading warehouses…",
+      "loadFailed": "Failed to load warehouses",
+      "saveFailed": "Failed to save warehouse",
+      "fieldsRequired": "Code and name are required",
+      "selectOutlet": "Select an active outlet in the header to manage warehouses.",
+      "created": "Warehouse created",
+      "updated": "Warehouse updated",
+      "deactivated": "Warehouse deactivated",
+      "deactivateConfirm": "Deactivate this warehouse?"
     },
     "taxes": {
       "title": "Tax Configuration",
@@ -428,5 +464,64 @@
     "toggleSidebar": "Toggle sidebar",
     "outletPlaceholder": "Outlet",
     "notifications": "Notifications"
+  },
+  "usersManagement": {
+    "pageTitle": "User Management",
+    "pageSubtitle": "Manage users, roles, permissions and view audit log.",
+    "tabs": {
+      "users": "Users",
+      "roles": "Roles & Permissions",
+      "audit": "Audit Log"
+    },
+    "users": {
+      "searchPlaceholder": "Search by name or email",
+      "allRoles": "All Roles",
+      "addUser": "Add User",
+      "loading": "Loading users",
+      "columns": {
+        "name": "Name",
+        "email": "Email",
+        "pin": "PIN",
+        "roles": "Roles",
+        "actions": "Actions"
+      },
+      "pinSet": "Set",
+      "noUsers": "No users found"
+    },
+    "roles": {
+      "addRole": "Add Role",
+      "loading": "Loading roles",
+      "columns": {
+        "role": "Role",
+        "description": "Description",
+        "users": "Users",
+        "permissions": "Permissions",
+        "actions": "Actions"
+      },
+      "permsCount": "{{count}} perms",
+      "permissionsBtn": "Permissions",
+      "createTitle": "Create Role",
+      "roleName": "Role Name",
+      "roleNamePlaceholder": "e.g. Supervisor",
+      "description": "Description",
+      "descriptionPlaceholder": "Short description",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "roleNameRequired": "Role name required",
+      "roleCreated": "Role created",
+      "createFailed": "Failed to create role",
+      "permissionsTitle": "Permissions — {{name}}",
+      "enabledCount": "{{on}}/{{total}} enabled",
+      "disableAll": "Disable all",
+      "enableAll": "Enable all",
+      "savePermissions": "Save Permissions",
+      "permissionsUpdated": "Permissions updated",
+      "updatePermissionsFailed": "Failed to update permissions"
+    },
+    "audit": {
+      "unavailable": "Audit activity is not available through the API yet.",
+      "hint": "Security-sensitive changes should be reviewed on the server when logging is added."
+    }
   }
 }

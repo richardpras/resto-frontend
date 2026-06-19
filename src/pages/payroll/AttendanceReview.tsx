@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -479,7 +480,7 @@ export default function AttendanceReview() {
       </Tabs>
 
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.attendanceReview.reviewAttendance")}</DialogTitle>
           </DialogHeader>

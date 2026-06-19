@@ -18,8 +18,8 @@ describe("AppSidebar submenu navigation", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Payroll")).toBeTruthy();
-    expect(screen.getByText("Overview")).toBeTruthy();
-    expect(screen.getByText("Preparation")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Preparation" })).toBeTruthy();
   });
 
   it("links Payroll Posting to /payroll?tab=posting", () => {
@@ -58,13 +58,40 @@ describe("AppSidebar submenu navigation", () => {
     expect(screen.getByText("Reports Hub").closest("a")?.getAttribute("href")).toBe("/reports");
   });
 
-  it("keeps top-level Operations items", () => {
+  it("renders grouped Reservations and Loyalty parents", () => {
+    render(
+      <MemoryRouter>
+        <AppSidebar />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText("Reservations").length).toBeGreaterThan(0);
+    expect(screen.getByText("Reservation List").closest("a")?.getAttribute("href")).toBe("/reservations");
+    expect(screen.getByText("Reservation Monitor").closest("a")?.getAttribute("href")).toBe(
+      "/reservations/operations",
+    );
+    expect(screen.getByText("Loyalty & Rewards")).toBeTruthy();
+    expect(screen.getByText("Gift Cards").closest("a")?.getAttribute("href")).toBe("/gift-cards");
+  });
+
+  it("renders payroll section labels for grouped submenu", () => {
+    render(
+      <MemoryRouter>
+        <AppSidebar />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Setup")).toBeTruthy();
+    expect(screen.getByText("Processing")).toBeTruthy();
+    expect(screen.getByText("Close")).toBeTruthy();
+  });
+
+  it("renders overview and sales sections", () => {
     render(
       <MemoryRouter>
         <AppSidebar />
       </MemoryRouter>,
     );
     expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.getByText("Sales & Cashier")).toBeTruthy();
     expect(screen.getByText("POS Cashier")).toBeTruthy();
   });
 

@@ -25,6 +25,30 @@ export function canSeeNavItem(
   return true;
 }
 
+function pruneSeparatorChildren(children: SidebarNavItem[]): SidebarNavItem[] {
+  const pruned: SidebarNavItem[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const item = children[i];
+    if (item.kind === "separator") {
+      const hasLinkAfter = children.slice(i + 1).some((c) => c.kind !== "separator");
+      if (hasLinkAfter) pruned.push(item);
+      continue;
+    }
+    pruned.push(item);
+  }
+  while (pruned.length > 0 && pruned[pruned.length - 1]?.kind === "separator") {
+    pruned.pop();
+  }
+  const collapsed: SidebarNavItem[] = [];
+  for (const item of pruned) {
+    if (item.kind === "separator" && collapsed[collapsed.length - 1]?.kind === "separator") {
+      continue;
+    }
+    collapsed.push(item);
+  }
+  return collapsed;
+}
+
 export function filterNavItems(
   items: SidebarNavItem[],
   user: AuthUser | null,
@@ -32,8 +56,9 @@ export function filterNavItems(
 ): SidebarNavItem[] {
   return items
     .map((item) => {
+      if (item.kind === "separator") return item;
       if (item.children?.length) {
-        const children = filterNavItems(item.children, user, hasPermission);
+        const children = pruneSeparatorChildren(filterNavItems(item.children, user, hasPermission));
         if (children.length === 0) return null;
         return { ...item, children };
       }
@@ -44,7 +69,7 @@ export function filterNavItems(
 }
 
 export function isNavItemActive(location: Location, item: SidebarNavItem): boolean {
-  if (!item.href) return false;
+  if (item.kind === "separator" || !item.href) return false;
   const { pathname, tab } = parseNavHref(item.href);
   if (location.pathname !== pathname) return false;
   const currentTab = new URLSearchParams(location.search).get("tab");
@@ -54,7 +79,10 @@ export function isNavItemActive(location: Location, item: SidebarNavItem): boole
 
 export function isNavBranchActive(location: Location, item: SidebarNavItem): boolean {
   if (item.children?.length) {
-    return item.children.some((child) => isNavBranchActive(location, child));
+    return item.children.some((child) => {
+      if (child.kind === "separator") return false;
+      return isNavBranchActive(location, child);
+    });
   }
   return isNavItemActive(location, item);
 }

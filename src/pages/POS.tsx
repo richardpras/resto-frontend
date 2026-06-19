@@ -2,19 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X,
-  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, Tag, Gift, CreditCard, Undo2,
+  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, CreditCard, Undo2, CalendarDays, Ticket,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
-import { usePromotionStore, type AppliedPromo } from "@/stores/promotionStore";
-import { setOrderMember, listMemberVouchers, type MemberVoucherListRow } from "@/lib/api-integration/membersEndpoints";
+import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
+import { type VoucherPreview } from "@/lib/api-integration/orderVoucherEndpoints";
 import {
-  applyOrderVoucher,
-  removeOrderVoucher,
-  type VoucherPreview,
-} from "@/lib/api-integration/orderVoucherEndpoints";
+  evaluatePromotions,
+  type PromotionEvaluateResult,
+  type PromotionPreview,
+} from "@/lib/api-integration/promotionEndpoints";
 import { useMemberStore, type Member } from "@/stores/memberStore";
-import { useCustomerStore } from "@/stores/customerStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +28,11 @@ import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { useOutletStore } from "@/stores/outletStore";
 import { useQrOrderPosBridgeStore } from "@/stores/qrOrderPosBridgeStore";
+import { useReservationPosBridgeStore } from "@/stores/reservationPosBridgeStore";
+import { applyReservationPosPayload, type ApplyReservationPosPayloadDeps } from "@/components/reservations/applyReservationPosPayload";
+import { PosReservationPickerDialog } from "@/components/pos/PosReservationPickerDialog";
+import { PosDiscountModal } from "@/components/pos/PosDiscountModal";
+import { ensurePosDraftOrder } from "@/features/pos/ensurePosDraftOrder";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -83,18 +88,13 @@ import {
   appliedGiftCardAmount,
   buildGiftCardDirectSettleIdempotencyKey,
   buildGiftCardRedeemIdempotencyKey,
-  giftCardCheckErrorMessage,
-  mapGiftCardApiError,
-  remainingGiftCardBalance,
-  resolveGiftCardApplyAmount,
   type AppliedGiftCardCheckout,
 } from "@/features/pos/giftCardCheckoutUtils";
 import {
-  checkGiftCard,
   redeemGiftCard,
   settleGiftCardRedemptions,
 } from "@/lib/api-integration/giftCardEndpoints";
-import { resolveCheckoutIdempotencyKey } from "@/features/pos/posCheckoutIdempotency";
+import { createOrderPaymentIdempotencyKey, resolveCheckoutIdempotencyKey } from "@/features/pos/posCheckoutIdempotency";
 import {
   parsePosPaymentFailure,
   paymentFailureRecoveryMessage,
@@ -104,6 +104,13 @@ import {
   openBillCheckoutIdempotencyKey,
   shouldResumeOpenBillCheckout,
 } from "@/features/pos/posOpenBillCheckout";
+import { resolvePosCheckoutTotals } from "@/features/pos/resolvePosCheckoutTotals";
+import {
+  hydrateCartFromOrder,
+  shouldSyncCartToOpenBill,
+  shouldUpdateOpenBill,
+  syncCartToOpenBill,
+} from "@/features/pos/posOpenBillSync";
 import {
   formatPosStockErrorMessage,
   parsePosStockError,
@@ -123,6 +130,8 @@ import type { PaymentDraftLine } from "@/features/pos/multiPayment/multiPaymentT
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
+  imageUrl?: string | null;
+  imageVersion?: number;
 };
 type CartItem = MenuItem & { qty: number; notes: string };
 
@@ -189,7 +198,6 @@ export default function POS() {
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
-  const { getBestPromo, getApplicablePromos } = usePromotionStore();
   const [activeCat, setActiveCat] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -202,13 +210,14 @@ export default function POS() {
   const membersLoading = useMemberStore((s) => s.searchLoading);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
-  const [giftCardCodeInput, setGiftCardCodeInput] = useState("");
-  const [giftCardAmountInput, setGiftCardAmountInput] = useState("");
   const [appliedGiftCardState, setAppliedGiftCardState] = useState<AppliedGiftCardCheckout | null>(null);
-  const [giftCardApplyLoading, setGiftCardApplyLoading] = useState(false);
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [appliedPoints, setAppliedPoints] = useState(0);
   const [memberSearch, setMemberSearch] = useState("");
   const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [showReservationPicker, setShowReservationPicker] = useState(false);
+  const [activeReservationId, setActiveReservationId] = useState<number | null>(null);
+  const [activeReservationLabel, setActiveReservationLabel] = useState<string | null>(null);
   const [quickMemberName, setQuickMemberName] = useState("");
   const [quickMemberPhone, setQuickMemberPhone] = useState("");
   const [quickMemberSaving, setQuickMemberSaving] = useState(false);
@@ -227,12 +236,9 @@ export default function POS() {
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
   const [pendingManualQrisPayments, setPendingManualQrisPayments] = useState<OrderPaymentPayload[]>([]);
   const [pendingGatewayLinesAfterManual, setPendingGatewayLinesAfterManual] = useState<PaymentDraftLine[]>([]);
-  const [showPromoList, setShowPromoList] = useState(false);
-  const [manualPromo, setManualPromo] = useState<AppliedPromo | null>(null);
-  const [memberVouchers, setMemberVouchers] = useState<MemberVoucherListRow[]>([]);
-  const [selectedMemberVoucherId, setSelectedMemberVoucherId] = useState("");
   const [voucherPreview, setVoucherPreview] = useState<VoucherPreview | null>(null);
-  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [promotionEvaluateResult, setPromotionEvaluateResult] = useState<PromotionEvaluateResult | null>(null);
+  const [promotionPreview, setPromotionPreview] = useState<PromotionPreview | null>(null);
 
   const currentOpenOrder = useMemo(
     () => (currentOrderId ? orders.find((o) => o.id === currentOrderId) ?? null : null),
@@ -250,6 +256,8 @@ export default function POS() {
   const [paymentAckRequired, setPaymentAckRequired] = useState(false);
   const [openBillRecoveryCode, setOpenBillRecoveryCode] = useState<string | null>(null);
   const checkoutAttemptIdRef = useRef<string | null>(null);
+  const cartLengthRef = useRef(0);
+  cartLengthRef.current = cart.length;
   const [qrOrderContext, setQrOrderContext] = useState<{
     requestId: string;
     requestCode: string;
@@ -282,8 +290,6 @@ export default function POS() {
     import.meta.env.DEV;
   const [providerSimulating, setProviderSimulating] = useState(false);
   const previousOutletIdRef = useRef<number | null>(null);
-  const customers = useCustomerStore((s) => s.customers);
-  const fetchCustomers = useCustomerStore((s) => s.fetchCustomers);
   const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
   const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
   const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
@@ -308,32 +314,17 @@ export default function POS() {
     void fetchMembers({ outletId: activeOutletId }).catch((e) => {
       if (e instanceof ApiHttpError) toast.error(e.message);
     });
-    void Promise.all([
-      fetchCustomers({ outletId: activeOutletId, page: 1, perPage: 50 }),
-      refreshLoyalty(activeOutletId),
-    ]);
-  }, [activeOutletId, capabilities.crm, fetchCustomers, fetchMembers, refreshLoyalty, showMemberPicker]);
-
-  useEffect(() => {
-    if (!selectedMember || typeof activeOutletId !== "number" || activeOutletId < 1) {
-      setMemberVouchers([]);
-      return;
-    }
-    void listMemberVouchers(selectedMember.id, activeOutletId)
-      .then((rows) =>
-        setMemberVouchers(rows.filter((row) => row.status === "issued" || row.status === "claimed")),
-      )
-      .catch(() => setMemberVouchers([]));
-  }, [selectedMember, activeOutletId]);
+    void refreshLoyalty(activeOutletId);
+  }, [activeOutletId, capabilities.crm, fetchMembers, refreshLoyalty, showMemberPicker]);
 
   useEffect(() => {
     if (!currentOpenOrder) {
       setVoucherPreview(null);
-      setSelectedMemberVoucherId("");
+      setPromotionPreview(null);
       return;
     }
     setVoucherPreview(currentOpenOrder.voucherPreview ?? null);
-    setSelectedMemberVoucherId(currentOpenOrder.voucher?.memberVoucherId ?? "");
+    setPromotionPreview(currentOpenOrder.promotionPreview ?? null);
   }, [currentOpenOrder]);
 
   const { data: floorMasters } = useQuery({
@@ -372,9 +363,13 @@ export default function POS() {
     });
     if (loadPayload.linkedOrderId) {
       setCurrentOrderId(loadPayload.linkedOrderId);
-      void fetchOrderRemote(loadPayload.linkedOrderId).catch(() => {
-        // Order fetch failure is surfaced elsewhere when cashier acts on the bill.
-      });
+      void fetchOrderRemote(loadPayload.linkedOrderId)
+        .then((order) => {
+          hydrateCartFromOrder(order, setCart, 0);
+        })
+        .catch(() => {
+          // Order fetch failure is surfaced elsewhere when cashier acts on the bill.
+        });
     } else {
       setCart(
         loadPayload.items.map((item) => ({
@@ -393,6 +388,47 @@ export default function POS() {
     setOrderType("Dine-in");
     clear();
   }, []);
+
+  useEffect(() => {
+    const { loadPayload, draftSession, clear } = useReservationPosBridgeStore.getState();
+    if (!loadPayload || !draftSession) return;
+
+    const applyReservationBridge = async () => {
+      await applyReservationPosPayload(loadPayload, {
+        setCurrentOrderId,
+        setCustomerName,
+        setCustomerPhone,
+        setSelectedTable,
+        setOrderType,
+        setSelectedMember,
+        setActiveReservationId,
+        setCart,
+        getCartLength: () => cartLengthRef.current,
+        fetchMembers,
+        fetchOrderRemote,
+        activeOutletId,
+      });
+      setActiveReservationLabel(loadPayload.customerName ?? null);
+      clear();
+    };
+
+    void applyReservationBridge();
+  }, [activeOutletId, fetchMembers, fetchOrderRemote]);
+
+  useEffect(() => {
+    if (!currentOpenOrder) return;
+    if (currentOpenOrder.customerName) setCustomerName(currentOpenOrder.customerName);
+    if (currentOpenOrder.customerPhone) setCustomerPhone(currentOpenOrder.customerPhone);
+    const orderMemberId = currentOpenOrder.memberId;
+    if (orderMemberId && typeof activeOutletId === "number") {
+      if (selectedMember?.id !== String(orderMemberId)) {
+        void fetchMembers({ outletId: activeOutletId, force: true }).then(() => {
+          const matched = useMemberStore.getState().members.find((m) => m.id === String(orderMemberId));
+          if (matched) setSelectedMember(matched);
+        }).catch(() => undefined);
+      }
+    }
+  }, [currentOpenOrder?.id, currentOpenOrder?.memberId, currentOpenOrder?.customerName, currentOpenOrder?.customerPhone, activeOutletId, fetchMembers, selectedMember?.id]);
 
   useEffect(() => {
     void ensureSettingsSections(["system"]).catch(() => {});
@@ -439,8 +475,6 @@ export default function POS() {
       setPendingGatewayPayments([]);
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
-      setMemberVouchers([]);
-      setSelectedMemberVoucherId("");
       setVoucherPreview(null);
       paymentResetAsync();
     }
@@ -473,6 +507,8 @@ export default function POS() {
         price: m.price,
         category: m.category?.trim() ? m.category : "Uncategorized",
         emoji: m.emoji ?? "🍽️",
+        imageUrl: m.imageUrl ?? null,
+        imageVersion: m.imageVersion,
       }));
   }, [menuApiItems]);
 
@@ -501,38 +537,95 @@ export default function POS() {
   };
 
   const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  // Promo logic
-  const cartForPromo = cart.map((c) => ({ id: c.id, name: c.name, price: c.price, qty: c.qty }));
-  const autoPromo = getBestPromo(cartForPromo, subtotal);
-  const appliedPromo = manualPromo || autoPromo;
-  const discount = appliedPromo?.discountAmount || 0;
   const voucherDiscount = voucherPreview?.discount ?? currentOpenOrder?.voucherPreview?.discount ?? 0;
-  const applicablePromos = getApplicablePromos(cartForPromo, subtotal);
-  const taxableBase = Math.max(0, subtotal - discount - voucherDiscount);
-  const tax = Math.round(taxableBase * 0.1);
-  const baseTotal = taxableBase + tax;
-  const appliedGiftCard = appliedGiftCardAmount(appliedGiftCardState);
-  const total = Math.max(0, baseTotal - appliedGiftCard - Math.round(appliedPoints / 10));
-  const posPaymentBalanceDue = useMemo(() => {
-    if (currentOpenOrder) {
-      const paid = currentOpenOrder.payments.reduce((sum, payment) => sum + payment.amount, 0);
-      return Math.max(0, currentOpenOrder.total - paid);
+  const evaluatedPromotionDiscount = promotionEvaluateResult?.best?.discountAmount ?? 0;
+  const appliedPromotionDiscount = promotionPreview?.discount ?? currentOpenOrder?.promotionPreview?.discount ?? 0;
+  const promotionDiscount = currentOpenOrder?.promotion
+    ? appliedPromotionDiscount
+    : (currentOrderId ? appliedPromotionDiscount : evaluatedPromotionDiscount);
+  const checkoutDiscount = voucherDiscount > 0 ? voucherDiscount : promotionDiscount;
+  const taxableBase = Math.max(0, subtotal - checkoutDiscount);
+
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || cart.length === 0) {
+      setPromotionEvaluateResult(null);
+      return;
     }
-    return total;
-  }, [currentOpenOrder, total]);
+    if (currentOpenOrder?.voucher) {
+      setPromotionEvaluateResult(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void evaluatePromotions({
+        outletId: activeOutletId,
+        subtotal,
+        items: cart.map((c) => ({
+          id: c.id,
+          name: c.name,
+          price: c.price,
+          qty: c.qty,
+          category: c.category,
+        })),
+      })
+        .then((result) => setPromotionEvaluateResult(result))
+        .catch(() => setPromotionEvaluateResult(null));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeOutletId,
+    cart,
+    subtotal,
+    currentOpenOrder?.voucher,
+  ]);
+
+  const tax = Math.round(taxableBase * 0.1);
+  const clientBaseTotal = taxableBase + tax;
+  const appliedGiftCard = appliedGiftCardAmount(appliedGiftCardState);
+  const appliedPointsValue = Math.round(appliedPoints / 10);
+
+  const checkoutTotals = useMemo(
+    () =>
+      resolvePosCheckoutTotals({
+        cartSubtotal: subtotal,
+        clientTax: tax,
+        clientBaseTotal,
+        clientDiscount: checkoutDiscount,
+        appliedGiftCard,
+        appliedPointsValue,
+        order: currentOpenOrder,
+      }),
+    [
+      subtotal,
+      tax,
+      clientBaseTotal,
+      checkoutDiscount,
+      appliedGiftCard,
+      appliedPointsValue,
+      currentOpenOrder,
+    ],
+  );
+
+  const displaySubtotal = checkoutTotals.subtotal;
+  const displayTax = checkoutTotals.tax;
+  const displayDiscount = checkoutTotals.discount;
+  const baseTotal = checkoutTotals.baseTotal;
+  const total = checkoutTotals.total;
+  const posPaymentBalanceDue = checkoutTotals.balanceDue;
   const paymentDraft = useMultiPaymentDraft(posPaymentBalanceDue);
   const posPaymentAlreadyPaid = currentOpenOrder
     ? currentOpenOrder.payments.reduce((sum, payment) => sum + payment.amount, 0)
     : 0;
-  const posPaymentOrderTotal = currentOpenOrder?.total ?? total;
+  const posPaymentOrderTotal = checkoutTotals.source === "server"
+    ? checkoutTotals.baseTotal
+    : (currentOpenOrder?.total ?? total);
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
-  const selectedCustomer = customers.find(
-    (customer) =>
-      selectedMember &&
-      (customer.phone === selectedMember.phone || customer.name.toLowerCase() === selectedMember.name.toLowerCase()),
-  );
-  const availablePoints = selectedCustomer ? (loyaltyBalances[selectedCustomer.id] ?? selectedCustomer.pointsBalance ?? 0) : 0;
-  const remainingAppliedGiftCardBalance = remainingGiftCardBalance(appliedGiftCardState);
+  const loyaltyAccountId = selectedMember?.loyaltyAccountId ?? null;
+  const availablePoints = selectedMember
+    ? (selectedMember.points
+      ?? selectedMember.crmPointsBalance
+      ?? (loyaltyAccountId ? loyaltyBalances[loyaltyAccountId] : undefined)
+      ?? 0)
+    : 0;
 
   const selectableTables = tables.filter(
     (t) => t.status === "available" || t.status === "occupied" || t.status === "reserved",
@@ -546,6 +639,24 @@ export default function POS() {
     if (typeof activeOutletId === "number" && activeOutletId >= 1) return { outletId: activeOutletId };
     return {};
   }, [activeOutletId]);
+
+  const reservationApplyDeps = useMemo(
+    (): ApplyReservationPosPayloadDeps => ({
+      setCurrentOrderId,
+      setCustomerName,
+      setCustomerPhone,
+      setSelectedTable,
+      setOrderType,
+      setSelectedMember,
+      setActiveReservationId,
+      setCart,
+      getCartLength: () => cartLengthRef.current,
+      fetchMembers,
+      fetchOrderRemote,
+      activeOutletId,
+    }),
+    [activeOutletId, fetchMembers, fetchOrderRemote],
+  );
 
   const orderContextReady = typeof activeOutletId === "number" && activeOutletId >= 1;
 
@@ -580,10 +691,20 @@ export default function POS() {
 
   function beginCheckoutAttempt(scope: string): string {
     const attemptId = resolveCheckoutIdempotencyKey({
-      currentOrderId,
       qrOrderRequestId: qrOrderContext?.requestId,
       scope,
     });
+    checkoutAttemptIdRef.current = attemptId;
+    return attemptId;
+  }
+
+  function beginOrderPaymentAttempt(orderId: string): string {
+    const prefix = `pos-checkout-pay-order-${orderId}-`;
+    const existing = checkoutAttemptIdRef.current;
+    if (existing?.startsWith(prefix)) {
+      return existing;
+    }
+    const attemptId = createOrderPaymentIdempotencyKey(orderId);
     checkoutAttemptIdRef.current = attemptId;
     return attemptId;
   }
@@ -688,6 +809,9 @@ export default function POS() {
 
   const memberIdForPayload = selectedMember ? Number(selectedMember.id) : undefined;
 
+  const buildOpenBillCartUpdate = () =>
+    buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload);
+
   const qrOrderPayloadFields = useMemo((): Pick<CreateOrderPayload, "qrOrderRequestId" | "orderChannel" | "serviceMode"> => {
     if (!qrOrderContext) return {};
     return {
@@ -712,6 +836,9 @@ export default function POS() {
     setCurrentOrderId(null);
     resetCart();
     clearQrOrderContext();
+    setSelectedMember(null);
+    setActiveReservationId(null);
+    setActiveReservationLabel(null);
     setShowPayment(false);
     setShowSplit(false);
     setShowConfirmSent(false);
@@ -720,6 +847,20 @@ export default function POS() {
     setShowQrisModal(false);
     setPendingGatewayPayments([]);
     void paymentResetAsync();
+  }
+
+  async function refreshSelectedMemberPoints() {
+    if (!selectedMember || typeof activeOutletId !== "number") return;
+    try {
+      await fetchMembers({ outletId: activeOutletId, force: true });
+      const state = useMemberStore.getState();
+      const updated =
+        state.members.find((m) => m.id === selectedMember.id)
+        ?? state.searchResults.find((m) => m.id === selectedMember.id);
+      if (updated) setSelectedMember(updated);
+    } catch {
+      // Non-blocking refresh after payment.
+    }
   }
 
   async function attachMemberToOpenOrder(member: Member | null) {
@@ -740,62 +881,68 @@ export default function POS() {
     }
   }
 
+  const buildDiscountDraftCreatePayload = (): CreateOrderPayload => ({
+    tenantId: POS_TENANT_ID,
+    ...outletOrderFields,
+    code: POS_AUTO_ORDER_CODE,
+    source: "pos",
+    orderType,
+    status: "confirmed",
+    paymentStatus: "unpaid",
+    payments: [],
+    confirmedAt: new Date().toISOString(),
+    ...qrOrderPayloadFields,
+    idempotencyKey: `pos-discount-draft-${Date.now()}`,
+    ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+  });
+
+  async function ensureDraftOrderForDiscount(): Promise<string> {
+    const orderId = await ensurePosDraftOrder({
+      cartLength: cart.length,
+      currentOrderId,
+      currentOpenOrder,
+      createOrderRemote,
+      updateOrderRemote,
+      buildCartUpdate: buildOpenBillCartUpdate,
+      buildCreatePayload: buildDiscountDraftCreatePayload,
+    });
+    if (orderId !== currentOrderId) {
+      setCurrentOrderId(orderId);
+    }
+    return orderId;
+  }
+
+  async function handleDiscountOrderUpdated(orderId: string) {
+    const order = await fetchOrderRemote(orderId);
+    setVoucherPreview(order.voucherPreview ?? null);
+    setPromotionPreview(order.promotionPreview ?? null);
+    if (order.memberId) {
+      const memberId = String(order.memberId);
+      const state = useMemberStore.getState();
+      const matched =
+        state.members.find((m) => m.id === memberId)
+        ?? state.searchResults.find((m) => m.id === memberId);
+      if (matched) {
+        setSelectedMember(matched);
+        setCustomerName(matched.name);
+        setCustomerPhone(matched.phone);
+      }
+    }
+  }
+
+  const clearAppliedGiftCard = () => {
+    setAppliedGiftCardState(null);
+  };
+
   async function selectMember(member: Member) {
     setSelectedMember(member);
     setCustomerName(member.name);
     setCustomerPhone(member.phone);
     setShowMemberPicker(false);
     setMemberSearch("");
-    setSelectedMemberVoucherId("");
     setVoucherPreview(null);
+    setPromotionPreview(null);
     await attachMemberToOpenOrder(member);
-  }
-
-  async function applySelectedVoucher() {
-    if (!currentOrderId || !selectedMemberVoucherId) return;
-    if (currentOpenOrder?.paymentStatus === "paid") {
-      toast.error(t("pos.voucherLocked"));
-      return;
-    }
-    setVoucherLoading(true);
-    try {
-      const result = await applyOrderVoucher(currentOrderId, Number(selectedMemberVoucherId));
-      setVoucherPreview(result.preview);
-      await fetchOrderRemote(currentOrderId);
-      toast.success(t("pos.voucherApplied"));
-    } catch (e) {
-      toastApiError(e);
-    } finally {
-      setVoucherLoading(false);
-    }
-  }
-
-  async function removeAppliedVoucher() {
-    if (!currentOrderId) return;
-    if (currentOpenOrder?.paymentStatus === "paid") {
-      toast.error(t("pos.voucherLocked"));
-      return;
-    }
-    setVoucherLoading(true);
-    try {
-      const result = await removeOrderVoucher(currentOrderId);
-      setVoucherPreview(result.preview);
-      setSelectedMemberVoucherId("");
-      await fetchOrderRemote(currentOrderId);
-      toast.success(t("pos.voucherRemoved"));
-    } catch (e) {
-      toastApiError(e);
-    } finally {
-      setVoucherLoading(false);
-    }
-  }
-
-  function formatVoucherDiscountPreview(row: MemberVoucherListRow): string {
-    const valueType = row.voucher?.valueType;
-    const value = row.voucher?.value ?? 0;
-    if (valueType === "percentage") return `${value}% off`;
-    if (valueType === "fixed_amount") return formatRp(value);
-    return "Preview at apply";
   }
 
   // FLOW 1: Confirm Order → Send to Kitchen (single POST: confirmed + unpaid → kitchen ticket)
@@ -804,6 +951,19 @@ export default function POS() {
     if (!requireOutletOrderContext()) return;
     setSubmitting(true);
     try {
+      if (shouldUpdateOpenBill(currentOrderId, currentOpenOrder)) {
+        const storedOrder = await syncCartToOpenBill(
+          currentOrderId!,
+          updateOrderRemote,
+          buildOpenBillCartUpdate(),
+        );
+        setCurrentOrderId(storedOrder.id);
+        resetCart();
+        clearQrOrderContext();
+        setShowConfirmSent(true);
+        toast.success(t("pos.orderSentKitchen", { code: storedOrder.code }), { icon: "🍳" });
+        return;
+      }
       const code = POS_AUTO_ORDER_CODE;
       const payload: CreateOrderPayload = {
         tenantId: POS_TENANT_ID,
@@ -816,7 +976,7 @@ export default function POS() {
         payments: [],
         confirmedAt: new Date().toISOString(),
         ...qrOrderPayloadFields,
-        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
+        ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
       };
       const { order: storedOrder } = await createOrderRemote(payload);
       setCurrentOrderId(storedOrder.id);
@@ -837,14 +997,26 @@ export default function POS() {
   };
 
   // FLOW 2: Pay Now (Takeaway/Quick)
-  const handlePayNow = () => {
+  const handlePayNow = async () => {
     if (cart.length === 0) return;
     if (paymentAckRequired) {
       toast.error(t("pos.fixStock"));
       return;
     }
+    if (shouldSyncCartToOpenBill(currentOrderId, currentOpenOrder, cart.length)) {
+      setSubmitting(true);
+      try {
+        await syncCartToOpenBill(currentOrderId!, updateOrderRemote, buildOpenBillCartUpdate());
+        await fetchOrderRemote(currentOrderId!);
+      } catch (e) {
+        toastApiError(e);
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
     if (currentOrderId && isUnpaidOpenBill(currentOpenOrder)) {
-      checkoutAttemptIdRef.current = openBillCheckoutIdempotencyKey(currentOrderId);
+      beginOrderPaymentAttempt(currentOrderId);
       setShowPayment(true);
       return;
     }
@@ -861,6 +1033,17 @@ export default function POS() {
     if (amountDue <= 0) {
       toast.error(t("shared.nothingToPay"));
       return;
+    }
+
+    if (selectedMember && currentOrderId) {
+      const attachedMemberId = currentOpenOrder?.memberId ?? null;
+      if (attachedMemberId !== Number(selectedMember.id)) {
+        await attachMemberToOpenOrder(selectedMember);
+      }
+    } else if (!selectedMember && !memberIdForPayload) {
+      toast.message("No member attached — loyalty points will not be earned.", {
+        description: "Select a member before checkout to earn program points.",
+      });
     }
 
     let draftLines: PaymentDraftLine[];
@@ -955,7 +1138,15 @@ export default function POS() {
 
       if (recoveryOrderId) {
         try {
-          storedOrder = await fetchOrderRemote(recoveryOrderId);
+          if (shouldSyncCartToOpenBill(recoveryOrderId, currentOpenOrder, cart.length)) {
+            storedOrder = await syncCartToOpenBill(
+              recoveryOrderId,
+              updateOrderRemote,
+              buildOpenBillCartUpdate(),
+            );
+          } else {
+            storedOrder = await fetchOrderRemote(recoveryOrderId);
+          }
         } catch {
           toast.error(
             openBillRecoveryCode
@@ -982,8 +1173,10 @@ export default function POS() {
           payments: [],
           confirmedAt: new Date().toISOString(),
           ...qrOrderPayloadFields,
-          idempotencyKey,
-          ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
+          idempotencyKey: recoveryOrderId
+            ? openBillCheckoutIdempotencyKey(recoveryOrderId)
+            : idempotencyKey,
+          ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
         };
         const createResult = await createOrderRemote(payload);
         storedOrder = createResult.order;
@@ -993,12 +1186,13 @@ export default function POS() {
         }
       }
 
+      storedOrder = await fetchOrderRemote(String(storedOrder.id));
+
       const orderBalanceDue = Math.max(
         0,
         storedOrder.total - storedOrder.payments.reduce((sum, payment) => sum + payment.amount, 0),
       );
-      const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(String(storedOrder.id));
-      checkoutAttemptIdRef.current = paymentIdempotencyKey;
+      const paymentIdempotencyKey = beginOrderPaymentAttempt(String(storedOrder.id));
       const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
 
       const result = await commitMultiPayment({
@@ -1026,14 +1220,15 @@ export default function POS() {
 
       if (result.outcome === "completed") {
         await settleGiftCardAfterDirectPayment(storedOrder.id, giftCardSettlementIds);
-        if (selectedCustomer && appliedPoints > 0) {
+        if (loyaltyAccountId && appliedPoints > 0) {
           await enqueueRedemption({
-            customerId: selectedCustomer.id,
+            customerId: loyaltyAccountId,
             pointsUsed: appliedPoints,
             amountValue: Math.round(appliedPoints / 10),
-            replayFingerprint: `pos-${storedOrder.id}-${selectedCustomer.id}-${appliedPoints}`,
+            replayFingerprint: `pos-${storedOrder.id}-${loyaltyAccountId}-${appliedPoints}`,
           });
         }
+        await refreshSelectedMemberPoints();
         paymentDraft.clearDraft();
         clearCheckoutRecoveryState();
         checkoutAttemptIdRef.current = null;
@@ -1121,8 +1316,7 @@ export default function POS() {
       }
 
       const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
-      const paymentIdempotencyKey = openBillCheckoutIdempotencyKey(currentOrderId);
-      checkoutAttemptIdRef.current = paymentIdempotencyKey;
+      const paymentIdempotencyKey = beginOrderPaymentAttempt(currentOrderId);
       await addOrderPaymentsRemote(currentOrderId, manualBatch, {
         idempotencyKey: paymentIdempotencyKey,
         ...paymentExtras,
@@ -1175,12 +1369,12 @@ export default function POS() {
       }
 
       await settleGiftCardAfterDirectPayment(currentOrderId, giftCardSettlementIds);
-      if (selectedCustomer && appliedPoints > 0) {
+      if (loyaltyAccountId && appliedPoints > 0) {
         await enqueueRedemption({
-          customerId: selectedCustomer.id,
+          customerId: loyaltyAccountId,
           pointsUsed: appliedPoints,
           amountValue: Math.round(appliedPoints / 10),
-          replayFingerprint: `pos-${currentOrderId}-${selectedCustomer.id}-${appliedPoints}`,
+          replayFingerprint: `pos-${currentOrderId}-${loyaltyAccountId}-${appliedPoints}`,
         });
       }
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
@@ -1215,12 +1409,10 @@ export default function POS() {
     setCustomerName("");
     setCustomerPhone("");
     setSelectedTable("");
-    setManualPromo(null);
     setAppliedPoints(0);
     setAppliedGiftCardState(null);
     setRedeemPointsInput("");
-    setGiftCardCodeInput("");
-    setGiftCardAmountInput("");
+    setShowDiscountModal(false);
   };
 
   const redeemGiftCardForOrder = async (orderId: string): Promise<number[]> => {
@@ -1261,7 +1453,7 @@ export default function POS() {
   };
 
   const applyPointsRedemption = () => {
-    if (!selectedCustomer) {
+    if (!loyaltyAccountId) {
       toast.error(t("shared.selectMemberCrm"));
       return;
     }
@@ -1270,63 +1462,12 @@ export default function POS() {
     setAppliedPoints(capped);
   };
 
-  const applyGiftCardRedemption = async () => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error(t("shared.selectOutletGiftCard"));
-      return;
-    }
-    const code = giftCardCodeInput.trim();
-    if (!code) {
-      toast.error(t("shared.enterGiftCardCode"));
-      return;
-    }
-    setGiftCardApplyLoading(true);
-    try {
-      const issuance = await checkGiftCard(activeOutletId, code);
-      const validationError = giftCardCheckErrorMessage(issuance);
-      if (validationError) {
-        toast.error(validationError);
-        setAppliedGiftCardState(null);
-        return;
-      }
-      const availableBalance = Number(issuance.balanceAmount ?? 0);
-      const requestedAmount = giftCardAmountInput.trim() === "" ? 0 : Number(giftCardAmountInput);
-      if (giftCardAmountInput.trim() !== "" && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
-        toast.error(t("shared.invalidGiftCardAmount"));
-        return;
-      }
-      const appliedAmount = resolveGiftCardApplyAmount(requestedAmount, availableBalance, baseTotal);
-      if (appliedAmount <= 0) {
-        toast.error(t("shared.insufficientGiftCard"));
-        return;
-      }
-      setAppliedGiftCardState({
-        code: String(issuance.code ?? code).toUpperCase(),
-        availableBalance,
-        appliedAmount,
-        instrumentType: typeof issuance.instrumentType === "string" ? issuance.instrumentType : undefined,
-        status: typeof issuance.status === "string" ? issuance.status : undefined,
-        expiresAt: typeof issuance.expiresAt === "string" ? issuance.expiresAt : null,
-      });
-      toast.success(t("shared.giftCardApplied"));
-    } catch (error) {
-      setAppliedGiftCardState(null);
-      const message = error instanceof ApiHttpError ? mapGiftCardApiError(error.message) : mapGiftCardApiError(
-        error instanceof Error ? error.message : "Gift card validation failed.",
-      );
-      toast.error(message);
-    } finally {
-      setGiftCardApplyLoading(false);
-    }
-  };
-
-  const clearAppliedGiftCard = () => {
-    setAppliedGiftCardState(null);
-    setGiftCardAmountInput("");
-  };
-
   // Split bill helpers
   const initSplitBill = () => {
+    if (shouldUpdateOpenBill(currentOrderId, currentOpenOrder)) {
+      toast.error(t("pos.splitBlockedOpenBill"));
+      return;
+    }
     setShowPayment(false);
     setShowSplit(true);
     setSplitMethod("equal");
@@ -1446,7 +1587,7 @@ export default function POS() {
         idempotencyKey: checkoutAttemptIdRef.current ?? beginCheckoutAttempt("split-bill"),
         splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
         ...qrOrderPayloadFields,
-        ...buildCartPayload(cart, subtotal, tax, total, discount, customerName, customerPhone, selectedTable, memberIdForPayload),
+        ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
       });
       setCurrentOrderId(created.id);
       if (qrOrderContext) {
@@ -1525,15 +1666,15 @@ export default function POS() {
       setPendingGatewayPayments([]);
       try {
         await addOrderPaymentsRemote(currentOrderId, paymentsToCommit, {
-          idempotencyKey: openBillCheckoutIdempotencyKey(currentOrderId),
+          idempotencyKey: beginOrderPaymentAttempt(currentOrderId),
           ...paymentExtras,
         });
-        if (selectedCustomer && appliedPoints > 0) {
+        if (loyaltyAccountId && appliedPoints > 0) {
           await enqueueRedemption({
-            customerId: selectedCustomer.id,
+            customerId: loyaltyAccountId,
             pointsUsed: appliedPoints,
             amountValue: Math.round(appliedPoints / 10),
-            replayFingerprint: `pos-${currentOrderId}-${selectedCustomer.id}-${appliedPoints}`,
+            replayFingerprint: `pos-${currentOrderId}-${loyaltyAccountId}-${appliedPoints}`,
           });
         }
         clearCheckoutRecoveryState();
@@ -1567,7 +1708,7 @@ export default function POS() {
         }
       }
     })();
-  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, selectedCustomer, appliedPoints, enqueueRedemption, fetchOrderRemote, activeOutletId, paymentResetAsync]);
+  }, [showPayment, paymentTransaction, currentOrderId, pendingGatewayPayments, addOrderPaymentsRemote, loyaltyAccountId, appliedPoints, enqueueRedemption, fetchOrderRemote, activeOutletId, paymentResetAsync]);
 
   const selectedApiMethod = selectedCheckoutMethod
     ? apiMethodFromCheckoutMethod(selectedCheckoutMethod)
@@ -1762,7 +1903,13 @@ export default function POS() {
                 <motion.button key={item.id} whileTap={{ scale: 0.97 }} onClick={() => addToCart(item)}
                   className={`relative bg-card rounded-2xl p-4 border transition-all text-left hover:pos-shadow-md ${inCart ? "border-primary/30 ring-1 ring-primary/10" : "border-border/50"}`}
                 >
-                  <span className="text-3xl block mb-2">{item.emoji}</span>
+                  <MenuItemImage
+                    imageUrl={item.imageUrl}
+                    imageVersion={item.imageVersion}
+                    emoji={item.emoji}
+                    name={item.name}
+                    size="grid"
+                  />
                   <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
                   <p className="text-sm font-bold text-primary mt-1">{formatRp(item.price)}</p>
                   {inCart && (
@@ -1808,6 +1955,36 @@ export default function POS() {
                   className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
               </div>
             </div>
+            {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
+              <button
+                type="button"
+                onClick={() => setShowReservationPicker(true)}
+                disabled={submitting}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="pos-select-reservation-btn"
+              >
+                {t("pos.selectReservation")}
+              </button>
+            ) : null}
+            {activeReservationId && activeReservationLabel ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border/60">
+                <CalendarDays className="h-3.5 w-3.5 text-primary shrink-0" />
+                <p className="text-xs text-foreground truncate flex-1">
+                  {t("pos.reservationActive")} · {activeReservationLabel}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveReservationId(null);
+                    setActiveReservationLabel(null);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-destructive shrink-0"
+                  aria-label={t("shared.cancel")}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
             {/* Member selector */}
             {selectedMember ? (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
@@ -1837,55 +2014,53 @@ export default function POS() {
                 {t("pos.selectMember")}
               </button>
             )}
-            <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
-              <div className="flex items-center gap-1.5">
-                <Gift className="h-3.5 w-3.5 text-primary" />
-                <p className="text-[11px] font-semibold text-foreground">{t("pos.giftCard")}</p>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={giftCardCodeInput}
-                  onChange={(e) => setGiftCardCodeInput(e.target.value)}
-                  placeholder={t("pos.giftCardCode")}
-                  className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
-                />
-                <input
-                  value={giftCardAmountInput}
-                  onChange={(e) => setGiftCardAmountInput(e.target.value)}
-                  placeholder={t("pos.giftCardAmount")}
-                  className="w-28 rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => void applyGiftCardRedemption()}
-                  disabled={giftCardApplyLoading || typeof activeOutletId !== "number"}
-                  className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium disabled:opacity-50"
-                >
-                  {giftCardApplyLoading ? "..." : t("pos.apply")}
-                </button>
-              </div>
-              {appliedGiftCardState ? (
-                <div className="rounded-lg bg-primary/5 px-2 py-1.5 text-[11px] space-y-0.5">
-                  <p className="text-muted-foreground">
-                    {t("shared.giftCardCodeLabel")} <span className="font-semibold text-foreground">{appliedGiftCardState.code}</span>
-                  </p>
-                  <p className="text-muted-foreground">
-                    {t("shared.giftCardAvailableLabel")} <span className="font-semibold text-foreground">{formatRp(appliedGiftCardState.availableBalance)}</span>
-                    {" • "}{t("shared.giftCardAppliedLabel")} <span className="font-semibold text-primary">{formatRp(appliedGiftCardState.appliedAmount)}</span>
-                    {" • "}{t("shared.giftCardRemainingLabel")} <span className="font-semibold text-foreground">{formatRp(remainingAppliedGiftCardBalance)}</span>
-                  </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (cart.length === 0) {
+                  toast.error(t("pos.discountModal.emptyCart"));
+                  return;
+                }
+                setShowDiscountModal(true);
+              }}
+              disabled={cart.length === 0 || currentOpenOrder?.paymentStatus === "paid"}
+              className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-sm font-semibold text-primary hover:bg-primary/15 transition-colors disabled:opacity-50"
+              data-testid="pos-discount-modal-open"
+            >
+              <Ticket className="h-4 w-4" />
+              {t("pos.discountModal.openButton")}
+            </button>
+            {(currentOpenOrder?.promotion || currentOpenOrder?.voucher || appliedGiftCardState) && (
+              <div className="flex flex-wrap gap-1.5">
+                {currentOpenOrder?.promotion ? (
                   <button
                     type="button"
-                    onClick={clearAppliedGiftCard}
-                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowDiscountModal(true)}
+                    className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-200"
                   >
-                    {t("pos.removeGiftCard")}
+                    {t("pos.discountModal.chipPromo", { amount: formatRp(promotionDiscount) })}
                   </button>
-                </div>
-              ) : (
-                <p className="text-[10px] text-muted-foreground">{t("pos.giftCardHint")}</p>
-              )}
-            </div>
+                ) : null}
+                {currentOpenOrder?.voucher ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscountModal(true)}
+                    className="rounded-full bg-primary/10 border border-primary/30 px-2.5 py-1 text-[10px] font-medium text-primary"
+                  >
+                    {t("pos.discountModal.chipVoucher", { amount: formatRp(voucherDiscount) })}
+                  </button>
+                ) : null}
+                {appliedGiftCardState ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscountModal(true)}
+                    className="rounded-full bg-muted border border-border px-2.5 py-1 text-[10px] font-medium text-foreground"
+                  >
+                    {t("pos.discountModal.chipGiftCard", { amount: formatRp(appliedGiftCardState.appliedAmount) })}
+                  </button>
+                ) : null}
+              </div>
+            )}
             {selectedMember && (
               <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
                 <p className="text-[11px] text-muted-foreground">
@@ -1902,73 +2077,17 @@ export default function POS() {
                     {t("pos.apply")}
                   </button>
                 </div>
-                <div className="space-y-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5 text-primary" />
-                    <p className="text-[11px] font-semibold text-foreground">{t("pos.memberVoucher")}</p>
-                  </div>
-                  {!currentOrderId ? (
-                    <p className="text-[10px] text-muted-foreground">
-                      {t("pos.voucherHint")}
-                    </p>
-                  ) : currentOpenOrder?.voucher ? (
-                    <div className="space-y-2">
-                      <div className="rounded-lg bg-background px-2 py-1.5 text-[11px]">
-                        <p className="font-semibold text-foreground truncate">
-                          {currentOpenOrder.voucher.voucherName ?? currentOpenOrder.voucher.voucherCode}
-                        </p>
-                        <p className="text-muted-foreground">{currentOpenOrder.voucher.voucherCode}</p>
-                        <p className="text-emerald-600 font-medium">
-                          -{formatRp(voucherDiscount)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void removeAppliedVoucher()}
-                        disabled={voucherLoading || currentOpenOrder.paymentStatus === "paid"}
-                        className="w-full rounded-lg border border-border px-2 py-1.5 text-xs font-medium disabled:opacity-50"
-                      >
-                        {t("pos.removeVoucher")}
-                      </button>
-                    </div>
-                  ) : memberVouchers.length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground">{t("pos.noVouchers")}</p>
-                  ) : (
-                    <>
-                      <select
-                        value={selectedMemberVoucherId}
-                        onChange={(e) => setSelectedMemberVoucherId(e.target.value)}
-                        className="w-full rounded-lg border border-border/60 bg-background px-2 py-1.5 text-xs"
-                      >
-                        <option value="">{t("pos.selectVoucher")}</option>
-                        {memberVouchers.map((row) => (
-                          <option key={row.id} value={row.id}>
-                            {row.voucherCode} — {row.voucher?.name ?? t("pos.voucher")} ({formatVoucherDiscountPreview(row)})
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void applySelectedVoucher()}
-                        disabled={!selectedMemberVoucherId || voucherLoading || currentOpenOrder?.paymentStatus === "paid"}
-                        className="w-full rounded-lg bg-primary text-primary-foreground px-2 py-1.5 text-xs font-medium disabled:opacity-50"
-                      >
-                        {t("pos.applyVoucher")}
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
             )}
             {orderType === "Dine-in" && (
               <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
-                <option value="">Select table...</option>
+                <option value="">{t("pos.selectTable")}</option>
                 {selectableTables.map((table) => (
                   <option key={table.id} value={table.id}>
-                    {t.name} ({t.seats} seats)
-                    {t.status === "reserved" ? " • Reserved" : ""}
-                    {t.signals?.hasReservation && t.status !== "reserved" ? " • Reservation" : ""}
+                    {table.name} {t("pos.seats", { n: table.seats })}
+                    {table.status === "reserved" ? t("pos.tableReserved") : ""}
+                    {table.signals?.hasReservation && table.status !== "reserved" ? t("pos.tableReservation") : ""}
                     {((table.signals?.openBillCount ?? 0) > 0 || table.status === "occupied") ? t("pos.tableOpenBill") : ""}
                   </option>
                 ))}
@@ -2030,39 +2149,6 @@ export default function POS() {
         </div>
 
         <div className="p-4 border-t space-y-3">
-          {/* Promo badge */}
-          {appliedPromo && cart.length > 0 && (
-            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <Tag className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-emerald-700 truncate">{appliedPromo.promoName}</p>
-                <p className="text-[10px] text-emerald-600">-{formatRp(appliedPromo.discountAmount)}</p>
-              </div>
-              {applicablePromos.length > 1 && (
-                <button onClick={() => setShowPromoList(!showPromoList)}
-                  className="text-[10px] font-medium text-emerald-600 hover:text-emerald-700 underline whitespace-nowrap">
-                  {t("pos.promosCount", { n: applicablePromos.length })}
-                </button>
-              )}
-              {manualPromo && (
-                <button onClick={() => setManualPromo(null)} className="p-1 rounded hover:bg-emerald-500/10">
-                  <X className="h-3 w-3 text-emerald-600" />
-                </button>
-              )}
-            </div>
-          )}
-          {/* Promo selector */}
-          {showPromoList && applicablePromos.length > 1 && (
-            <div className="space-y-1 max-h-24 overflow-y-auto">
-              {applicablePromos.map((p) => (
-                <button key={p.promoId} onClick={() => { setManualPromo(p); setShowPromoList(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${appliedPromo?.promoId === p.promoId ? "bg-primary/10 text-primary font-medium" : "bg-muted/50 text-muted-foreground hover:text-foreground"}`}>
-                  <span className="truncate">{p.promoName}</span>
-                  <span className="font-semibold shrink-0 ml-2">-{formatRp(p.discountAmount)}</span>
-                </button>
-              ))}
-            </div>
-          )}
           {paymentStockError ? (
             <PosPaymentStockErrorAlert
               error={paymentStockError}
@@ -2084,14 +2170,29 @@ export default function POS() {
             />
           ) : null}
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-muted-foreground"><span>{t("shared.subtotal")}</span><span>{formatRp(subtotal)}</span></div>
-            {discount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium"><span>{t("shared.discount")}</span><span>-{formatRp(discount)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>{t("shared.subtotal")}</span><span>{formatRp(displaySubtotal)}</span></div>
+            {currentOpenOrder?.voucher && displayDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>{t("pos.voucherDiscount")}</span>
+                <span>-{formatRp(displayDiscount)}</span>
+              </div>
             )}
-            {voucherDiscount > 0 && (
+            {currentOpenOrder?.promotion && !currentOpenOrder?.voucher && displayDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>{t("pos.promotionDiscount")}</span>
+                <span>-{formatRp(displayDiscount)}</span>
+              </div>
+            )}
+            {!currentOpenOrder?.voucher && !currentOpenOrder?.promotion && voucherDiscount > 0 && (
               <div className="flex justify-between text-emerald-600 font-medium">
                 <span>{t("pos.voucherDiscount")}</span>
                 <span>-{formatRp(voucherDiscount)}</span>
+              </div>
+            )}
+            {!currentOpenOrder?.voucher && !currentOpenOrder?.promotion && promotionDiscount > 0 && voucherDiscount <= 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>{t("pos.promotionDiscount")}</span>
+                <span>-{formatRp(promotionDiscount)}</span>
               </div>
             )}
             {appliedPoints > 0 && (
@@ -2103,7 +2204,7 @@ export default function POS() {
                 <span>-{formatRp(appliedGiftCard)}</span>
               </div>
             )}
-            <div className="flex justify-between text-muted-foreground"><span>{t("pos.taxPercent")}</span><span>{formatRp(tax)}</span></div>
+            <div className="flex justify-between text-muted-foreground"><span>{t("pos.taxPercent")}</span><span>{formatRp(displayTax)}</span></div>
             <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50">
               <span>{t("pos.estimatedTotal")}</span>
               <span>{formatRp(total)}</span>
@@ -2120,13 +2221,13 @@ export default function POS() {
                 >
                   <ChefHat className="h-4 w-4" /> {t("pos.confirmOrder")}
                 </button>
-                <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
+                <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <CreditCard className="h-4 w-4" /> {t("pos.payNow")}
                 </button>
               </>
             ) : (
-              <button onClick={handlePayNow} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
+              <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
                 {t("pos.payAmount", { amount: formatRp(total) })}
               </button>
@@ -2718,6 +2819,35 @@ export default function POS() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
+        <>
+          <PosDiscountModal
+            open={showDiscountModal}
+            onOpenChange={setShowDiscountModal}
+            outletId={activeOutletId}
+            cartLength={cart.length}
+            baseTotal={baseTotal}
+            currentOrder={currentOpenOrder}
+            promotionCandidates={promotionEvaluateResult?.candidates ?? []}
+            appliedGiftCard={appliedGiftCardState}
+            paymentLocked={currentOpenOrder?.paymentStatus === "paid"}
+            onEnsureDraftOrder={ensureDraftOrderForDiscount}
+            onOrderUpdated={handleDiscountOrderUpdated}
+            onGiftCardApplied={setAppliedGiftCardState}
+            onGiftCardCleared={clearAppliedGiftCard}
+          />
+          <PosReservationPickerDialog
+          open={showReservationPicker}
+          outletId={activeOutletId}
+          currentOrderId={currentOrderId}
+          disabled={submitting}
+          applyDeps={reservationApplyDeps}
+          onClose={() => setShowReservationPicker(false)}
+          onLoaded={(row) => setActiveReservationLabel(row.customerName)}
+        />
+        </>
+      ) : null}
       </div>
     </div>
   );

@@ -11,7 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PurchaseItemTable, PurchaseLineItem } from "@/components/PurchaseItemTable";
 import { usePurchaseStore, PRStatus } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
-import { useOutletStore } from "@/stores/outletStore";
+import { useAuthStore } from "@/stores/authStore";
+import { useOutletInventory } from "@/hooks/useOutletInventory";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
+import { usePurchasePermissions } from "@/hooks/usePurchasePermissions";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, FileText, Send, ArrowRight, Search, Check, X, Ban, Eye } from "lucide-react";
@@ -43,11 +46,16 @@ export default function PurchaseRequests() {
     fetchPurchaseRequests,
   } = usePurchaseStore();
   const { suppliers, fetchSuppliers } = useSupplierStore();
-  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const user = useAuthStore((s) => s.user);
+  const { activeOutletId, ingredients, isLoading: isInventoryLoading, resolveItemName } = useOutletInventory();
+  const { canApprove } = usePurchasePermissions();
+
+  const activeOutletName =
+    user?.assignedOutlets?.find((o) => o.id === activeOutletId)?.name ?? "";
 
   useEffect(() => {
     void Promise.all([fetchPurchaseRequests(), fetchSuppliers()]);
-  }, [fetchPurchaseRequests, fetchSuppliers]);
+  }, [fetchPurchaseRequests, fetchSuppliers, activeOutletId]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
@@ -283,11 +291,17 @@ export default function PurchaseRequests() {
       </Card>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editId ? t("purchases.pr.edit") : t("purchases.pr.new")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {activeOutletName && (
+              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">{t("purchases.shared.outlet")}: </span>
+                <span className="font-medium">{activeOutletName}</span>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("purchases.pr.requestedByLabel")}</label>
               <Input value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} placeholder={t("purchases.pr.namePlaceholder")} />
@@ -298,6 +312,12 @@ export default function PurchaseRequests() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("purchases.pr.items")}</label>
+              {isInventoryLoading && (
+                <p className="text-xs text-muted-foreground">{t("purchases.pr.loadingInventory")}</p>
+              )}
+              {!isInventoryLoading && ingredients.length === 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">{t("purchases.pr.noInventoryItems")}</p>
+              )}
               <PurchaseItemTable items={items} onChange={setItems} showNotes showPrice />
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -312,7 +332,7 @@ export default function PurchaseRequests() {
       </Dialog>
 
       <Dialog open={!!viewed} onOpenChange={(o) => { if (!o) setViewId(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{viewed?.prNumber}</DialogTitle>
           </DialogHeader>
@@ -325,7 +345,7 @@ export default function PurchaseRequests() {
               <div className="border rounded-lg divide-y">
                 {viewed.items.map((item, idx) => (
                   <div key={item.id ?? idx} className="px-3 py-2 flex justify-between gap-2">
-                    <span>Item #{item.inventoryItemId} · {item.qty} {item.unit}</span>
+                    <span>{resolveItemName(item.inventoryItemId)} · {item.qty} {item.unit}</span>
                     {item.estimatedCost != null && <span>Rp {item.estimatedCost.toLocaleString()}</span>}
                   </div>
                 ))}
@@ -338,8 +358,12 @@ export default function PurchaseRequests() {
               )}
               {viewed.status === "submitted" && (
                 <div className="flex gap-2 justify-end pt-2">
-                  <Button size="sm" variant="outline" onClick={() => void handleWorkflow("reject", viewed.id)}><X className="h-3.5 w-3.5 mr-1" /> {t("purchases.pr.reject")}</Button>
-                  <Button size="sm" onClick={() => void handleWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> {t("purchases.pr.approve")}</Button>
+                  {canApprove && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => void handleWorkflow("reject", viewed.id)}><X className="h-3.5 w-3.5 mr-1" /> {t("purchases.pr.reject")}</Button>
+                      <Button size="sm" onClick={() => void handleWorkflow("approve", viewed.id)}><Check className="h-3.5 w-3.5 mr-1" /> {t("purchases.pr.approve")}</Button>
+                    </>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => void handleWorkflow("cancel", viewed.id)}>{t("purchases.pr.cancel")}</Button>
                 </div>
               )}
@@ -356,7 +380,7 @@ export default function PurchaseRequests() {
       </Dialog>
 
       <Dialog open={!!convertId} onOpenChange={(o) => { if (!o) setConvertId(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{t("purchases.pr.convertDialogTitle")}</DialogTitle>
           </DialogHeader>

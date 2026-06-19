@@ -10,6 +10,9 @@ export type ReservationApi = {
   reservationCode: string;
   customerName: string;
   customerPhone: string | null;
+  memberId: number | null;
+  memberNo?: string | null;
+  memberName?: string | null;
   partySize: number;
   reservationAt: string;
   confirmedAt: string | null;
@@ -39,6 +42,7 @@ export type CreateReservationPayload = {
   outletId: number;
   customerName: string;
   customerPhone?: string | null;
+  memberId?: number | null;
   partySize: number;
   reservationAt: string;
 };
@@ -112,6 +116,51 @@ export async function startReservationService(id: number): Promise<StartServiceE
     `/reservations/${encodeURIComponent(String(id))}/start-service`,
     { method: "POST" },
   );
+}
+
+export type ReservationPosLoadPayload = {
+  reservationId: number;
+  reservationCode: string;
+  outletId: number;
+  linkedOrderId: string;
+  linkedOrderCode?: string | null;
+  tableId: number | null;
+  tableName?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  memberId?: number | null;
+  memberNo?: string | null;
+  memberName?: string | null;
+  loyaltyAccountId?: string | null;
+};
+
+export type ReservationPosOpenResponse = {
+  posSession: { sessionType: "reservation"; reservationCode: string };
+  loadPayload: ReservationPosLoadPayload;
+};
+
+export async function openReservationInPos(id: number): Promise<ReservationPosOpenResponse> {
+  return request<ReservationPosOpenResponse>(
+    `/reservations/${encodeURIComponent(String(id))}/open-in-pos`,
+    { method: "POST" },
+  );
+}
+
+export type ReservationPosQueueApi = {
+  readyToStart: ReservationApi[];
+  inService: ReservationApi[];
+};
+
+export async function getReservationPosQueue(outletId: number): Promise<ReservationPosQueueApi> {
+  return request<ReservationPosQueueApi>(`/reservations/pos-queue?outletId=${outletId}`);
+}
+
+export async function updateReservationMember(id: number, memberId: number | null): Promise<ReservationApi> {
+  const res = await request<MessageEnvelope<ReservationApi>>(
+    `/reservations/${encodeURIComponent(String(id))}`,
+    { method: "PATCH", body: JSON.stringify({ memberId }) },
+  );
+  return res.data;
 }
 
 export async function listAllocatedTables(reservationId: number): Promise<ReservationTableAllocationApi[]> {

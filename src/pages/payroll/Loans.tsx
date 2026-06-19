@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -316,7 +317,7 @@ export default function Loans() {
       </Tabs>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.newEmployeeLoan")}</DialogTitle>
           </DialogHeader>

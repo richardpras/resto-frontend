@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import ReportsHub, { HUB_CARDS } from "@/pages/ReportsHub";
+import ReportsHub, { HUB_CARD_DEFS } from "@/pages/ReportsHub";
 import type { AuthUser } from "@/stores/authStore";
 
 function makeUser(permissions: string[]): AuthUser {
@@ -78,17 +78,17 @@ describe("ReportsHub visibility", () => {
     expect(screen.getByText("Gift Card Liability")).toBeTruthy();
   });
 
-  it("hides Payment Provider Health without settings.manage", () => {
+  it("hides Payment Health without settings.manage", () => {
     renderHub(["reports.view", "pos.use", "members.manage"]);
 
-    expect(screen.queryByText("Payment Provider Health")).toBeNull();
+    expect(screen.queryByText("Payment Health")).toBeNull();
   });
 
-  it("shows Payment Provider Health with settings.manage", () => {
+  it("shows Payment Health with settings.manage", () => {
     renderHub(["settings.manage"]);
 
-    expect(screen.getByText("Payment Provider Health")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Payment Provider Health/i })).toBeTruthy();
+    expect(screen.getByText("Payment Health")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Payment Health/i })).toBeTruthy();
   });
 
   it("hides Loyalty Analytics without members.manage", () => {
@@ -104,7 +104,7 @@ describe("ReportsHub visibility", () => {
   });
 
   it("defines hub cards for all required report destinations", () => {
-    const ids = HUB_CARDS.map((c) => c.id);
+    const ids = HUB_CARD_DEFS.map((c) => c.id);
     expect(ids).toContain("executive-sales-report");
     expect(ids).toContain("financial-statements");
     expect(ids).toContain("accounting-reconciliation");

@@ -19,6 +19,10 @@ export type MemberApiRow = {
   isActive?: boolean;
   status: "active" | "inactive";
   points: number;
+  pointsBalance?: number;
+  loyaltyAccountId?: string | null;
+  crmPointsBalance?: number;
+  giftCardBalance?: number;
   createdAt: string;
 };
 
@@ -125,10 +129,30 @@ export type MemberNotificationRow = {
   createdAt?: string | null;
 };
 
+export type CrmAccountSummary = {
+  id: number;
+  pointsBalance: number;
+  giftCardBalance: number;
+  tierName?: string | null;
+  tierCode?: string | null;
+  code: string;
+};
+
+export type CrmPointsLedgerRow = {
+  id: string;
+  customerId: string;
+  deltaPoints: number;
+  reason: string;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  createdAt?: string | null;
+};
+
 export type MemberProfileApi = {
   member: MemberApiRow;
   stats: MemberProfileStats;
   currentPoints: number;
+  pointsBalance?: number;
   loyaltyHistory: LoyaltyHistoryRow[];
   availableRewards: AvailableRewardRow[];
   rewardRedemptions: RewardRedemptionRow[];
@@ -143,6 +167,8 @@ export type MemberProfileApi = {
   availableVouchers?: MemberVoucherProfileRow[];
   voucherHistory?: MemberVoucherProfileRow[];
   transactions: MemberTransactionRow[];
+  crmAccount?: CrmAccountSummary | null;
+  crmPointsLedger?: CrmPointsLedgerRow[];
 };
 
 export async function listMembers(outletId?: number): Promise<MemberApiRow[]> {
@@ -164,6 +190,15 @@ export async function searchMembers(outletId: number, q: string, limit = 20): Pr
 export async function fetchMemberProfile(memberId: string | number, outletId: number): Promise<MemberProfileApi> {
   const res = await apiRequest<ItemEnvelope<MemberProfileApi>>(`/members/${memberId}/profile?outletId=${outletId}`);
   return res.data;
+}
+
+export async function findMemberByLoyaltyAccountId(loyaltyAccountId: string | number): Promise<string | null> {
+  try {
+    const res = await apiRequest<ItemEnvelope<{ memberId: string }>>(`/members/by-loyalty-account/${loyaltyAccountId}`);
+    return res.data.memberId;
+  } catch {
+    return null;
+  }
 }
 
 export type MemberVoucherListRow = {

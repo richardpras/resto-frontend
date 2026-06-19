@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchGuestSessionOrders } from "@/lib/api-integration/qrOrderPublicEndpoints";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { appendGuestLangToHref } from "@/i18n/localeResolver";
 
 type OrderSummary = {
   orderCode: string;
@@ -14,6 +15,7 @@ type Props = {
 
 export function QrOrderMyOrdersSection({ guestSessionToken }: Props) {
   const { t, i18n } = useOpsTranslation();
+  const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const apiLang = i18n.language.startsWith("id") ? "id" : "en";
 
@@ -60,7 +62,7 @@ export function QrOrderMyOrdersSection({ guestSessionToken }: Props) {
         {orders.map((order) => (
           <li key={order.orderCode} className="flex items-center justify-between gap-2 text-sm">
             <Link
-              to={`/qr/order/${encodeURIComponent(order.orderCode)}`}
+              to={appendGuestLangToHref(`/qr/order/${encodeURIComponent(order.orderCode)}`, searchParams)}
               className="font-medium text-primary hover:underline truncate"
             >
               {order.orderCode}

@@ -79,7 +79,7 @@ function NavParent({
   }, [branchActive]);
 
   if (collapsed) {
-    const firstChild = item.children?.find((c) => c.href);
+    const firstChild = item.children?.find((c) => c.href && c.kind !== "separator");
     return (
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={branchActive} tooltip={item.title}>
@@ -120,10 +120,22 @@ function NavParent({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarMenuSub>
-            {item.children?.map((child) => {
+            {item.children?.map((child, index) => {
+              if (child.kind === "separator") {
+                return (
+                  <SidebarMenuSubItem
+                    key={child.titleKey ?? `separator-${index}`}
+                    className="pointer-events-none"
+                  >
+                    <span className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                      {child.title}
+                    </span>
+                  </SidebarMenuSubItem>
+                );
+              }
               const childActive = isNavItemActive(location, child);
               return (
-                <SidebarMenuSubItem key={child.href ?? child.title}>
+                <SidebarMenuSubItem key={child.href ?? child.titleKey ?? child.title}>
                   <SidebarMenuSubButton asChild isActive={childActive} size="sm">
                     <Link to={child.href!}>{child.title}</Link>
                   </SidebarMenuSubButton>

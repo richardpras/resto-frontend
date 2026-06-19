@@ -8,7 +8,17 @@ import enErp from "./locales/en/erp.json";
 import idErp from "./locales/id/erp.json";
 import { normalizeAppLocale, resolveInitialLocale, type AppLocale } from "./localeResolver";
 
-export { normalizeAppLocale, resolveInitialLocale, SUPPORTED_APP_LOCALES, type AppLocale } from "./localeResolver";
+export {
+  normalizeAppLocale,
+  resolveInitialLocale,
+  resolveGuestLocale,
+  readGuestLocaleFromStorage,
+  writeGuestLocaleToStorage,
+  appendGuestLangToHref,
+  GUEST_LOCALE_STORAGE_KEY,
+  SUPPORTED_APP_LOCALES,
+  type AppLocale,
+} from "./localeResolver";
 
 export const I18N_NAMESPACE = "common";
 export const OPS_NAMESPACE = "ops";

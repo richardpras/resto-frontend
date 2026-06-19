@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import type { MemberProfileApi } from "@/lib/api-integration/membersEndpoints";
 import { useMemberStore } from "@/stores/memberStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
@@ -22,27 +24,17 @@ type Props = {
   outletId: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  asPage?: boolean;
 };
 
 function formatRp(value: number) {
   return `Rp ${value.toLocaleString("id-ID")}`;
 }
 
-function voucherStatusLabel(status: string): string {
-  switch (status) {
-    case "issued":
-      return "Issued";
-    case "claimed":
-      return "Claimed";
-    case "redeemed":
-      return "Redeemed";
-    case "expired":
-      return "Expired";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return status;
-  }
+function voucherStatusLabel(status: string, t: (key: string) => string): string {
+  const key = `members.profile.voucherStatus.${status}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
 }
 
 function formatVoucherDate(iso?: string | null): string | null {
@@ -52,7 +44,8 @@ function formatVoucherDate(iso?: string | null): string | null {
   return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: Props) {
+export function MemberProfileDialog({ memberId, outletId, open, onOpenChange, asPage = false }: Props) {
+  const { t } = useTranslation("ops");
   const fetchProfile = useMemberStore((s) => s.fetchProfile);
   const redeemPoints = useMemberStore((s) => s.redeemPoints);
   const redeemReward = useMemberStore((s) => s.redeemReward);
@@ -73,11 +66,11 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
       const data = await fetchProfile(memberId, outletId);
       setProfile(data);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load profile");
+      toast.error(e instanceof ApiHttpError ? e.message : t("members.profile.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [memberId, outletId, fetchProfile]);
+  }, [memberId, outletId, fetchProfile, t]);
 
   useEffect(() => {
     if (!open || !memberId || !outletId) return;
@@ -101,7 +94,7 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
 
   const handleRedeemReward = async () => {
     if (!memberId || !outletId || !selectedRewardId) {
-      return toast.error("Select a reward");
+      return toast.error(t("members.redeem.selectReward"));
     }
     setRedeeming(true);
     try {
@@ -110,14 +103,18 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
         notes: rewardNotes.trim() || undefined,
       });
       toast.success(
-        `Redeemed ${result.rewardName} for ${result.pointsSpent} pts. Balance: ${result.currentBalance}`,
+        t("members.redeem.rewardRedeemed", {
+          name: result.rewardName,
+          points: result.pointsSpent,
+          balance: result.currentBalance,
+        }),
       );
       setRedeemRewardOpen(false);
       setSelectedRewardId("");
       setRewardNotes("");
       await loadProfile();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Reward redemption failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("members.redeem.rewardFailed"));
     } finally {
       setRedeeming(false);
     }
@@ -127,7 +124,7 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
     if (!memberId || !outletId) return;
     const points = Number(redeemPointsValue);
     if (!Number.isFinite(points) || points < 1) {
-      return toast.error("Enter a valid points amount");
+      return toast.error(t("members.redeem.invalidPoints"));
     }
     setRedeeming(true);
     try {
@@ -135,39 +132,39 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
         points,
         description: redeemDescription.trim() || undefined,
       });
-      toast.success(`Redeemed ${result.redeemedPoints} points. Balance: ${result.currentBalance}`);
+      toast.success(
+        t("members.redeem.pointsRedeemed", {
+          points: result.redeemedPoints,
+          balance: result.currentBalance,
+        }),
+      );
       setRedeemOpen(false);
       setRedeemPointsValue("");
       setRedeemDescription("");
       await loadProfile();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Redemption failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("members.redeem.redemptionFailed"));
     } finally {
       setRedeeming(false);
     }
   };
 
-  return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg" data-testid="member-profile-dialog">
-          <DialogHeader>
-            <DialogTitle>Member profile</DialogTitle>
-          </DialogHeader>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          ) : profile ? (
-            <div className="space-y-4">
+  const profileBody = loading ? (
+    <p className="text-sm text-muted-foreground">{t("members.profile.loading")}</p>
+  ) : profile ? (
+    <div className="space-y-4">
               <div>
                 <p className="font-semibold text-foreground">{profile.member.fullName ?? profile.member.name}</p>
                 <p className="text-sm text-muted-foreground">{profile.member.phone}</p>
                 {profile.member.memberNo ? (
-                  <p className="text-xs text-muted-foreground mt-1">Member no: {profile.member.memberNo}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("members.profile.memberNo")} {profile.member.memberNo}
+                  </p>
                 ) : null}
               </div>
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 mb-2 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Current points</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.currentPoints")}</p>
                   <p className="text-2xl font-bold text-primary">{profile.currentPoints ?? 0}</p>
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
@@ -180,7 +177,7 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                     disabled={affordableRewards.length < 1}
                   >
                     <Gift className="h-4 w-4 mr-1" />
-                    Redeem reward
+                    {t("members.profile.redeemReward")}
                   </Button>
                   <Button
                     type="button"
@@ -191,23 +188,23 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                     onClick={() => setRedeemOpen(true)}
                     disabled={(profile.currentPoints ?? 0) < 1}
                   >
-                    Manual points
+                    {t("members.profile.manualPoints")}
                   </Button>
                 </div>
               </div>
               {profile.tier ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Membership tier</span>
+                  <span className="text-xs text-muted-foreground">{t("members.profile.membershipTier")}</span>
                   <span className="text-sm font-semibold border rounded-full px-3 py-1 bg-amber-50 text-amber-900 border-amber-200">
                     {profile.tier.name}
                   </span>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">No active membership tier.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noTier")}</p>
               )}
               {(profile.benefits ?? []).length > 0 ? (
                 <div className="rounded-xl border p-3 space-y-2">
-                  <p className="text-sm font-medium">Tier benefits</p>
+                  <p className="text-sm font-medium">{t("members.profile.tierBenefits")}</p>
                   <div className="flex flex-wrap gap-2">
                     {profile.benefits.map((benefit) => (
                       <span
@@ -222,24 +219,24 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               ) : null}
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">Visits</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.visits")}</p>
                   <p className="text-xl font-bold">{profile.stats.totalVisits}</p>
                 </div>
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">Spending</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.spending")}</p>
                   <p className="text-lg font-bold">{formatRp(profile.stats.totalSpending)}</p>
                 </div>
                 <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">Last visit</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.lastVisit")}</p>
                   <p className="text-sm font-medium">
                     {profile.stats.lastVisit ? new Date(profile.stats.lastVisit).toLocaleDateString() : "—"}
                   </p>
                 </div>
               </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Member segments</p>
+              <p className="text-sm font-medium">{t("members.profile.memberSegments")}</p>
               {(profile.memberSegments ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">Not in any active segment.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noSegments")}</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {profile.memberSegments.map((seg) => (
@@ -251,9 +248,9 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               )}
             </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Tier history</p>
+              <p className="text-sm font-medium">{t("members.profile.tierHistory")}</p>
               {(profile.tierHistory ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">No tier assignments yet.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noTierHistory")}</p>
               ) : (
                 <div className="max-h-32 overflow-y-auto space-y-2">
                   {profile.tierHistory.map((row) => (
@@ -265,7 +262,7 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                         </p>
                         <p className="text-[10px] text-muted-foreground">
                           {row.assignedAt ? new Date(row.assignedAt).toLocaleString() : "—"}
-                          {row.removedAt ? ` → ${new Date(row.removedAt).toLocaleString()}` : " · Active"}
+                          {row.removedAt ? ` → ${new Date(row.removedAt).toLocaleString()}` : ` · ${t("members.profile.active")}`}
                         </p>
                       </div>
                     </div>
@@ -274,9 +271,9 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               )}
             </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Notifications</p>
+              <p className="text-sm font-medium">{t("members.profile.notifications")}</p>
               {(profile.notifications ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">No notifications yet.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noNotifications")}</p>
               ) : (
                 <div className="max-h-40 overflow-y-auto space-y-2">
                   {profile.notifications.map((row) => (
@@ -289,7 +286,7 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                         </p>
                       </div>
                       <span className="text-xs capitalize shrink-0 text-muted-foreground">
-                        {row.readAt ? "Read" : row.status}
+                        {row.readAt ? t("members.profile.read") : row.status}
                       </span>
                     </div>
                   ))}
@@ -297,9 +294,9 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               )}
             </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Available vouchers</p>
+              <p className="text-sm font-medium">{t("members.profile.availableVouchers")}</p>
               {(profile.availableVouchers ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">No available vouchers.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noVouchers")}</p>
               ) : (
                 <div className="space-y-2">
                   {profile.availableVouchers.map((v) => (
@@ -308,16 +305,16 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                         <p className="font-medium">{v.name}</p>
                         <p className="text-xs text-muted-foreground">{v.voucherCode}</p>
                       </div>
-                      <span className="text-xs capitalize text-muted-foreground">{voucherStatusLabel(v.status)}</span>
+                      <span className="text-xs capitalize text-muted-foreground">{voucherStatusLabel(v.status, t)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Voucher history</p>
+              <p className="text-sm font-medium">{t("members.profile.voucherHistory")}</p>
               {(profile.voucherHistory ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">No voucher history.</p>
+                <p className="text-xs text-muted-foreground">{t("members.profile.noVoucherHistory")}</p>
               ) : (
                 <div className="max-h-32 overflow-y-auto space-y-2">
                   {profile.voucherHistory.map((v) => (
@@ -327,35 +324,35 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                         <p className="text-xs text-muted-foreground">{v.voucherCode}</p>
                         {v.redeemedAt ? (
                           <p className="text-[10px] text-muted-foreground">
-                            Redeemed {formatVoucherDate(v.redeemedAt)}
+                            {t("members.profile.redeemedAt", { date: formatVoucherDate(v.redeemedAt) })}
                           </p>
                         ) : null}
                       </div>
-                      <span className="text-xs">{voucherStatusLabel(v.status)}</span>
+                      <span className="text-xs">{voucherStatusLabel(v.status, t)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
             <div className="rounded-xl border p-3 mb-4 space-y-2">
-              <p className="text-sm font-medium">Expiry policy</p>
+              <p className="text-sm font-medium">{t("members.profile.expiryPolicy")}</p>
               <p className="text-sm text-muted-foreground">
                 {profile.expiryPolicy?.enabled
-                  ? `Points expire after ${profile.expiryPolicy.days ?? "—"} days`
-                  : "Points never expire"}
+                  ? t("members.profile.pointsExpireAfter", { days: profile.expiryPolicy.days ?? "—" })
+                  : t("members.profile.pointsNeverExpire")}
               </p>
               <p className="text-sm">
-                <span className="text-muted-foreground">Expired points total: </span>
+                <span className="text-muted-foreground">{t("members.profile.expiredPointsTotal")} </span>
                 <span className="font-semibold text-destructive">
                   {(profile.expiredPointsTotal ?? 0).toLocaleString()}
                 </span>
               </p>
             </div>
             <div>
-              <p className="text-sm font-medium mb-2">Expiry history</p>
+              <p className="text-sm font-medium mb-2">{t("members.profile.expiryHistory")}</p>
               <div className="max-h-32 overflow-y-auto space-y-2 mb-4">
                 {(profile.expiryHistory ?? []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No expired points yet.</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.noExpiredPoints")}</p>
                 ) : (
                   profile.expiryHistory.map((row) => (
                     <div key={row.id} className="flex justify-between text-sm border rounded-lg px-3 py-2 gap-2">
@@ -372,10 +369,10 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium mb-2">Available rewards</p>
+              <p className="text-sm font-medium mb-2">{t("members.profile.availableRewards")}</p>
               <div className="max-h-32 overflow-y-auto space-y-2 mb-4">
                 {(profile.availableRewards ?? []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No active rewards for this outlet.</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.noRewards")}</p>
                 ) : (
                   profile.availableRewards.map((reward) => (
                     <div
@@ -395,15 +392,15 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium mb-2">Reward redemptions</p>
+              <p className="text-sm font-medium mb-2">{t("members.profile.rewardRedemptions")}</p>
               <div className="max-h-32 overflow-y-auto space-y-2 mb-4">
                 {(profile.rewardRedemptions ?? []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No catalog redemptions yet.</p>
+                  <p className="text-xs text-muted-foreground">{t("members.profile.noRewardRedemptions")}</p>
                 ) : (
                   profile.rewardRedemptions.map((row) => (
                     <div key={row.id} className="flex justify-between text-sm border rounded-lg px-3 py-2 gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium">{row.rewardName ?? "Reward"}</p>
+                        <p className="font-medium">{row.rewardName ?? t("members.profile.rewardFallback")}</p>
                         <p className="text-[10px] text-muted-foreground capitalize">
                           {row.status}
                           {row.issuedAt ? ` · ${new Date(row.issuedAt).toLocaleDateString()}` : ""}
@@ -416,10 +413,10 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium mb-2">Loyalty history</p>
+              <p className="text-sm font-medium mb-2">{t("members.profile.loyaltyHistory")}</p>
                 <div className="max-h-40 overflow-y-auto space-y-2 mb-4">
                   {(profile.loyaltyHistory ?? []).length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No loyalty movements yet.</p>
+                    <p className="text-xs text-muted-foreground">{t("members.profile.noLoyaltyHistory")}</p>
                   ) : (
                     profile.loyaltyHistory.map((row) => (
                       <div key={row.id} className="flex justify-between text-sm border rounded-lg px-3 py-2 gap-2">
@@ -440,14 +437,14 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium mb-2">Order transactions</p>
+                <p className="text-sm font-medium mb-2">{t("members.profile.orderTransactions")}</p>
                 <div className="max-h-48 overflow-y-auto space-y-2">
                   {profile.transactions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No transactions yet.</p>
+                    <p className="text-xs text-muted-foreground">{t("members.profile.noTransactions")}</p>
                   ) : (
                     profile.transactions.map((tx) => (
                       <div key={tx.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
-                        <span>Order #{tx.orderId}</span>
+                        <span>{t("members.profile.orderNumber", { id: tx.orderId })}</span>
                         <span className="font-medium">{formatRp(tx.totalAmount)}</span>
                       </div>
                     ))
@@ -455,21 +452,21 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                 </div>
               </div>
             </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+          ) : null;
 
+  const redeemDialogs = (
+    <>
       <Dialog open={redeemRewardOpen} onOpenChange={setRedeemRewardOpen}>
         <DialogContent className="max-w-sm" data-testid="redeem-reward-dialog">
           <DialogHeader>
-            <DialogTitle>Redeem catalog reward</DialogTitle>
+            <DialogTitle>{t("members.redeem.catalogTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Reward</Label>
+              <Label>{t("members.redeem.reward")}</Label>
               <Select value={selectedRewardId} onValueChange={setSelectedRewardId}>
                 <SelectTrigger data-testid="redeem-reward-select">
-                  <SelectValue placeholder="Select reward" />
+                  <SelectValue placeholder={t("members.redeem.selectRewardPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {affordableRewards.map((r) => (
@@ -480,26 +477,28 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                 </SelectContent>
               </Select>
               {profile ? (
-                <p className="text-xs text-muted-foreground">Balance: {profile.currentPoints ?? 0} pts</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("members.redeem.balancePts", { balance: profile.currentPoints ?? 0 })}
+                </p>
               ) : null}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="reward-notes">Notes</Label>
+              <Label htmlFor="reward-notes">{t("members.redeem.notes")}</Label>
               <Textarea
                 id="reward-notes"
                 value={rewardNotes}
                 onChange={(e) => setRewardNotes(e.target.value)}
-                placeholder="e.g. Redeemed at counter"
+                placeholder={t("members.redeem.notesPlaceholder")}
                 data-testid="redeem-reward-notes"
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRedeemRewardOpen(false)}>
-              Cancel
+              {t("shared.cancel")}
             </Button>
             <Button onClick={() => void handleRedeemReward()} disabled={redeeming} data-testid="redeem-reward-submit">
-              {redeeming ? "Redeeming…" : "Confirm"}
+              {redeeming ? t("members.redeem.redeeming") : t("members.redeem.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -508,11 +507,11 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
       <Dialog open={redeemOpen} onOpenChange={setRedeemOpen}>
         <DialogContent className="max-w-sm" data-testid="redeem-points-dialog">
           <DialogHeader>
-            <DialogTitle>Redeem loyalty points</DialogTitle>
+            <DialogTitle>{t("members.redeem.pointsTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="redeem-points">Points</Label>
+              <Label htmlFor="redeem-points">{t("members.redeem.points")}</Label>
               <Input
                 id="redeem-points"
                 type="number"
@@ -523,30 +522,56 @@ export function MemberProfileDialog({ memberId, outletId, open, onOpenChange }: 
                 data-testid="redeem-points-input"
               />
               {profile ? (
-                <p className="text-xs text-muted-foreground">Available: {profile.currentPoints ?? 0}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("members.redeem.available", { balance: profile.currentPoints ?? 0 })}
+                </p>
               ) : null}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="redeem-description">Description</Label>
+              <Label htmlFor="redeem-description">{t("members.redeem.description")}</Label>
               <Textarea
                 id="redeem-description"
                 value={redeemDescription}
                 onChange={(e) => setRedeemDescription(e.target.value)}
-                placeholder="e.g. Birthday redemption"
+                placeholder={t("members.redeem.descriptionPlaceholder")}
                 data-testid="redeem-description-input"
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRedeemOpen(false)}>
-              Cancel
+              {t("shared.cancel")}
             </Button>
             <Button onClick={() => void handleRedeem()} disabled={redeeming} data-testid="redeem-points-submit">
-              {redeeming ? "Redeeming…" : "Redeem"}
+              {redeeming ? t("members.redeem.redeeming") : t("members.redeem.redeem")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+
+  if (asPage) {
+    if (!open) return null;
+    return (
+      <>
+        <div data-testid="member-profile-page">{profileBody}</div>
+        {redeemDialogs}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`} data-testid="member-profile-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("members.profile.dialogTitle")}</DialogTitle>
+          </DialogHeader>
+          {profileBody}
+        </DialogContent>
+      </Dialog>
+      {redeemDialogs}
     </>
   );
 }

@@ -24,6 +24,8 @@ export type LoyaltyProgramRow = {
   effectiveFrom: string | null;
   effectiveUntil: string | null;
   rulesCount: number;
+  ruleConfig?: Record<string, unknown> | null;
+  ruleSummary?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -178,6 +180,7 @@ export async function createLoyaltyProgram(payload: {
   effectiveUntil?: string;
   expiryEnabled?: boolean;
   expiryDays?: number;
+  ruleConfig?: Record<string, unknown>;
 }): Promise<LoyaltyProgramRow> {
   const res = await apiRequest<MessageItemEnvelope<LoyaltyProgramRow>>("/loyalty-programs", {
     method: "POST",
@@ -195,6 +198,7 @@ export async function updateLoyaltyProgram(
     effectiveUntil: string | null;
     expiryEnabled?: boolean;
     expiryDays?: number | null;
+    ruleConfig?: Record<string, unknown>;
   }>,
 ): Promise<LoyaltyProgramRow> {
   const res = await apiRequest<MessageItemEnvelope<LoyaltyProgramRow>>(`/loyalty-programs/${id}`, {

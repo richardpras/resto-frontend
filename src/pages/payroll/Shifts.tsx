@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Plus, Trash2 } from "lucide-react";
 import { usePayrollStore } from "@/stores/payrollStore";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -70,7 +71,7 @@ export default function Shifts() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader><DialogTitle>{t("payroll.shifts.scheduleShift")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">

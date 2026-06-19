@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -339,7 +340,7 @@ export default function Adjustments() {
       </Tabs>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.newPayrollAdjustment")}</DialogTitle>
           </DialogHeader>

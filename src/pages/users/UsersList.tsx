@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function UsersList() {
+  const { t } = useTranslation("common");
   const qc = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const qr = useQuery({ queryKey: ["roles"], queryFn: listRoles });
 
@@ -64,12 +66,12 @@ export default function UsersList() {
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or email" className="pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("usersManagement.users.searchPlaceholder")} className="pl-9" />
           </div>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
+              <SelectItem value="all">{t("usersManagement.users.allRoles")}</SelectItem>
               {roles.map((r) => (
                 <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
               ))}
@@ -79,21 +81,21 @@ export default function UsersList() {
             onClick={() => { setEditing(null); setOpen(true); }}
             disabled={roles.length === 0}
           >
-            <Plus className="h-4 w-4" /> Add User
+            <Plus className="h-4 w-4" /> {t("usersManagement.users.addUser")}
           </Button>
         </div>
       </Card>
 
       <Card className="rounded-2xl overflow-hidden">
-        <SkeletonBusyRegion busy={loading} label="Loading users">
+        <SkeletonBusyRegion busy={loading} label={t("usersManagement.users.loading")}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>PIN</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("usersManagement.users.columns.name")}</TableHead>
+                <TableHead>{t("usersManagement.users.columns.email")}</TableHead>
+                <TableHead>{t("usersManagement.users.columns.pin")}</TableHead>
+                <TableHead>{t("usersManagement.users.columns.roles")}</TableHead>
+                <TableHead className="text-right">{t("usersManagement.users.columns.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             {loading ? (
@@ -101,7 +103,7 @@ export default function UsersList() {
             ) : (
               <TableBody>
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">No users found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">{t("usersManagement.users.noUsers")}</TableCell></TableRow>
                 )}
                 {filtered.map((u) => (
                   <TableRow key={u.id}>
@@ -109,7 +111,7 @@ export default function UsersList() {
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
                       {u.pinSet ? (
-                        <Badge variant="outline" className="font-normal">Set</Badge>
+                        <Badge variant="outline" className="font-normal">{t("usersManagement.users.pinSet")}</Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm">—</span>
                       )}

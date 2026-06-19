@@ -73,11 +73,14 @@ export type Order = {
   subtotal: number;
   tax: number;
   total: number;
+  discountAmount?: number;
+  balanceDue?: number;
   status: "pending" | "confirmed" | "cooking" | "ready" | "completed" | "cancelled";
   paymentStatus: "unpaid" | "partial" | "paid";
   payments: PaymentEntry[];
   customerName: string;
   customerPhone: string;
+  memberId?: number | null;
   /** Master floor table id when assigned */
   tableId?: string;
   tableName?: string;
@@ -92,6 +95,12 @@ export type Order = {
   posSessionId?: number | null;
   kitchenStatus?: string;
   outletId?: number | null;
+  voucher?: OrderApi["voucher"];
+  voucherDiscount?: number;
+  voucherPreview?: OrderApi["voucherPreview"];
+  promotion?: OrderApi["promotion"];
+  promotionDiscount?: number;
+  promotionPreview?: OrderApi["promotionPreview"];
 };
 
 export type Table = {
@@ -174,6 +183,8 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
     subtotal: o.subtotal,
     tax: o.tax,
     total: o.total,
+    discountAmount: o.discountAmount,
+    balanceDue: o.balanceDue,
     status: o.status,
     paymentStatus: o.paymentStatus,
     payments: o.payments.map((p) => ({
@@ -188,6 +199,7 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
     })),
     customerName: o.customerName ?? "",
     customerPhone: o.customerPhone ?? "",
+    memberId: o.memberId ?? null,
     tableId: o.tableId != null ? String(o.tableId) : undefined,
     tableName: o.tableName ?? undefined,
     tableNumber: o.tableNumber ?? "",
@@ -199,6 +211,12 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
     posSessionId: o.posSessionId ?? null,
     kitchenStatus: typeof o.kitchenStatus === "string" ? o.kitchenStatus : undefined,
     outletId: o.outletId ?? null,
+    voucher: o.voucher ?? null,
+    voucherDiscount: o.voucherDiscount,
+    voucherPreview: o.voucherPreview,
+    promotion: o.promotion ?? null,
+    promotionDiscount: o.promotionDiscount,
+    promotionPreview: o.promotionPreview,
   };
 }
 

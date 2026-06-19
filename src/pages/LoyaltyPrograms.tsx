@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Gift, Plus, Pencil, Power, Calculator, BarChart3, ListTree, Users, Megaphone, Zap } from "lucide-react";
+import { Gift, Plus, Pencil, Power, Calculator, ListTree, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/DataTable";
 import { LoyaltyAnalyticsDashboard } from "@/components/loyalty/LoyaltyAnalyticsDashboard";
+import { PromotionsTab } from "@/components/loyalty/PromotionsTab";
 import { useOutletStore } from "@/stores/outletStore";
 import {
   useLoyaltyEngineStore,
@@ -35,23 +37,25 @@ import type {
   LoyaltyAutomationRow,
   LoyaltyAutomationTriggerType,
 } from "@/lib/api-integration/loyaltyEngineEndpoints";
-import { ApiHttpError } from "@/lib/api-integration/client";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import type { TFunction } from "i18next";
 import { toast } from "sonner";
 
-const PROGRAM_TYPES: { value: LoyaltyProgramType; label: string }[] = [
-  { value: "spend_based", label: "Spend based" },
-  { value: "visit_based", label: "Visit based" },
-  { value: "period_spending", label: "Period spending" },
-  { value: "percentage_reward", label: "Percentage reward" },
+const PROGRAM_TYPES: { value: LoyaltyProgramType; labelKey: string }[] = [
+  { value: "spend_based", labelKey: "loyalty.enums.programTypes.spend_based" },
+  { value: "visit_based", labelKey: "loyalty.enums.programTypes.visit_based" },
+  { value: "period_spending", labelKey: "loyalty.enums.programTypes.period_spending" },
+  { value: "percentage_reward", labelKey: "loyalty.enums.programTypes.percentage_reward" },
 ];
 
-const SEGMENT_TYPES: { value: MemberSegmentType; label: string }[] = [
-  { value: "vip_spender", label: "VIP spender" },
-  { value: "frequent_visitor", label: "Frequent visitor" },
-  { value: "birthday_month", label: "Birthday month" },
-  { value: "inactive_member", label: "Inactive member" },
-  { value: "never_redeemed", label: "Never redeemed" },
-  { value: "expiring_soon", label: "Expiring soon" },
+const SEGMENT_TYPES: { value: MemberSegmentType; labelKey: string }[] = [
+  { value: "vip_spender", labelKey: "loyalty.enums.segmentTypes.vip_spender" },
+  { value: "frequent_visitor", labelKey: "loyalty.enums.segmentTypes.frequent_visitor" },
+  { value: "birthday_month", labelKey: "loyalty.enums.segmentTypes.birthday_month" },
+  { value: "inactive_member", labelKey: "loyalty.enums.segmentTypes.inactive_member" },
+  { value: "never_redeemed", labelKey: "loyalty.enums.segmentTypes.never_redeemed" },
+  { value: "expiring_soon", labelKey: "loyalty.enums.segmentTypes.expiring_soon" },
 ];
 
 function defaultSegmentConfig(type: MemberSegmentType): Record<string, unknown> {
@@ -69,12 +73,15 @@ function defaultSegmentConfig(type: MemberSegmentType): Record<string, unknown> 
   }
 }
 
-const segmentTypeLabel = (t: string) => SEGMENT_TYPES.find((s) => s.value === t)?.label ?? t;
+const segmentTypeLabel = (value: string, t: TFunction) => {
+  const item = SEGMENT_TYPES.find((s) => s.value === value);
+  return item ? t(item.labelKey) : value;
+};
 
-const TIER_TYPES: { value: LoyaltyTierQualificationType; label: string }[] = [
-  { value: "lifetime_points", label: "Lifetime points" },
-  { value: "lifetime_spending", label: "Lifetime spending" },
-  { value: "visit_count", label: "Visit count" },
+const TIER_TYPES: { value: LoyaltyTierQualificationType; labelKey: string }[] = [
+  { value: "lifetime_points", labelKey: "loyalty.enums.tierTypes.lifetime_points" },
+  { value: "lifetime_spending", labelKey: "loyalty.enums.tierTypes.lifetime_spending" },
+  { value: "visit_count", labelKey: "loyalty.enums.tierTypes.visit_count" },
 ];
 
 function defaultTierConfig(type: LoyaltyTierQualificationType): Record<string, unknown> {
@@ -88,23 +95,26 @@ function defaultTierConfig(type: LoyaltyTierQualificationType): Record<string, u
   }
 }
 
-const tierTypeLabel = (t: string) => TIER_TYPES.find((s) => s.value === t)?.label ?? t;
+const tierTypeLabel = (value: string, t: TFunction) => {
+  const item = TIER_TYPES.find((s) => s.value === value);
+  return item ? t(item.labelKey) : value;
+};
 
-const AUTOMATION_TRIGGERS: { value: LoyaltyAutomationTriggerType; label: string }[] = [
-  { value: "member_birthday", label: "Member birthday" },
-  { value: "member_created", label: "Member created" },
-  { value: "tier_upgraded", label: "Tier upgraded" },
-  { value: "visit_milestone", label: "Visit milestone" },
-  { value: "points_milestone", label: "Points milestone" },
-  { value: "inactive_member", label: "Inactive member" },
-  { value: "voucher_redeemed", label: "Voucher redeemed" },
-  { value: "reward_redeemed", label: "Reward redeemed" },
+const AUTOMATION_TRIGGERS: { value: LoyaltyAutomationTriggerType; labelKey: string }[] = [
+  { value: "member_birthday", labelKey: "loyalty.enums.automationTriggers.member_birthday" },
+  { value: "member_created", labelKey: "loyalty.enums.automationTriggers.member_created" },
+  { value: "tier_upgraded", labelKey: "loyalty.enums.automationTriggers.tier_upgraded" },
+  { value: "visit_milestone", labelKey: "loyalty.enums.automationTriggers.visit_milestone" },
+  { value: "points_milestone", labelKey: "loyalty.enums.automationTriggers.points_milestone" },
+  { value: "inactive_member", labelKey: "loyalty.enums.automationTriggers.inactive_member" },
+  { value: "voucher_redeemed", labelKey: "loyalty.enums.automationTriggers.voucher_redeemed" },
+  { value: "reward_redeemed", labelKey: "loyalty.enums.automationTriggers.reward_redeemed" },
 ];
 
-const AUTOMATION_ACTIONS: { value: LoyaltyAutomationActionType; label: string }[] = [
-  { value: "issue_voucher", label: "Issue voucher" },
-  { value: "send_notification", label: "Send notification" },
-  { value: "assign_campaign", label: "Assign campaign" },
+const AUTOMATION_ACTIONS: { value: LoyaltyAutomationActionType; labelKey: string }[] = [
+  { value: "issue_voucher", labelKey: "loyalty.enums.automationActions.issue_voucher" },
+  { value: "send_notification", labelKey: "loyalty.enums.automationActions.send_notification" },
+  { value: "assign_campaign", labelKey: "loyalty.enums.automationActions.assign_campaign" },
 ];
 
 function defaultAutomationCondition(trigger: LoyaltyAutomationTriggerType): Record<string, unknown> {
@@ -122,37 +132,46 @@ function defaultAutomationCondition(trigger: LoyaltyAutomationTriggerType): Reco
   }
 }
 
-function defaultAutomationPreset(trigger: LoyaltyAutomationTriggerType): { code: string; name: string } {
+function defaultAutomationPreset(trigger: LoyaltyAutomationTriggerType): { code: string; nameKey: string } {
   switch (trigger) {
     case "member_birthday":
-      return { code: "BDAY_VOUCHER", name: "Birthday Voucher" };
+      return { code: "BDAY_VOUCHER", nameKey: "loyalty.enums.automationPresets.bdayVoucher" };
     case "inactive_member":
-      return { code: "INACTIVE_VOUCHER", name: "Inactive Customer Voucher" };
+      return { code: "INACTIVE_VOUCHER", nameKey: "loyalty.enums.automationPresets.inactiveVoucher" };
     case "tier_upgraded":
-      return { code: "TIER_NOTIFY", name: "Tier Upgrade Notification" };
+      return { code: "TIER_NOTIFY", nameKey: "loyalty.enums.automationPresets.tierNotify" };
     case "visit_milestone":
-      return { code: "VISIT_REWARD", name: "Visit Milestone Reward" };
+      return { code: "VISIT_REWARD", nameKey: "loyalty.enums.automationPresets.visitReward" };
     case "points_milestone":
-      return { code: "POINTS_CAMPAIGN", name: "Points Milestone Campaign" };
+      return { code: "POINTS_CAMPAIGN", nameKey: "loyalty.enums.automationPresets.pointsCampaign" };
     default:
-      return { code: "", name: "" };
+      return { code: "", nameKey: "" };
   }
 }
 
-function defaultAutomationActionConfig(action: LoyaltyAutomationActionType): Record<string, unknown> {
+function defaultAutomationActionConfig(
+  action: LoyaltyAutomationActionType,
+  t: TFunction,
+): Record<string, unknown> {
   switch (action) {
     case "send_notification":
       return {
-        title: "Hello {{member_name}}",
-        content: "Thank you for being a loyal member.",
+        title: t("loyalty.enums.notificationDefaults.helloMember"),
+        content: t("loyalty.enums.notificationDefaults.thankYouLoyal"),
       };
     default:
       return {};
   }
 }
 
-const automationTriggerLabel = (t: string) => AUTOMATION_TRIGGERS.find((s) => s.value === t)?.label ?? t;
-const automationActionLabel = (t: string) => AUTOMATION_ACTIONS.find((s) => s.value === t)?.label ?? t;
+const automationTriggerLabel = (value: string, t: TFunction) => {
+  const item = AUTOMATION_TRIGGERS.find((s) => s.value === value);
+  return item ? t(item.labelKey) : value;
+};
+const automationActionLabel = (value: string, t: TFunction) => {
+  const item = AUTOMATION_ACTIONS.find((s) => s.value === value);
+  return item ? t(item.labelKey) : value;
+};
 
 const defaultTierBenefitConfig = () => ({
   priorityCampaign: false,
@@ -163,14 +182,17 @@ const defaultTierBenefitConfig = () => ({
 
 type TierBenefitKey = keyof ReturnType<typeof defaultTierBenefitConfig>;
 
-const TIER_BENEFIT_OPTIONS: { key: TierBenefitKey; label: string }[] = [
-  { key: "priorityCampaign", label: "Priority Campaign Access" },
-  { key: "exclusiveVoucher", label: "Exclusive Voucher Access" },
-  { key: "exclusiveReward", label: "Exclusive Reward Access" },
-  { key: "monthlyVoucher", label: "Monthly Voucher Program" },
+const TIER_BENEFIT_OPTIONS: { key: TierBenefitKey; labelKey: string }[] = [
+  { key: "priorityCampaign", labelKey: "loyalty.enums.tierBenefits.priorityCampaign" },
+  { key: "exclusiveVoucher", labelKey: "loyalty.enums.tierBenefits.exclusiveVoucher" },
+  { key: "exclusiveReward", labelKey: "loyalty.enums.tierBenefits.exclusiveReward" },
+  { key: "monthlyVoucher", labelKey: "loyalty.enums.tierBenefits.monthlyVoucher" },
 ];
 
-const typeLabel = (t: string) => PROGRAM_TYPES.find((p) => p.value === t)?.label ?? t;
+const typeLabel = (value: string, t: TFunction) => {
+  const item = PROGRAM_TYPES.find((p) => p.value === value);
+  return item ? t(item.labelKey) : value;
+};
 
 function defaultRuleConfig(type: string): Record<string, unknown> {
   switch (type) {
@@ -185,22 +207,148 @@ function defaultRuleConfig(type: string): Record<string, unknown> {
   }
 }
 
+function updateRuleConfigField(
+  current: Record<string, unknown>,
+  key: string,
+  value: string | number,
+): Record<string, unknown> {
+  return { ...current, [key]: value };
+}
+
+function ProgramRuleFields({
+  type,
+  ruleConfig,
+  onChange,
+  t,
+}: {
+  type: LoyaltyProgramType;
+  ruleConfig: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  t: TFunction;
+}) {
+  if (type === "manual") {
+    return <p className="text-sm text-muted-foreground">{t("loyalty.form.manualProgramsNoRules")}</p>;
+  }
+
+  if (type === "spend_based") {
+    return (
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.earnPerAmount")}</Label>
+          <Input
+            type="number"
+            min={1}
+            value={String(ruleConfig.earnPerAmount ?? 10000)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "earnPerAmount", Number(e.target.value) || 0))}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.pointsEarned")}</Label>
+          <Input
+            type="number"
+            min={1}
+            value={String(ruleConfig.pointsEarned ?? 1)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "pointsEarned", Number(e.target.value) || 0))}
+          />
+        </div>
+        <p className="sm:col-span-2 text-xs text-muted-foreground">
+          {t("loyalty.form.earnExample")}
+        </p>
+      </div>
+    );
+  }
+
+  if (type === "visit_based") {
+    return (
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.visitThreshold")}</Label>
+          <Input
+            type="number"
+            min={1}
+            value={String(ruleConfig.visit_threshold ?? 10)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "visit_threshold", Number(e.target.value) || 0))}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.pointsAwarded")}</Label>
+          <Input
+            type="number"
+            min={1}
+            value={String(ruleConfig.points_awarded ?? 100)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "points_awarded", Number(e.target.value) || 0))}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "period_spending") {
+    return (
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.period")}</Label>
+          <Select
+            value={String(ruleConfig.period ?? "monthly")}
+            onValueChange={(v) => onChange(updateRuleConfigField(ruleConfig, "period", v))}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="weekly">{t("loyalty.enums.periods.weekly")}</SelectItem>
+              <SelectItem value="monthly">{t("loyalty.enums.periods.monthly")}</SelectItem>
+              <SelectItem value="yearly">{t("loyalty.enums.periods.yearly")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.minimumSpend")}</Label>
+          <Input
+            type="number"
+            min={0}
+            value={String(ruleConfig.minimum_spend ?? 0)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "minimum_spend", Number(e.target.value) || 0))}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("loyalty.form.rewardPercent")}</Label>
+          <Input
+            type="number"
+            min={0}
+            step={0.1}
+            value={String(ruleConfig.reward_percent ?? 5)}
+            onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "reward_percent", Number(e.target.value) || 0))}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <Label>{t("loyalty.form.rewardPercentage")}</Label>
+      <Input
+        type="number"
+        min={0}
+        step={0.1}
+        value={String(ruleConfig.percentage ?? 5)}
+        onChange={(e) => onChange(updateRuleConfigField(ruleConfig, "percentage", Number(e.target.value) || 0))}
+      />
+    </div>
+  );
+}
+
 export default function LoyaltyPrograms() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const {
     programs,
-    rules,
     lastSimulation,
     loadingPrograms,
-    loadingRules,
     simulating,
     fetchPrograms,
     createProgram,
     updateProgram,
     setProgramActive,
-    fetchRules,
-    saveRule,
-    removeRule,
     runSimulation,
     rewards,
     loadingRewards,
@@ -261,9 +409,8 @@ export default function LoyaltyPrograms() {
     isActive: true,
     expiryEnabled: false,
     expiryDays: "365",
+    ruleConfig: defaultRuleConfig("spend_based"),
   });
-  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
-  const [ruleConfigJson, setRuleConfigJson] = useState("");
   const [simForm, setSimForm] = useState({
     programId: "",
     spendingAmount: "100000",
@@ -354,8 +501,8 @@ export default function LoyaltyPrograms() {
     daysInactive: "30",
     voucherId: "",
     campaignId: "",
-    notificationTitle: "Hello {{member_name}}",
-    notificationContent: "Thank you for being a loyal member.",
+    notificationTitle: "",
+    notificationContent: "",
     isActive: true,
   });
   const [automationLogsOpen, setAutomationLogsOpen] = useState(false);
@@ -374,19 +521,17 @@ export default function LoyaltyPrograms() {
     [programs, activeOutletId],
   );
 
-  const selectedProgram = outletPrograms.find((p) => p.id === selectedProgramId) ?? outletPrograms[0];
-
   useEffect(() => {
     if (!activeOutletId) return;
     void fetchPrograms(activeOutletId).catch((e) =>
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load programs"),
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadProgramsFailed")),
     );
   }, [activeOutletId, fetchPrograms]);
 
   useEffect(() => {
     if (tab === "rewards" && activeOutletId) {
       void fetchRewards(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load rewards"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadRewardsFailed")),
       );
     }
   }, [tab, activeOutletId, fetchRewards]);
@@ -394,7 +539,7 @@ export default function LoyaltyPrograms() {
   useEffect(() => {
     if (tab === "vouchers" && activeOutletId) {
       void fetchVouchers(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load vouchers"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadVouchersFailed")),
       );
     }
   }, [tab, activeOutletId, fetchVouchers]);
@@ -402,7 +547,7 @@ export default function LoyaltyPrograms() {
   useEffect(() => {
     if (tab === "segments" && activeOutletId) {
       void fetchSegments(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load segments"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadSegmentsFailed")),
       );
     }
   }, [tab, activeOutletId, fetchSegments]);
@@ -410,7 +555,7 @@ export default function LoyaltyPrograms() {
   useEffect(() => {
     if (tab === "tiers" && activeOutletId) {
       void fetchTiers(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load tiers"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadTiersFailed")),
       );
     }
   }, [tab, activeOutletId, fetchTiers]);
@@ -418,7 +563,7 @@ export default function LoyaltyPrograms() {
   useEffect(() => {
     if (tab === "automations" && activeOutletId) {
       void fetchAutomations(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load automations"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadAutomationsFailed")),
       );
       void fetchVouchers(activeOutletId).catch(() => undefined);
       void fetchCampaigns(activeOutletId).catch(() => undefined);
@@ -428,32 +573,12 @@ export default function LoyaltyPrograms() {
   useEffect(() => {
     if (tab === "campaigns" && activeOutletId) {
       void fetchCampaigns(activeOutletId).catch((e) =>
-        toast.error(e instanceof ApiHttpError ? e.message : "Failed to load campaigns"),
+        toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadCampaignsFailed")),
       );
       void fetchSegments(activeOutletId).catch(() => undefined);
       void fetchVouchers(activeOutletId).catch(() => undefined);
     }
   }, [tab, activeOutletId, fetchCampaigns, fetchSegments, fetchVouchers]);
-
-  useEffect(() => {
-    if (!selectedProgram?.id && outletPrograms[0]?.id) {
-      setSelectedProgramId(outletPrograms[0].id);
-    }
-  }, [outletPrograms, selectedProgram?.id]);
-
-  useEffect(() => {
-    if (tab !== "rules" || !selectedProgramId) return;
-    void fetchRules(selectedProgramId).catch((e) =>
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load rules"),
-    );
-  }, [tab, selectedProgramId, fetchRules]);
-
-  useEffect(() => {
-    if (!selectedProgram) return;
-    const rule = rules[0];
-    const cfg = rule?.config ?? defaultRuleConfig(selectedProgram.type);
-    setRuleConfigJson(JSON.stringify(cfg, null, 2));
-  }, [selectedProgram, rules]);
 
   const openNewProgram = () => {
     setEditingProgram(null);
@@ -467,6 +592,7 @@ export default function LoyaltyPrograms() {
       isActive: true,
       expiryEnabled: false,
       expiryDays: "365",
+      ruleConfig: defaultRuleConfig("spend_based"),
     });
     setProgramOpen(true);
   };
@@ -483,21 +609,22 @@ export default function LoyaltyPrograms() {
       isActive: p.isActive,
       expiryEnabled: p.expiryEnabled ?? false,
       expiryDays: p.expiryDays != null ? String(p.expiryDays) : "365",
+      ruleConfig: p.ruleConfig ?? defaultRuleConfig(p.type),
     });
     setProgramOpen(true);
   };
 
   const handleSaveProgram = async () => {
-    if (!programForm.code.trim() || !programForm.name.trim()) {
-      return toast.error("Code and name are required");
+    if ((!editingProgram && !programForm.code.trim()) || !programForm.name.trim()) {
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     if (!activeOutletId && !editingProgram) {
-      return toast.error("Select an outlet first");
+      return toast.error(t("loyalty.toast.selectOutletFirst"));
     }
     if (programForm.expiryEnabled) {
       const days = Number(programForm.expiryDays);
       if (!Number.isFinite(days) || days < 1) {
-        return toast.error("Expiry days must be at least 1 when expiry is enabled");
+        return toast.error(t("loyalty.toast.expiryDaysMin"));
       }
     }
     setSaving(true);
@@ -506,6 +633,8 @@ export default function LoyaltyPrograms() {
         expiryEnabled: programForm.expiryEnabled,
         expiryDays: programForm.expiryEnabled ? Number(programForm.expiryDays) : null,
       };
+      const rulePayload =
+        programForm.type !== "manual" ? { ruleConfig: programForm.ruleConfig } : {};
       if (editingProgram) {
         await updateProgram(editingProgram.id, {
           name: programForm.name,
@@ -513,11 +642,12 @@ export default function LoyaltyPrograms() {
           effectiveFrom: programForm.effectiveFrom || null,
           effectiveUntil: programForm.effectiveUntil || null,
           ...expiryPayload,
+          ...rulePayload,
         });
         if (editingProgram.isActive !== programForm.isActive) {
           await setProgramActive(editingProgram.id, programForm.isActive);
         }
-        toast.success("Program updated");
+        toast.success(t("loyalty.toast.programUpdated"));
       } else {
         await createProgram({
           outletId: activeOutletId ?? undefined,
@@ -529,32 +659,13 @@ export default function LoyaltyPrograms() {
           effectiveFrom: programForm.effectiveFrom || undefined,
           effectiveUntil: programForm.effectiveUntil || undefined,
           ...expiryPayload,
+          ...rulePayload,
         });
-        toast.success("Program created");
+        toast.success(t("loyalty.toast.programCreated"));
       }
       setProgramOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveRule = async () => {
-    if (!selectedProgram || !activeOutletId) return;
-    let config: Record<string, unknown>;
-    try {
-      config = JSON.parse(ruleConfigJson) as Record<string, unknown>;
-    } catch {
-      return toast.error("Rule config must be valid JSON");
-    }
-    setSaving(true);
-    try {
-      const existing = rules[0];
-      await saveRule(selectedProgram.id, selectedProgram.type, config, existing?.id);
-      toast.success("Rule saved");
-    } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Rule save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -612,7 +723,7 @@ export default function LoyaltyPrograms() {
 
   const handleSaveVoucher = async () => {
     if (!activeOutletId || !voucherForm.code.trim() || !voucherForm.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     setSaving(true);
     try {
@@ -629,14 +740,14 @@ export default function LoyaltyPrograms() {
       };
       if (editingVoucher) {
         await updateVoucher(editingVoucher.id, payload, activeOutletId);
-        toast.success("Voucher updated");
+        toast.success(t("loyalty.toast.voucherUpdated"));
       } else {
         await createVoucher({ outletId: activeOutletId, ...payload });
-        toast.success("Voucher created");
+        toast.success(t("loyalty.toast.voucherCreated"));
       }
       setVoucherOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -650,7 +761,7 @@ export default function LoyaltyPrograms() {
 
   const handleIssueVoucher = async () => {
     if (!activeOutletId || !issueVoucherCampaign || !issueVoucherId) {
-      return toast.error("Select a voucher");
+      return toast.error(t("loyalty.toast.selectVoucher"));
     }
     setSaving(true);
     try {
@@ -659,10 +770,15 @@ export default function LoyaltyPrograms() {
         Number(issueVoucherId),
         activeOutletId,
       );
-      toast.success(`Issued ${result.issuedCount} voucher(s), skipped ${result.skippedCount}`);
+      toast.success(
+        t("loyalty.toast.issuedSummary", {
+          issued: result.issuedCount,
+          skipped: result.skippedCount,
+        }),
+      );
       setIssueVoucherOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Issue failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.issueFailed"));
     } finally {
       setSaving(false);
     }
@@ -696,13 +812,13 @@ export default function LoyaltyPrograms() {
 
   const handleSaveSegment = async () => {
     if (!activeOutletId || !segmentForm.code.trim() || !segmentForm.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(segmentForm.configJson) as Record<string, unknown>;
     } catch {
-      return toast.error("Config must be valid JSON");
+      return toast.error(t("loyalty.toast.configInvalidJson"));
     }
     setSaving(true);
     try {
@@ -721,7 +837,7 @@ export default function LoyaltyPrograms() {
         if (editingSegment.isActive !== segmentForm.isActive) {
           await setSegmentActive(editingSegment.id, segmentForm.isActive, activeOutletId);
         }
-        toast.success("Segment updated");
+        toast.success(t("loyalty.toast.segmentUpdated"));
       } else {
         await createSegment({
           outletId: activeOutletId,
@@ -732,11 +848,11 @@ export default function LoyaltyPrograms() {
           config,
           isActive: segmentForm.isActive,
         });
-        toast.success("Segment created");
+        toast.success(t("loyalty.toast.segmentCreated"));
       }
       setSegmentOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -777,13 +893,13 @@ export default function LoyaltyPrograms() {
 
   const handleSaveTier = async () => {
     if (!activeOutletId || !tierForm.code.trim() || !tierForm.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     let qualificationConfig: Record<string, unknown>;
     try {
       qualificationConfig = JSON.parse(tierForm.configJson) as Record<string, unknown>;
     } catch {
-      return toast.error("Qualification config must be valid JSON");
+      return toast.error(t("loyalty.toast.qualificationConfigInvalidJson"));
     }
     setSaving(true);
     try {
@@ -805,7 +921,7 @@ export default function LoyaltyPrograms() {
         if (editingTier.isActive !== tierForm.isActive) {
           await setTierActive(editingTier.id, tierForm.isActive, activeOutletId);
         }
-        toast.success("Tier updated");
+        toast.success(t("loyalty.toast.tierUpdated"));
       } else {
         await createTier({
           outletId: activeOutletId,
@@ -818,11 +934,11 @@ export default function LoyaltyPrograms() {
           sortOrder,
           isActive: tierForm.isActive,
         });
-        toast.success("Tier created");
+        toast.success(t("loyalty.toast.tierCreated"));
       }
       setTierOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -834,7 +950,7 @@ export default function LoyaltyPrograms() {
     setEditingAutomation(null);
     setAutomationForm({
       code: preset.code,
-      name: preset.name || "Welcome Notification",
+      name: preset.nameKey ? t(preset.nameKey) : t("loyalty.enums.automationPresets.welcomeNotification"),
       description: "",
       triggerType,
       actionType: "send_notification",
@@ -844,8 +960,8 @@ export default function LoyaltyPrograms() {
       daysInactive: "30",
       voucherId: vouchers[0]?.id ?? "",
       campaignId: campaigns[0]?.id ?? "",
-      notificationTitle: "Welcome {{member_name}}",
-      notificationContent: "Thanks for joining our loyalty program.",
+      notificationTitle: t("loyalty.enums.notificationDefaults.welcomeMember"),
+      notificationContent: t("loyalty.enums.notificationDefaults.thanksJoining"),
       isActive: true,
     });
     setAutomationOpen(true);
@@ -867,7 +983,9 @@ export default function LoyaltyPrograms() {
       daysInactive: String(condition.daysInactive ?? 30),
       voucherId: String(actionConfig.voucherId ?? vouchers[0]?.id ?? ""),
       campaignId: String(actionConfig.campaignId ?? campaigns[0]?.id ?? ""),
-      notificationTitle: String(actionConfig.title ?? "Hello {{member_name}}"),
+      notificationTitle: String(
+        actionConfig.title ?? t("loyalty.enums.notificationDefaults.helloMember"),
+      ),
       notificationContent: String(actionConfig.content ?? row.description ?? row.name),
       isActive: row.isActive,
     });
@@ -907,7 +1025,7 @@ export default function LoyaltyPrograms() {
 
   const handleSaveAutomation = async () => {
     if (!activeOutletId || !automationForm.code.trim() || !automationForm.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     setSaving(true);
     try {
@@ -926,14 +1044,14 @@ export default function LoyaltyPrograms() {
         if (editingAutomation.isActive !== automationForm.isActive) {
           await setAutomationActive(editingAutomation.id, automationForm.isActive, activeOutletId);
         }
-        toast.success("Automation updated");
+        toast.success(t("loyalty.toast.automationUpdated"));
       } else {
         await createAutomation({ outletId: activeOutletId, ...payload });
-        toast.success("Automation created");
+        toast.success(t("loyalty.toast.automationCreated"));
       }
       setAutomationOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -948,7 +1066,7 @@ export default function LoyaltyPrograms() {
       const logs = await fetchAutomationLogs(row.id, 50);
       setAutomationLogs(logs);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load logs");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.loadLogsFailed"));
     } finally {
       setAutomationLogsLoading(false);
     }
@@ -963,7 +1081,7 @@ export default function LoyaltyPrograms() {
       setPreviewCount(result.count);
       setPreviewMembers(result.members);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Preview failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.previewFailed"));
       setPreviewCount(0);
       setPreviewMembers([]);
     } finally {
@@ -1001,7 +1119,7 @@ export default function LoyaltyPrograms() {
 
   const handleSaveCampaign = async () => {
     if (!activeOutletId || !campaignForm.code.trim() || !campaignForm.name.trim() || !campaignForm.segmentId) {
-      return toast.error("Code, name, and segment are required");
+      return toast.error(t("loyalty.toast.codeNameSegmentRequired"));
     }
     setSaving(true);
     try {
@@ -1024,7 +1142,7 @@ export default function LoyaltyPrograms() {
         if (editingCampaign.status !== campaignForm.status) {
           await updateCampaignStatus(editingCampaign.id, campaignForm.status, activeOutletId);
         }
-        toast.success("Campaign updated");
+        toast.success(t("loyalty.toast.campaignUpdated"));
       } else {
         await createCampaign({
           outletId: activeOutletId,
@@ -1035,11 +1153,11 @@ export default function LoyaltyPrograms() {
           campaignType: campaignForm.campaignType,
           scheduledAt,
         });
-        toast.success("Campaign created");
+        toast.success(t("loyalty.toast.campaignCreated"));
       }
       setCampaignOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -1053,7 +1171,7 @@ export default function LoyaltyPrograms() {
       const data = await fetchCampaignAudience(campaign.id, 50);
       setCampaignAudience(data);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Audience preview failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.audiencePreviewFailed"));
     } finally {
       setCampaignAudienceLoading(false);
     }
@@ -1067,7 +1185,7 @@ export default function LoyaltyPrograms() {
       const data = await fetchCampaignAudienceSnapshot(campaign.id, 50);
       setCampaignSnapshot(data);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Snapshot load failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.snapshotLoadFailed"));
     } finally {
       setCampaignSnapshotLoading(false);
     }
@@ -1077,9 +1195,9 @@ export default function LoyaltyPrograms() {
     if (!activeOutletId) return;
     try {
       await activateCampaign(campaign.id, activeOutletId);
-      toast.success("Campaign activated");
+      toast.success(t("loyalty.toast.campaignActivated"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Activation failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.activationFailed"));
     }
   };
 
@@ -1087,9 +1205,9 @@ export default function LoyaltyPrograms() {
     if (!activeOutletId) return;
     try {
       await completeCampaign(campaign.id, activeOutletId);
-      toast.success("Campaign completed");
+      toast.success(t("loyalty.toast.campaignCompleted"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Complete failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.completeFailed"));
     }
   };
 
@@ -1097,19 +1215,19 @@ export default function LoyaltyPrograms() {
     if (!activeOutletId) return;
     try {
       await cancelCampaign(campaign.id, activeOutletId);
-      toast.success("Campaign cancelled");
+      toast.success(t("loyalty.toast.campaignCancelled"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Cancel failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.cancelFailed"));
     }
   };
 
   const handleSaveReward = async () => {
     if (!activeOutletId || !rewardForm.code.trim() || !rewardForm.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("loyalty.toast.codeNameRequired"));
     }
     const pointsCost = Number(rewardForm.pointsCost);
     if (!Number.isFinite(pointsCost) || pointsCost < 1) {
-      return toast.error("Points cost must be at least 1");
+      return toast.error(t("loyalty.toast.pointsCostMin"));
     }
     setSaving(true);
     try {
@@ -1122,7 +1240,7 @@ export default function LoyaltyPrograms() {
           pointsCost,
           sortOrder: sortOrder ?? null,
         });
-        toast.success("Reward updated");
+        toast.success(t("loyalty.toast.rewardUpdated"));
       } else {
         await createReward({
           outletId: activeOutletId,
@@ -1132,26 +1250,26 @@ export default function LoyaltyPrograms() {
           pointsCost,
           sortOrder,
         });
-        toast.success("Reward created");
+        toast.success(t("loyalty.toast.rewardCreated"));
       }
       setRewardOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   const rewardColumns: Column<LoyaltyRewardRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "pointsCost", header: "Points", render: (r) => r.pointsCost.toLocaleString() },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    { key: "pointsCost", header: t("loyalty.columns.points"), render: (r) => r.pointsCost.toLocaleString() },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
@@ -1160,7 +1278,7 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => openEditReward(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditReward(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1168,10 +1286,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setRewardActive(r.id, !r.isActive, activeOutletId!)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1181,25 +1301,29 @@ export default function LoyaltyPrograms() {
   ];
 
   const voucherColumns: Column<LoyaltyVoucherRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "voucherType", header: "Type", render: (r) => r.voucherType.replace(/_/g, " ") },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    {
+      key: "voucherType",
+      header: t("loyalty.columns.type"),
+      render: (r) => t(`loyalty.enums.voucherTypes.${r.voucherType}`, { defaultValue: r.voucherType }),
+    },
     {
       key: "value",
-      header: "Value",
+      header: t("loyalty.columns.value"),
       render: (r) =>
         r.valueType === "percentage"
           ? `${r.value}%`
           : r.valueType === "free_item"
-            ? "Free item"
+            ? t("loyalty.columns.freeItem")
             : r.value.toLocaleString(),
     },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
@@ -1208,7 +1332,7 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => openEditVoucher(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditVoucher(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1216,10 +1340,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setVoucherActive(r.id, !r.isActive, activeOutletId!)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1229,15 +1355,15 @@ export default function LoyaltyPrograms() {
   ];
 
   const segmentColumns: Column<MemberSegmentRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "segmentType", header: "Type", render: (r) => segmentTypeLabel(r.segmentType) },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    { key: "segmentType", header: t("loyalty.columns.type"), render: (r) => segmentTypeLabel(r.segmentType, t) },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
@@ -1246,10 +1372,10 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => void handlePreviewSegment(r)} aria-label="Preview">
+          <Button size="icon" variant="ghost" onClick={() => void handlePreviewSegment(r)} aria-label={t("loyalty.actions.preview")}>
             <Users className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => openEditSegment(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditSegment(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1257,10 +1383,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setSegmentActive(r.id, !r.isActive, activeOutletId!)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1270,16 +1398,16 @@ export default function LoyaltyPrograms() {
   ];
 
   const tierColumns: Column<LoyaltyTierRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "qualificationType", header: "Qualification", render: (r) => tierTypeLabel(r.qualificationType) },
-    { key: "sortOrder", header: "Order", sortable: true },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    { key: "qualificationType", header: t("loyalty.columns.qualification"), render: (r) => tierTypeLabel(r.qualificationType, t) },
+    { key: "sortOrder", header: t("loyalty.columns.order"), sortable: true },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
@@ -1288,7 +1416,7 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => openEditTier(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditTier(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1296,10 +1424,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setTierActive(r.id, !r.isActive, activeOutletId!)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1309,16 +1439,16 @@ export default function LoyaltyPrograms() {
   ];
 
   const automationColumns: Column<LoyaltyAutomationRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "triggerType", header: "Trigger", render: (r) => automationTriggerLabel(r.triggerType) },
-    { key: "actionType", header: "Action", render: (r) => automationActionLabel(r.actionType) },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    { key: "triggerType", header: t("loyalty.columns.trigger"), render: (r) => automationTriggerLabel(r.triggerType, t) },
+    { key: "actionType", header: t("loyalty.columns.action"), render: (r) => automationActionLabel(r.actionType, t) },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
@@ -1327,10 +1457,10 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => void handleViewAutomationLogs(r)} aria-label="Logs">
+          <Button size="icon" variant="ghost" onClick={() => void handleViewAutomationLogs(r)} aria-label={t("loyalty.actions.logs")}>
             <ListTree className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => openEditAutomation(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditAutomation(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1338,10 +1468,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setAutomationActive(r.id, !r.isActive, activeOutletId!)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1351,40 +1483,44 @@ export default function LoyaltyPrograms() {
   ];
 
   const campaignColumns: Column<LoyaltyCampaignRow>[] = [
-    { key: "name", header: "Campaign", sortable: true },
+    { key: "name", header: t("loyalty.columns.campaign"), sortable: true },
     {
       key: "segment",
-      header: "Segment",
+      header: t("loyalty.columns.segment"),
       render: (r) => r.segment?.name ?? segments.find((s) => s.id === r.segmentId)?.name ?? "—",
     },
     {
       key: "status",
-      header: "Status",
-      render: (r) => <span className="capitalize">{r.status}</span>,
+      header: t("loyalty.columns.status"),
+      render: (r) => (
+        <span className="capitalize">
+          {t(`loyalty.enums.campaignStatus.${r.status}`, { defaultValue: r.status })}
+        </span>
+      ),
     },
     {
       key: "audienceCount",
-      header: "Audience",
+      header: t("loyalty.columns.audience"),
       render: (r) => (r.audienceCount ?? 0).toLocaleString(),
     },
     {
       key: "capturedCount",
-      header: "Captured",
+      header: t("loyalty.columns.captured"),
       render: (r) => (r.capturedCount ?? 0).toLocaleString(),
     },
     {
       key: "issuedVoucherCount",
-      header: "Issued",
+      header: t("loyalty.columns.issued"),
       render: (r) => (r.issuedVoucherCount ?? 0).toLocaleString(),
     },
     {
       key: "scheduledAt",
-      header: "Scheduled",
+      header: t("loyalty.columns.scheduled"),
       render: (r) => (r.scheduledAt ? new Date(r.scheduledAt).toLocaleString() : "—"),
     },
     {
       key: "activatedAt",
-      header: "Activated",
+      header: t("loyalty.columns.activated"),
       render: (r) => (r.activatedAt ? new Date(r.activatedAt).toLocaleString() : "—"),
     },
     {
@@ -1392,35 +1528,35 @@ export default function LoyaltyPrograms() {
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end flex-wrap">
-          <Button size="icon" variant="ghost" onClick={() => void handleCampaignAudience(r)} aria-label="Live audience">
+          <Button size="icon" variant="ghost" onClick={() => void handleCampaignAudience(r)} aria-label={t("loyalty.actions.liveAudience")}>
             <Users className="h-4 w-4" />
           </Button>
           {(r.status === "active" || r.status === "completed" || (r.capturedCount ?? 0) > 0) && (
-            <Button size="icon" variant="ghost" onClick={() => void handleCampaignSnapshot(r)} aria-label="Snapshot">
+            <Button size="icon" variant="ghost" onClick={() => void handleCampaignSnapshot(r)} aria-label={t("loyalty.actions.snapshot")}>
               <ListTree className="h-4 w-4" />
             </Button>
           )}
           {(r.status === "active" || r.status === "completed") && (r.capturedCount ?? 0) > 0 && (
             <Button size="sm" variant="outline" onClick={() => openIssueVoucher(r)}>
-              Issue voucher
+              {t("loyalty.actions.issueVoucher")}
             </Button>
           )}
           {(r.status === "draft" || r.status === "scheduled") && (
             <Button size="sm" variant="outline" onClick={() => void handleActivateCampaign(r)}>
-              Activate
+              {t("loyalty.actions.activate")}
             </Button>
           )}
           {r.status === "active" && (
             <Button size="sm" variant="outline" onClick={() => void handleCompleteCampaign(r)}>
-              Complete
+              {t("loyalty.actions.complete")}
             </Button>
           )}
           {(r.status === "draft" || r.status === "scheduled" || r.status === "active") && (
             <Button size="sm" variant="ghost" onClick={() => void handleCancelCampaign(r)}>
-              Cancel
+              {t("loyalty.actions.cancelCampaign")}
             </Button>
           )}
-          <Button size="icon" variant="ghost" onClick={() => openEditCampaign(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditCampaign(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
         </div>
@@ -1430,7 +1566,7 @@ export default function LoyaltyPrograms() {
 
   const handleSimulate = async () => {
     if (!activeOutletId || !simForm.programId) {
-      return toast.error("Select outlet and program");
+      return toast.error(t("loyalty.toast.selectOutletAndProgram"));
     }
     try {
       await runSimulation({
@@ -1441,36 +1577,36 @@ export default function LoyaltyPrograms() {
         simulationDate: simForm.simulationDate,
       });
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Simulation failed");
+      toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.simulationFailed"));
     }
   };
 
   const programColumns: Column<LoyaltyProgramRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
-    { key: "type", header: "Type", render: (r) => typeLabel(r.type) },
+    { key: "code", header: t("loyalty.columns.code"), sortable: true },
+    { key: "name", header: t("loyalty.columns.name"), sortable: true },
+    { key: "type", header: t("loyalty.columns.type"), render: (r) => typeLabel(r.type, t) },
     {
       key: "effective",
-      header: "Effective",
+      header: t("loyalty.columns.effective"),
       render: (r) =>
-        [r.effectiveFrom, r.effectiveUntil].filter(Boolean).join(" → ") || "Always",
+        [r.effectiveFrom, r.effectiveUntil].filter(Boolean).join(" → ") || t("loyalty.columns.always"),
     },
     {
       key: "isActive",
-      header: "Status",
+      header: t("loyalty.columns.status"),
       render: (r) => (
         <span className={r.isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("payroll.shared.active") : t("payroll.shared.inactive")}
         </span>
       ),
     },
-    { key: "rulesCount", header: "Rules" },
+    { key: "ruleSummary", header: t("loyalty.columns.earnRule"), render: (r) => r.ruleSummary ?? "—" },
     {
       key: "actions",
       header: "",
       render: (r) => (
         <div className="flex gap-1 justify-end">
-          <Button size="icon" variant="ghost" onClick={() => openEditProgram(r)} aria-label="Edit">
+          <Button size="icon" variant="ghost" onClick={() => openEditProgram(r)} aria-label={t("loyalty.actions.edit")}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
@@ -1478,10 +1614,12 @@ export default function LoyaltyPrograms() {
             variant="ghost"
             onClick={() =>
               void setProgramActive(r.id, !r.isActive)
-                .then(() => toast.success(r.isActive ? "Deactivated" : "Activated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed"))
+                .then(() =>
+                  toast.success(r.isActive ? t("loyalty.toast.deactivated") : t("loyalty.toast.activated")),
+                )
+                .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("loyalty.toast.failed")))
             }
-            aria-label="Toggle active"
+            aria-label={t("loyalty.actions.toggleActive")}
           >
             <Power className="h-4 w-4" />
           </Button>
@@ -1493,8 +1631,8 @@ export default function LoyaltyPrograms() {
   if (!activeOutletId) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Loyalty Programs</h1>
-        <p className="text-sm text-muted-foreground mt-2">Select an outlet to manage loyalty programs.</p>
+        <h1 className="text-2xl font-bold">{t("loyalty.page.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("loyalty.page.noOutlet")}</p>
       </div>
     );
   }
@@ -1504,61 +1642,61 @@ export default function LoyaltyPrograms() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Gift className="h-6 w-6" /> Loyalty Programs
+            <Gift className="h-6 w-6" /> {t("loyalty.page.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Configure outlet programs, rules, and preview point accrual without changing live earning logic.
+            {t("loyalty.page.subtitle")}
           </p>
         </div>
         {tab === "programs" && (
           <Button onClick={openNewProgram}>
-            <Plus className="h-4 w-4 mr-1" /> New program
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newProgram")}
           </Button>
         )}
         {tab === "rewards" && (
           <Button onClick={openNewReward}>
-            <Plus className="h-4 w-4 mr-1" /> New reward
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newReward")}
           </Button>
         )}
         {tab === "vouchers" && (
           <Button onClick={openNewVoucher}>
-            <Plus className="h-4 w-4 mr-1" /> New voucher
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newVoucher")}
           </Button>
         )}
         {tab === "segments" && (
           <Button onClick={openNewSegment}>
-            <Plus className="h-4 w-4 mr-1" /> New segment
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newSegment")}
           </Button>
         )}
         {tab === "tiers" && (
           <Button onClick={openNewTier}>
-            <Plus className="h-4 w-4 mr-1" /> New tier
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newTier")}
           </Button>
         )}
         {tab === "campaigns" && (
           <Button onClick={openNewCampaign}>
-            <Plus className="h-4 w-4 mr-1" /> New campaign
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newCampaign")}
           </Button>
         )}
         {tab === "automations" && (
           <Button onClick={openNewAutomation}>
-            <Plus className="h-4 w-4 mr-1" /> New automation
+            <Plus className="h-4 w-4 mr-1" /> {t("loyalty.actions.newAutomation")}
           </Button>
         )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap h-auto">
-          <TabsTrigger value="programs">Programs</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="simulator">Simulator</TabsTrigger>
-          <TabsTrigger value="rewards">Loyalty Rewards</TabsTrigger>
-          <TabsTrigger value="vouchers">Vouchers</TabsTrigger>
-          <TabsTrigger value="segments">Segments</TabsTrigger>
-          <TabsTrigger value="tiers">Membership Tiers</TabsTrigger>
-          <TabsTrigger value="campaigns">Loyalty Campaigns</TabsTrigger>
-          <TabsTrigger value="automations">Automation</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="programs">{t("loyalty.tabs.programs")}</TabsTrigger>
+          <TabsTrigger value="simulator">{t("loyalty.tabs.simulator")}</TabsTrigger>
+          <TabsTrigger value="rewards">{t("loyalty.tabs.rewards")}</TabsTrigger>
+          <TabsTrigger value="vouchers">{t("loyalty.tabs.vouchers")}</TabsTrigger>
+          <TabsTrigger value="promotions">{t("loyalty.tabs.promotions")}</TabsTrigger>
+          <TabsTrigger value="segments">{t("loyalty.tabs.segments")}</TabsTrigger>
+          <TabsTrigger value="tiers">{t("loyalty.tabs.tiers")}</TabsTrigger>
+          <TabsTrigger value="campaigns">{t("loyalty.tabs.campaigns")}</TabsTrigger>
+          <TabsTrigger value="automations">{t("loyalty.tabs.automations")}</TabsTrigger>
+          <TabsTrigger value="analytics">{t("loyalty.tabs.analytics")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="programs" className="mt-4">
@@ -1567,65 +1705,8 @@ export default function LoyaltyPrograms() {
             data={outletPrograms}
             rowKey={(r) => r.id}
             loading={loadingPrograms}
-            emptyMessage="No loyalty programs for this outlet."
+            emptyMessage={t("loyalty.page.empty.programs")}
           />
-        </TabsContent>
-
-        <TabsContent value="rules" className="mt-4 space-y-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1 min-w-[200px]">
-              <Label>Program</Label>
-              <Select value={selectedProgramId} onValueChange={setSelectedProgramId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select program" />
-                </SelectTrigger>
-                <SelectContent>
-                  {outletPrograms.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedProgram && (
-              <p className="text-sm text-muted-foreground pb-2">
-                Rule type: <strong>{typeLabel(selectedProgram.type)}</strong>
-              </p>
-            )}
-          </div>
-          {selectedProgram && (
-            <>
-              <Textarea
-                className="font-mono text-sm min-h-[160px]"
-                value={ruleConfigJson}
-                onChange={(e) => setRuleConfigJson(e.target.value)}
-                disabled={loadingRules}
-              />
-              <p className="text-xs text-muted-foreground">
-                spend_based: earnPerAmount, pointsEarned · visit_based: visit_threshold, points_awarded ·
-                period_spending: period (monthly|weekly|yearly), minimum_spend, reward_percent · percentage_reward:
-                percentage
-              </p>
-              <div className="flex gap-2">
-                <Button onClick={() => void handleSaveRule()} disabled={saving || loadingRules}>
-                  Save rule
-                </Button>
-                {rules[0] && (
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      void removeRule(rules[0].id, selectedProgram.id)
-                        .then(() => toast.success("Rule removed"))
-                        .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Delete failed"))
-                    }
-                  >
-                    Delete rule
-                  </Button>
-                )}
-              </div>
-            </>
-          )}
         </TabsContent>
 
         <TabsContent value="rewards" className="mt-4">
@@ -1634,7 +1715,7 @@ export default function LoyaltyPrograms() {
             data={rewards}
             rowKey={(r) => r.id}
             loading={loadingRewards}
-            emptyMessage="No rewards defined for this outlet."
+            emptyMessage={t("loyalty.page.empty.rewards")}
           />
         </TabsContent>
 
@@ -1644,8 +1725,12 @@ export default function LoyaltyPrograms() {
             data={vouchers}
             rowKey={(r) => r.id}
             loading={loadingVouchers}
-            emptyMessage="No vouchers defined for this outlet."
+            emptyMessage={t("loyalty.page.empty.vouchers")}
           />
+        </TabsContent>
+
+        <TabsContent value="promotions" className="mt-4">
+          <PromotionsTab outletId={activeOutletId} />
         </TabsContent>
 
         <TabsContent value="segments" className="mt-4">
@@ -1654,7 +1739,7 @@ export default function LoyaltyPrograms() {
             data={segments}
             rowKey={(r) => r.id}
             loading={loadingSegments}
-            emptyMessage="No member segments defined for this outlet."
+            emptyMessage={t("loyalty.page.empty.segments")}
           />
         </TabsContent>
 
@@ -1664,7 +1749,7 @@ export default function LoyaltyPrograms() {
             data={tiers}
             rowKey={(r) => r.id}
             loading={loadingTiers}
-            emptyMessage="No membership tiers defined for this outlet."
+            emptyMessage={t("loyalty.page.empty.tiers")}
           />
         </TabsContent>
 
@@ -1674,7 +1759,7 @@ export default function LoyaltyPrograms() {
             data={campaigns}
             rowKey={(r) => r.id}
             loading={loadingCampaigns}
-            emptyMessage="No loyalty campaigns for this outlet."
+            emptyMessage={t("loyalty.page.empty.campaigns")}
           />
         </TabsContent>
 
@@ -1684,20 +1769,20 @@ export default function LoyaltyPrograms() {
             data={automations}
             rowKey={(r) => r.id}
             loading={loadingAutomations}
-            emptyMessage="No loyalty automations for this outlet."
+            emptyMessage={t("loyalty.page.empty.automations")}
           />
         </TabsContent>
 
         <TabsContent value="simulator" className="mt-4 space-y-4">
           <div className="grid sm:grid-cols-2 gap-4 max-w-xl">
             <div className="space-y-1">
-              <Label>Program</Label>
+              <Label>{t("loyalty.form.program")}</Label>
               <Select
                 value={simForm.programId}
                 onValueChange={(v) => setSimForm((f) => ({ ...f, programId: v }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select program" />
+                  <SelectValue placeholder={t("loyalty.form.selectProgram")} />
                 </SelectTrigger>
                 <SelectContent>
                   {outletPrograms.map((p) => (
@@ -1709,7 +1794,7 @@ export default function LoyaltyPrograms() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Simulation date</Label>
+              <Label>{t("loyalty.form.simulationDate")}</Label>
               <Input
                 type="date"
                 value={simForm.simulationDate}
@@ -1717,7 +1802,7 @@ export default function LoyaltyPrograms() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Spending amount</Label>
+              <Label>{t("loyalty.form.spendingAmount")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -1726,7 +1811,7 @@ export default function LoyaltyPrograms() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Visit count</Label>
+              <Label>{t("loyalty.form.visitCount")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -1737,21 +1822,21 @@ export default function LoyaltyPrograms() {
           </div>
           <Button onClick={() => void handleSimulate()} disabled={simulating}>
             <Calculator className="h-4 w-4 mr-1" />
-            {simulating ? "Simulating…" : "Run simulation"}
+            {simulating ? t("loyalty.actions.simulating") : t("loyalty.actions.runSimulation")}
           </Button>
           {lastSimulation && (
             <div className="rounded-lg border p-4 space-y-2 bg-card">
               <p className="font-semibold">
-                Expected points: <span className="text-primary">{lastSimulation.expectedPoints}</span>
+                {t("loyalty.form.expectedPoints")}: <span className="text-primary">{lastSimulation.expectedPoints}</span>
               </p>
               <p className="text-sm text-muted-foreground">
-                {lastSimulation.programName} · effective: {lastSimulation.isEffective ? "yes" : "no"} · active:{" "}
-                {lastSimulation.isActive ? "yes" : "no"}
+                {lastSimulation.programName} · {t("loyalty.form.effectiveLabel")}: {lastSimulation.isEffective ? t("payroll.shared.yes") : t("payroll.shared.no")} · {t("loyalty.form.activeLabel")}:{" "}
+                {lastSimulation.isActive ? t("payroll.shared.yes") : t("payroll.shared.no")}
               </p>
               {lastSimulation.triggeredRules.length > 0 && (
                 <div>
                   <p className="text-sm font-medium flex items-center gap-1">
-                    <ListTree className="h-4 w-4" /> Triggered rules
+                    <ListTree className="h-4 w-4" /> {t("loyalty.form.triggeredRules")}
                   </p>
                   <pre className="text-xs bg-muted p-2 rounded overflow-auto">
                     {JSON.stringify(lastSimulation.triggeredRules, null, 2)}
@@ -1759,7 +1844,7 @@ export default function LoyaltyPrograms() {
                 </div>
               )}
               <div>
-                <p className="text-sm font-medium">Breakdown</p>
+                <p className="text-sm font-medium">{t("loyalty.form.breakdown")}</p>
                 <pre className="text-xs bg-muted p-2 rounded overflow-auto">
                   {JSON.stringify(lastSimulation.breakdown, null, 2)}
                 </pre>
@@ -1772,36 +1857,44 @@ export default function LoyaltyPrograms() {
           {activeOutletId ? (
             <LoyaltyAnalyticsDashboard outletId={activeOutletId} />
           ) : (
-            <p className="text-sm text-muted-foreground">Select an outlet to view loyalty analytics.</p>
+            <p className="text-sm text-muted-foreground">{t("loyalty.page.analyticsNoOutlet")}</p>
           )}
         </TabsContent>
       </Tabs>
 
       <Dialog open={programOpen} onOpenChange={setProgramOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingProgram ? "Edit program" : "New loyalty program"}</DialogTitle>
+            <DialogTitle>
+              {editingProgram ? t("loyalty.dialogs.editProgram") : t("loyalty.dialogs.newProgram")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {!editingProgram && (
               <>
                 <div className="space-y-1">
-                  <Label>Code</Label>
+                  <Label>{t("loyalty.form.code")}</Label>
                   <Input value={programForm.code} onChange={(e) => setProgramForm((f) => ({ ...f, code: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
-                  <Label>Type</Label>
+                  <Label>{t("loyalty.form.type")}</Label>
                   <Select
                     value={programForm.type}
-                    onValueChange={(v) => setProgramForm((f) => ({ ...f, type: v as LoyaltyProgramType }))}
+                    onValueChange={(v) =>
+                      setProgramForm((f) => ({
+                        ...f,
+                        type: v as LoyaltyProgramType,
+                        ruleConfig: defaultRuleConfig(v),
+                      }))
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PROGRAM_TYPES.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
+                      {PROGRAM_TYPES.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {t(opt.labelKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1810,19 +1903,30 @@ export default function LoyaltyPrograms() {
               </>
             )}
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={programForm.name} onChange={(e) => setProgramForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={programForm.description}
                 onChange={(e) => setProgramForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
+            <div className="rounded-xl border border-border/50 p-3 space-y-2">
+              <p className="text-sm font-medium">
+                {t("loyalty.form.earnRule")} {editingProgram ? `(${typeLabel(programForm.type, t)})` : ""}
+              </p>
+              <ProgramRuleFields
+                type={programForm.type}
+                ruleConfig={programForm.ruleConfig}
+                onChange={(ruleConfig) => setProgramForm((f) => ({ ...f, ruleConfig }))}
+                t={t}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Effective from</Label>
+                <Label>{t("loyalty.form.effectiveFrom")}</Label>
                 <Input
                   type="date"
                   value={programForm.effectiveFrom}
@@ -1830,7 +1934,7 @@ export default function LoyaltyPrograms() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Effective until</Label>
+                <Label>{t("loyalty.form.effectiveUntil")}</Label>
                 <Input
                   type="date"
                   value={programForm.effectiveUntil}
@@ -1847,12 +1951,12 @@ export default function LoyaltyPrograms() {
                 }
               />
               <Label htmlFor="expiry-enabled" className="font-normal cursor-pointer">
-                Enable expiry
+                {t("loyalty.form.enableExpiry")}
               </Label>
             </div>
             {programForm.expiryEnabled && (
               <div className="space-y-1">
-                <Label>Expiry days</Label>
+                <Label>{t("loyalty.form.expiryDays")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -1860,12 +1964,12 @@ export default function LoyaltyPrograms() {
                   onChange={(e) => setProgramForm((f) => ({ ...f, expiryDays: e.target.value }))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Points from earn, visit, and period rewards expire after this many days.
+                  {t("loyalty.form.expiryHint")}
                 </p>
               </div>
             )}
             <div className="space-y-1">
-              <Label>Status</Label>
+              <Label>{t("loyalty.form.status")}</Label>
               <Select
                 value={programForm.isActive ? "active" : "inactive"}
                 onValueChange={(v) => setProgramForm((f) => ({ ...f, isActive: v === "active" }))}
@@ -1874,42 +1978,44 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProgramOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveProgram()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={rewardOpen} onOpenChange={setRewardOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingReward ? "Edit reward" : "New loyalty reward"}</DialogTitle>
+            <DialogTitle>
+              {editingReward ? t("loyalty.dialogs.editReward") : t("loyalty.dialogs.newReward")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={rewardForm.code}
                 onChange={(e) => setRewardForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={rewardForm.name} onChange={(e) => setRewardForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={rewardForm.description}
                 onChange={(e) => setRewardForm((f) => ({ ...f, description: e.target.value }))}
@@ -1917,7 +2023,7 @@ export default function LoyaltyPrograms() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Points cost</Label>
+                <Label>{t("loyalty.form.pointsCost")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -1926,7 +2032,7 @@ export default function LoyaltyPrograms() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Sort order</Label>
+                <Label>{t("loyalty.form.sortOrder")}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -1938,41 +2044,43 @@ export default function LoyaltyPrograms() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRewardOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveReward()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={segmentOpen} onOpenChange={setSegmentOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingSegment ? "Edit segment" : "New member segment"}</DialogTitle>
+            <DialogTitle>
+              {editingSegment ? t("loyalty.dialogs.editSegment") : t("loyalty.dialogs.newSegment")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={segmentForm.code}
                 onChange={(e) => setSegmentForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={segmentForm.name} onChange={(e) => setSegmentForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={segmentForm.description}
                 onChange={(e) => setSegmentForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Segment type</Label>
+              <Label>{t("loyalty.form.segmentType")}</Label>
               <Select
                 value={segmentForm.segmentType}
                 onValueChange={(v) => {
@@ -1988,16 +2096,16 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SEGMENT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {SEGMENT_TYPES.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Config (JSON)</Label>
+              <Label>{t("loyalty.form.configJson")}</Label>
               <Textarea
                 className="font-mono text-sm min-h-[120px]"
                 value={segmentForm.configJson}
@@ -2005,7 +2113,7 @@ export default function LoyaltyPrograms() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Status</Label>
+              <Label>{t("loyalty.form.status")}</Label>
               <Select
                 value={segmentForm.isActive ? "active" : "inactive"}
                 onValueChange={(v) => setSegmentForm((f) => ({ ...f, isActive: v === "active" }))}
@@ -2014,49 +2122,51 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSegmentOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveSegment()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={tierOpen} onOpenChange={setTierOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingTier ? "Edit tier" : "New membership tier"}</DialogTitle>
+            <DialogTitle>
+              {editingTier ? t("loyalty.dialogs.editTier") : t("loyalty.dialogs.newTier")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={tierForm.code}
                 onChange={(e) => setTierForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={tierForm.name} onChange={(e) => setTierForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={tierForm.description}
                 onChange={(e) => setTierForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Qualification type</Label>
+              <Label>{t("loyalty.form.qualificationType")}</Label>
               <Select
                 value={tierForm.qualificationType}
                 onValueChange={(v) => {
@@ -2072,16 +2182,16 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIER_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {TIER_TYPES.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Qualification config (JSON)</Label>
+              <Label>{t("loyalty.form.qualificationConfigJson")}</Label>
               <Textarea
                 className="font-mono text-sm min-h-[120px]"
                 value={tierForm.configJson}
@@ -2089,8 +2199,8 @@ export default function LoyaltyPrograms() {
               />
             </div>
             <div className="space-y-2 rounded-lg border p-3">
-              <p className="text-sm font-medium">Benefits</p>
-              <p className="text-xs text-muted-foreground">Informational privileges for this tier. No automatic actions.</p>
+              <p className="text-sm font-medium">{t("loyalty.form.benefits")}</p>
+              <p className="text-xs text-muted-foreground">{t("loyalty.form.benefitsHint")}</p>
               <div className="space-y-2">
                 {TIER_BENEFIT_OPTIONS.map((option) => (
                   <label key={option.key} className="flex items-center gap-2 text-sm">
@@ -2103,13 +2213,13 @@ export default function LoyaltyPrograms() {
                         }))
                       }
                     />
-                    {option.label}
+                    {t(option.labelKey)}
                   </label>
                 ))}
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Sort order</Label>
+              <Label>{t("loyalty.form.sortOrder")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -2118,7 +2228,7 @@ export default function LoyaltyPrograms() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Status</Label>
+              <Label>{t("loyalty.form.status")}</Label>
               <Select
                 value={tierForm.isActive ? "active" : "inactive"}
                 onValueChange={(v) => setTierForm((f) => ({ ...f, isActive: v === "active" }))}
@@ -2127,52 +2237,54 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTierOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveTier()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={automationOpen} onOpenChange={setAutomationOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingAutomation ? "Edit automation" : "New automation"}</DialogTitle>
+            <DialogTitle>
+              {editingAutomation ? t("loyalty.dialogs.editAutomation") : t("loyalty.dialogs.newAutomation")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={automationForm.code}
                 onChange={(e) => setAutomationForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input
                 value={automationForm.name}
                 onChange={(e) => setAutomationForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={automationForm.description}
                 onChange={(e) => setAutomationForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Trigger</Label>
+              <Label>{t("loyalty.form.trigger")}</Label>
               <Select
                 value={automationForm.triggerType}
                 onValueChange={(v) => {
@@ -2182,7 +2294,7 @@ export default function LoyaltyPrograms() {
                     ...f,
                     triggerType,
                     code: f.code || preset.code,
-                    name: f.name || preset.name,
+                    name: f.name || (preset.nameKey ? t(preset.nameKey) : f.name),
                     ...Object.fromEntries(
                       Object.entries(defaultAutomationCondition(triggerType)).map(([key, value]) => {
                         if (key === "daysBefore") return ["daysBefore", String(value)];
@@ -2199,9 +2311,9 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {AUTOMATION_TRIGGERS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {AUTOMATION_TRIGGERS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2209,7 +2321,7 @@ export default function LoyaltyPrograms() {
             </div>
             {automationForm.triggerType === "member_birthday" && (
               <div className="space-y-1">
-                <Label>Days before birthday</Label>
+                <Label>{t("loyalty.form.daysBeforeBirthday")}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -2220,7 +2332,7 @@ export default function LoyaltyPrograms() {
             )}
             {automationForm.triggerType === "visit_milestone" && (
               <div className="space-y-1">
-                <Label>Visit count</Label>
+                <Label>{t("loyalty.form.visitCount")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -2231,7 +2343,7 @@ export default function LoyaltyPrograms() {
             )}
             {automationForm.triggerType === "points_milestone" && (
               <div className="space-y-1">
-                <Label>Points threshold</Label>
+                <Label>{t("loyalty.form.pointsThreshold")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -2242,7 +2354,7 @@ export default function LoyaltyPrograms() {
             )}
             {automationForm.triggerType === "inactive_member" && (
               <div className="space-y-1">
-                <Label>Days inactive</Label>
+                <Label>{t("loyalty.form.daysInactive")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -2252,12 +2364,12 @@ export default function LoyaltyPrograms() {
               </div>
             )}
             <div className="space-y-1">
-              <Label>Action</Label>
+              <Label>{t("loyalty.form.action")}</Label>
               <Select
                 value={automationForm.actionType}
                 onValueChange={(v) => {
                   const actionType = v as LoyaltyAutomationActionType;
-                  const defaults = defaultAutomationActionConfig(actionType);
+                  const defaults = defaultAutomationActionConfig(actionType, t);
                   setAutomationForm((f) => ({
                     ...f,
                     actionType,
@@ -2270,9 +2382,9 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {AUTOMATION_ACTIONS.map((a) => (
-                    <SelectItem key={a.value} value={a.value}>
-                      {a.label}
+                  {AUTOMATION_ACTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2280,13 +2392,13 @@ export default function LoyaltyPrograms() {
             </div>
             {automationForm.actionType === "issue_voucher" && (
               <div className="space-y-1">
-                <Label>Voucher</Label>
+                <Label>{t("loyalty.form.voucher")}</Label>
                 <Select
                   value={automationForm.voucherId}
                   onValueChange={(v) => setAutomationForm((f) => ({ ...f, voucherId: v }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select voucher" />
+                    <SelectValue placeholder={t("loyalty.form.selectVoucher")} />
                   </SelectTrigger>
                   <SelectContent>
                     {vouchers.map((v) => (
@@ -2300,13 +2412,13 @@ export default function LoyaltyPrograms() {
             )}
             {automationForm.actionType === "assign_campaign" && (
               <div className="space-y-1">
-                <Label>Campaign</Label>
+                <Label>{t("loyalty.form.campaign")}</Label>
                 <Select
                   value={automationForm.campaignId}
                   onValueChange={(v) => setAutomationForm((f) => ({ ...f, campaignId: v }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select campaign" />
+                    <SelectValue placeholder={t("loyalty.form.selectCampaign")} />
                   </SelectTrigger>
                   <SelectContent>
                     {campaigns.map((c) => (
@@ -2321,14 +2433,14 @@ export default function LoyaltyPrograms() {
             {automationForm.actionType === "send_notification" && (
               <>
                 <div className="space-y-1">
-                  <Label>Notification title</Label>
+                  <Label>{t("loyalty.form.notificationTitle")}</Label>
                   <Input
                     value={automationForm.notificationTitle}
                     onChange={(e) => setAutomationForm((f) => ({ ...f, notificationTitle: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Notification content</Label>
+                  <Label>{t("loyalty.form.notificationContent")}</Label>
                   <Textarea
                     value={automationForm.notificationContent}
                     onChange={(e) => setAutomationForm((f) => ({ ...f, notificationContent: e.target.value }))}
@@ -2337,7 +2449,7 @@ export default function LoyaltyPrograms() {
               </>
             )}
             <div className="space-y-1">
-              <Label>Status</Label>
+              <Label>{t("loyalty.form.status")}</Label>
               <Select
                 value={automationForm.isActive ? "active" : "inactive"}
                 onValueChange={(v) => setAutomationForm((f) => ({ ...f, isActive: v === "active" }))}
@@ -2346,45 +2458,47 @@ export default function LoyaltyPrograms() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("payroll.shared.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("payroll.shared.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAutomationOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveAutomation()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={automationLogsOpen} onOpenChange={setAutomationLogsOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>Execution logs — {automationLogsTitle}</DialogTitle>
+            <DialogTitle>{t("loyalty.dialogs.executionLogs", { name: automationLogsTitle })}</DialogTitle>
           </DialogHeader>
-          {automationLogsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {automationLogsLoading && <p className="text-sm text-muted-foreground">{t("loyalty.form.loading")}</p>}
           {!automationLogsLoading && automationLogs.length === 0 && (
-            <p className="text-sm text-muted-foreground">No execution logs yet.</p>
+            <p className="text-sm text-muted-foreground">{t("loyalty.form.noExecutionLogs")}</p>
           )}
           {!automationLogsLoading && automationLogs.length > 0 && (
             <div className="space-y-2">
               {automationLogs.map((log) => (
                 <div key={log.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium capitalize">{log.status}</span>
+                    <span className="font-medium capitalize">
+                      {t(`loyalty.enums.campaignStatus.${log.status}`, { defaultValue: log.status })}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {new Date(log.executedAt).toLocaleString()}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Member #{log.memberId} · {automationTriggerLabel(log.triggerType)} →{" "}
-                    {automationActionLabel(log.actionType)}
+                    {t("loyalty.form.memberRef", { id: log.memberId })} · {automationTriggerLabel(log.triggerType, t)} →{" "}
+                    {automationActionLabel(log.actionType, t)}
                   </p>
                   {Object.keys(log.result ?? {}).length > 0 && (
                     <pre className="text-xs bg-muted p-2 rounded mt-2 overflow-auto">
@@ -2399,23 +2513,25 @@ export default function LoyaltyPrograms() {
       </Dialog>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>
-              Preview: {previewSegmentRow?.name ?? "Segment"}
+              {t("loyalty.dialogs.previewSegment", {
+                name: previewSegmentRow?.name ?? t("loyalty.form.segmentFallback"),
+              })}
             </DialogTitle>
           </DialogHeader>
           {previewLoading ? (
-            <p className="text-sm text-muted-foreground">Loading preview…</p>
+            <p className="text-sm text-muted-foreground">{t("loyalty.form.loadingPreview")}</p>
           ) : (
             <div className="space-y-3">
               <p className="text-sm">
-                <span className="text-muted-foreground">Matching members: </span>
+                <span className="text-muted-foreground">{t("loyalty.form.matchingMembers")}: </span>
                 <span className="font-semibold">{previewCount.toLocaleString()}</span>
               </p>
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {previewMembers.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No members match this segment.</p>
+                  <p className="text-xs text-muted-foreground">{t("loyalty.form.noMatchingMembers")}</p>
                 ) : (
                   previewMembers.map((m) => (
                     <div key={m.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
@@ -2432,44 +2548,46 @@ export default function LoyaltyPrograms() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewOpen(false)}>
-              Close
+              {t("loyalty.actions.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingCampaign ? "Edit campaign" : "New loyalty campaign"}</DialogTitle>
+            <DialogTitle>
+              {editingCampaign ? t("loyalty.dialogs.editCampaign") : t("loyalty.dialogs.newCampaign")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={campaignForm.code}
                 onChange={(e) => setCampaignForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={campaignForm.name} onChange={(e) => setCampaignForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={campaignForm.description}
                 onChange={(e) => setCampaignForm((f) => ({ ...f, description: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Segment</Label>
+              <Label>{t("loyalty.form.segment")}</Label>
               <Select
                 value={campaignForm.segmentId}
                 onValueChange={(v) => setCampaignForm((f) => ({ ...f, segmentId: v }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select segment" />
+                  <SelectValue placeholder={t("loyalty.form.selectSegment")} />
                 </SelectTrigger>
                 <SelectContent>
                   {segments.filter((s) => s.isActive).map((s) => (
@@ -2481,7 +2599,7 @@ export default function LoyaltyPrograms() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Scheduled at</Label>
+              <Label>{t("loyalty.form.scheduledAt")}</Label>
               <Input
                 type="datetime-local"
                 value={campaignForm.scheduledAt}
@@ -2490,7 +2608,7 @@ export default function LoyaltyPrograms() {
             </div>
             {editingCampaign && (editingCampaign.status === "draft" || editingCampaign.status === "scheduled") && (
               <div className="space-y-1">
-                <Label>Status</Label>
+                <Label>{t("loyalty.form.status")}</Label>
                 <Select
                   value={campaignForm.status}
                   onValueChange={(v) => setCampaignForm((f) => ({ ...f, status: v as LoyaltyCampaignStatus }))}
@@ -2499,8 +2617,8 @@ export default function LoyaltyPrograms() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                    <SelectItem value="draft">{t("loyalty.enums.campaignStatus.draft")}</SelectItem>
+                    <SelectItem value="scheduled">{t("loyalty.enums.campaignStatus.scheduled")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2508,33 +2626,35 @@ export default function LoyaltyPrograms() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCampaignOpen(false)}>
-              Cancel
+              {t("loyalty.actions.cancel")}
             </Button>
             <Button onClick={() => void handleSaveCampaign()} disabled={saving}>
-              Save
+              {t("loyalty.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={campaignSnapshotOpen} onOpenChange={setCampaignSnapshotOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>
-              Captured audience: {campaignSnapshot?.campaign.name ?? "Campaign"}
+              {t("loyalty.dialogs.capturedAudience", {
+                name: campaignSnapshot?.campaign.name ?? t("loyalty.form.campaignFallback"),
+              })}
             </DialogTitle>
           </DialogHeader>
           {campaignSnapshotLoading ? (
-            <p className="text-sm text-muted-foreground">Loading snapshot…</p>
+            <p className="text-sm text-muted-foreground">{t("loyalty.form.loadingSnapshot")}</p>
           ) : campaignSnapshot ? (
             <div className="space-y-3">
               <p className="text-sm">
-                <span className="text-muted-foreground">Captured at activation: </span>
+                <span className="text-muted-foreground">{t("loyalty.form.capturedAtActivation")}: </span>
                 <span className="font-semibold">{campaignSnapshot.capturedCount.toLocaleString()}</span>
               </p>
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {campaignSnapshot.members.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No captured members.</p>
+                  <p className="text-xs text-muted-foreground">{t("loyalty.form.noCapturedMembers")}</p>
                 ) : (
                   campaignSnapshot.members.map((m) => (
                     <div key={m.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
@@ -2551,33 +2671,35 @@ export default function LoyaltyPrograms() {
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCampaignSnapshotOpen(false)}>
-              Close
+              {t("loyalty.actions.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={campaignAudienceOpen} onOpenChange={setCampaignAudienceOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>
-              Live audience: {campaignAudience?.campaign.name ?? "Campaign"}
+              {t("loyalty.dialogs.liveAudience", {
+                name: campaignAudience?.campaign.name ?? t("loyalty.form.campaignFallback"),
+              })}
             </DialogTitle>
           </DialogHeader>
           {campaignAudienceLoading ? (
-            <p className="text-sm text-muted-foreground">Loading audience…</p>
+            <p className="text-sm text-muted-foreground">{t("loyalty.form.loadingAudience")}</p>
           ) : campaignAudience ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Segment: {campaignAudience.segment.name} (current segment rules)
+                {t("loyalty.form.segmentCurrentRules", { name: campaignAudience.segment.name })}
               </p>
               <p className="text-sm">
-                <span className="text-muted-foreground">Live audience size: </span>
+                <span className="text-muted-foreground">{t("loyalty.form.liveAudienceSize")}: </span>
                 <span className="font-semibold">{campaignAudience.memberCount.toLocaleString()}</span>
               </p>
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {campaignAudience.members.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No members in audience.</p>
+                  <p className="text-xs text-muted-foreground">{t("loyalty.form.noAudienceMembers")}</p>
                 ) : (
                   campaignAudience.members.map((m) => (
                     <div key={m.id} className="flex justify-between text-sm border rounded-lg px-3 py-2">
@@ -2594,31 +2716,33 @@ export default function LoyaltyPrograms() {
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCampaignAudienceOpen(false)}>
-              Close
+              {t("loyalty.actions.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={voucherOpen} onOpenChange={setVoucherOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>{editingVoucher ? "Edit voucher" : "New voucher"}</DialogTitle>
+            <DialogTitle>
+              {editingVoucher ? t("loyalty.dialogs.editVoucher") : t("loyalty.dialogs.newVoucher")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Code</Label>
+              <Label>{t("loyalty.form.code")}</Label>
               <Input
                 value={voucherForm.code}
                 onChange={(e) => setVoucherForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               />
             </div>
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("loyalty.form.name")}</Label>
               <Input value={voucherForm.name} onChange={(e) => setVoucherForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
+              <Label>{t("loyalty.form.description")}</Label>
               <Textarea
                 value={voucherForm.description}
                 onChange={(e) => setVoucherForm((f) => ({ ...f, description: e.target.value }))}
@@ -2626,37 +2750,37 @@ export default function LoyaltyPrograms() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Type</Label>
+                <Label>{t("loyalty.form.type")}</Label>
                 <Select
                   value={voucherForm.voucherType}
                   onValueChange={(v) => setVoucherForm((f) => ({ ...f, voucherType: v as LoyaltyVoucherType }))}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="campaign">Campaign</SelectItem>
-                    <SelectItem value="reward">Reward</SelectItem>
+                    <SelectItem value="manual">{t("loyalty.enums.voucherTypes.manual")}</SelectItem>
+                    <SelectItem value="campaign">{t("loyalty.enums.voucherTypes.campaign")}</SelectItem>
+                    <SelectItem value="reward">{t("loyalty.enums.voucherTypes.reward")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Value type</Label>
+                <Label>{t("loyalty.form.valueType")}</Label>
                 <Select
                   value={voucherForm.valueType}
                   onValueChange={(v) => setVoucherForm((f) => ({ ...f, valueType: v as LoyaltyVoucherValueType }))}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="percentage">Percentage</SelectItem>
-                    <SelectItem value="fixed_amount">Fixed amount</SelectItem>
-                    <SelectItem value="free_item">Free item</SelectItem>
+                    <SelectItem value="percentage">{t("loyalty.enums.voucherValueTypes.percentage")}</SelectItem>
+                    <SelectItem value="fixed_amount">{t("loyalty.enums.voucherValueTypes.fixed_amount")}</SelectItem>
+                    <SelectItem value="free_item">{t("loyalty.enums.voucherValueTypes.free_item")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Value</Label>
+                <Label>{t("loyalty.form.value")}</Label>
                 <Input
                   type="number"
                   value={voucherForm.value}
@@ -2664,7 +2788,7 @@ export default function LoyaltyPrograms() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Minimum spend</Label>
+                <Label>{t("loyalty.form.minimumSpendShort")}</Label>
                 <Input
                   type="number"
                   value={voucherForm.minimumSpend}
@@ -2674,28 +2798,30 @@ export default function LoyaltyPrograms() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVoucherOpen(false)}>Cancel</Button>
-            <Button onClick={() => void handleSaveVoucher()} disabled={saving}>Save</Button>
+            <Button variant="outline" onClick={() => setVoucherOpen(false)}>{t("loyalty.actions.cancel")}</Button>
+            <Button onClick={() => void handleSaveVoucher()} disabled={saving}>{t("loyalty.actions.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={issueVoucherOpen} onOpenChange={setIssueVoucherOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
-            <DialogTitle>Issue voucher to campaign audience</DialogTitle>
+            <DialogTitle>{t("loyalty.dialogs.issueVoucher")}</DialogTitle>
           </DialogHeader>
           {issueVoucherCampaign && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Campaign: {issueVoucherCampaign.name} · Audience captured:{" "}
-                {(issueVoucherCampaign.capturedCount ?? 0).toLocaleString()} · Already issued:{" "}
-                {(issueVoucherCampaign.issuedVoucherCount ?? 0).toLocaleString()}
+                {t("loyalty.form.campaignSummary", {
+                  name: issueVoucherCampaign.name,
+                  captured: (issueVoucherCampaign.capturedCount ?? 0).toLocaleString(),
+                  issued: (issueVoucherCampaign.issuedVoucherCount ?? 0).toLocaleString(),
+                })}
               </p>
               <div className="space-y-1">
-                <Label>Voucher</Label>
+                <Label>{t("loyalty.form.voucher")}</Label>
                 <Select value={issueVoucherId} onValueChange={setIssueVoucherId}>
-                  <SelectTrigger><SelectValue placeholder="Select voucher" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("loyalty.form.selectVoucher")} /></SelectTrigger>
                   <SelectContent>
                     {vouchers.filter((v) => v.isActive).map((v) => (
                       <SelectItem key={v.id} value={v.id}>{v.name} ({v.code})</SelectItem>
@@ -2706,8 +2832,8 @@ export default function LoyaltyPrograms() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIssueVoucherOpen(false)}>Cancel</Button>
-            <Button onClick={() => void handleIssueVoucher()} disabled={saving}>Issue</Button>
+            <Button variant="outline" onClick={() => setIssueVoucherOpen(false)}>{t("loyalty.actions.cancel")}</Button>
+            <Button onClick={() => void handleIssueVoucher()} disabled={saving}>{t("loyalty.actions.issue")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

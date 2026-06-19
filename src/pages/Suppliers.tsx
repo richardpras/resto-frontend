@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
 import { useSupplierStore, type Supplier, type SupplierStatus } from "@/stores/supplierStore";
@@ -205,7 +206,7 @@ export default function Suppliers() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll} rounded-2xl`}>
           <DialogHeader><DialogTitle>{editing ? "Edit supplier" : "New supplier"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>

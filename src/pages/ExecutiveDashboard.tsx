@@ -315,7 +315,7 @@ export default function ExecutiveDashboard() {
             status={data.loyalty.status}
             permissionHint={data.loyalty.permissionHint}
             errorMessage={data.loyalty.errorMessage}
-            openTo="/customers"
+            openTo="/members"
           >
             {topMembers.length > 0 ? (
               <ul className="space-y-1 text-sm">

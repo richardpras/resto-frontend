@@ -1109,6 +1109,8 @@
       "selectOutlet": "Select an active outlet first",
       "selectOutletBanner": "Select an outlet in the header to create and list purchase requests for that outlet.",
       "itemsRequired": "Add at least one valid item",
+      "loadingInventory": "Loading inventory items…",
+      "noInventoryItems": "No inventory items for this outlet. Add items in Inventory first.",
       "savedDraft": "PR saved as draft",
       "updated": "PR updated",
       "submitted": "PR submitted",
@@ -1143,6 +1145,7 @@
       "actionFailed": "Action failed",
       "workflowSubmitted": "PO submitted",
       "workflowApproved": "PO approved",
+      "workflowRejected": "PO rejected",
       "workflowCancelled": "PO cancelled",
       "workflowClosed": "PO closed",
       "poNumber": "PO Number",
@@ -1165,8 +1168,11 @@
       "close": "Close",
       "submit": "Submit",
       "approve": "Approve",
+      "reject": "Reject",
       "cancel": "Cancel",
-      "editBtn": "Edit"
+      "editBtn": "Edit",
+      "submitHint": "Submit this PO for approval before creating a goods receipt.",
+      "saveAndSubmit": "Save & Submit"
     },
     "grn": {
       "title": "Goods Receipt",
@@ -1452,6 +1458,713 @@
       "close": "Close",
       "edit": "Edit",
       "actionFailed": "Action failed"
+    }
+  },
+  "reportsHub": {
+    "title": "Reports Hub",
+    "subtitle": "Executive reporting entry point. Each card opens an existing module — no duplicate report engines.",
+    "empty": "No report modules are available for your role.",
+    "permissionRequired": "Additional permission required",
+    "financialRestricted": "Financial statement reports require both accounting.manage and reports.view permissions.",
+    "sections": {
+      "executive": "Executive",
+      "operations": "Operations",
+      "commercial": "Commercial"
+    },
+    "cards": {
+      "executive-dashboard": {
+        "title": "Owner Control Tower",
+        "description": "Cross-functional business overview combining sales, finance, operations, commercial performance, and alerts.",
+        "bullets": {
+          "b1": "Executive Score",
+          "b2": "Financial & Ops Health",
+          "b3": "Commercial KPIs",
+          "b4": "Alert Inbox"
+        }
+      },
+      "executive-sales-report": {
+        "title": "Executive Sales Report",
+        "description": "Gross sales, net sales, discounts, refunds, tender mix, and channel performance.",
+        "bullets": {
+          "b1": "Gross & Net Sales",
+          "b2": "Discount Breakdown",
+          "b3": "Payment Mix",
+          "b4": "Top Products",
+          "b5": "Sales Trends"
+        }
+      },
+      "financial-statements": {
+        "title": "Financial Statements",
+        "description": "Trial Balance, Profit & Loss, Balance Sheet, Cash Flow, and General Ledger.",
+        "bullets": {
+          "b1": "Trial Balance",
+          "b2": "Profit & Loss",
+          "b3": "Balance Sheet",
+          "b4": "Cash Flow",
+          "b5": "General Ledger"
+        }
+      },
+      "accounting-reconciliation": {
+        "title": "Accounting Reconciliation",
+        "description": "Subledger vs GL tie-out for AP, procurement, payroll, and gift cards.",
+        "bullets": {
+          "b1": "AP Reconciliation",
+          "b2": "Procurement Reconciliation",
+          "b3": "Payroll Reconciliation",
+          "b4": "Gift Card Reconciliation"
+        }
+      },
+      "gift-card-liability": {
+        "title": "Gift Card Liability",
+        "description": "Monitor gift card and store credit liability balances with variance alerts.",
+        "bullets": {
+          "b1": "Gift Card Liability (2130)",
+          "b2": "Store Credit Liability (2135)",
+          "b3": "Variance Monitoring"
+        }
+      },
+      "operations-monitoring": {
+        "title": "Operations Monitoring",
+        "description": "Live kitchen, payment, printer, bridge, and offline sync signals.",
+        "bullets": {
+          "b1": "Kitchen Queue",
+          "b2": "Payment Success Rate",
+          "b3": "Printer Queue",
+          "b4": "Hardware Bridge",
+          "b5": "Offline Sync"
+        }
+      },
+      "reservation-analytics": {
+        "title": "Reservation Analytics",
+        "description": "Reservation volume, occupancy, and operational dashboard metrics."
+      },
+      "payment-health": {
+        "title": "Payment Health",
+        "description": "Gateway reliability, incident timeline, webhook and payment success trends.",
+        "bullets": {
+          "b1": "Severity & Incidents",
+          "b2": "Provider Reliability",
+          "b3": "30-Day Trends"
+        }
+      },
+      "audit-center": {
+        "title": "Audit Center",
+        "description": "Centralized compliance timeline — operational, financial, and forensic change history.",
+        "bullets": {
+          "b1": "Audit Timeline",
+          "b2": "Entity History",
+          "b3": "Risk Classification",
+          "b4": "Global Search"
+        }
+      },
+      "system-health-center": {
+        "title": "System Health Center",
+        "description": "Unified platform health score, incidents, reliability trends, and priority action queue.",
+        "bullets": {
+          "b1": "Platform Score",
+          "b2": "Incident Timeline",
+          "b3": "Priority Queue"
+        }
+      },
+      "bug-reports": {
+        "title": "Bug Reports",
+        "description": "User-submitted bug reports with screenshots, diagnostics, and triage workflow.",
+        "bullets": {
+          "b1": "Screenshots",
+          "b2": "Error Logs",
+          "b3": "Status Workflow"
+        }
+      },
+      "system-reliability": {
+        "title": "System Reliability",
+        "description": "Queue failure monitoring, critical job alerts, and background job health trends.",
+        "bullets": {
+          "b1": "Failed Jobs",
+          "b2": "Critical Failures",
+          "b3": "Health Score"
+        }
+      },
+      "shift-close-operations": {
+        "title": "Shift Close Operations",
+        "description": "End-of-shift preflight, cash reconciliation, inventory posting, and GL batch close.",
+        "bullets": {
+          "b1": "Preflight Checks",
+          "b2": "Cash Variance",
+          "b3": "Inventory Posting",
+          "b4": "Journal Preview"
+        }
+      },
+      "loyalty-analytics": {
+        "title": "Loyalty Analytics",
+        "description": "Member engagement, voucher performance, and loyalty program trends."
+      },
+      "procurement-analytics": {
+        "title": "Procurement Analytics",
+        "description": "Supplier performance, spend trends, and payables inside Purchases."
+      },
+      "inventory-analytics": {
+        "title": "Inventory Analytics",
+        "description": "Valuation, stock risk, dead-stock signals, and menu intelligence KPIs."
+      }
+    }
+  },
+  "hr": {
+    "employees": {
+      "pageTitle": "Employees",
+      "pageSubtitle": "Internal staff records and system account links.",
+      "tabs": {
+        "general": "General",
+        "employment": "Employment",
+        "shift": "Shift",
+        "schedule": "Schedule",
+        "attendance": "Attendance",
+        "payslips": "Payslips",
+        "account": "System account"
+      },
+      "columns": {
+        "employeeNo": "Employee No",
+        "name": "Name",
+        "position": "Position",
+        "department": "Department",
+        "outlet": "Outlet",
+        "status": "Status",
+        "linkedUser": "Linked User"
+      },
+      "searchPlaceholder": "Search name, no, email, phone...",
+      "empty": "No employees yet",
+      "addEmployee": "Add employee",
+      "newEmployee": "New employee",
+      "editEmployee": "Edit employee",
+      "loadFailed": "Failed to load employees",
+      "shiftHistoryFailed": "Failed to load shift history",
+      "fullNameRequired": "Full name is required",
+      "updated": "Employee updated",
+      "created": "Employee created",
+      "saveFailed": "Save failed",
+      "employeeNoPlaceholder": "Auto-generated if empty",
+      "gender": "Gender",
+      "birthDate": "Birth date",
+      "notes": "Notes",
+      "none": "— None —",
+      "viewShiftHistory": "View assignment history",
+      "shiftManageHint": "Manage assignments under Payroll → Assignments.",
+      "saveFirstShift": "Save the employee first to view shift assignment.",
+      "scheduleReadOnlyHint": "Read-only. Edit schedules under Payroll → Scheduling.",
+      "saveFirstSchedule": "Save the employee first to view the weekly schedule.",
+      "attendanceReadOnlyHint": "Read-only (last 30 days). Import and corrections under Payroll → Attendance.",
+      "saveFirstAttendance": "Save the employee first to view attendance history.",
+      "payslipReadOnlyHint": "Read-only payslip history with PDF download.",
+      "saveFirstPayslips": "Save the employee first to view payslip history.",
+      "accountLinkHint": "Link a login user to this employee. The user must belong to the same outlet.",
+      "userAccount": "User account",
+      "noLink": "No link",
+      "noLinkOption": "— No link —",
+      "cancel": "Cancel",
+      "save": "Save",
+      "shiftHistoryTitle": "Shift history — {{name}}",
+      "current": "Current",
+      "noCurrentAssignment": "No current assignment.",
+      "shiftFallback": "Shift",
+      "present": "Present",
+      "statuses": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "resigned": "Resigned",
+        "terminated": "Terminated"
+      }
+    }
+  },
+  "giftCards": {
+    "noOutlet": "Select an outlet to manage gift cards.",
+    "pageTitle": "Gift Cards & Store Credit",
+    "pageSubtitle": "Issue, lookup by code, and settle redemptions. Listing all cards requires a backend list API (not available).",
+    "tabs": {
+      "issue": "Issue",
+      "lookup": "Lookup",
+      "settle": "Settle"
+    },
+    "type": "Type",
+    "giftCard": "Gift Card",
+    "storeCredit": "Store Credit",
+    "code": "Code",
+    "codePlaceholder": "GC-001",
+    "initialAmount": "Initial Amount",
+    "issue": "Issue",
+    "lookupPlaceholder": "Card code",
+    "settlementReference": "Settlement Reference",
+    "settlementIds": "Redeem Settlement IDs (comma-separated)",
+    "settlementIdsPlaceholder": "1, 2, 3",
+    "processSettlement": "Process Settlement",
+    "validationCodeAmount": "Enter a valid code and amount.",
+    "issued": "Gift card issued.",
+    "issuedIdempotent": "Gift card already issued (idempotent).",
+    "issueFailed": "Issue failed",
+    "lookupFailed": "Lookup failed",
+    "settlementValidation": "Enter settlement reference and one or more settlement IDs.",
+    "settlementsProcessed": "Settlements processed.",
+    "settlementFailed": "Settlement failed"
+  },
+  "menuIntelligence": {
+    "title": "Menu Intelligence Dashboard",
+    "subtitle": "Executive view across analytics, engineering, optimization, automation, and forecasting.",
+    "refresh": "Refresh",
+    "noOutlet": "Select an outlet in the header to load the executive dashboard.",
+    "sections": {
+      "executiveKpis": "Executive KPIs",
+      "trends": "Trends & Distribution",
+      "menuEngineering": "Menu Engineering",
+      "optimization": "Optimization Opportunities",
+      "alertCenter": "Alert Center",
+      "forecasting": "Forecasting",
+      "inventoryHealth": "Inventory Health",
+      "executiveHealthScore": "Executive Health Score"
+    },
+    "kpis": {
+      "revenue": "Revenue",
+      "foodCostPercent": "Food Cost %",
+      "avgMarginPercent": "Avg Margin %",
+      "forecastRevenue": "Forecast Revenue",
+      "forecastMargin": "Forecast Margin",
+      "inventoryValue": "Inventory Value",
+      "healthScore": "Health Score"
+    },
+    "quadrants": {
+      "STAR": "STAR",
+      "PUZZLE": "PUZZLE",
+      "PLOWHORSE": "PLOWHORSE",
+      "DOG": "DOG",
+      "count": "Count",
+      "revenue": "Revenue",
+      "margin": "Margin"
+    },
+    "engineering": {
+      "topItemsTitle": "Top 10 Items",
+      "noData": "No engineering data"
+    },
+    "table": {
+      "menuItem": "Menu Item",
+      "class": "Class",
+      "qtySold": "Qty Sold",
+      "marginPercent": "Margin %",
+      "contribution": "Contribution",
+      "severity": "Severity",
+      "title": "Title",
+      "type": "Type",
+      "triggered": "Triggered",
+      "action": "Action",
+      "direction": "Direction",
+      "suggested": "Suggested",
+      "projProfit": "Proj. Profit",
+      "ingredient": "Ingredient",
+      "savings": "Savings",
+      "currentPercent": "Current %",
+      "suggestedPercent": "Suggested %",
+      "bundle": "Bundle",
+      "revenue": "Revenue",
+      "margin": "Margin"
+    },
+    "optimization": {
+      "priceOpportunities": "Price Opportunities",
+      "ingredientOpportunities": "Ingredient Opportunities",
+      "yieldOpportunities": "Yield Opportunities",
+      "bundleOpportunities": "Bundle Opportunities",
+      "noOpportunities": "No opportunities"
+    },
+    "alerts": {
+      "open": "Open ({{count}})",
+      "critical": "Critical ({{count}})",
+      "resolved": "Resolved ({{count}})",
+      "noAlerts": "No alerts",
+      "resolve": "Resolve",
+      "resolvedSuccess": "Alert resolved.",
+      "resolveFailed": "Failed to resolve alert"
+    },
+    "forecast": {
+      "demandForecast": "Demand Forecast",
+      "revenueForecast": "Revenue Forecast",
+      "marginForecast": "Margin Forecast",
+      "stockRiskForecast": "Stock Risk Forecast",
+      "productionForecast": "Production Forecast",
+      "noData": "No forecast data",
+      "units": "{{count}} units",
+      "totalMargin": "Total margin: {{amount}}"
+    },
+    "inventory": {
+      "inventoryValue": "Inventory Value",
+      "deadStock": "Dead Stock",
+      "noDeadStock": "No dead stock detected",
+      "criticalRiskIngredients": "Critical Risk Ingredients",
+      "noCriticalStockRisks": "No critical stock risks"
+    }
+  },
+  "loyalty": {
+    "page": {
+      "title": "Loyalty Programs",
+      "subtitle": "Configure outlet programs and preview point accrual without changing live earning logic.",
+      "noOutlet": "Select an outlet to manage loyalty programs.",
+      "analyticsNoOutlet": "Select an outlet to view loyalty analytics.",
+      "empty": {
+        "programs": "No loyalty programs for this outlet.",
+        "rewards": "No rewards defined for this outlet.",
+        "vouchers": "No vouchers defined for this outlet.",
+        "segments": "No member segments defined for this outlet.",
+        "tiers": "No membership tiers defined for this outlet.",
+        "campaigns": "No loyalty campaigns for this outlet.",
+        "automations": "No loyalty automations for this outlet."
+      }
+    },
+    "tabs": {
+      "programs": "Programs",
+      "simulator": "Simulator",
+      "rewards": "Loyalty Rewards",
+      "vouchers": "Vouchers",
+      "promotions": "Promotions",
+      "segments": "Segments",
+      "tiers": "Membership Tiers",
+      "campaigns": "Loyalty Campaigns",
+      "automations": "Automation",
+      "analytics": "Analytics"
+    },
+    "enums": {
+      "programTypes": {
+        "spend_based": "Spend based",
+        "visit_based": "Visit based",
+        "period_spending": "Period spending",
+        "percentage_reward": "Percentage reward"
+      },
+      "segmentTypes": {
+        "vip_spender": "VIP spender",
+        "frequent_visitor": "Frequent visitor",
+        "birthday_month": "Birthday month",
+        "inactive_member": "Inactive member",
+        "never_redeemed": "Never redeemed",
+        "expiring_soon": "Expiring soon"
+      },
+      "tierTypes": {
+        "lifetime_points": "Lifetime points",
+        "lifetime_spending": "Lifetime spending",
+        "visit_count": "Visit count"
+      },
+      "automationTriggers": {
+        "member_birthday": "Member birthday",
+        "member_created": "Member created",
+        "tier_upgraded": "Tier upgraded",
+        "visit_milestone": "Visit milestone",
+        "points_milestone": "Points milestone",
+        "inactive_member": "Inactive member",
+        "voucher_redeemed": "Voucher redeemed",
+        "reward_redeemed": "Reward redeemed"
+      },
+      "automationActions": {
+        "issue_voucher": "Issue voucher",
+        "send_notification": "Send notification",
+        "assign_campaign": "Assign campaign"
+      },
+      "tierBenefits": {
+        "priorityCampaign": "Priority Campaign Access",
+        "exclusiveVoucher": "Exclusive Voucher Access",
+        "exclusiveReward": "Exclusive Reward Access",
+        "monthlyVoucher": "Monthly Voucher Program"
+      },
+      "periods": {
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "yearly": "Yearly"
+      },
+      "voucherTypes": {
+        "manual": "Manual",
+        "campaign": "Campaign",
+        "reward": "Reward"
+      },
+      "voucherValueTypes": {
+        "percentage": "Percentage",
+        "fixed_amount": "Fixed amount",
+        "free_item": "Free item"
+      },
+      "campaignStatus": {
+        "draft": "Draft",
+        "scheduled": "Scheduled",
+        "active": "Active",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "automationPresets": {
+        "bdayVoucher": "Birthday Voucher",
+        "inactiveVoucher": "Inactive Customer Voucher",
+        "tierNotify": "Tier Upgrade Notification",
+        "visitReward": "Visit Milestone Reward",
+        "pointsCampaign": "Points Milestone Campaign",
+        "welcomeNotification": "Welcome Notification"
+      },
+      "notificationDefaults": {
+        "helloMember": "Hello {{member_name}}",
+        "thankYouLoyal": "Thank you for being a loyal member.",
+        "welcomeMember": "Welcome {{member_name}}",
+        "thanksJoining": "Thanks for joining our loyalty program."
+      }
+    },
+    "form": {
+      "code": "Code",
+      "name": "Name",
+      "description": "Description",
+      "status": "Status",
+      "type": "Type",
+      "value": "Value",
+      "segment": "Segment",
+      "campaign": "Campaign",
+      "voucher": "Voucher",
+      "trigger": "Trigger",
+      "action": "Action",
+      "pointsCost": "Points cost",
+      "sortOrder": "Sort order",
+      "segmentType": "Segment type",
+      "configJson": "Config (JSON)",
+      "qualificationType": "Qualification type",
+      "qualificationConfigJson": "Qualification config (JSON)",
+      "benefits": "Benefits",
+      "benefitsHint": "Informational privileges for this tier. No automatic actions.",
+      "earnRule": "Earn rule",
+      "effectiveFrom": "Effective from",
+      "effectiveUntil": "Effective until",
+      "enableExpiry": "Enable expiry",
+      "expiryDays": "Expiry days",
+      "expiryHint": "Points from earn, visit, and period rewards expire after this many days.",
+      "manualProgramsNoRules": "Manual programs do not use automatic earn rules.",
+      "earnPerAmount": "Earn per amount (Rp)",
+      "pointsEarned": "Points earned",
+      "earnExample": "Example: Rp 1.000.000 subtotal (before tax) with 1 pt / Rp 1.000 earns 1.000 points.",
+      "visitThreshold": "Visit threshold",
+      "pointsAwarded": "Points awarded",
+      "period": "Period",
+      "minimumSpend": "Minimum spend (Rp)",
+      "rewardPercent": "Reward percent",
+      "rewardPercentage": "Reward percentage",
+      "daysBeforeBirthday": "Days before birthday",
+      "visitCount": "Visit count",
+      "pointsThreshold": "Points threshold",
+      "daysInactive": "Days inactive",
+      "notificationTitle": "Notification title",
+      "notificationContent": "Notification content",
+      "scheduledAt": "Scheduled at",
+      "valueType": "Value type",
+      "minimumSpendShort": "Minimum spend",
+      "selectProgram": "Select program",
+      "selectSegment": "Select segment",
+      "selectVoucher": "Select voucher",
+      "selectCampaign": "Select campaign",
+      "simulationDate": "Simulation date",
+      "spendingAmount": "Spending amount",
+      "program": "Program",
+      "expectedPoints": "Expected points",
+      "triggeredRules": "Triggered rules",
+      "breakdown": "Breakdown",
+      "effectiveLabel": "effective",
+      "activeLabel": "active",
+      "matchingMembers": "Matching members",
+      "noMatchingMembers": "No members match this segment.",
+      "capturedAtActivation": "Captured at activation",
+      "noCapturedMembers": "No captured members.",
+      "segmentCurrentRules": "Segment: {{name}} (current segment rules)",
+      "liveAudienceSize": "Live audience size",
+      "noAudienceMembers": "No members in audience.",
+      "campaignSummary": "Campaign: {{name}} · Audience captured: {{captured}} · Already issued: {{issued}}",
+      "memberRef": "Member #{{id}}",
+      "loading": "Loading…",
+      "loadingPreview": "Loading preview…",
+      "loadingSnapshot": "Loading snapshot…",
+      "loadingAudience": "Loading audience…",
+      "noExecutionLogs": "No execution logs yet.",
+      "segmentFallback": "Segment",
+      "campaignFallback": "Campaign"
+    },
+    "dialogs": {
+      "editProgram": "Edit program",
+      "newProgram": "New loyalty program",
+      "editReward": "Edit reward",
+      "newReward": "New loyalty reward",
+      "editSegment": "Edit segment",
+      "newSegment": "New member segment",
+      "editTier": "Edit tier",
+      "newTier": "New membership tier",
+      "editAutomation": "Edit automation",
+      "newAutomation": "New automation",
+      "executionLogs": "Execution logs — {{name}}",
+      "previewSegment": "Preview: {{name}}",
+      "editCampaign": "Edit campaign",
+      "newCampaign": "New loyalty campaign",
+      "capturedAudience": "Captured audience: {{name}}",
+      "liveAudience": "Live audience: {{name}}",
+      "editVoucher": "Edit voucher",
+      "newVoucher": "New voucher",
+      "issueVoucher": "Issue voucher to campaign audience"
+    },
+    "actions": {
+      "newProgram": "New program",
+      "newReward": "New reward",
+      "newVoucher": "New voucher",
+      "newSegment": "New segment",
+      "newTier": "New tier",
+      "newCampaign": "New campaign",
+      "newAutomation": "New automation",
+      "cancel": "Cancel",
+      "save": "Save",
+      "close": "Close",
+      "edit": "Edit",
+      "toggleActive": "Toggle active",
+      "logs": "Logs",
+      "preview": "Preview",
+      "liveAudience": "Live audience",
+      "snapshot": "Snapshot",
+      "issueVoucher": "Issue voucher",
+      "activate": "Activate",
+      "complete": "Complete",
+      "cancelCampaign": "Cancel",
+      "issue": "Issue",
+      "runSimulation": "Run simulation",
+      "simulating": "Simulating…"
+    },
+    "toast": {
+      "loadProgramsFailed": "Failed to load programs",
+      "loadRewardsFailed": "Failed to load rewards",
+      "loadVouchersFailed": "Failed to load vouchers",
+      "loadSegmentsFailed": "Failed to load segments",
+      "loadTiersFailed": "Failed to load tiers",
+      "loadAutomationsFailed": "Failed to load automations",
+      "loadCampaignsFailed": "Failed to load campaigns",
+      "codeNameRequired": "Code and name are required",
+      "selectOutletFirst": "Select an outlet first",
+      "expiryDaysMin": "Expiry days must be at least 1 when expiry is enabled",
+      "programUpdated": "Program updated",
+      "programCreated": "Program created",
+      "saveFailed": "Save failed",
+      "voucherUpdated": "Voucher updated",
+      "voucherCreated": "Voucher created",
+      "selectVoucher": "Select a voucher",
+      "issueFailed": "Issue failed",
+      "issuedSummary": "Issued {{issued}} voucher(s), skipped {{skipped}}",
+      "configInvalidJson": "Config must be valid JSON",
+      "segmentUpdated": "Segment updated",
+      "segmentCreated": "Segment created",
+      "qualificationConfigInvalidJson": "Qualification config must be valid JSON",
+      "tierUpdated": "Tier updated",
+      "tierCreated": "Tier created",
+      "automationUpdated": "Automation updated",
+      "automationCreated": "Automation created",
+      "loadLogsFailed": "Failed to load logs",
+      "previewFailed": "Preview failed",
+      "codeNameSegmentRequired": "Code, name, and segment are required",
+      "campaignUpdated": "Campaign updated",
+      "campaignCreated": "Campaign created",
+      "audiencePreviewFailed": "Audience preview failed",
+      "snapshotLoadFailed": "Snapshot load failed",
+      "campaignActivated": "Campaign activated",
+      "activationFailed": "Activation failed",
+      "campaignCompleted": "Campaign completed",
+      "completeFailed": "Complete failed",
+      "campaignCancelled": "Campaign cancelled",
+      "cancelFailed": "Cancel failed",
+      "pointsCostMin": "Points cost must be at least 1",
+      "rewardUpdated": "Reward updated",
+      "rewardCreated": "Reward created",
+      "deactivated": "Deactivated",
+      "activated": "Activated",
+      "failed": "Failed",
+      "selectOutletAndProgram": "Select outlet and program",
+      "simulationFailed": "Simulation failed"
+    },
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "points": "Points",
+      "status": "Status",
+      "type": "Type",
+      "value": "Value",
+      "qualification": "Qualification",
+      "order": "Order",
+      "campaign": "Campaign",
+      "segment": "Segment",
+      "audience": "Audience",
+      "captured": "Captured",
+      "issued": "Issued",
+      "scheduled": "Scheduled",
+      "activated": "Activated",
+      "effective": "Effective",
+      "earnRule": "Earn rule",
+      "trigger": "Trigger",
+      "action": "Action",
+      "always": "Always",
+      "freeItem": "Free item"
+    }
+  },
+  "promotions": {
+    "page": {
+      "empty": "No outlet promotions defined yet."
+    },
+    "tabs": {
+      "promotions": "Promotions"
+    },
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "type": "Type",
+      "priority": "Priority",
+      "status": "Status"
+    },
+    "types": {
+      "percentage_order": "Order % off",
+      "percentage_items": "Item % off",
+      "fixed_amount": "Fixed amount",
+      "buy_x_get_y": "Buy X Get Y"
+    },
+    "form": {
+      "code": "Code",
+      "name": "Name",
+      "description": "Description",
+      "type": "Type",
+      "rate": "Discount %",
+      "maxDiscount": "Max discount",
+      "fixedAmount": "Amount",
+      "buyQty": "Buy quantity",
+      "getQty": "Free quantity",
+      "menuItemIds": "Menu item IDs (comma-separated)",
+      "menuItems": "Eligible menu items",
+      "noMenuItems": "No menu items available for this outlet.",
+      "categories": "Categories",
+      "categoriesPlaceholder": "Beverages, Mains",
+      "dayRestriction": "Valid days",
+      "timeStart": "Daily start time",
+      "timeEnd": "Daily end time",
+      "usageLimitPerDay": "Daily redemption limit (0 = unlimited)",
+      "minSpend": "Minimum spend",
+      "priority": "Priority",
+      "validFrom": "Valid from",
+      "validUntil": "Valid until"
+    },
+    "days": {
+      "Mon": "Mon",
+      "Tue": "Tue",
+      "Wed": "Wed",
+      "Thu": "Thu",
+      "Fri": "Fri",
+      "Sat": "Sat",
+      "Sun": "Sun"
+    },
+    "dialog": {
+      "newTitle": "New promotion",
+      "editTitle": "Edit promotion"
+    },
+    "actions": {
+      "new": "New promotion",
+      "edit": "Edit",
+      "toggleActive": "Toggle active"
+    },
+    "toast": {
+      "created": "Promotion created.",
+      "updated": "Promotion updated.",
+      "activated": "Promotion activated.",
+      "deactivated": "Promotion deactivated.",
+      "loadFailed": "Failed to load promotions.",
+      "failed": "Promotion action failed."
     }
   },
   "api": {

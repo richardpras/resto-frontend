@@ -12,6 +12,7 @@ import IntegrationSettings from "./settings/IntegrationSettings";
 import NumberingSettings from "./settings/NumberingSettings";
 import BankSettings from "./settings/BankSettings";
 import ReceiptSettings from "./settings/ReceiptsSettings";
+import WarehouseSettings from "./settings/WarehouseSettings";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
@@ -30,6 +31,7 @@ const SETTINGS_TAB_KEYS = [
   "numbering",
   "banks",
   "receipt",
+  "warehouses",
 ] as const;
 
 export default function Settings() {
@@ -183,6 +185,7 @@ export default function Settings() {
           <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger>
           <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger>
           <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger>
+          <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger>
         </TabsList>
         <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>
@@ -196,6 +199,7 @@ export default function Settings() {
         <TabsContent value="numbering" className="mt-4">{activeTab === "numbering" ? <NumberingSettings /> : null}</TabsContent>
         <TabsContent value="banks" className="mt-4">{activeTab === "banks" ? <BankSettings /> : null}</TabsContent>
         <TabsContent value="receipt" className="mt-4">{activeTab === "receipt" ? <ReceiptSettings /> : null}</TabsContent>
+        <TabsContent value="warehouses" className="mt-4">{activeTab === "warehouses" ? <WarehouseSettings /> : null}</TabsContent>
       </Tabs>
     </div>
   );

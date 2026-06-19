@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePurchaseStore, InvoiceStatus } from "@/stores/purchaseStore";
-import { useInventoryStore } from "@/stores/inventoryStore";
+import { useOutletInventory } from "@/hooks/useOutletInventory";
+import { usePurchasePermissions } from "@/hooks/usePurchasePermissions";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { getProcurementSummary, type ProcurementSummary, type SupplierPayableRow } from "@/lib/api-integration/purchaseEndpoints";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
@@ -50,7 +52,8 @@ export default function PurchaseInvoices() {
     fetchSupplierPayables,
   } = usePurchaseStore();
   const { suppliers, fetchSuppliers } = useSupplierStore();
-  const { ingredients } = useInventoryStore();
+  const { resolveItemName } = useOutletInventory();
+  const { canApprove } = usePurchasePermissions();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
 
   const [tab, setTab] = useState("invoices");
@@ -153,7 +156,7 @@ export default function PurchaseInvoices() {
   };
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "—";
-  const getItemName = (id: string) => ingredients.find((i) => i.id === id)?.name ?? `Item #${id}`;
+  const getItemName = resolveItemName;
 
   const filtered = invoices.filter((inv) =>
     inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
@@ -274,7 +277,7 @@ export default function PurchaseInvoices() {
                             <Button size="sm" variant="destructive" onClick={() => void voidInvoice(inv.id).then(loadDashboard)}><Ban className="h-3 w-3" /></Button>
                           </>
                         )}
-                        {inv.status === "submitted" && (
+                        {inv.status === "submitted" && canApprove && (
                           <>
                             <Button size="sm" onClick={() => void approveInvoice(inv.id).then(() => { toast.success(t("purchases.inv.approved")); return loadDashboard(); })}><Check className="h-3 w-3" /></Button>
                             <Button size="sm" variant="destructive" onClick={() => void voidInvoice(inv.id).then(loadDashboard)}><Ban className="h-3 w-3" /></Button>
@@ -439,7 +442,7 @@ export default function PurchaseInvoices() {
       </Dialog>
 
       <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader><DialogTitle>{t("purchases.inv.detailTitle")} — {viewedInvoice?.invoiceNumber}</DialogTitle></DialogHeader>
           {viewedInvoice && (
             <div className="space-y-4 text-sm">

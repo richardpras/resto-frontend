@@ -1,13 +1,16 @@
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Trash2, ChefHat, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
+import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, uploadMenuItemImage, deleteMenuItemImage, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { MenuProductionStationField } from "@/components/menu/MenuProductionStationField";
+import { MenuItemImage } from "@/components/menu/MenuItemImage";
+import { MenuImageUploadField } from "@/components/menu/MenuImageUploadField";
+import { dialogSize } from "@/lib/ui/dialogSizes";
 import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import type { Outlet } from "@/domain/settingsDomainTypes";
@@ -288,6 +291,39 @@ export default function MenuManagement() {
     return Object.keys(errors).length === 0;
   };
 
+  const applyMenuItemUpdate = async (updated: MenuItemApi) => {
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setAllOutletItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    if (editingItem?.id === updated.id) {
+      setEditingItem(updated);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
+  };
+
+  const handleMenuImageUpload = async (file: File) => {
+    if (!editingItem) return;
+    try {
+      const updated = await uploadMenuItemImage(editingItem.id, file);
+      await applyMenuItemUpdate(updated);
+      toast.success(t("menu.imageUploaded"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("menu.imageUploadFailed"));
+      throw error;
+    }
+  };
+
+  const handleMenuImageRemove = async () => {
+    if (!editingItem) return;
+    try {
+      const updated = await deleteMenuItemImage(editingItem.id);
+      await applyMenuItemUpdate(updated);
+      toast.success(t("menu.imageRemoved"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("menu.imageRemoveFailed"));
+      throw error;
+    }
+  };
+
   const saveItemEdit = async () => {
     if (!editingItem) return;
     if (!validateEditForm()) return;
@@ -417,7 +453,13 @@ export default function MenuManagement() {
                 <tr key={item.id} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">{item.emoji}</span>
+                      <MenuItemImage
+                        imageUrl={item.imageUrl}
+                        imageVersion={item.imageVersion}
+                        emoji={item.emoji}
+                        name={item.name}
+                        size="thumb"
+                      />
                       <span className="font-medium text-foreground">{item.name}</span>
                     </div>
                   </td>
@@ -483,7 +525,7 @@ export default function MenuManagement() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+              className={`bg-card rounded-2xl border border-border shadow-xl w-full ${dialogSize.xl} max-h-[80vh] flex flex-col`}
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
@@ -590,7 +632,7 @@ export default function MenuManagement() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md"
+              className={`bg-card rounded-2xl border border-border shadow-xl w-full ${dialogSize.xxl}`}
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
@@ -634,6 +676,19 @@ export default function MenuManagement() {
                   value={editForm.productionStationId}
                   onChange={(productionStationId) => setEditForm((prev) => ({ ...prev, productionStationId }))}
                 />
+
+                {editingItem ? (
+                  <MenuImageUploadField
+                    imageUrl={editingItem.imageUrl}
+                    imageVersion={editingItem.imageVersion}
+                    emoji={editForm.emoji}
+                    name={editForm.name || editingItem.name}
+                    hasImage={editingItem.hasImage === true || Boolean(editingItem.imageUrl)}
+                    disabled={savingEdit}
+                    onUpload={handleMenuImageUpload}
+                    onRemove={handleMenuImageRemove}
+                  />
+                ) : null}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -771,7 +826,7 @@ export default function MenuManagement() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md"
+              className={`bg-card rounded-2xl border border-border shadow-xl w-full ${dialogSize.xl}`}
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>

@@ -1,13 +1,12 @@
 import {
   LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
-  ClipboardList, Megaphone, Users, UserCog, BarChart3, BookOpen, Settings,
+  ClipboardList, Users, UserCog, BarChart3, BookOpen, Settings,
   Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase, LockKeyhole, Bell,
 } from "lucide-react";
 import { PERMISSIONS } from "@/stores/authStore";
 import { canAccessPayrollModule, canViewEmployees, canViewFinancialStatements, getVisiblePayrollTabs, type PayrollTabKey } from "@/domain/permissionGates";
-import { isPromotionsModuleEnabled } from "@/domain/featureFlags";
 import type { AuthUser } from "@/stores/authStore";
-import type { SidebarNavItem } from "./sidebarNavTypes";
+import type { SidebarNavItem, SidebarNavSection } from "./sidebarNavTypes";
 
 const PAYROLL_TAB_KEYS: Record<PayrollTabKey, string> = {
   payroll: "nav.payroll.overview",
@@ -32,14 +31,67 @@ const PAYROLL_TAB_KEYS: Record<PayrollTabKey, string> = {
   posting: "nav.payroll.posting",
 };
 
+const PAYROLL_GROUP_KEYS = {
+  setup: "nav.payrollGroupSetup",
+  daily: "nav.payrollGroupDaily",
+  payroll: "nav.payrollGroupPayroll",
+  close: "nav.payrollGroupClose",
+} as const;
+
+const PAYROLL_GROUPS: { separatorKey: string; tabs: PayrollTabKey[] }[] = [
+  {
+    separatorKey: PAYROLL_GROUP_KEYS.setup,
+    tabs: ["employees", "shifts", "scheduling", "shift-assignments"],
+  },
+  {
+    separatorKey: PAYROLL_GROUP_KEYS.daily,
+    tabs: ["attendance", "attendance-review", "leave", "overtime"],
+  },
+  {
+    separatorKey: PAYROLL_GROUP_KEYS.payroll,
+    tabs: [
+      "payroll",
+      "preparation",
+      "engine",
+      "adjustments",
+      "payslips",
+      "bpjs",
+      "tax",
+      "reimbursements",
+      "loans",
+      "cash-advances",
+    ],
+  },
+  {
+    separatorKey: PAYROLL_GROUP_KEYS.close,
+    tabs: ["closing", "posting"],
+  },
+];
+
 function nav(titleKey: string, rest: Omit<SidebarNavItem, "title" | "titleKey">): SidebarNavItem {
-  return { title: "", titleKey, ...rest };
+  return { title: "", titleKey, kind: "link", ...rest };
+}
+
+function separator(titleKey: string): SidebarNavItem {
+  return { title: "", titleKey, kind: "separator" };
+}
+
+function payrollLink(tab: PayrollTabKey): SidebarNavItem {
+  return nav(PAYROLL_TAB_KEYS[tab], { href: `/payroll?tab=${tab}` });
 }
 
 function buildPayrollChildren(user: AuthUser | null): SidebarNavItem[] {
-  return getVisiblePayrollTabs(user).map((tab) =>
-    nav(PAYROLL_TAB_KEYS[tab], { href: `/payroll?tab=${tab}` }),
-  );
+  const visible = new Set(getVisiblePayrollTabs(user));
+  const children: SidebarNavItem[] = [];
+
+  for (const group of PAYROLL_GROUPS) {
+    const tabs = group.tabs.filter((tab) => visible.has(tab));
+    if (tabs.length === 0) continue;
+    children.push(separator(group.separatorKey));
+    children.push(...tabs.map(payrollLink));
+  }
+
+  return children;
 }
 
 const ACCOUNTING_OPERATIONAL: SidebarNavItem[] = [
@@ -92,56 +144,23 @@ const REPORTS_CHILDREN: SidebarNavItem[] = [
   nav("nav.reports.bugReports", { href: "/system/bug-reports", permission: PERMISSIONS.SETTINGS }),
 ];
 
-export function buildMainItems(): SidebarNavItem[] {
-  return [
-    nav("nav.dashboard", { href: "/", icon: LayoutDashboard }),
-    nav("nav.notificationCenter", { href: "/notifications", icon: Bell }),
-    nav("nav.menuIntelligence", { href: "/dashboard/menu", icon: BarChart3, permission: PERMISSIONS.MENU_DASHBOARD }),
-    nav("nav.posCashier", { href: "/pos", icon: ShoppingCart, permission: PERMISSIONS.POS }),
-    nav("nav.openBills", { href: "/cashier", icon: Banknote, permission: PERMISSIONS.POS }),
-    nav("nav.shiftClose", { href: "/shift-close", icon: LockKeyhole, permission: PERMISSIONS.FINANCE_SHIFT_CLOSE }),
-    nav("nav.orders", { href: "/orders", icon: ListOrdered, permission: PERMISSIONS.POS }),
-    nav("nav.kitchenDisplay", { href: "/kitchen", icon: ChefHat, permission: PERMISSIONS.KITCHEN }),
-    nav("nav.qrOrders", { href: "/qr-orders", icon: QrCode, permission: PERMISSIONS.QR_ORDERS }),
-    nav("nav.tables", { href: "/tables", icon: Armchair, permission: PERMISSIONS.TABLES }),
-    nav("nav.reservations", { href: "/reservations", icon: CalendarDays, permission: PERMISSIONS.POS }),
-    nav("nav.reservationOps", { href: "/reservations/operations", icon: BarChart3, permission: PERMISSIONS.POS }),
-  ];
-}
-
-export function buildManagementItems(_user: AuthUser | null): SidebarNavItem[] {
-  const items: SidebarNavItem[] = [
-    {
-      ...nav("nav.menu", {
-        icon: UtensilsCrossed,
-        children: [
-          nav("nav.menuItems", { href: "/menu", permission: PERMISSIONS.MENU }),
-          nav("nav.menuCosting", { href: "/menu/costing", permission: PERMISSIONS.COST_VIEW }),
-        ],
-      }),
-    },
-    nav("nav.inventory", { href: "/inventory", icon: Package, permission: PERMISSIONS.INVENTORY }),
-    nav("nav.suppliers", { href: "/suppliers", icon: Truck, permission: PERMISSIONS.SUPPLIERS }),
-    nav("nav.members", { href: "/members", icon: UserCircle, permission: PERMISSIONS.MEMBERS }),
-    nav("nav.customers", { href: "/customers", icon: UserCircle, permission: PERMISSIONS.CUSTOMERS }),
-    nav("nav.loyaltyDashboard", { href: "/loyalty-dashboard", icon: Gift, permission: PERMISSIONS.LOYALTY_DASHBOARD }),
-    nav("nav.loyaltyPrograms", { href: "/loyalty-programs", icon: Gift, permission: PERMISSIONS.MEMBERS }),
-    nav("nav.giftCards", { href: "/gift-cards", icon: Gift, permission: PERMISSIONS.GIFT_CARDS }),
-    nav("nav.purchasesMenu", { icon: ClipboardList, permission: PERMISSIONS.PURCHASE, children: PURCHASES_CHILDREN }),
-  ];
-
-  if (isPromotionsModuleEnabled()) {
-    items.push(nav("nav.promotions", { href: "/promotions", icon: Megaphone, permission: PERMISSIONS.PROMOTIONS }));
-  }
-
-  return items;
-}
-
-export function buildAdminItems(user: AuthUser | null): SidebarNavItem[] {
+export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[] {
   const payrollChildren = buildPayrollChildren(user);
   const accountingChildren = buildAccountingChildren(user);
 
-  const items: SidebarNavItem[] = [
+  const customers: SidebarNavItem[] = [
+    nav("nav.members", { href: "/members", icon: UserCircle, permission: PERMISSIONS.MEMBERS }),
+    nav("nav.loyaltyMenu", {
+      icon: Gift,
+      children: [
+        nav("nav.loyaltyDashboard", { href: "/loyalty-dashboard", permission: PERMISSIONS.LOYALTY_DASHBOARD }),
+        nav("nav.loyaltyPrograms", { href: "/loyalty-programs", permission: PERMISSIONS.MEMBERS }),
+        nav("nav.giftCards", { href: "/gift-cards", permission: PERMISSIONS.GIFT_CARDS }),
+      ],
+    }),
+  ];
+
+  const hr: SidebarNavItem[] = [
     nav("nav.usersRoles", { href: "/users", icon: UserCog, permission: PERMISSIONS.USERS }),
     nav("nav.employees", { href: "/employees", icon: Users, accessCheck: (u) => canViewEmployees(u) }),
     nav("nav.departments", { href: "/departments", icon: Building2, permission: PERMISSIONS.USERS }),
@@ -149,19 +168,79 @@ export function buildAdminItems(user: AuthUser | null): SidebarNavItem[] {
   ];
 
   if (payrollChildren.length > 0) {
-    items.push(
+    hr.push(
       nav("nav.payrollMenu", { icon: Users, accessCheck: (u) => canAccessPayrollModule(u), children: payrollChildren }),
     );
   }
 
+  const finance: SidebarNavItem[] = [];
   if (accountingChildren.length > 0) {
-    items.push(
+    finance.push(
       nav("nav.accountingMenu", { icon: BookOpen, permission: PERMISSIONS.ACCOUNTING, children: accountingChildren }),
     );
   }
+  finance.push(nav("nav.reportsMenu", { icon: BarChart3, children: REPORTS_CHILDREN }));
+  finance.push(nav("nav.settings", { href: "/settings", icon: Settings, permission: PERMISSIONS.SETTINGS }));
 
-  items.push(nav("nav.reportsMenu", { icon: BarChart3, children: REPORTS_CHILDREN }));
-  items.push(nav("nav.settings", { href: "/settings", icon: Settings, permission: PERMISSIONS.SETTINGS }));
-
-  return items;
+  return [
+    {
+      labelKey: "sidebar.overview",
+      items: [
+        nav("nav.dashboard", { href: "/", icon: LayoutDashboard }),
+        nav("nav.notificationCenter", { href: "/notifications", icon: Bell }),
+      ],
+    },
+    {
+      labelKey: "sidebar.sales",
+      items: [
+        nav("nav.posCashier", { href: "/pos", icon: ShoppingCart, permission: PERMISSIONS.POS }),
+        nav("nav.openBills", { href: "/cashier", icon: Banknote, permission: PERMISSIONS.POS }),
+        nav("nav.orders", { href: "/orders", icon: ListOrdered, permission: PERMISSIONS.POS }),
+        nav("nav.shiftClose", { href: "/shift-close", icon: LockKeyhole, permission: PERMISSIONS.FINANCE_SHIFT_CLOSE }),
+      ],
+    },
+    {
+      labelKey: "sidebar.floor",
+      items: [
+        nav("nav.kitchenDisplay", { href: "/kitchen", icon: ChefHat, permission: PERMISSIONS.KITCHEN }),
+        nav("nav.qrOrders", { href: "/qr-orders", icon: QrCode, permission: PERMISSIONS.QR_ORDERS }),
+        nav("nav.tables", { href: "/tables", icon: Armchair, permission: PERMISSIONS.TABLES }),
+        nav("nav.reservationsMenu", {
+          icon: CalendarDays,
+          children: [
+            nav("nav.reservations", { href: "/reservations", permission: PERMISSIONS.POS }),
+            nav("nav.reservationOps", { href: "/reservations/operations", permission: PERMISSIONS.POS }),
+          ],
+        }),
+      ],
+    },
+    {
+      labelKey: "sidebar.menuStock",
+      items: [
+        nav("nav.menu", {
+          icon: UtensilsCrossed,
+          children: [
+            nav("nav.menuItems", { href: "/menu", permission: PERMISSIONS.MENU }),
+            nav("nav.menuCosting", { href: "/menu/costing", permission: PERMISSIONS.COST_VIEW }),
+            nav("nav.menuIntelligence", { href: "/dashboard/menu", permission: PERMISSIONS.MENU_DASHBOARD }),
+          ],
+        }),
+        nav("nav.inventory", { href: "/inventory", icon: Package, permission: PERMISSIONS.INVENTORY }),
+        nav("nav.suppliers", { href: "/suppliers", icon: Truck, permission: PERMISSIONS.SUPPLIERS }),
+        nav("nav.purchasesMenu", { icon: ClipboardList, permission: PERMISSIONS.PURCHASE, children: PURCHASES_CHILDREN }),
+      ],
+    },
+    {
+      labelKey: "sidebar.customers",
+      items: customers,
+    },
+    {
+      labelKey: "sidebar.hr",
+      items: hr,
+    },
+    {
+      labelKey: "sidebar.finance",
+      items: finance,
+    },
+  ];
 }

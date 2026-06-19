@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -422,7 +423,7 @@ export default function Leave() {
       </Tabs>
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.leave.newRequest")}</DialogTitle>
           </DialogHeader>
@@ -482,7 +483,7 @@ export default function Leave() {
       </Dialog>
 
       <Dialog open={typeOpen} onOpenChange={setTypeOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.leave.addType")}</DialogTitle>
           </DialogHeader>
@@ -514,7 +515,7 @@ export default function Leave() {
       </Dialog>
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.leave.rejectTitle")}</DialogTitle>
           </DialogHeader>

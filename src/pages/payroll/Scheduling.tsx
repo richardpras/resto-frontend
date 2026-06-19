@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -382,7 +383,7 @@ export default function Scheduling() {
       </div>
 
       <Dialog open={cellOpen} onOpenChange={setCellOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.daySchedule")}</DialogTitle>
           </DialogHeader>
@@ -410,7 +411,7 @@ export default function Scheduling() {
       </Dialog>
 
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.scheduling.generateFromAssignments")}</DialogTitle>
           </DialogHeader>
@@ -450,7 +451,7 @@ export default function Scheduling() {
       </Dialog>
 
       <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.copySchedule")}</DialogTitle>
           </DialogHeader>

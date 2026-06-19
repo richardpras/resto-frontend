@@ -1,7 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Outlet } from "react-router-dom";
-import { PromotionsRouteElement } from "@/components/promotions/PromotionsRouteElement";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -31,7 +30,6 @@ const Tables = lazy(() => import("./pages/Tables"));
 const Reservations = lazy(() => import("./pages/Reservations"));
 const ReservationDashboard = lazy(() => import("./pages/ReservationDashboard"));
 const Purchases = lazy(() => import("./pages/Purchases"));
-const Promotions = lazy(() => import("./pages/Promotions"));
 const Payroll = lazy(() => import("./pages/Payroll"));
 const Cashier = lazy(() => import("./pages/Cashier"));
 const OrdersExplorer = lazy(() => import("./pages/OrdersExplorer"));
@@ -44,6 +42,8 @@ const Settings = lazy(() => import("./pages/Settings"));
 const PaymentHealth = lazy(() => import("./pages/settings/PaymentHealth"));
 const ProductionStationsSettings = lazy(() => import("./pages/settings/ProductionStationsSettings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Members = lazy(() => import("./pages/Members"));
+const MemberProfilePage = lazy(() => import("./pages/MemberProfilePage"));
 const Customers = lazy(() => import("./pages/Customers"));
 const CustomerProfile = lazy(() => import("./pages/CustomerProfile"));
 const LoyaltyDashboard = lazy(() => import("./pages/LoyaltyDashboard"));
@@ -58,7 +58,6 @@ const EmployeeLogin = lazy(() => import("./pages/employee/Login"));
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
 const EmployeeProfile = lazy(() => import("./pages/employee/Profile"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
-const Members = lazy(() => import("./pages/Members"));
 const LoyaltyPrograms = lazy(() => import("./pages/LoyaltyPrograms"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const FailedJobsDashboard = lazy(() => import("./pages/system/FailedJobsDashboard"));
@@ -225,20 +224,13 @@ const App = () => (
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
             <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
             <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />
+            <Route path="/members/:memberId" element={guarded(PERMISSIONS.MEMBERS, <MemberProfilePage />)} />
             <Route path="/customers" element={guarded(PERMISSIONS.CUSTOMERS, <Customers />)} />
             <Route path="/customers/:customerId" element={guarded(PERMISSIONS.CUSTOMERS, <CustomerProfile />)} />
             <Route path="/loyalty-dashboard" element={guarded(PERMISSIONS.LOYALTY_DASHBOARD, <LoyaltyDashboard />)} />
             <Route path="/loyalty-programs" element={guarded(PERMISSIONS.MEMBERS, <LoyaltyPrograms />)} />
             <Route path="/gift-cards" element={guarded(PERMISSIONS.GIFT_CARDS, <GiftCards />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
-            <Route
-              path="/promotions"
-              element={
-                <PromotionsRouteElement>
-                  {guarded(PERMISSIONS.PROMOTIONS, <Promotions />)}
-                </PromotionsRouteElement>
-              }
-            />
             <Route path="/payroll" element={payrollGuarded(<Payroll />)} />
             <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
             <Route path="/employees" element={employeesGuarded(<Employees />)} />

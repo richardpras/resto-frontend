@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Sheet,
   SheetContent,
@@ -263,7 +264,7 @@ export default function ShiftAssignments() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{editId ? t("payroll.shared.editAssignment") : t("payroll.shared.newAssignment")}</DialogTitle>
           </DialogHeader>

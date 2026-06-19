@@ -14,12 +14,14 @@ import {
   settleGiftCardRedemptions,
   type GiftCardIssuanceApi,
 } from "@/lib/api-integration/giftCardEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function idempotencyKey(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export default function GiftCards() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
 
@@ -36,7 +38,7 @@ export default function GiftCards() {
     if (!outletReady) return;
     const amount = Number(issueAmount);
     if (!issueCode.trim() || !Number.isFinite(amount) || amount <= 0) {
-      toast.error("Enter a valid code and amount.");
+      toast.error(t("giftCards.validationCodeAmount"));
       return;
     }
     setSubmitting(true);
@@ -48,11 +50,11 @@ export default function GiftCards() {
         initialAmount: amount,
         idempotencyKey: idempotencyKey("issue"),
       });
-      toast.success(result.idempotent ? "Gift card already issued (idempotent)." : "Gift card issued.");
+      toast.success(result.idempotent ? t("giftCards.issuedIdempotent") : t("giftCards.issued"));
       setLookupResult(result.issuance);
       setLookupCode(issueCode.trim());
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Issue failed");
+      toast.error(e instanceof Error ? e.message : t("giftCards.issueFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -66,7 +68,7 @@ export default function GiftCards() {
       setLookupResult(data);
     } catch (e) {
       setLookupResult(null);
-      toast.error(e instanceof Error ? e.message : "Lookup failed");
+      toast.error(e instanceof Error ? e.message : t("giftCards.lookupFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -79,7 +81,7 @@ export default function GiftCards() {
       .map((s) => Number(s.trim()))
       .filter((n) => Number.isFinite(n) && n > 0);
     if (ids.length === 0 || !settlementRef.trim()) {
-      toast.error("Enter settlement reference and one or more settlement IDs.");
+      toast.error(t("giftCards.settlementValidation"));
       return;
     }
     setSubmitting(true);
@@ -91,9 +93,9 @@ export default function GiftCards() {
         settlementStatus: "settled",
         redeemSettlementIds: ids,
       });
-      toast.success("Settlements processed.");
+      toast.success(t("giftCards.settlementsProcessed"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Settlement failed");
+      toast.error(e instanceof Error ? e.message : t("giftCards.settlementFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +104,7 @@ export default function GiftCards() {
   if (!outletReady) {
     return (
       <div className="p-6">
-        <p className="text-sm text-muted-foreground">Select an outlet to manage gift cards.</p>
+        <p className="text-sm text-muted-foreground">{t("giftCards.noOutlet")}</p>
       </div>
     );
   }
@@ -111,45 +113,43 @@ export default function GiftCards() {
     <div className="p-6 space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Gift className="h-6 w-6" /> Gift Cards & Store Credit
+          <Gift className="h-6 w-6" /> {t("giftCards.pageTitle")}
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Issue, lookup by code, and settle redemptions. Listing all cards requires a backend list API (not available).
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">{t("giftCards.pageSubtitle")}</p>
       </div>
       <Tabs defaultValue="issue">
         <TabsList>
-          <TabsTrigger value="issue">Issue</TabsTrigger>
-          <TabsTrigger value="lookup">Lookup</TabsTrigger>
-          <TabsTrigger value="settle">Settle</TabsTrigger>
+          <TabsTrigger value="issue">{t("giftCards.tabs.issue")}</TabsTrigger>
+          <TabsTrigger value="lookup">{t("giftCards.tabs.lookup")}</TabsTrigger>
+          <TabsTrigger value="settle">{t("giftCards.tabs.settle")}</TabsTrigger>
         </TabsList>
         <TabsContent value="issue" className="mt-4">
           <Card className="p-4 space-y-3">
             <div>
-              <Label>Type</Label>
+              <Label>{t("giftCards.type")}</Label>
               <Select value={issueType} onValueChange={(v) => setIssueType(v as "gift_card" | "store_credit")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gift_card">Gift Card</SelectItem>
-                  <SelectItem value="store_credit">Store Credit</SelectItem>
+                  <SelectItem value="gift_card">{t("giftCards.giftCard")}</SelectItem>
+                  <SelectItem value="store_credit">{t("giftCards.storeCredit")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Code</Label>
-              <Input value={issueCode} onChange={(e) => setIssueCode(e.target.value)} placeholder="GC-001" />
+              <Label>{t("giftCards.code")}</Label>
+              <Input value={issueCode} onChange={(e) => setIssueCode(e.target.value)} placeholder={t("giftCards.codePlaceholder")} />
             </div>
             <div>
-              <Label>Initial Amount</Label>
+              <Label>{t("giftCards.initialAmount")}</Label>
               <Input type="number" value={issueAmount} onChange={(e) => setIssueAmount(e.target.value)} />
             </div>
-            <Button onClick={() => void handleIssue()} disabled={submitting}>Issue</Button>
+            <Button onClick={() => void handleIssue()} disabled={submitting}>{t("giftCards.issue")}</Button>
           </Card>
         </TabsContent>
         <TabsContent value="lookup" className="mt-4">
           <Card className="p-4 space-y-3">
             <div className="flex gap-2">
-              <Input value={lookupCode} onChange={(e) => setLookupCode(e.target.value)} placeholder="Card code" />
+              <Input value={lookupCode} onChange={(e) => setLookupCode(e.target.value)} placeholder={t("giftCards.lookupPlaceholder")} />
               <Button variant="outline" onClick={() => void handleLookup()} disabled={submitting}>
                 <Search className="h-4 w-4" />
               </Button>
@@ -162,14 +162,14 @@ export default function GiftCards() {
         <TabsContent value="settle" className="mt-4">
           <Card className="p-4 space-y-3">
             <div>
-              <Label>Settlement Reference</Label>
+              <Label>{t("giftCards.settlementReference")}</Label>
               <Input value={settlementRef} onChange={(e) => setSettlementRef(e.target.value)} />
             </div>
             <div>
-              <Label>Redeem Settlement IDs (comma-separated)</Label>
-              <Input value={settlementIds} onChange={(e) => setSettlementIds(e.target.value)} placeholder="1, 2, 3" />
+              <Label>{t("giftCards.settlementIds")}</Label>
+              <Input value={settlementIds} onChange={(e) => setSettlementIds(e.target.value)} placeholder={t("giftCards.settlementIdsPlaceholder")} />
             </div>
-            <Button onClick={() => void handleSettle()} disabled={submitting}>Process Settlement</Button>
+            <Button onClick={() => void handleSettle()} disabled={submitting}>{t("giftCards.processSettlement")}</Button>
           </Card>
         </TabsContent>
       </Tabs>

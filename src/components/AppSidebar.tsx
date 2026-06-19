@@ -8,10 +8,11 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOutletStore } from "@/stores/outletStore";
-import { buildAdminItems, buildMainItems, buildManagementItems } from "@/components/sidebar/sidebarNavConfig";
+import { buildSidebarSections } from "@/components/sidebar/sidebarNavConfig";
 import { translateNavItems } from "@/components/sidebar/sidebarNavI18n";
 import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
 import { SidebarNavMenu } from "@/components/sidebar/SidebarNavMenu";
+import type { SidebarNavItem } from "@/components/sidebar/sidebarNavTypes";
 
 export function AppSidebar() {
   const { t } = useTranslation("common");
@@ -25,20 +26,18 @@ export function AppSidebar() {
     void fetchUnreadCount(activeOutletId);
   }, [user, activeOutletId, fetchUnreadCount]);
 
-  const mainItems = useMemo(
-    () => translateNavItems(filterNavItems(buildMainItems(), user, hasPermission), t),
-    [user, hasPermission, t],
-  );
-  const managementItems = useMemo(
-    () => translateNavItems(filterNavItems(buildManagementItems(user), user, hasPermission), t),
-    [user, hasPermission, t],
-  );
-  const adminItems = useMemo(
-    () => translateNavItems(filterNavItems(buildAdminItems(user), user, hasPermission), t),
+  const sections = useMemo(
+    () =>
+      buildSidebarSections(user)
+        .map((section) => ({
+          labelKey: section.labelKey,
+          items: translateNavItems(filterNavItems(section.items, user, hasPermission), t),
+        }))
+        .filter((section) => section.items.length > 0),
     [user, hasPermission, t],
   );
 
-  const renderGroup = (label: string, items: ReturnType<typeof filterNavItems>) => {
+  const renderGroup = (label: string, items: SidebarNavItem[]) => {
     if (items.length === 0) return null;
     return (
       <SidebarGroup>
@@ -78,9 +77,9 @@ export function AppSidebar() {
         </SidebarHeader>
 
         <SidebarContent className="px-2">
-          {renderGroup(t("sidebar.operations"), mainItems)}
-          {renderGroup(t("sidebar.management"), managementItems)}
-          {renderGroup(t("sidebar.administration"), adminItems)}
+          {sections.map((section) => (
+            <div key={section.labelKey}>{renderGroup(t(section.labelKey), section.items)}</div>
+          ))}
         </SidebarContent>
 
         <SidebarFooter className="p-3 space-y-1">

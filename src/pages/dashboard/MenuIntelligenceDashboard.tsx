@@ -29,6 +29,7 @@ import { formatMoney, formatPercent } from "@/lib/format/currency";
 import { aggregateQuadrants } from "@/lib/menu-dashboard/aggregations";
 import { resolveAutomationAlert } from "@/lib/api-integration/menuDashboardEndpoints";
 import { ApiHttpError } from "@/lib/api-integration/client";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function KpiCard({
   title,
@@ -55,13 +56,14 @@ function KpiCard({
 }
 
 const QUADRANT_META = [
-  { key: "STAR" as const, label: "STAR", className: "border-emerald-500/30 bg-emerald-500/5" },
-  { key: "PUZZLE" as const, label: "PUZZLE", className: "border-blue-500/30 bg-blue-500/5" },
-  { key: "PLOWHORSE" as const, label: "PLOWHORSE", className: "border-amber-500/30 bg-amber-500/5" },
-  { key: "DOG" as const, label: "DOG", className: "border-red-500/30 bg-red-500/5" },
+  { key: "STAR" as const, className: "border-emerald-500/30 bg-emerald-500/5" },
+  { key: "PUZZLE" as const, className: "border-blue-500/30 bg-blue-500/5" },
+  { key: "PLOWHORSE" as const, className: "border-amber-500/30 bg-amber-500/5" },
+  { key: "DOG" as const, className: "border-red-500/30 bg-red-500/5" },
 ];
 
 export default function MenuIntelligenceDashboard() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canResolveAlerts = useAuthStore((s) => s.hasPermission("automation.manage"));
   const invalidate = useInvalidateMenuDashboard();
@@ -71,14 +73,23 @@ export default function MenuIntelligenceDashboard() {
   const resolveMutation = useMutation({
     mutationFn: (alertId: number) => resolveAutomationAlert(activeOutletId!, alertId),
     onSuccess: () => {
-      toast.success("Alert resolved.");
+      toast.success(t("menuIntelligence.alerts.resolvedSuccess"));
       if (typeof activeOutletId === "number") {
         invalidate(activeOutletId);
         data.refetchAlerts();
       }
     },
-    onError: (e) => toast.error(e instanceof ApiHttpError ? e.message : "Failed to resolve alert"),
+    onError: (e) => toast.error(e instanceof ApiHttpError ? e.message : t("menuIntelligence.alerts.resolveFailed")),
   });
+
+  const quadrantMeta = useMemo(
+    () =>
+      QUADRANT_META.map((q) => ({
+        ...q,
+        label: t(`menuIntelligence.quadrants.${q.key}`),
+      })),
+    [t],
+  );
 
   const quadrants = useMemo(
     () => (data.matrix ? aggregateQuadrants(data.matrix.items) : null),
@@ -113,9 +124,9 @@ export default function MenuIntelligenceDashboard() {
     <div className="p-4 md:p-6 space-y-8 max-w-[1600px]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Menu Intelligence Dashboard</h1>
+          <h1 className="text-2xl font-bold">{t("menuIntelligence.title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Executive view across analytics, engineering, optimization, automation, and forecasting.
+            {t("menuIntelligence.subtitle")}
           </p>
         </div>
         <Button
@@ -125,30 +136,30 @@ export default function MenuIntelligenceDashboard() {
           onClick={() => data.refetchAlerts()}
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${data.isRefetching ? "animate-spin" : ""}`} />
-          Refresh
+          {t("menuIntelligence.refresh")}
         </Button>
       </div>
 
       {noOutlet && (
         <Card className="rounded-2xl border-dashed p-6 text-sm text-muted-foreground">
-          Select an outlet in the header to load the executive dashboard.
+          {t("menuIntelligence.noOutlet")}
         </Card>
       )}
 
       {/* Section 1 — KPIs */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <BarChart3 className="h-5 w-5" /> Executive KPIs
+          <BarChart3 className="h-5 w-5" /> {t("menuIntelligence.sections.executiveKpis")}
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          <KpiCard title="Revenue" value={formatMoney(kpis?.revenue ?? 0)} icon={DollarSign} loading={loading} />
-          <KpiCard title="Food Cost %" value={formatPercent(kpis?.foodCostPercent ?? 0)} icon={Percent} loading={loading} />
-          <KpiCard title="Avg Margin %" value={formatPercent(kpis?.averageMarginPercent ?? 0)} icon={TrendingUp} loading={loading} />
-          <KpiCard title="Forecast Revenue" value={formatMoney(kpis?.forecastRevenue ?? 0)} icon={Sparkles} loading={loading} />
-          <KpiCard title="Forecast Margin" value={formatMoney(kpis?.forecastMargin ?? 0)} icon={Target} loading={loading} />
-          <KpiCard title="Inventory Value" value={formatMoney(inventoryValue)} icon={Package} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.revenue")} value={formatMoney(kpis?.revenue ?? 0)} icon={DollarSign} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.foodCostPercent")} value={formatPercent(kpis?.foodCostPercent ?? 0)} icon={Percent} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.avgMarginPercent")} value={formatPercent(kpis?.averageMarginPercent ?? 0)} icon={TrendingUp} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.forecastRevenue")} value={formatMoney(kpis?.forecastRevenue ?? 0)} icon={Sparkles} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.forecastMargin")} value={formatMoney(kpis?.forecastMargin ?? 0)} icon={Target} loading={loading} />
+          <KpiCard title={t("menuIntelligence.kpis.inventoryValue")} value={formatMoney(inventoryValue)} icon={Package} loading={loading} />
           <KpiCard
-            title="Health Score"
+            title={t("menuIntelligence.kpis.healthScore")}
             value={data.summary?.health ? String(Math.round(data.summary.health.score)) : "—"}
             icon={Activity}
             loading={loading}
@@ -158,7 +169,7 @@ export default function MenuIntelligenceDashboard() {
 
       {/* Charts */}
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Trends &amp; Distribution</h2>
+        <h2 className="text-lg font-semibold">{t("menuIntelligence.sections.trends")}</h2>
         <TrendCharts
           salesTrend={data.executive?.salesTrend ?? []}
           marginTrend={data.marginTrend}
@@ -171,10 +182,10 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 2 — Engineering */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <UtensilsCrossed className="h-5 w-5" /> Menu Engineering
+          <UtensilsCrossed className="h-5 w-5" /> {t("menuIntelligence.sections.menuEngineering")}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {QUADRANT_META.map(({ key, label, className }) => (
+          {quadrantMeta.map(({ key, label, className }) => (
             <Card key={key} className={`rounded-2xl border ${className}`}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">{label}</CardTitle>
@@ -185,15 +196,15 @@ export default function MenuIntelligenceDashboard() {
                 ) : (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Count</span>
+                      <span className="text-muted-foreground">{t("menuIntelligence.quadrants.count")}</span>
                       <span className="font-semibold">{quadrants[key].count}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Revenue</span>
+                      <span className="text-muted-foreground">{t("menuIntelligence.quadrants.revenue")}</span>
                       <span className="font-medium">{formatMoney(quadrants[key].estimatedRevenue)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Margin</span>
+                      <span className="text-muted-foreground">{t("menuIntelligence.quadrants.margin")}</span>
                       <span className="font-medium">{formatMoney(quadrants[key].totalMargin)}</span>
                     </div>
                   </>
@@ -204,22 +215,22 @@ export default function MenuIntelligenceDashboard() {
         </div>
 
         <Card className="rounded-2xl overflow-hidden">
-          <CardHeader><CardTitle className="text-base">Top 10 Items</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("menuIntelligence.engineering.topItemsTitle")}</CardTitle></CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Menu Item</TableHead>
-                  <TableHead>Class</TableHead>
-                  <TableHead className="text-right">Qty Sold</TableHead>
-                  <TableHead className="text-right">Margin %</TableHead>
-                  <TableHead className="text-right">Contribution</TableHead>
+                  <TableHead>{t("menuIntelligence.table.menuItem")}</TableHead>
+                  <TableHead>{t("menuIntelligence.table.class")}</TableHead>
+                  <TableHead className="text-right">{t("menuIntelligence.table.qtySold")}</TableHead>
+                  <TableHead className="text-right">{t("menuIntelligence.table.marginPercent")}</TableHead>
+                  <TableHead className="text-right">{t("menuIntelligence.table.contribution")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {topItems.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">No engineering data</TableCell>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">{t("menuIntelligence.engineering.noData")}</TableCell>
                   </TableRow>
                 )}
                 {topItems.map((item) => (
@@ -240,30 +251,30 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 3 — Optimization */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Target className="h-5 w-5" /> Optimization Opportunities
+          <Target className="h-5 w-5" /> {t("menuIntelligence.sections.optimization")}
         </h2>
         <div className="grid gap-4 xl:grid-cols-2">
-          <OppTable title="Price Opportunities" rows={data.priceOpps} columns={[
-            { key: "menuItemName", label: "Menu Item" },
-            { key: "suggestedDirection", label: "Direction" },
-            { key: "suggestedPrice", label: "Suggested", format: (v) => formatMoney(Number(v)) },
-            { key: "projectedMonthlyProfitIncrease", label: "Proj. Profit", format: (v) => formatMoney(Number(v)) },
+          <OppTable title={t("menuIntelligence.optimization.priceOpportunities")} rows={data.priceOpps} columns={[
+            { key: "menuItemName", label: t("menuIntelligence.table.menuItem") },
+            { key: "suggestedDirection", label: t("menuIntelligence.table.direction") },
+            { key: "suggestedPrice", label: t("menuIntelligence.table.suggested"), format: (v) => formatMoney(Number(v)) },
+            { key: "projectedMonthlyProfitIncrease", label: t("menuIntelligence.table.projProfit"), format: (v) => formatMoney(Number(v)) },
           ]} />
-          <OppTable title="Ingredient Opportunities" rows={data.ingredientOpps} columns={[
-            { key: "ingredientName", label: "Ingredient" },
-            { key: "menuItemName", label: "Menu Item" },
-            { key: "potentialSavings", label: "Savings", format: (v) => formatMoney(Number(v ?? 0)) },
+          <OppTable title={t("menuIntelligence.optimization.ingredientOpportunities")} rows={data.ingredientOpps} columns={[
+            { key: "ingredientName", label: t("menuIntelligence.table.ingredient") },
+            { key: "menuItemName", label: t("menuIntelligence.table.menuItem") },
+            { key: "potentialSavings", label: t("menuIntelligence.table.savings"), format: (v) => formatMoney(Number(v ?? 0)) },
           ]} />
-          <OppTable title="Yield Opportunities" rows={data.yieldOpps} columns={[
-            { key: "menuItemName", label: "Menu Item" },
-            { key: "currentYieldPercent", label: "Current %" },
-            { key: "suggestedYieldPercent", label: "Suggested %" },
-            { key: "projectedSavings", label: "Savings", format: (v) => formatMoney(Number(v ?? 0)) },
+          <OppTable title={t("menuIntelligence.optimization.yieldOpportunities")} rows={data.yieldOpps} columns={[
+            { key: "menuItemName", label: t("menuIntelligence.table.menuItem") },
+            { key: "currentYieldPercent", label: t("menuIntelligence.table.currentPercent") },
+            { key: "suggestedYieldPercent", label: t("menuIntelligence.table.suggestedPercent") },
+            { key: "projectedSavings", label: t("menuIntelligence.table.savings"), format: (v) => formatMoney(Number(v ?? 0)) },
           ]} />
-          <OppTable title="Bundle Opportunities" rows={data.bundleOpps} columns={[
-            { key: "bundleName", label: "Bundle" },
-            { key: "projectedRevenue", label: "Revenue", format: (v) => formatMoney(Number(v ?? 0)) },
-            { key: "projectedMargin", label: "Margin", format: (v) => formatMoney(Number(v ?? 0)) },
+          <OppTable title={t("menuIntelligence.optimization.bundleOpportunities")} rows={data.bundleOpps} columns={[
+            { key: "bundleName", label: t("menuIntelligence.table.bundle") },
+            { key: "projectedRevenue", label: t("menuIntelligence.table.revenue"), format: (v) => formatMoney(Number(v ?? 0)) },
+            { key: "projectedMargin", label: t("menuIntelligence.table.margin"), format: (v) => formatMoney(Number(v ?? 0)) },
           ]} />
         </div>
       </section>
@@ -271,31 +282,31 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 4 — Automation */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5" /> Alert Center
+          <AlertTriangle className="h-5 w-5" /> {t("menuIntelligence.sections.alertCenter")}
         </h2>
         <Card className="rounded-2xl">
           <CardContent className="pt-6">
             <Tabs value={alertTab} onValueChange={setAlertTab}>
               <TabsList>
-                <TabsTrigger value="open">Open ({data.openAlerts.length})</TabsTrigger>
-                <TabsTrigger value="critical">Critical ({data.criticalAlerts.length})</TabsTrigger>
-                <TabsTrigger value="resolved">Resolved ({data.resolvedAlerts.length})</TabsTrigger>
+                <TabsTrigger value="open">{t("menuIntelligence.alerts.open", { count: data.openAlerts.length })}</TabsTrigger>
+                <TabsTrigger value="critical">{t("menuIntelligence.alerts.critical", { count: data.criticalAlerts.length })}</TabsTrigger>
+                <TabsTrigger value="resolved">{t("menuIntelligence.alerts.resolved", { count: data.resolvedAlerts.length })}</TabsTrigger>
               </TabsList>
               <TabsContent value={alertTab} className="mt-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Severity</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Triggered</TableHead>
-                      {alertTab !== "resolved" && canResolveAlerts && <TableHead className="text-right">Action</TableHead>}
+                      <TableHead>{t("menuIntelligence.table.severity")}</TableHead>
+                      <TableHead>{t("menuIntelligence.table.title")}</TableHead>
+                      <TableHead>{t("menuIntelligence.table.type")}</TableHead>
+                      <TableHead>{t("menuIntelligence.table.triggered")}</TableHead>
+                      {alertTab !== "resolved" && canResolveAlerts && <TableHead className="text-right">{t("menuIntelligence.table.action")}</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {alertsForTab.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">No alerts</TableCell>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">{t("menuIntelligence.alerts.noAlerts")}</TableCell>
                       </TableRow>
                     )}
                     {alertsForTab.map((alert) => (
@@ -318,7 +329,7 @@ export default function MenuIntelligenceDashboard() {
                               disabled={resolveMutation.isPending}
                               onClick={() => resolveMutation.mutate(alert.id)}
                             >
-                              Resolve
+                              {t("menuIntelligence.alerts.resolve")}
                             </Button>
                           </TableCell>
                         )}
@@ -335,19 +346,19 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 5 — Forecasting */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Sparkles className="h-5 w-5" /> Forecasting
+          <Sparkles className="h-5 w-5" /> {t("menuIntelligence.sections.forecasting")}
         </h2>
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <ForecastCard
-            title="Demand Forecast"
+            title={t("menuIntelligence.forecast.demandForecast")}
             subtitle={data.demandForecast?.forecastDate}
             rows={(data.demandForecast?.items ?? []).slice(0, 8).map((i) => ({
               name: i.menuItemName ?? i.menuItemId,
-              value: `${i.predictedQuantity} units`,
+              value: t("menuIntelligence.forecast.units", { count: i.predictedQuantity }),
             }))}
           />
           <ForecastCard
-            title="Revenue Forecast"
+            title={t("menuIntelligence.forecast.revenueForecast")}
             subtitle={data.revenueForecast?.forecastDate}
             rows={(data.revenueForecast?.items ?? []).slice(0, 8).map((i) => ({
               name: i.menuItemName ?? i.menuItemId,
@@ -355,12 +366,14 @@ export default function MenuIntelligenceDashboard() {
             }))}
             footer={
               data.revenueForecast
-                ? `Total margin: ${formatMoney(data.revenueForecast.totals.predictedMargin)}`
+                ? t("menuIntelligence.forecast.totalMargin", {
+                    amount: formatMoney(data.revenueForecast.totals.predictedMargin),
+                  })
                 : undefined
             }
           />
           <ForecastCard
-            title="Margin Forecast"
+            title={t("menuIntelligence.forecast.marginForecast")}
             subtitle={data.revenueForecast?.forecastDate}
             rows={(data.revenueForecast?.items ?? []).slice(0, 8).map((i) => ({
               name: i.menuItemName ?? i.menuItemId,
@@ -368,17 +381,17 @@ export default function MenuIntelligenceDashboard() {
             }))}
           />
           <ForecastCard
-            title="Stock Risk Forecast"
+            title={t("menuIntelligence.forecast.stockRiskForecast")}
             rows={(data.stockRisk?.risks ?? []).slice(0, 8).map((r) => ({
               name: r.ingredientName ?? r.ingredientId,
               value: r.riskLevel,
             }))}
           />
           <ForecastCard
-            title="Production Forecast"
+            title={t("menuIntelligence.forecast.productionForecast")}
             rows={(data.productionForecast?.items ?? []).slice(0, 8).map((i) => ({
               name: i.menuItemName ?? i.menuItemId,
-              value: `${i.predictedQuantity} units`,
+              value: t("menuIntelligence.forecast.units", { count: i.predictedQuantity }),
             }))}
           />
         </div>
@@ -387,18 +400,18 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 6 — Inventory */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Package className="h-5 w-5" /> Inventory Health
+          <Package className="h-5 w-5" /> {t("menuIntelligence.sections.inventoryHealth")}
         </h2>
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="rounded-2xl">
-            <CardHeader><CardTitle className="text-sm">Inventory Value</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t("menuIntelligence.inventory.inventoryValue")}</CardTitle></CardHeader>
             <CardContent><p className="text-2xl font-bold">{formatMoney(inventoryValue)}</p></CardContent>
           </Card>
           <Card className="rounded-2xl md:col-span-2">
-            <CardHeader><CardTitle className="text-sm">Dead Stock</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t("menuIntelligence.inventory.deadStock")}</CardTitle></CardHeader>
             <CardContent>
               {(data.inventory?.deadStock ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No dead stock detected</p>
+                <p className="text-sm text-muted-foreground">{t("menuIntelligence.inventory.noDeadStock")}</p>
               ) : (
                 <ul className="text-sm space-y-1">
                   {data.inventory!.deadStock.slice(0, 6).map((row) => (
@@ -413,7 +426,7 @@ export default function MenuIntelligenceDashboard() {
           </Card>
         </div>
         <Card className="rounded-2xl">
-          <CardHeader><CardTitle className="text-sm">Critical Risk Ingredients</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">{t("menuIntelligence.inventory.criticalRiskIngredients")}</CardTitle></CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {(data.stockRisk?.risks ?? [])
@@ -425,7 +438,7 @@ export default function MenuIntelligenceDashboard() {
                   </Badge>
                 ))}
               {(data.stockRisk?.risks ?? []).filter((r) => r.riskLevel === "critical" || r.riskLevel === "high").length === 0 && (
-                <span className="text-sm text-muted-foreground">No critical stock risks</span>
+                <span className="text-sm text-muted-foreground">{t("menuIntelligence.inventory.noCriticalStockRisks")}</span>
               )}
             </div>
           </CardContent>
@@ -435,7 +448,7 @@ export default function MenuIntelligenceDashboard() {
       {/* Section 7 — Health Score */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Activity className="h-5 w-5" /> Executive Health Score
+          <Activity className="h-5 w-5" /> {t("menuIntelligence.sections.executiveHealthScore")}
         </h2>
         <Card className="rounded-2xl">
           <CardContent className="py-8 flex justify-center">
@@ -456,6 +469,8 @@ function OppTable({
   rows: Array<Record<string, unknown>>;
   columns: Array<{ key: string; label: string; format?: (v: unknown) => string }>;
 }) {
+  const { t } = useErpTranslation();
+
   return (
     <Card className="rounded-2xl overflow-hidden">
       <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
@@ -472,7 +487,7 @@ function OppTable({
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-6">
-                  No opportunities
+                  {t("menuIntelligence.optimization.noOpportunities")}
                 </TableCell>
               </TableRow>
             )}
@@ -503,6 +518,8 @@ function ForecastCard({
   rows: Array<{ name: string; value: string }>;
   footer?: string;
 }) {
+  const { t } = useErpTranslation();
+
   return (
     <Card className="rounded-2xl">
       <CardHeader className="pb-2">
@@ -510,7 +527,7 @@ function ForecastCard({
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       </CardHeader>
       <CardContent className="space-y-2">
-        {rows.length === 0 && <p className="text-sm text-muted-foreground">No forecast data</p>}
+        {rows.length === 0 && <p className="text-sm text-muted-foreground">{t("menuIntelligence.forecast.noData")}</p>}
         {rows.map((row) => (
           <div key={row.name} className="flex justify-between text-sm gap-2">
             <span className="truncate">{row.name}</span>

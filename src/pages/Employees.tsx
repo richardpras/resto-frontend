@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { Plus, Pencil, UserRound, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/scrollable-tabs-list";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
+import { cn } from "@/lib/utils";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import {
@@ -43,6 +47,7 @@ import {
 const STATUSES = ["active", "inactive", "resigned", "terminated"] as const;
 
 export default function Employees() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outlets = user?.assignedOutlets ?? [];
@@ -89,7 +94,7 @@ export default function Employees() {
       setPositions(pos.filter((p) => p.isActive));
       setUsers(us);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load employees");
+      toast.error(e instanceof ApiHttpError ? e.message : t("hr.employees.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -133,7 +138,7 @@ export default function Employees() {
       setHistoryRows(data.history);
       setHistoryOpen(true);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load shift history");
+      toast.error(e instanceof ApiHttpError ? e.message : t("hr.employees.shiftHistoryFailed"));
     }
   };
 
@@ -158,7 +163,7 @@ export default function Employees() {
 
   const handleSave = async () => {
     if (!outletId || !form.fullName.trim()) {
-      return toast.error("Full name is required");
+      return toast.error(t("hr.employees.fullNameRequired"));
     }
     setSaving(true);
     try {
@@ -183,44 +188,46 @@ export default function Employees() {
         } else if (!form.userId && editing.userId) {
           saved = await removeEmployeeUser(editing.id);
         }
-        toast.success("Employee updated");
+        toast.success(t("hr.employees.updated"));
       } else {
         saved = await createOrganizationEmployee({ outletId, ...payload });
         if (form.userId) {
           saved = await assignEmployeeUser(saved.id, Number(form.userId));
         }
-        toast.success("Employee created");
+        toast.success(t("hr.employees.created"));
       }
       void saved;
       setOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("hr.employees.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   const columns: Column<OrganizationEmployeeRow>[] = [
-    { key: "employeeNo", header: "Employee No", sortable: true },
-    { key: "fullName", header: "Name", sortable: true },
-    { key: "positionName", header: "Position", render: (r) => r.positionName ?? "—" },
+    { key: "employeeNo", header: t("hr.employees.columns.employeeNo"), sortable: true },
+    { key: "fullName", header: t("hr.employees.columns.name"), sortable: true },
+    { key: "positionName", header: t("hr.employees.columns.position"), render: (r) => r.positionName ?? "—" },
     {
       key: "departmentId",
-      header: "Department",
+      header: t("hr.employees.columns.department"),
       render: (r) => r.department?.name ?? departments.find((d) => d.id === r.departmentId)?.name ?? "—",
     },
-    { key: "outletId", header: "Outlet", render: (r) => r.outlet?.name ?? outletLabel(r.outletId) },
+    { key: "outletId", header: t("hr.employees.columns.outlet"), render: (r) => r.outlet?.name ?? outletLabel(r.outletId) },
     {
       key: "status",
-      header: "Status",
+      header: t("hr.employees.columns.status"),
       render: (r) => (
-        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-muted capitalize">{r.status}</span>
+        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-muted capitalize">
+          {t(`hr.employees.statuses.${r.status}`, { defaultValue: r.status })}
+        </span>
       ),
     },
     {
       key: "linkedUser",
-      header: "Linked User",
+      header: t("hr.employees.columns.linkedUser"),
       render: (r) => (r.linkedUser ? `${r.linkedUser.name} (${r.linkedUser.email})` : "—"),
     },
     {
@@ -240,14 +247,14 @@ export default function Employees() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <UserRound className="h-7 w-7 text-primary" /> Employees
+            <UserRound className="h-7 w-7 text-primary" /> {t("hr.employees.pageTitle")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Internal staff records and system account links.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("hr.employees.pageSubtitle")}</p>
         </div>
         {outlets.length > 0 && (
           <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
             <SelectTrigger className="w-48 rounded-xl">
-              <SelectValue placeholder="Outlet" />
+              <SelectValue placeholder={t("payroll.employees.outlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -265,75 +272,75 @@ export default function Employees() {
         columns={columns}
         rowKey={(r) => r.id}
         loading={loading}
-        searchPlaceholder="Search name, no, email, phone..."
+        searchPlaceholder={t("hr.employees.searchPlaceholder")}
         searchKeys={["fullName", "employeeNo", "email", "phone"]}
-        emptyMessage="No employees yet"
-        emptyAction={{ label: "Add employee", onClick: openNew }}
+        emptyMessage={t("hr.employees.empty")}
+        emptyAction={{ label: t("hr.employees.addEmployee"), onClick: openNew }}
         rightToolbar={
           <Button onClick={openNew} className="rounded-xl" disabled={!outletId}>
-            <Plus className="h-4 w-4 mr-1" /> Add employee
+            <Plus className="h-4 w-4 mr-1" /> {t("hr.employees.addEmployee")}
           </Button>
         }
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={cn("rounded-2xl", dialogSize.tabbed, dialogScroll)}>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit employee" : "New employee"}</DialogTitle>
+            <DialogTitle>{editing ? t("hr.employees.editEmployee") : t("hr.employees.newEmployee")}</DialogTitle>
           </DialogHeader>
           <Tabs defaultValue="general">
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="employment">Employment</TabsTrigger>
-              <TabsTrigger value="shift">Shift</TabsTrigger>
-              <TabsTrigger value="schedule">Schedule</TabsTrigger>
-              <TabsTrigger value="attendance">Attendance</TabsTrigger>
-              <TabsTrigger value="payslips">Payslips</TabsTrigger>
-              <TabsTrigger value="account">System account</TabsTrigger>
-            </TabsList>
+            <ScrollableTabsList>
+              <TabsTrigger value="general">{t("hr.employees.tabs.general")}</TabsTrigger>
+              <TabsTrigger value="employment">{t("hr.employees.tabs.employment")}</TabsTrigger>
+              <TabsTrigger value="shift">{t("hr.employees.tabs.shift")}</TabsTrigger>
+              <TabsTrigger value="schedule">{t("hr.employees.tabs.schedule")}</TabsTrigger>
+              <TabsTrigger value="attendance">{t("hr.employees.tabs.attendance")}</TabsTrigger>
+              <TabsTrigger value="payslips">{t("hr.employees.tabs.payslips")}</TabsTrigger>
+              <TabsTrigger value="account">{t("hr.employees.tabs.account")}</TabsTrigger>
+            </ScrollableTabsList>
             <TabsContent value="general" className="grid gap-3 pt-3">
               <div>
-                <Label>Employee no</Label>
+                <Label>{t("payroll.employees.employeeNo")}</Label>
                 <Input
                   value={form.employeeNo}
                   onChange={(e) => setForm({ ...form, employeeNo: e.target.value })}
-                  placeholder="Auto-generated if empty"
+                  placeholder={t("hr.employees.employeeNoPlaceholder")}
                 />
               </div>
               <div>
-                <Label>Full name *</Label>
+                <Label>{t("payroll.employees.fullName")} *</Label>
                 <Input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Email</Label>
+                  <Label>{t("payroll.employees.email")}</Label>
                   <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Phone</Label>
+                  <Label>{t("payroll.employees.phone")}</Label>
                   <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Gender</Label>
+                  <Label>{t("hr.employees.gender")}</Label>
                   <Input value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Birth date</Label>
+                  <Label>{t("hr.employees.birthDate")}</Label>
                   <Input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
                 </div>
               </div>
             </TabsContent>
             <TabsContent value="employment" className="grid gap-3 pt-3">
               <div>
-                <Label>Department</Label>
+                <Label>{t("payroll.employees.department")}</Label>
                 <Select value={form.departmentId || "none"} onValueChange={(v) => setForm({ ...form, departmentId: v === "none" ? "" : v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— None —</SelectItem>
+                    <SelectItem value="none">{t("hr.employees.none")}</SelectItem>
                     {departments.map((d) => (
                       <SelectItem key={d.id} value={String(d.id)}>
                         {d.name}
@@ -343,13 +350,13 @@ export default function Employees() {
                 </Select>
               </div>
               <div>
-                <Label>Position</Label>
+                <Label>{t("payroll.employees.position")}</Label>
                 <Select value={form.positionId || "none"} onValueChange={(v) => setForm({ ...form, positionId: v === "none" ? "" : v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— None —</SelectItem>
+                    <SelectItem value="none">{t("hr.employees.none")}</SelectItem>
                     {positions.map((p) => (
                       <SelectItem key={p.id} value={String(p.id)}>
                         {p.name}
@@ -360,11 +367,11 @@ export default function Employees() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Hire date</Label>
+                  <Label>{t("payroll.employees.hireDate")}</Label>
                   <Input type="date" value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Status</Label>
+                  <Label>{t("hr.employees.columns.status")}</Label>
                   <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as (typeof STATUSES)[number] })}>
                     <SelectTrigger>
                       <SelectValue />
@@ -372,7 +379,7 @@ export default function Employees() {
                     <SelectContent>
                       {STATUSES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {s}
+                          {t(`hr.employees.statuses.${s}`)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -380,7 +387,7 @@ export default function Employees() {
                 </div>
               </div>
               <div>
-                <Label>Notes</Label>
+                <Label>{t("hr.employees.notes")}</Label>
                 <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
               </div>
             </TabsContent>
@@ -395,24 +402,24 @@ export default function Employees() {
                     onClick={() => void openShiftHistory(editing)}
                   >
                     <History className="h-4 w-4 mr-2" />
-                    View assignment history
+                    {t("hr.employees.viewShiftHistory")}
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Manage assignments under Payroll → Assignments.
+                    {t("hr.employees.shiftManageHint")}
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Save the employee first to view shift assignment.</p>
+                <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstShift")}</p>
               )}
             </TabsContent>
             <TabsContent value="schedule" className="grid gap-3 pt-3">
               {editing ? (
                 <>
                   <EmployeeCurrentWeekSchedule employeeId={editing.id} />
-                  <p className="text-xs text-muted-foreground">Read-only. Edit schedules under Payroll → Scheduling.</p>
+                  <p className="text-xs text-muted-foreground">{t("hr.employees.scheduleReadOnlyHint")}</p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Save the employee first to view the weekly schedule.</p>
+                <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstSchedule")}</p>
               )}
             </TabsContent>
             <TabsContent value="attendance" className="grid gap-3 pt-3">
@@ -420,35 +427,35 @@ export default function Employees() {
                 <>
                   <EmployeeAttendanceHistory employeeId={editing.id} limit={30} />
                   <p className="text-xs text-muted-foreground">
-                    Read-only (last 30 days). Import and corrections under Payroll → Attendance.
+                    {t("hr.employees.attendanceReadOnlyHint")}
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Save the employee first to view attendance history.</p>
+                <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstAttendance")}</p>
               )}
             </TabsContent>
             <TabsContent value="payslips" className="grid gap-3 pt-3">
               {editing ? (
                 <>
                   <EmployeePayslipHistory employeeId={editing.id} />
-                  <p className="text-xs text-muted-foreground">Read-only payslip history with PDF download.</p>
+                  <p className="text-xs text-muted-foreground">{t("hr.employees.payslipReadOnlyHint")}</p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Save the employee first to view payslip history.</p>
+                <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstPayslips")}</p>
               )}
             </TabsContent>
             <TabsContent value="account" className="grid gap-3 pt-3">
               <p className="text-sm text-muted-foreground">
-                Link a login user to this employee. The user must belong to the same outlet.
+                {t("hr.employees.accountLinkHint")}
               </p>
               <div>
-                <Label>User account</Label>
+                <Label>{t("hr.employees.userAccount")}</Label>
                 <Select value={form.userId || "none"} onValueChange={(v) => setForm({ ...form, userId: v === "none" ? "" : v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="No link" />
+                    <SelectValue placeholder={t("hr.employees.noLink")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— No link —</SelectItem>
+                    <SelectItem value="none">{t("hr.employees.noLinkOption")}</SelectItem>
                     {users.map((u) => (
                       <SelectItem key={u.id} value={String(u.id)}>
                         {u.name} ({u.email})
@@ -461,38 +468,38 @@ export default function Employees() {
           </Tabs>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
+              {t("hr.employees.cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={saving}>
-              Save
+              {t("hr.employees.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Shift history — {historyLabel}</SheetTitle>
+            <SheetTitle>{t("hr.employees.shiftHistoryTitle", { name: historyLabel })}</SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4">
             {historyCurrent?.shift ? (
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground mb-1">Current</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("hr.employees.current")}</p>
                 <p className="font-medium">{historyCurrent.shift.name}</p>
                 <p className="text-sm text-muted-foreground">
                   {historyCurrent.shift.startTime} – {historyCurrent.shift.endTime}
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No current assignment.</p>
+              <p className="text-sm text-muted-foreground">{t("hr.employees.noCurrentAssignment")}</p>
             )}
             <ul className="space-y-2">
               {historyRows.map((h) => (
                 <li key={h.id} className="rounded-lg border p-3 text-sm">
-                  <p className="font-medium">{h.shift?.name ?? "Shift"}</p>
+                  <p className="font-medium">{h.shift?.name ?? t("hr.employees.shiftFallback")}</p>
                   <p className="text-muted-foreground text-xs">
-                    {h.effectiveFrom} → {h.effectiveUntil ?? (h.isActive ? "Present" : "—")}
+                    {h.effectiveFrom} → {h.effectiveUntil ?? (h.isActive ? t("hr.employees.present") : "—")}
                   </p>
                 </li>
               ))}

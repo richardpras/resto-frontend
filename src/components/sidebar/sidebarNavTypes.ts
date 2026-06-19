@@ -6,6 +6,8 @@ export type SidebarNavItem = {
   title: string;
   /** i18n key under common namespace (e.g. nav.dashboard). */
   titleKey?: string;
+  /** Non-clickable submenu section label when kind is separator. */
+  kind?: "link" | "separator";
   href?: string;
   icon?: LucideIcon;
   permission?: string;
@@ -20,4 +22,9 @@ export type SidebarNavItem = {
 export type ParsedNavHref = {
   pathname: string;
   tab: string | null;
+};
+
+export type SidebarNavSection = {
+  labelKey: string;
+  items: SidebarNavItem[];
 };

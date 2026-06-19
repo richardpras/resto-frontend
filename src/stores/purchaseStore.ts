@@ -16,6 +16,7 @@ import {
   submitPurchaseInvoice,
   voidPurchaseInvoice,
   approvePurchaseOrder,
+  rejectPurchaseOrder,
   approvePurchaseRequest,
   cancelPurchaseOrder,
   closePurchaseOrder,
@@ -217,6 +218,7 @@ type PurchaseStore = {
   updatePO: (id: string, data: Partial<PurchaseOrder>) => Promise<void>;
   submitPO: (id: string) => Promise<void>;
   approvePO: (id: string) => Promise<void>;
+  rejectPO: (id: string) => Promise<void>;
   cancelPO: (id: string) => Promise<void>;
   closePO: (id: string) => Promise<void>;
   createPOFromPR: (prId: string, supplierId: string) => Promise<string | null>;
@@ -580,6 +582,10 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   },
   approvePO: async (id) => {
     await approvePurchaseOrder(id);
+    await get().fetchPurchaseOrders();
+  },
+  rejectPO: async (id) => {
+    await rejectPurchaseOrder(id);
     await get().fetchPurchaseOrders();
   },
   cancelPO: async (id) => {

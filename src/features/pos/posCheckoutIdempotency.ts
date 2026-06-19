@@ -11,14 +11,14 @@ export function qrCheckoutIdempotencyKey(qrOrderRequestId: string | number): str
   return `pos-qr-checkout-${qrOrderRequestId}`;
 }
 
+export function createOrderPaymentIdempotencyKey(orderId: string): string {
+  return createCheckoutAttemptId(`pay-order-${orderId}`);
+}
+
 export function resolveCheckoutIdempotencyKey(input: {
-  currentOrderId?: string | null;
   qrOrderRequestId?: string | number | null;
   scope?: string;
 }): string {
-  if (input.currentOrderId) {
-    return `pos-checkout-order-${input.currentOrderId}`;
-  }
   if (input.qrOrderRequestId) {
     return qrCheckoutIdempotencyKey(input.qrOrderRequestId);
   }

@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -316,7 +317,7 @@ export default function Bpjs() {
       </Tabs>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.shared.newBpjsSchedule")}</DialogTitle>
           </DialogHeader>
@@ -392,7 +393,7 @@ export default function Bpjs() {
       </Dialog>
 
       <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>
               {editProfile ? t("payroll.shared.editBpjsEnrollment") : t("payroll.shared.enrollEmployee")}

@@ -1,4 +1,4 @@
-import { apiRequest as request } from "./client";
+import { apiRequest as request, API_BASE_URL, getApiAccessToken, ApiHttpError } from "./client";
 
 type ApiListResponse<T> = {
   data: T[];
@@ -133,6 +133,9 @@ export type MenuItemApi = {
   price: number;
   available: boolean;
   emoji?: string | null;
+  imageUrl?: string | null;
+  imageVersion?: number;
+  hasImage?: boolean;
   productionStation?: MenuProductionStationApi | null;
   productionStationId?: number | null;
   recipes?: MenuRecipeApi[];
@@ -174,6 +177,37 @@ export async function updateMenuItem(id: string, payload: Partial<MenuPayload>):
   const response = await request<{ data: MenuItemApi }>(`/menu-items/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function uploadMenuItemImage(id: string, file: File): Promise<MenuItemApi> {
+  const form = new FormData();
+  form.append("image", file, file.name);
+
+  const token = getApiAccessToken();
+  const response = await fetch(`${API_BASE_URL}/menu-items/${id}/image`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof body === "object" && body !== null && "message" in body && typeof body.message === "string"
+        ? body.message
+        : `Request failed (${response.status})`;
+    throw new ApiHttpError(response.status, message, body);
+  }
+  return (body as { data: MenuItemApi }).data;
+}
+
+export async function deleteMenuItemImage(id: string): Promise<MenuItemApi> {
+  const response = await request<{ data: MenuItemApi }>(`/menu-items/${id}/image`, {
+    method: "DELETE",
   });
   return response.data;
 }
@@ -283,6 +317,7 @@ export type OrderApi = {
   tax: number;
   total: number;
   discountAmount?: number;
+  balanceDue?: number;
   payments: {
     id: string;
     method: string;
@@ -295,6 +330,8 @@ export type OrderApi = {
   customerName: string;
   customerPhone: string;
   memberId?: number | null;
+  memberName?: string | null;
+  memberNo?: string | null;
   tableId?: number | null;
   tableName?: string | null;
   tableNumber: string;
@@ -323,6 +360,26 @@ export type OrderApi = {
     subtotal: number;
     discount: number;
     subtotalAfterDiscount: number;
+    tax?: number;
+    total?: number;
+    balanceDue?: number;
+  };
+  promotion?: {
+    promotionId: string | null;
+    promotionCode: string;
+    promotionName: string;
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;
+  } | null;
+  promotionDiscount?: number;
+  promotionPreview?: {
+    subtotal: number;
+    discount: number;
+    subtotalAfterDiscount: number;
+    tax?: number;
+    total?: number;
+    balanceDue?: number;
   };
 };
 

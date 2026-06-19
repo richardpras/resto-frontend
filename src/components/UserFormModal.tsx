@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -179,7 +180,7 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
         <DialogHeader>
           <DialogTitle>{editing ? "Edit user roles" : "Add User"}</DialogTitle>
         </DialogHeader>

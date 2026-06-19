@@ -11,6 +11,7 @@ import { usePurchaseStore, GRNStatus } from "@/stores/purchaseStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getProcurementSummary, type ProcurementSummary } from "@/lib/api-integration/purchaseEndpoints";
 import { listWarehouses, type WarehouseApiRow } from "@/lib/api-integration/warehouseEndpoints";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, PackageCheck, Search, Check, Upload, Ban, Eye } from "lucide-react";
@@ -379,7 +380,7 @@ export default function GoodsReceipts() {
       </Dialog>
 
       <Dialog open={!!viewId} onOpenChange={(open) => !open && setViewId(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader><DialogTitle>{t("purchases.grn.detailTitle")} — {viewedGrn?.grnNumber}</DialogTitle></DialogHeader>
           {viewedGrn && (
             <div className="space-y-4 text-sm">

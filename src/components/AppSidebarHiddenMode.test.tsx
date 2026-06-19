@@ -101,10 +101,6 @@ vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
 }));
 
-vi.mock("@/domain/featureFlags", () => ({
-  isPromotionsModuleEnabled: () => false,
-}));
-
 const useIsMobileMock = vi.fn(() => false);
 vi.mock("@/hooks/use-mobile", () => ({
   useIsMobile: () => useIsMobileMock(),
@@ -132,7 +128,7 @@ describe("AppSidebar hidden mode", () => {
 
   it("shows nav labels when sidebar is expanded", () => {
     renderShell(true);
-    expect(screen.getByText("Operations")).toBeInTheDocument();
+    expect(screen.getByText("Sales & Cashier")).toBeInTheDocument();
     expect(screen.getByText("RestoHub")).toBeInTheDocument();
   });
 
@@ -161,7 +157,7 @@ describe("AppSidebar hidden mode", () => {
     expect(screen.getByRole("button", { name: "Open sidebar" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open sidebar" }));
-    expect(screen.getByText("Operations")).toBeInTheDocument();
+    expect(screen.getByText("Sales & Cashier")).toBeInTheDocument();
 
     const sidebar = document.querySelector('[data-sidebar="sidebar"]');
     expect(sidebar?.getAttribute("aria-hidden")).not.toBe("true");

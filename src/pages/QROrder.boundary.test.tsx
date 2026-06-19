@@ -23,6 +23,19 @@ vi.mock("@/stores/qrOrderStore", () => ({
   useQrOrderStore: (selector: (state: Record<string, unknown>) => unknown) => mockUseQrOrderStore(selector),
 }));
 
+vi.mock("@/lib/api-integration/publicMenuEndpoints", () => ({
+  fetchPublicQrMenu: vi.fn().mockResolvedValue([
+    {
+      id: "1",
+      name: "Nasi Goreng Special",
+      price: 30000,
+      category: "Main Course",
+      emoji: "🍛",
+      available: true,
+    },
+  ]),
+}));
+
 describe("QROrder page store boundary", () => {
   beforeEach(() => {
     mockCreateRequest.mockReset();
@@ -33,15 +46,22 @@ describe("QROrder page store boundary", () => {
         isSubmitting: false,
         hasApiAccess: () => false,
         resolveTableFromPublicId: vi.fn(),
-        resolveLegacyTable: vi.fn().mockResolvedValue({ outletId: 2, tableId: 7, tableName: "T07" }),
+        resolveLegacyTable: vi.fn().mockResolvedValue({
+          outletId: 2,
+          tableId: 7,
+          tableName: "T07",
+          qrPublicId: "legacy-qr-07",
+          guestSession: { token: "guest-token-test" },
+        }),
         fetchTableOperationalStatus: vi.fn().mockResolvedValue("available"),
       }),
     );
   });
 
-  it("uses store state/actions only and keeps root layout", () => {
+  it("uses store state/actions only and keeps root layout", async () => {
     const { container } = render(<QROrder />);
     expect(screen.getByText(/RestoHub Menu/i)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /language/i })).toBeInTheDocument();
     expect(container.firstChild).toHaveClass("min-h-screen");
     expect(container.firstChild).toHaveClass("bg-background");
   });
@@ -50,6 +70,9 @@ describe("QROrder page store boundary", () => {
     mockCreateRequest.mockResolvedValue({ id: "req-1", requestCode: "QRR-001" });
     render(<QROrder />);
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /nasi goreng special/i })).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: /nasi goreng special/i }));
     fireEvent.click(screen.getByRole("button", { name: /view cart/i }));
     fireEvent.click(screen.getByRole("button", { name: /checkout/i }));

@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import POS from "./POS";
 
 const mockFetchMembers = vi.fn();
-const mockFetchCustomers = vi.fn();
 const mockRefreshLoyalty = vi.fn();
 const mockCapabilities = vi.fn(() => ({ crm: true }));
 
@@ -42,13 +41,6 @@ vi.mock("@/stores/orderStore", () => ({
   deriveRuntimeFloorTables: () => [],
 }));
 
-vi.mock("@/stores/promotionStore", () => ({
-  usePromotionStore: () => ({
-    getBestPromo: () => null,
-    getApplicablePromos: () => [],
-  }),
-}));
-
 const memberStoreState = {
   members: [],
   loading: false,
@@ -62,16 +54,6 @@ const memberStoreState = {
 vi.mock("@/stores/memberStore", () => ({
   useMemberStore: (selector?: (state: typeof memberStoreState) => unknown) =>
     selector ? selector(memberStoreState) : memberStoreState,
-}));
-
-vi.mock("@/stores/customerStore", () => ({
-  useCustomerStore: (selector?: (state: Record<string, unknown>) => unknown) => {
-    const state = {
-      customers: [],
-      fetchCustomers: mockFetchCustomers,
-    };
-    return selector ? selector(state) : state;
-  },
 }));
 
 vi.mock("@/stores/loyaltyStore", () => ({
@@ -137,10 +119,8 @@ function renderPos() {
 describe("POS PERF orchestration boundaries", () => {
   beforeEach(() => {
     mockFetchMembers.mockReset();
-    mockFetchCustomers.mockReset();
     mockRefreshLoyalty.mockReset();
     mockFetchMembers.mockResolvedValue(undefined);
-    mockFetchCustomers.mockResolvedValue(undefined);
     mockRefreshLoyalty.mockResolvedValue(undefined);
     mockCapabilities.mockReturnValue({ crm: true });
   });
@@ -148,15 +128,13 @@ describe("POS PERF orchestration boundaries", () => {
   it("does not fetch crm/member data on initial POS open", () => {
     renderPos();
     expect(mockFetchMembers).not.toHaveBeenCalled();
-    expect(mockFetchCustomers).not.toHaveBeenCalled();
     expect(mockRefreshLoyalty).not.toHaveBeenCalled();
   });
 
-  it("lazy-loads crm/member data when member picker is opened", () => {
+  it("lazy-loads member data when member picker is opened", () => {
     renderPos();
     fireEvent.click(screen.getByRole("button", { name: /\+ select member/i }));
     expect(mockFetchMembers).toHaveBeenCalledTimes(1);
-    expect(mockFetchCustomers).toHaveBeenCalledTimes(1);
     expect(mockRefreshLoyalty).toHaveBeenCalledTimes(1);
   });
 
@@ -166,7 +144,6 @@ describe("POS PERF orchestration boundaries", () => {
     const button = screen.getByRole("button", { name: /\+ select member/i });
     fireEvent.click(button);
     expect(mockFetchMembers).not.toHaveBeenCalled();
-    expect(mockFetchCustomers).not.toHaveBeenCalled();
     expect(mockRefreshLoyalty).not.toHaveBeenCalled();
   });
 });

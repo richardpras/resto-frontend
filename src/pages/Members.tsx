@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Pencil, Power, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/DataTable";
-import { MemberProfileDialog } from "@/components/members/MemberProfileDialog";
 import { useOutletStore } from "@/stores/outletStore";
 import { useMemberStore, type Member, type MemberStatus } from "@/stores/memberStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function Members() {
+  const navigate = useNavigate();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { members, loading, fetchMembers, addMember, updateMember, toggleStatus } = useMemberStore();
   const [open, setOpen] = useState(false);
-  const [profileMemberId, setProfileMemberId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Member | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | MemberStatus>("all");
   const [form, setForm] = useState({ name: "", phone: "", email: "", birthday: "", notes: "", status: "active" as MemberStatus });
@@ -88,6 +89,10 @@ export default function Members() {
     { key: "phone", header: "Phone", sortable: true },
     { key: "memberNo", header: "Member No", sortable: true,
       render: (r) => <span className="text-sm text-muted-foreground">{r.memberNo ?? "—"}</span> },
+    { key: "points", header: "Points", sortable: true,
+      render: (r) => <span className="text-sm font-medium">{r.points}</span> },
+    { key: "giftCardBalance", header: "Gift Card", sortable: true,
+      render: (r) => <span className="text-sm">Rp {(r.giftCardBalance ?? 0).toLocaleString("id-ID")}</span> },
     { key: "status", header: "Status", sortable: true,
       render: (r) => (
         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -97,7 +102,7 @@ export default function Members() {
     { key: "actions", header: "", className: "w-28 text-right",
       render: (r) => (
         <div className="flex items-center justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setProfileMemberId(r.id)}>Profile</Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/members/${r.id}`)}>Profile</Button>
           <Button variant="ghost" size="icon" onClick={() => openEdit(r)} className="h-8 w-8"><Pencil className="h-4 w-4" /></Button>
           <Button
             variant="ghost"
@@ -119,7 +124,7 @@ export default function Members() {
     <div className="p-4 md:p-6 space-y-5 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Members</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Customer membership master data and transaction history.</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Membership master data, loyalty program, CRM points, and gift cards.</p>
       </div>
 
       <DataTable
@@ -145,7 +150,7 @@ export default function Members() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll} rounded-2xl`}>
           <DialogHeader><DialogTitle>{editing ? "Edit member" : "New member"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
@@ -173,15 +178,6 @@ export default function Members() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <MemberProfileDialog
-        memberId={profileMemberId}
-        outletId={typeof activeOutletId === "number" ? activeOutletId : null}
-        open={profileMemberId !== null}
-        onOpenChange={(next) => {
-          if (!next) setProfileMemberId(null);
-        }}
-      />
     </div>
   );
 }

@@ -5,6 +5,9 @@ export type VoucherPreview = {
   subtotal: number;
   discount: number;
   subtotalAfterDiscount: number;
+  tax?: number;
+  total?: number;
+  balanceDue?: number;
 };
 
 export type OrderVoucherApi = {
@@ -27,6 +30,16 @@ export async function applyOrderVoucher(
   return apiRequest(`/orders/${orderId}/voucher`, {
     method: "POST",
     body: JSON.stringify({ memberVoucherId }),
+  });
+}
+
+export async function applyOrderVoucherByCode(
+  orderId: string | number,
+  code: string,
+): Promise<{ data: OrderApi; preview: VoucherPreview; message?: string }> {
+  return apiRequest(`/orders/${orderId}/voucher/by-code`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
   });
 }
 

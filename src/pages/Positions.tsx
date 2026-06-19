@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -197,7 +198,7 @@ export default function Positions() {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.md} ${dialogScroll} rounded-2xl`}>
           <DialogHeader>
             <DialogTitle>{editing ? "Edit position" : "New position"}</DialogTitle>
           </DialogHeader>

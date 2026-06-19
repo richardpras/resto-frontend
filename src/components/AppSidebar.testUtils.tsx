@@ -103,10 +103,6 @@ vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
 }));
 
-vi.mock("@/domain/featureFlags", () => ({
-  isPromotionsModuleEnabled: () => false,
-}));
-
 vi.mock("@/components/ui/sidebar", () => ({
   Sidebar: ({ children }: { children: ReactNode }) => <div data-testid="sidebar">{children}</div>,
   SidebarContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,

@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useInventoryStore } from "@/stores/inventoryStore";
+import { sanitizeMoneyInput, sanitizeQuantityInput } from "@/lib/numericInput";
 import { Plus, Trash2 } from "lucide-react";
 
 export type PurchaseLineItem = {
@@ -65,7 +66,7 @@ export function PurchaseItemTable({
 
   return (
     <div className="space-y-2">
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -117,11 +118,12 @@ export function PurchaseItemTable({
                     <span className="text-sm">{item.qty}</span>
                   ) : (
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       min={0}
                       className="h-9 w-20"
-                      value={item.qty}
-                      onChange={(e) => updateRow(idx, "qty", Number(e.target.value))}
+                      value={item.qty === 0 ? "0" : String(item.qty)}
+                      onChange={(e) => updateRow(idx, "qty", sanitizeQuantityInput(e.target.value))}
                     />
                   )}
                 </TableCell>
@@ -144,11 +146,12 @@ export function PurchaseItemTable({
                       <span className="text-sm">{item.price.toLocaleString()}</span>
                     ) : (
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         min={0}
                         className="h-9 w-24"
-                        value={item.price}
-                        onChange={(e) => updateRow(idx, "price", Number(e.target.value))}
+                        value={item.price === 0 ? "0" : String(item.price)}
+                        onChange={(e) => updateRow(idx, "price", sanitizeMoneyInput(e.target.value))}
                       />
                     )}
                   </TableCell>
@@ -163,12 +166,12 @@ export function PurchaseItemTable({
                 {showReceiving && (
                   <TableCell>
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       min={0}
-                      max={item.qty}
                       className="h-9 w-24"
-                      value={receivedQtyMap?.[item.inventoryItemId] ?? 0}
-                      onChange={(e) => onReceivedQtyChange?.(idx, Number(e.target.value))}
+                      value={String(receivedQtyMap?.[item.inventoryItemId] ?? 0)}
+                      onChange={(e) => onReceivedQtyChange?.(idx, sanitizeQuantityInput(e.target.value))}
                     />
                   </TableCell>
                 )}

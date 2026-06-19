@@ -11,6 +11,8 @@ import { usePurchaseStore } from "@/stores/purchaseStore";
 import { useSupplierStore } from "@/stores/supplierStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { getApAgingReport, getProcurementSummary, getSupplierStatement, type ApAgingReport, type ProcurementSummary, type SupplierStatement } from "@/lib/api-integration/purchaseEndpoints";
+import { usePurchasePermissions } from "@/hooks/usePurchasePermissions";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, Search, Check, Upload, Ban, Eye } from "lucide-react";
@@ -40,6 +42,7 @@ export default function PurchasePayments() {
   } = usePurchaseStore();
   const { suppliers, fetchSuppliers } = useSupplierStore();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const { canApprove } = usePurchasePermissions();
 
   const [tab, setTab] = useState("payments");
   const [search, setSearch] = useState("");
@@ -210,8 +213,8 @@ export default function PurchasePayments() {
                     </TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button size="sm" variant="ghost" onClick={() => setViewId(pay.id)}><Eye className="h-3.5 w-3.5" /></Button>
-                      {pay.status === "draft" && <Button size="sm" variant="outline" onClick={() => void approveSupplierPaymentAction(pay.id).then(loadDashboard)}>{t("purchases.shared.approve")}</Button>}
-                      {pay.status === "approved" && <Button size="sm" onClick={() => void postSupplierPaymentAction(pay.id).then(loadDashboard)}><Upload className="h-3 w-3" /></Button>}
+                      {pay.status === "draft" && canApprove && <Button size="sm" variant="outline" onClick={() => void approveSupplierPaymentAction(pay.id).then(loadDashboard)}>{t("purchases.shared.approve")}</Button>}
+                      {pay.status === "approved" && canApprove && <Button size="sm" onClick={() => void postSupplierPaymentAction(pay.id).then(loadDashboard)}><Upload className="h-3 w-3" /></Button>}
                       {(pay.status === "draft" || pay.status === "approved" || pay.status === "posted") && pay.status !== "void" && (
                         <Button size="sm" variant="destructive" onClick={() => void voidSupplierPaymentAction(pay.id).then(loadDashboard)}><Ban className="h-3 w-3" /></Button>
                       )}
@@ -272,7 +275,7 @@ export default function PurchasePayments() {
       </Tabs>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader><DialogTitle>{t("purchases.pay.createPayment")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">

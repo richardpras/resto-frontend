@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import ReportsHub, { HUB_CARDS } from "@/pages/ReportsHub";
+import ReportsHub, { HUB_CARD_DEFS } from "@/pages/ReportsHub";
 import type { AuthUser } from "@/stores/authStore";
 
 function makeUser(permissions: string[]): AuthUser {
@@ -37,9 +37,8 @@ import { useAuthStore } from "@/stores/authStore";
 
 describe("ReportsHub executive dashboard card", () => {
   it("includes owner control tower card definition", () => {
-    const card = HUB_CARDS.find((c) => c.id === "executive-dashboard");
+    const card = HUB_CARD_DEFS.find((c) => c.id === "executive-dashboard");
     expect(card).toBeTruthy();
-    expect(card?.title).toBe("Owner Control Tower");
     expect(card?.to).toBe("/executive-dashboard");
   });
 

@@ -544,6 +544,11 @@ export async function approvePurchaseOrder(id: string | number): Promise<Purchas
   return res.data;
 }
 
+export async function rejectPurchaseOrder(id: string | number): Promise<PurchaseOrderApiRow> {
+  const res = await apiRequest<MessageItemEnvelope<PurchaseOrderApiRow>>(`/purchase-orders/${id}/reject`, { method: "PATCH" });
+  return res.data;
+}
+
 export async function cancelPurchaseOrder(id: string | number): Promise<PurchaseOrderApiRow> {
   const res = await apiRequest<MessageItemEnvelope<PurchaseOrderApiRow>>(`/purchase-orders/${id}/cancel`, { method: "PATCH" });
   return res.data;

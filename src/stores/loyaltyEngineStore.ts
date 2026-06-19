@@ -97,10 +97,21 @@ type LoyaltyEngineState = {
     isActive?: boolean;
     effectiveFrom?: string;
     effectiveUntil?: string;
+    expiryEnabled?: boolean;
+    expiryDays?: number;
+    ruleConfig?: Record<string, unknown>;
   }) => Promise<LoyaltyProgramRow>;
   updateProgram: (
     id: string,
-    payload: Partial<{ name: string; description: string | null; effectiveFrom: string | null; effectiveUntil: string | null }>,
+    payload: Partial<{
+      name: string;
+      description: string | null;
+      effectiveFrom: string | null;
+      effectiveUntil: string | null;
+      expiryEnabled?: boolean;
+      expiryDays?: number | null;
+      ruleConfig?: Record<string, unknown>;
+    }>,
   ) => Promise<void>;
   setProgramActive: (id: string, isActive: boolean) => Promise<void>;
   fetchRules: (programId: string) => Promise<void>;

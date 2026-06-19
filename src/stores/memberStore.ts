@@ -19,6 +19,7 @@ export interface Member {
   id: string;
   outletId?: number;
   memberNo?: string;
+  loyaltyAccountId?: string;
   name: string;
   phone: string;
   email?: string;
@@ -26,6 +27,8 @@ export interface Member {
   gender?: string;
   notes?: string;
   points: number;
+  crmPointsBalance?: number;
+  giftCardBalance?: number;
   status: MemberStatus;
   createdAt: string;
 }
@@ -36,13 +39,16 @@ function mapMember(row: MemberApiRow): Member {
     id: String(row.id),
     outletId: row.outletId ?? undefined,
     memberNo: row.memberNo ?? undefined,
+    loyaltyAccountId: row.loyaltyAccountId ?? undefined,
     name,
     phone: row.phone,
     email: row.email ?? undefined,
     birthday: row.birthDate ?? row.birthday ?? undefined,
     gender: row.gender ?? undefined,
     notes: row.notes ?? undefined,
-    points: 0,
+    points: row.pointsBalance ?? row.points ?? row.crmPointsBalance ?? 0,
+    crmPointsBalance: row.crmPointsBalance ?? row.pointsBalance ?? 0,
+    giftCardBalance: row.giftCardBalance ?? 0,
     status: row.status,
     createdAt: row.createdAt,
   };

@@ -39,6 +39,7 @@ export const PERMISSIONS = {
   COST_MANAGE: "cost.manage",
   INVENTORY: "inventory.manage",
   PURCHASE: "purchase.manage",
+  PURCHASE_APPROVE: "purchase.approve",
   PROMOTIONS: "promotions.manage",
   PAYROLL: "payroll.manage",
   ACCOUNTING: "accounting.manage",
@@ -106,6 +107,9 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (codes.includes("qr_orders.view")) out.add(PERMISSIONS.QR_ORDERS);
   if (codes.includes("tables.manage") && codes.includes("pos.use")) {
     out.add(PERMISSIONS.QR_ORDERS);
+  }
+  if (codes.includes("purchase.manage")) {
+    out.add(PERMISSIONS.PURCHASE_APPROVE);
   }
 
   for (const c of codes) {

@@ -1,8 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Plus, Trash2, UserPlus } from "lucide-react";
+import { CalendarDays, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
+import { openReservationInPosFlow } from "@/components/reservations/openReservationInPosFlow";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
   allocateReservationTable,
@@ -14,8 +15,6 @@ import {
   getReservation,
   listAllocatedTables,
   markNoShowReservation,
-  seatReservation,
-  startReservationService,
   unallocateReservationTable,
   type ReservationApi,
   type ReservationTableAllocationApi,
@@ -24,8 +23,11 @@ import { listFloorTables, type FloorTableApi } from "@/lib/api-integration/table
 import { useReservationDetailRealtimeSync } from "@/hooks/useReservationTableProjectionSync";
 import { useOutletStore } from "@/stores/outletStore";
 import { useReservationStore } from "@/stores/reservationStore";
+import { useMemberStore, type Member } from "@/stores/memberStore";
+import { useReservationPosBridgeStore } from "@/stores/reservationPosBridgeStore";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -56,6 +58,7 @@ function canManageAllocation(status: ReservationApi["status"]): boolean {
 
 export default function Reservations() {
   const { t } = useOpsTranslation();
+  const navigate = useNavigate();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const queryClient = useQueryClient();
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
@@ -71,6 +74,14 @@ export default function Reservations() {
   const [formParty, setFormParty] = useState("2");
   const [formDate, setFormDate] = useState("");
   const [formTime, setFormTime] = useState("");
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [openingPos, setOpeningPos] = useState(false);
+
+  const searchMembersForOutlet = useMemberStore((s) => s.searchMembersForOutlet);
+  const memberSearchResults = useMemberStore((s) => s.searchResults);
+  const memberSearchLoading = useMemberStore((s) => s.searchLoading);
 
   const rows = useReservationStore((s) => s.reservations);
   const isLoading = useReservationStore((s) => s.isLoading);
@@ -129,7 +140,15 @@ export default function Reservations() {
     d.setDate(d.getDate() + 1);
     setFormDate(d.toISOString().slice(0, 10));
     setFormTime("18:00");
+    setSelectedMember(null);
+    setMemberSearch("");
+    setShowMemberPicker(false);
   }, [createOpen]);
+
+  useEffect(() => {
+    if (!showMemberPicker || typeof activeOutletId !== "number") return;
+    void searchMembersForOutlet(activeOutletId, memberSearch).catch(() => undefined);
+  }, [activeOutletId, memberSearch, searchMembersForOutlet, showMemberPicker]);
 
   const statusLabel = (status: ReservationApi["status"]) => t(`reservations.status.${status}`);
 
@@ -150,6 +169,7 @@ export default function Reservations() {
         outletId: activeOutletId!,
         customerName: formName.trim(),
         customerPhone: formPhone.trim() || null,
+        memberId: selectedMember ? Number(selectedMember.id) : null,
         partySize,
         reservationAt,
       });
@@ -186,10 +206,6 @@ export default function Reservations() {
     await runLifecycleAction("reservations.checkedIn", () => checkInReservation(id));
   };
 
-  const onSeat = async (id: number) => {
-    await runLifecycleAction("reservations.seated", () => seatReservation(id));
-  };
-
   const onComplete = async (id: number) => {
     await runLifecycleAction("reservations.completedToast", () => completeReservation(id));
   };
@@ -198,14 +214,23 @@ export default function Reservations() {
     await runLifecycleAction("reservations.noShowToast", () => markNoShowReservation(id));
   };
 
-  const onStartService = async (id: number) => {
+  const onOpenInPos = async (id: number) => {
+    setOpeningPos(true);
     try {
-      const result = await startReservationService(id);
+      await openReservationInPosFlow(id, {
+        setFromOpenInPos: useReservationPosBridgeStore.getState().setFromOpenInPos,
+        navigate,
+      });
       invalidateList();
-      toast.success(t("reservations.serviceStarted", { id: result.linkedOrderId }));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.serviceFailed"));
+      toast.error(e instanceof ApiHttpError ? e.message : t("reservations.openPosFailed"));
+    } finally {
+      setOpeningPos(false);
     }
+  };
+
+  const onStartService = async (id: number) => {
+    await onOpenInPos(id);
   };
 
   const onAssign = async () => {
@@ -269,6 +294,9 @@ export default function Reservations() {
               className="text-left rounded-xl border border-border/60 bg-card p-4 hover:border-primary/40 transition-colors"
             >
               <div className="font-semibold">{row.customerName}</div>
+              {row.memberNo ? (
+                <div className="text-xs text-primary mt-0.5">{row.memberNo}{row.memberName ? ` · ${row.memberName}` : ""}</div>
+              ) : null}
               <div className="text-xs text-muted-foreground mt-1">{row.reservationCode}</div>
               <div className="text-sm mt-2">{formatDateTime(row.reservationAt)}</div>
               <div className="text-sm text-muted-foreground">{t("reservations.guests", { n: row.partySize })}</div>
@@ -281,7 +309,7 @@ export default function Reservations() {
       )}
 
       <Dialog open={selectedId !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("reservations.detailTitle")}</DialogTitle>
           </DialogHeader>
@@ -290,6 +318,13 @@ export default function Reservations() {
               <div>
                 <div className="font-medium text-base">{activeDetail.customerName}</div>
                 <div className="text-muted-foreground">{activeDetail.customerPhone ?? "—"}</div>
+                {activeDetail.memberId ? (
+                  <div className="text-xs text-primary mt-1">
+                    <Link to={`/members/${activeDetail.memberId}`} className="hover:underline">
+                      {activeDetail.memberNo ?? t("reservations.memberLinked")} {activeDetail.memberName ? `· ${activeDetail.memberName}` : ""}
+                    </Link>
+                  </div>
+                ) : null}
                 <div className="mt-1">
                   {formatDateTime(activeDetail.reservationAt)} · {t("reservations.partySize", { n: activeDetail.partySize })}
                 </div>
@@ -325,21 +360,32 @@ export default function Reservations() {
                   </>
                 )}
                 {activeDetail.status === "checked_in" && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={allocations.length === 0}
-                    onClick={() => onSeat(activeDetail.id)}
-                  >
-                    {t("reservations.seatGuest")}
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={allocations.length === 0 || openingPos}
+                      onClick={() => onStartService(activeDetail.id)}
+                    >
+                      {t("reservations.startAndOpenPos")}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => onCancel(activeDetail.id)}>
+                      {t("shared.cancel")}
+                    </Button>
+                  </>
                 )}
                 {activeDetail.status === "seated" && (
                   <>
                     {!activeDetail.linkedOrderId ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={() => onStartService(activeDetail.id)}>
-                        {t("reservations.startService")}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={openingPos}
+                        onClick={() => onStartService(activeDetail.id)}
+                      >
+                        {t("reservations.startAndOpenPos")}
                       </Button>
                     ) : (
                       <div className="w-full space-y-2">
@@ -349,8 +395,14 @@ export default function Reservations() {
                             ? ` · ${t("reservations.startedAt", { at: formatDateTime(activeDetail.serviceStartedAt) })}`
                             : ""}
                         </p>
-                        <Button type="button" size="sm" variant="outline" asChild>
-                          <Link to="/pos">{t("reservations.openPos")}</Link>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={openingPos}
+                          onClick={() => onOpenInPos(activeDetail.id)}
+                        >
+                          {t("reservations.continueInPos")}
                         </Button>
                       </div>
                     )}
@@ -425,11 +477,29 @@ export default function Reservations() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("reservations.createTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div>
+              <Label>{t("reservations.memberOptional")}</Label>
+              {selectedMember ? (
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2 mt-1">
+                  <div className="text-sm">
+                    <p className="font-medium">{selectedMember.name}</p>
+                    <p className="text-xs text-muted-foreground">{selectedMember.memberNo ?? selectedMember.phone}</p>
+                  </div>
+                  <Button type="button" size="icon" variant="ghost" onClick={() => setSelectedMember(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => setShowMemberPicker(true)}>
+                  {t("reservations.selectMember")}
+                </Button>
+              )}
+            </div>
             <div>
               <Label>{t("reservations.customerName")}</Label>
               <Input value={formName} onChange={(e) => setFormName(e.target.value)} />
@@ -461,6 +531,44 @@ export default function Reservations() {
               {t("shared.create")}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMemberPicker} onOpenChange={setShowMemberPicker}>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
+          <DialogHeader>
+            <DialogTitle>{t("reservations.selectMember")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            placeholder={t("pos.searchMember")}
+            value={memberSearch}
+            onChange={(e) => setMemberSearch(e.target.value)}
+          />
+          <div className="max-h-60 overflow-y-auto space-y-1 mt-2">
+            {memberSearchLoading ? (
+              <p className="text-sm text-muted-foreground">{t("shared.loading")}</p>
+            ) : memberSearchResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("reservations.noMembersFound")}</p>
+            ) : (
+              memberSearchResults.map((member) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  className="w-full text-left rounded-lg border px-3 py-2 hover:bg-muted/50"
+                  onClick={() => {
+                    setSelectedMember(member);
+                    setFormName(member.name);
+                    setFormPhone(member.phone);
+                    setShowMemberPicker(false);
+                    setMemberSearch("");
+                  }}
+                >
+                  <p className="font-medium text-sm">{member.name}</p>
+                  <p className="text-xs text-muted-foreground">{member.memberNo ?? member.phone}</p>
+                </button>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

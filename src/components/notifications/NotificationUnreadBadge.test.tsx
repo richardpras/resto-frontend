@@ -44,10 +44,6 @@ vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
 }));
 
-vi.mock("@/domain/featureFlags", () => ({
-  isPromotionsModuleEnabled: () => false,
-}));
-
 vi.mock("@/domain/permissionGates", () => ({
   canAccessPayrollModule: () => false,
   canViewEmployees: () => false,

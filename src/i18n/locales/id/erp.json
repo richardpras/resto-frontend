@@ -281,11 +281,11 @@
       "shift-assignments": "Penugasan",
       "scheduling": "Penjadwalan",
       "attendance": "Absensi",
-      "attendance-review": "Review",
+      "attendance-review": "Tinjauan",
       "leave": "Cuti",
       "overtime": "Lembur",
       "preparation": "Persiapan",
-      "engine": "Engine",
+      "engine": "Mesin Gaji",
       "adjustments": "Penyesuaian",
       "shifts": "Shift",
       "loans": "Pinjaman",
@@ -293,9 +293,9 @@
       "payslips": "Slip Gaji",
       "bpjs": "BPJS",
       "tax": "Pajak",
-      "reimbursements": "Reimburse",
+      "reimbursements": "Penggantian Biaya",
       "closing": "Penutupan",
-      "posting": "Posting"
+      "posting": "Posting Jurnal"
     },
     "attendance": {
       "title": "Absensi",
@@ -1038,19 +1038,19 @@
   },
   "purchases": {
     "flow": {
-      "pr": "PR",
-      "po": "PO",
-      "grn": "GRN",
-      "invoice": "Invoice",
+      "pr": "Permintaan Beli",
+      "po": "Pesanan Pembelian",
+      "grn": "Penerimaan Barang",
+      "invoice": "Faktur",
       "payment": "Bayar"
     },
     "tabs": {
-      "pr": "Purchase Request",
-      "po": "Purchase Order",
+      "pr": "Permintaan Beli",
+      "po": "Pesanan Pembelian",
       "grn": "Penerimaan Barang",
-      "inv": "Invoice",
-      "match": "3-Way Match",
-      "posting": "Posting",
+      "inv": "Faktur Supplier",
+      "match": "Pencocokan 3-Arah",
+      "posting": "Posting Pembelian",
       "analytics": "Analitik",
       "pay": "Pembayaran"
     },
@@ -1108,6 +1108,8 @@
       "selectOutlet": "Pilih outlet aktif terlebih dahulu",
       "selectOutletBanner": "Pilih outlet di header untuk membuat dan melihat purchase request outlet tersebut.",
       "itemsRequired": "Tambahkan minimal satu item valid",
+      "loadingInventory": "Memuat item inventori…",
+      "noInventoryItems": "Belum ada item inventori untuk outlet ini. Tambahkan di menu Inventori terlebih dahulu.",
       "savedDraft": "PR disimpan sebagai draf",
       "updated": "PR diperbarui",
       "submitted": "PR diajukan",
@@ -1142,6 +1144,7 @@
       "actionFailed": "Tindakan gagal",
       "workflowSubmitted": "PO diajukan",
       "workflowApproved": "PO disetujui",
+      "workflowRejected": "PO ditolak",
       "workflowCancelled": "PO dibatalkan",
       "workflowClosed": "PO ditutup",
       "poNumber": "No PO",
@@ -1164,8 +1167,11 @@
       "close": "Tutup",
       "submit": "Ajukan",
       "approve": "Setujui",
+      "reject": "Tolak",
       "cancel": "Batalkan",
-      "editBtn": "Edit"
+      "editBtn": "Edit",
+      "submitHint": "Ajukan PO ini untuk persetujuan sebelum membuat penerimaan barang.",
+      "saveAndSubmit": "Simpan & Ajukan"
     },
     "grn": {
       "title": "Penerimaan Barang",
@@ -1451,6 +1457,713 @@
       "close": "Tutup",
       "edit": "Edit",
       "actionFailed": "Tindakan gagal"
+    }
+  },
+  "reportsHub": {
+    "title": "Pusat Laporan",
+    "subtitle": "Titik masuk laporan eksekutif. Setiap kartu membuka modul yang sudah ada — tanpa mesin laporan duplikat.",
+    "empty": "Tidak ada modul laporan yang tersedia untuk peran Anda.",
+    "permissionRequired": "Izin tambahan diperlukan",
+    "financialRestricted": "Laporan keuangan memerlukan izin accounting.manage dan reports.view.",
+    "sections": {
+      "executive": "Eksekutif",
+      "operations": "Operasional",
+      "commercial": "Komersial"
+    },
+    "cards": {
+      "executive-dashboard": {
+        "title": "Menara Kontrol Pemilik",
+        "description": "Ringkasan bisnis lintas fungsi: penjualan, keuangan, operasional, kinerja komersial, dan peringatan.",
+        "bullets": {
+          "b1": "Skor Eksekutif",
+          "b2": "Kesehatan Keuangan & Ops",
+          "b3": "KPI Komersial",
+          "b4": "Kotak Masuk Peringatan"
+        }
+      },
+      "executive-sales-report": {
+        "title": "Laporan Penjualan Eksekutif",
+        "description": "Penjualan kotor, penjualan bersih, diskon, refund, komposisi pembayaran, dan kinerja kanal.",
+        "bullets": {
+          "b1": "Penjualan Kotor & Bersih",
+          "b2": "Rincian Diskon",
+          "b3": "Komposisi Pembayaran",
+          "b4": "Produk Terlaris",
+          "b5": "Tren Penjualan"
+        }
+      },
+      "financial-statements": {
+        "title": "Laporan Keuangan",
+        "description": "Neraca Saldo, Laba Rugi, Neraca, Arus Kas, dan Buku Besar.",
+        "bullets": {
+          "b1": "Neraca Saldo",
+          "b2": "Laba Rugi",
+          "b3": "Neraca",
+          "b4": "Arus Kas",
+          "b5": "Buku Besar"
+        }
+      },
+      "accounting-reconciliation": {
+        "title": "Rekonsiliasi Akuntansi",
+        "description": "Penyelarasan subledger vs GL untuk AP, pengadaan, payroll, dan kartu hadiah.",
+        "bullets": {
+          "b1": "Rekonsiliasi AP",
+          "b2": "Rekonsiliasi Pengadaan",
+          "b3": "Rekonsiliasi Payroll",
+          "b4": "Rekonsiliasi Kartu Hadiah"
+        }
+      },
+      "gift-card-liability": {
+        "title": "Kewajiban Kartu Hadiah",
+        "description": "Pantau saldo kewajiban kartu hadiah dan kredit toko beserta peringatan selisih.",
+        "bullets": {
+          "b1": "Kewajiban Kartu Hadiah (2130)",
+          "b2": "Kewajiban Kredit Toko (2135)",
+          "b3": "Pemantauan Selisih"
+        }
+      },
+      "operations-monitoring": {
+        "title": "Pemantauan Operasional",
+        "description": "Sinyal dapur, pembayaran, printer, bridge, dan sinkronisasi offline secara langsung.",
+        "bullets": {
+          "b1": "Antrian Dapur",
+          "b2": "Tingkat Sukses Pembayaran",
+          "b3": "Antrian Printer",
+          "b4": "Hardware Bridge",
+          "b5": "Sinkronisasi Offline"
+        }
+      },
+      "reservation-analytics": {
+        "title": "Analitik Reservasi",
+        "description": "Volume reservasi, okupansi, dan metrik dasbor operasional."
+      },
+      "payment-health": {
+        "title": "Kesehatan Pembayaran",
+        "description": "Keandalan gateway, linimasa insiden, webhook, dan tren keberhasilan pembayaran.",
+        "bullets": {
+          "b1": "Tingkat & Insiden",
+          "b2": "Keandalan Penyedia",
+          "b3": "Tren 30 Hari"
+        }
+      },
+      "audit-center": {
+        "title": "Pusat Audit",
+        "description": "Linimasa kepatuhan terpusat — riwayat perubahan operasional, keuangan, dan forensik.",
+        "bullets": {
+          "b1": "Linimasa Audit",
+          "b2": "Riwayat Entitas",
+          "b3": "Klasifikasi Risiko",
+          "b4": "Pencarian Global"
+        }
+      },
+      "system-health-center": {
+        "title": "Pusat Kesehatan Sistem",
+        "description": "Skor kesehatan platform terpadu, insiden, tren keandalan, dan antrian aksi prioritas.",
+        "bullets": {
+          "b1": "Skor Platform",
+          "b2": "Linimasa Insiden",
+          "b3": "Antrian Prioritas"
+        }
+      },
+      "bug-reports": {
+        "title": "Laporan Bug",
+        "description": "Laporan bug dari pengguna dengan tangkapan layar, diagnostik, dan alur triase.",
+        "bullets": {
+          "b1": "Tangkapan Layar",
+          "b2": "Log Error",
+          "b3": "Alur Status"
+        }
+      },
+      "system-reliability": {
+        "title": "Keandalan Sistem",
+        "description": "Pemantauan kegagalan antrian, peringatan job kritis, dan tren kesehatan job latar belakang.",
+        "bullets": {
+          "b1": "Job Gagal",
+          "b2": "Kegagalan Kritis",
+          "b3": "Skor Kesehatan"
+        }
+      },
+      "shift-close-operations": {
+        "title": "Operasi Tutup Kasir",
+        "description": "Preflight akhir shift, rekonsiliasi kas, posting inventori, dan penutupan batch GL.",
+        "bullets": {
+          "b1": "Pemeriksaan Preflight",
+          "b2": "Selisih Kas",
+          "b3": "Posting Inventori",
+          "b4": "Pratinjau Jurnal"
+        }
+      },
+      "loyalty-analytics": {
+        "title": "Analitik Loyalitas",
+        "description": "Keterlibatan member, kinerja voucher, dan tren program loyalitas."
+      },
+      "procurement-analytics": {
+        "title": "Analitik Pengadaan",
+        "description": "Kinerja supplier, tren pengeluaran, dan hutang dalam modul Pembelian."
+      },
+      "inventory-analytics": {
+        "title": "Analitik Inventori",
+        "description": "Valuasi, risiko stok, sinyal dead-stock, dan KPI menu intelligence."
+      }
+    }
+  },
+  "hr": {
+    "employees": {
+      "pageTitle": "Karyawan",
+      "pageSubtitle": "Data staf internal dan tautan akun sistem.",
+      "tabs": {
+        "general": "Umum",
+        "employment": "Kepegawaian",
+        "shift": "Shift",
+        "schedule": "Jadwal",
+        "attendance": "Absensi",
+        "payslips": "Slip Gaji",
+        "account": "Akun sistem"
+      },
+      "columns": {
+        "employeeNo": "No. Karyawan",
+        "name": "Nama",
+        "position": "Jabatan",
+        "department": "Departemen",
+        "outlet": "Outlet",
+        "status": "Status",
+        "linkedUser": "Pengguna Terhubung"
+      },
+      "searchPlaceholder": "Cari nama, no, email, telepon...",
+      "empty": "Belum ada karyawan",
+      "addEmployee": "Tambah karyawan",
+      "newEmployee": "Karyawan baru",
+      "editEmployee": "Edit karyawan",
+      "loadFailed": "Gagal memuat karyawan",
+      "shiftHistoryFailed": "Gagal memuat riwayat shift",
+      "fullNameRequired": "Nama lengkap wajib diisi",
+      "updated": "Karyawan diperbarui",
+      "created": "Karyawan dibuat",
+      "saveFailed": "Gagal menyimpan",
+      "employeeNoPlaceholder": "Otomatis jika kosong",
+      "gender": "Jenis kelamin",
+      "birthDate": "Tanggal lahir",
+      "notes": "Catatan",
+      "none": "— Tidak ada —",
+      "viewShiftHistory": "Lihat riwayat penugasan",
+      "shiftManageHint": "Kelola penugasan di Payroll → Penugasan.",
+      "saveFirstShift": "Simpan karyawan terlebih dahulu untuk melihat penugasan shift.",
+      "scheduleReadOnlyHint": "Hanya baca. Edit jadwal di Payroll → Penjadwalan.",
+      "saveFirstSchedule": "Simpan karyawan terlebih dahulu untuk melihat jadwal mingguan.",
+      "attendanceReadOnlyHint": "Hanya baca (30 hari terakhir). Impor dan koreksi di Payroll → Absensi.",
+      "saveFirstAttendance": "Simpan karyawan terlebih dahulu untuk melihat riwayat absensi.",
+      "payslipReadOnlyHint": "Riwayat slip gaji hanya baca dengan unduhan PDF.",
+      "saveFirstPayslips": "Simpan karyawan terlebih dahulu untuk melihat riwayat slip gaji.",
+      "accountLinkHint": "Tautkan pengguna login ke karyawan ini. Pengguna harus berada di outlet yang sama.",
+      "userAccount": "Akun pengguna",
+      "noLink": "Tidak ada tautan",
+      "noLinkOption": "— Tidak ada tautan —",
+      "cancel": "Batal",
+      "save": "Simpan",
+      "shiftHistoryTitle": "Riwayat shift — {{name}}",
+      "current": "Saat ini",
+      "noCurrentAssignment": "Tidak ada penugasan saat ini.",
+      "shiftFallback": "Shift",
+      "present": "Berlangsung",
+      "statuses": {
+        "active": "Aktif",
+        "inactive": "Tidak aktif",
+        "resigned": "Mengundurkan diri",
+        "terminated": "Dihentikan"
+      }
+    }
+  },
+  "giftCards": {
+    "noOutlet": "Pilih outlet untuk mengelola kartu hadiah.",
+    "pageTitle": "Kartu Hadiah & Kredit Toko",
+    "pageSubtitle": "Terbitkan, cari berdasarkan kode, dan selesaikan penukaran. Daftar semua kartu memerlukan API daftar backend (belum tersedia).",
+    "tabs": {
+      "issue": "Terbitkan",
+      "lookup": "Cari",
+      "settle": "Selesaikan"
+    },
+    "type": "Tipe",
+    "giftCard": "Kartu Hadiah",
+    "storeCredit": "Kredit Toko",
+    "code": "Kode",
+    "codePlaceholder": "GC-001",
+    "initialAmount": "Jumlah Awal",
+    "issue": "Terbitkan",
+    "lookupPlaceholder": "Kode kartu",
+    "settlementReference": "Referensi Penyelesaian",
+    "settlementIds": "ID Penyelesaian Penukaran (pisahkan koma)",
+    "settlementIdsPlaceholder": "1, 2, 3",
+    "processSettlement": "Proses Penyelesaian",
+    "validationCodeAmount": "Masukkan kode dan jumlah yang valid.",
+    "issued": "Kartu hadiah diterbitkan.",
+    "issuedIdempotent": "Kartu hadiah sudah diterbitkan (idempoten).",
+    "issueFailed": "Gagal menerbitkan",
+    "lookupFailed": "Gagal mencari",
+    "settlementValidation": "Masukkan referensi penyelesaian dan satu atau lebih ID penyelesaian.",
+    "settlementsProcessed": "Penyelesaian diproses.",
+    "settlementFailed": "Gagal memproses penyelesaian"
+  },
+  "menuIntelligence": {
+    "title": "Dasbor Menu Intelligence",
+    "subtitle": "Tampilan eksekutif lintas analitik, rekayasa menu, optimasi, otomasi, dan peramalan.",
+    "refresh": "Muat Ulang",
+    "noOutlet": "Pilih outlet di header untuk memuat dasbor eksekutif.",
+    "sections": {
+      "executiveKpis": "KPI Eksekutif",
+      "trends": "Tren & Distribusi",
+      "menuEngineering": "Rekayasa Menu",
+      "optimization": "Peluang Optimasi",
+      "alertCenter": "Pusat Peringatan",
+      "forecasting": "Peramalan",
+      "inventoryHealth": "Kesehatan Inventori",
+      "executiveHealthScore": "Skor Kesehatan Eksekutif"
+    },
+    "kpis": {
+      "revenue": "Pendapatan",
+      "foodCostPercent": "Biaya Makanan %",
+      "avgMarginPercent": "Rata-rata Margin %",
+      "forecastRevenue": "Perkiraan Pendapatan",
+      "forecastMargin": "Perkiraan Margin",
+      "inventoryValue": "Nilai Inventori",
+      "healthScore": "Skor Kesehatan"
+    },
+    "quadrants": {
+      "STAR": "STAR",
+      "PUZZLE": "PUZZLE",
+      "PLOWHORSE": "PLOWHORSE",
+      "DOG": "DOG",
+      "count": "Jumlah",
+      "revenue": "Pendapatan",
+      "margin": "Margin"
+    },
+    "engineering": {
+      "topItemsTitle": "10 Item Teratas",
+      "noData": "Tidak ada data rekayasa menu"
+    },
+    "table": {
+      "menuItem": "Item Menu",
+      "class": "Kelas",
+      "qtySold": "Qty Terjual",
+      "marginPercent": "Margin %",
+      "contribution": "Kontribusi",
+      "severity": "Tingkat",
+      "title": "Judul",
+      "type": "Tipe",
+      "triggered": "Terpicu",
+      "action": "Aksi",
+      "direction": "Arah",
+      "suggested": "Saran",
+      "projProfit": "Proy. Laba",
+      "ingredient": "Bahan",
+      "savings": "Penghematan",
+      "currentPercent": "Saat Ini %",
+      "suggestedPercent": "Saran %",
+      "bundle": "Paket",
+      "revenue": "Pendapatan",
+      "margin": "Margin"
+    },
+    "optimization": {
+      "priceOpportunities": "Peluang Harga",
+      "ingredientOpportunities": "Peluang Bahan",
+      "yieldOpportunities": "Peluang Yield",
+      "bundleOpportunities": "Peluang Paket",
+      "noOpportunities": "Tidak ada peluang"
+    },
+    "alerts": {
+      "open": "Terbuka ({{count}})",
+      "critical": "Kritis ({{count}})",
+      "resolved": "Selesai ({{count}})",
+      "noAlerts": "Tidak ada peringatan",
+      "resolve": "Selesaikan",
+      "resolvedSuccess": "Peringatan diselesaikan.",
+      "resolveFailed": "Gagal menyelesaikan peringatan"
+    },
+    "forecast": {
+      "demandForecast": "Perkiraan Permintaan",
+      "revenueForecast": "Perkiraan Pendapatan",
+      "marginForecast": "Perkiraan Margin",
+      "stockRiskForecast": "Perkiraan Risiko Stok",
+      "productionForecast": "Perkiraan Produksi",
+      "noData": "Tidak ada data peramalan",
+      "units": "{{count}} unit",
+      "totalMargin": "Total margin: {{amount}}"
+    },
+    "inventory": {
+      "inventoryValue": "Nilai Inventori",
+      "deadStock": "Stok Mati",
+      "noDeadStock": "Tidak ada stok mati terdeteksi",
+      "criticalRiskIngredients": "Bahan Berisiko Kritis",
+      "noCriticalStockRisks": "Tidak ada risiko stok kritis"
+    }
+  },
+  "loyalty": {
+    "page": {
+      "title": "Program Loyalitas",
+      "subtitle": "Konfigurasi program outlet dan pratinjau akumulasi poin tanpa mengubah logika perolehan aktif.",
+      "noOutlet": "Pilih outlet untuk mengelola program loyalitas.",
+      "analyticsNoOutlet": "Pilih outlet untuk melihat analitik loyalitas.",
+      "empty": {
+        "programs": "Tidak ada program loyalitas untuk outlet ini.",
+        "rewards": "Tidak ada reward yang didefinisikan untuk outlet ini.",
+        "vouchers": "Tidak ada voucher yang didefinisikan untuk outlet ini.",
+        "segments": "Tidak ada segmen member yang didefinisikan untuk outlet ini.",
+        "tiers": "Tidak ada tingkat keanggotaan yang didefinisikan untuk outlet ini.",
+        "campaigns": "Tidak ada kampanye loyalitas untuk outlet ini.",
+        "automations": "Tidak ada otomasi loyalitas untuk outlet ini."
+      }
+    },
+    "tabs": {
+      "programs": "Program",
+      "simulator": "Simulator",
+      "rewards": "Reward Loyalitas",
+      "vouchers": "Voucher",
+      "promotions": "Promosi",
+      "segments": "Segmen",
+      "tiers": "Tingkat Keanggotaan",
+      "campaigns": "Kampanye Loyalitas",
+      "automations": "Otomasi",
+      "analytics": "Analitik"
+    },
+    "enums": {
+      "programTypes": {
+        "spend_based": "Berdasarkan belanja",
+        "visit_based": "Berdasarkan kunjungan",
+        "period_spending": "Belanja periode",
+        "percentage_reward": "Reward persentase"
+      },
+      "segmentTypes": {
+        "vip_spender": "Pengeluar VIP",
+        "frequent_visitor": "Pengunjung sering",
+        "birthday_month": "Bulan ulang tahun",
+        "inactive_member": "Member tidak aktif",
+        "never_redeemed": "Belum pernah redeem",
+        "expiring_soon": "Segera kedaluwarsa"
+      },
+      "tierTypes": {
+        "lifetime_points": "Poin seumur hidup",
+        "lifetime_spending": "Belanja seumur hidup",
+        "visit_count": "Jumlah kunjungan"
+      },
+      "automationTriggers": {
+        "member_birthday": "Ulang tahun member",
+        "member_created": "Member dibuat",
+        "tier_upgraded": "Tingkat dinaikkan",
+        "visit_milestone": "Pencapaian kunjungan",
+        "points_milestone": "Pencapaian poin",
+        "inactive_member": "Member tidak aktif",
+        "voucher_redeemed": "Voucher diredeem",
+        "reward_redeemed": "Reward diredeem"
+      },
+      "automationActions": {
+        "issue_voucher": "Terbitkan voucher",
+        "send_notification": "Kirim notifikasi",
+        "assign_campaign": "Tetapkan kampanye"
+      },
+      "tierBenefits": {
+        "priorityCampaign": "Akses Kampanye Prioritas",
+        "exclusiveVoucher": "Akses Voucher Eksklusif",
+        "exclusiveReward": "Akses Reward Eksklusif",
+        "monthlyVoucher": "Program Voucher Bulanan"
+      },
+      "periods": {
+        "weekly": "Mingguan",
+        "monthly": "Bulanan",
+        "yearly": "Tahunan"
+      },
+      "voucherTypes": {
+        "manual": "Manual",
+        "campaign": "Kampanye",
+        "reward": "Reward"
+      },
+      "voucherValueTypes": {
+        "percentage": "Persentase",
+        "fixed_amount": "Nominal tetap",
+        "free_item": "Item gratis"
+      },
+      "campaignStatus": {
+        "draft": "Draf",
+        "scheduled": "Terjadwal",
+        "active": "Aktif",
+        "completed": "Selesai",
+        "cancelled": "Dibatalkan"
+      },
+      "automationPresets": {
+        "bdayVoucher": "Voucher Ulang Tahun",
+        "inactiveVoucher": "Voucher Pelanggan Tidak Aktif",
+        "tierNotify": "Notifikasi Kenaikan Tingkat",
+        "visitReward": "Reward Pencapaian Kunjungan",
+        "pointsCampaign": "Kampanye Pencapaian Poin",
+        "welcomeNotification": "Notifikasi Selamat Datang"
+      },
+      "notificationDefaults": {
+        "helloMember": "Halo {{member_name}}",
+        "thankYouLoyal": "Terima kasih telah menjadi member setia.",
+        "welcomeMember": "Selamat datang {{member_name}}",
+        "thanksJoining": "Terima kasih telah bergabung dengan program loyalitas kami."
+      }
+    },
+    "form": {
+      "code": "Kode",
+      "name": "Nama",
+      "description": "Deskripsi",
+      "status": "Status",
+      "type": "Tipe",
+      "value": "Nilai",
+      "segment": "Segmen",
+      "campaign": "Kampanye",
+      "voucher": "Voucher",
+      "trigger": "Pemicu",
+      "action": "Aksi",
+      "pointsCost": "Biaya poin",
+      "sortOrder": "Urutan",
+      "segmentType": "Tipe segmen",
+      "configJson": "Konfigurasi (JSON)",
+      "qualificationType": "Tipe kualifikasi",
+      "qualificationConfigJson": "Konfigurasi kualifikasi (JSON)",
+      "benefits": "Manfaat",
+      "benefitsHint": "Hak istimewa informasional untuk tingkat ini. Tanpa aksi otomatis.",
+      "earnRule": "Aturan perolehan",
+      "effectiveFrom": "Berlaku dari",
+      "effectiveUntil": "Berlaku hingga",
+      "enableExpiry": "Aktifkan kedaluwarsa",
+      "expiryDays": "Hari kedaluwarsa",
+      "expiryHint": "Poin dari perolehan, kunjungan, dan reward periode kedaluwarsa setelah jumlah hari ini.",
+      "manualProgramsNoRules": "Program manual tidak menggunakan aturan perolehan otomatis.",
+      "earnPerAmount": "Perolehan per nominal (Rp)",
+      "pointsEarned": "Poin diperoleh",
+      "earnExample": "Contoh: subtotal Rp 1.000.000 (sebelum pajak) dengan 1 poin / Rp 1.000 menghasilkan 1.000 poin.",
+      "visitThreshold": "Ambang kunjungan",
+      "pointsAwarded": "Poin diberikan",
+      "period": "Periode",
+      "minimumSpend": "Belanja minimum (Rp)",
+      "rewardPercent": "Persentase reward",
+      "rewardPercentage": "Persentase reward",
+      "daysBeforeBirthday": "Hari sebelum ulang tahun",
+      "visitCount": "Jumlah kunjungan",
+      "pointsThreshold": "Ambang poin",
+      "daysInactive": "Hari tidak aktif",
+      "notificationTitle": "Judul notifikasi",
+      "notificationContent": "Konten notifikasi",
+      "scheduledAt": "Dijadwalkan pada",
+      "valueType": "Tipe nilai",
+      "minimumSpendShort": "Belanja minimum",
+      "selectProgram": "Pilih program",
+      "selectSegment": "Pilih segmen",
+      "selectVoucher": "Pilih voucher",
+      "selectCampaign": "Pilih kampanye",
+      "simulationDate": "Tanggal simulasi",
+      "spendingAmount": "Nominal belanja",
+      "program": "Program",
+      "expectedPoints": "Poin yang diharapkan",
+      "triggeredRules": "Aturan terpicu",
+      "breakdown": "Rincian",
+      "effectiveLabel": "berlaku",
+      "activeLabel": "aktif",
+      "matchingMembers": "Member yang cocok",
+      "noMatchingMembers": "Tidak ada member yang cocok dengan segmen ini.",
+      "capturedAtActivation": "Ditangkap saat aktivasi",
+      "noCapturedMembers": "Tidak ada member yang ditangkap.",
+      "segmentCurrentRules": "Segmen: {{name}} (aturan segmen saat ini)",
+      "liveAudienceSize": "Ukuran audiens langsung",
+      "noAudienceMembers": "Tidak ada member dalam audiens.",
+      "campaignSummary": "Kampanye: {{name}} · Audiens ditangkap: {{captured}} · Sudah diterbitkan: {{issued}}",
+      "memberRef": "Member #{{id}}",
+      "loading": "Memuat…",
+      "loadingPreview": "Memuat pratinjau…",
+      "loadingSnapshot": "Memuat snapshot…",
+      "loadingAudience": "Memuat audiens…",
+      "noExecutionLogs": "Belum ada log eksekusi.",
+      "segmentFallback": "Segmen",
+      "campaignFallback": "Kampanye"
+    },
+    "dialogs": {
+      "editProgram": "Edit program",
+      "newProgram": "Program loyalitas baru",
+      "editReward": "Edit reward",
+      "newReward": "Reward loyalitas baru",
+      "editSegment": "Edit segmen",
+      "newSegment": "Segmen member baru",
+      "editTier": "Edit tingkat",
+      "newTier": "Tingkat keanggotaan baru",
+      "editAutomation": "Edit otomasi",
+      "newAutomation": "Otomasi baru",
+      "executionLogs": "Log eksekusi — {{name}}",
+      "previewSegment": "Pratinjau: {{name}}",
+      "editCampaign": "Edit kampanye",
+      "newCampaign": "Kampanye loyalitas baru",
+      "capturedAudience": "Audiens ditangkap: {{name}}",
+      "liveAudience": "Audiens langsung: {{name}}",
+      "editVoucher": "Edit voucher",
+      "newVoucher": "Voucher baru",
+      "issueVoucher": "Terbitkan voucher ke audiens kampanye"
+    },
+    "actions": {
+      "newProgram": "Program baru",
+      "newReward": "Reward baru",
+      "newVoucher": "Voucher baru",
+      "newSegment": "Segmen baru",
+      "newTier": "Tingkat baru",
+      "newCampaign": "Kampanye baru",
+      "newAutomation": "Otomasi baru",
+      "cancel": "Batal",
+      "save": "Simpan",
+      "close": "Tutup",
+      "edit": "Edit",
+      "toggleActive": "Alihkan aktif",
+      "logs": "Log",
+      "preview": "Pratinjau",
+      "liveAudience": "Audiens langsung",
+      "snapshot": "Snapshot",
+      "issueVoucher": "Terbitkan voucher",
+      "activate": "Aktifkan",
+      "complete": "Selesaikan",
+      "cancelCampaign": "Batalkan",
+      "issue": "Terbitkan",
+      "runSimulation": "Jalankan simulasi",
+      "simulating": "Menjalankan simulasi…"
+    },
+    "toast": {
+      "loadProgramsFailed": "Gagal memuat program",
+      "loadRewardsFailed": "Gagal memuat reward",
+      "loadVouchersFailed": "Gagal memuat voucher",
+      "loadSegmentsFailed": "Gagal memuat segmen",
+      "loadTiersFailed": "Gagal memuat tingkat",
+      "loadAutomationsFailed": "Gagal memuat otomasi",
+      "loadCampaignsFailed": "Gagal memuat kampanye",
+      "codeNameRequired": "Kode dan nama wajib diisi",
+      "selectOutletFirst": "Pilih outlet terlebih dahulu",
+      "expiryDaysMin": "Hari kedaluwarsa minimal 1 saat kedaluwarsa diaktifkan",
+      "programUpdated": "Program diperbarui",
+      "programCreated": "Program dibuat",
+      "saveFailed": "Gagal menyimpan",
+      "voucherUpdated": "Voucher diperbarui",
+      "voucherCreated": "Voucher dibuat",
+      "selectVoucher": "Pilih voucher",
+      "issueFailed": "Gagal menerbitkan",
+      "issuedSummary": "Diterbitkan {{issued}} voucher, dilewati {{skipped}}",
+      "configInvalidJson": "Konfigurasi harus JSON yang valid",
+      "segmentUpdated": "Segmen diperbarui",
+      "segmentCreated": "Segmen dibuat",
+      "qualificationConfigInvalidJson": "Konfigurasi kualifikasi harus JSON yang valid",
+      "tierUpdated": "Tingkat diperbarui",
+      "tierCreated": "Tingkat dibuat",
+      "automationUpdated": "Otomasi diperbarui",
+      "automationCreated": "Otomasi dibuat",
+      "loadLogsFailed": "Gagal memuat log",
+      "previewFailed": "Gagal pratinjau",
+      "codeNameSegmentRequired": "Kode, nama, dan segmen wajib diisi",
+      "campaignUpdated": "Kampanye diperbarui",
+      "campaignCreated": "Kampanye dibuat",
+      "audiencePreviewFailed": "Gagal pratinjau audiens",
+      "snapshotLoadFailed": "Gagal memuat snapshot",
+      "campaignActivated": "Kampanye diaktifkan",
+      "activationFailed": "Gagal aktivasi",
+      "campaignCompleted": "Kampanye diselesaikan",
+      "completeFailed": "Gagal menyelesaikan",
+      "campaignCancelled": "Kampanye dibatalkan",
+      "cancelFailed": "Gagal membatalkan",
+      "pointsCostMin": "Biaya poin minimal 1",
+      "rewardUpdated": "Reward diperbarui",
+      "rewardCreated": "Reward dibuat",
+      "deactivated": "Dinonaktifkan",
+      "activated": "Diaktifkan",
+      "failed": "Gagal",
+      "selectOutletAndProgram": "Pilih outlet dan program",
+      "simulationFailed": "Simulasi gagal"
+    },
+    "columns": {
+      "code": "Kode",
+      "name": "Nama",
+      "points": "Poin",
+      "status": "Status",
+      "type": "Tipe",
+      "value": "Nilai",
+      "qualification": "Kualifikasi",
+      "order": "Urutan",
+      "campaign": "Kampanye",
+      "segment": "Segmen",
+      "audience": "Audiens",
+      "captured": "Ditangkap",
+      "issued": "Diterbitkan",
+      "scheduled": "Terjadwal",
+      "activated": "Diaktifkan",
+      "effective": "Berlaku",
+      "earnRule": "Aturan perolehan",
+      "trigger": "Pemicu",
+      "action": "Aksi",
+      "always": "Selalu",
+      "freeItem": "Item gratis"
+    }
+  },
+  "promotions": {
+    "page": {
+      "empty": "Belum ada promosi outlet."
+    },
+    "tabs": {
+      "promotions": "Promosi"
+    },
+    "columns": {
+      "code": "Kode",
+      "name": "Nama",
+      "type": "Tipe",
+      "priority": "Prioritas",
+      "status": "Status"
+    },
+    "types": {
+      "percentage_order": "Diskon % order",
+      "percentage_items": "Diskon % item",
+      "fixed_amount": "Potongan tetap",
+      "buy_x_get_y": "Beli X Gratis Y"
+    },
+    "form": {
+      "code": "Kode",
+      "name": "Nama",
+      "description": "Deskripsi",
+      "type": "Tipe",
+      "rate": "Diskon %",
+      "maxDiscount": "Diskon maksimum",
+      "fixedAmount": "Jumlah",
+      "buyQty": "Jumlah beli",
+      "getQty": "Jumlah gratis",
+      "menuItemIds": "ID item menu (pisahkan koma)",
+      "menuItems": "Item menu yang memenuhi syarat",
+      "noMenuItems": "Tidak ada item menu untuk outlet ini.",
+      "categories": "Kategori",
+      "categoriesPlaceholder": "Minuman, Makanan utama",
+      "dayRestriction": "Hari berlaku",
+      "timeStart": "Jam mulai harian",
+      "timeEnd": "Jam selesai harian",
+      "usageLimitPerDay": "Batas penukaran harian (0 = tanpa batas)",
+      "minSpend": "Minimum belanja",
+      "priority": "Prioritas",
+      "validFrom": "Berlaku dari",
+      "validUntil": "Berlaku sampai"
+    },
+    "days": {
+      "Mon": "Sen",
+      "Tue": "Sel",
+      "Wed": "Rab",
+      "Thu": "Kam",
+      "Fri": "Jum",
+      "Sat": "Sab",
+      "Sun": "Min"
+    },
+    "dialog": {
+      "newTitle": "Promosi baru",
+      "editTitle": "Ubah promosi"
+    },
+    "actions": {
+      "new": "Promosi baru",
+      "edit": "Ubah",
+      "toggleActive": "Aktif/nonaktif"
+    },
+    "toast": {
+      "created": "Promosi dibuat.",
+      "updated": "Promosi diperbarui.",
+      "activated": "Promosi diaktifkan.",
+      "deactivated": "Promosi dinonaktifkan.",
+      "loadFailed": "Gagal memuat promosi.",
+      "failed": "Aksi promosi gagal."
     }
   },
   "api": {

@@ -42,7 +42,7 @@ export function PosOrderRecoveryPanel({ order }: { order: Order | null }) {
   const [customReason, setCustomReason] = useState("");
   const [approvalNotes, setApprovalNotes] = useState("");
 
-  if (!order || !canReport) return null;
+  if (!order || !canReport || order.items.length === 0) return null;
 
   const editable = order.paymentStatus === "unpaid" || order.paymentStatus === "partial";
   const paidLocked = order.paymentStatus === "paid";

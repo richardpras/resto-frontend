@@ -1,7 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Bell, ChevronLeft } from "lucide-react";
 import type { QrOrderPublicLookup } from "@/lib/api-integration/qrOrderPublicEndpoints";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { appendGuestLangToHref } from "@/i18n/localeResolver";
+import { QrGuestHeaderBar } from "@/components/qr-order/QrGuestHeaderBar";
 import { QrOrderQrCodeDisplay } from "./QrOrderQrCodeDisplay";
 import { QrOrderStatusTimeline } from "./QrOrderStatusTimeline";
 
@@ -27,6 +29,10 @@ export function QrOrderDetailView({
   backToMenuHref,
 }: Props) {
   const { t } = useOpsTranslation();
+  const [searchParams] = useSearchParams();
+  const menuHref = backToMenuHref
+    ? appendGuestLangToHref(backToMenuHref, searchParams)
+    : null;
   const lookupUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/qr/order/${encodeURIComponent(order.orderCode)}`
@@ -40,24 +46,28 @@ export function QrOrderDetailView({
   return (
     <div className="min-h-screen bg-background" data-testid="qr-order-detail">
       <div className="sticky top-0 bg-card border-b border-border z-10">
-        <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
-          {backToMenuHref ? (
-            <Link
-              to={backToMenuHref}
-              className="p-1.5 rounded-xl hover:bg-muted"
-              aria-label={t("qrCustomer.backToMenu")}
-            >
-              <ChevronLeft className="h-5 w-5 text-foreground" />
-            </Link>
-          ) : null}
-          <div className="min-w-0">
-            <h1 className="text-base font-bold text-foreground truncate">
-              {t("qrCustomer.orderCode", { code: order.orderCode })}
-            </h1>
-            {isAdditionalOrder && (
-              <p className="text-xs text-primary font-medium">{t("qrCustomer.additionalOrder")}</p>
-            )}
-          </div>
+        <div className="px-4 py-3 max-w-lg mx-auto">
+          <QrGuestHeaderBar>
+            <div className="flex items-center gap-3 min-w-0">
+              {menuHref ? (
+                <Link
+                  to={menuHref}
+                  className="p-1.5 rounded-xl hover:bg-muted"
+                  aria-label={t("qrCustomer.backToMenu")}
+                >
+                  <ChevronLeft className="h-5 w-5 text-foreground" />
+                </Link>
+              ) : null}
+              <div className="min-w-0">
+                <h1 className="text-base font-bold text-foreground truncate">
+                  {t("qrCustomer.orderCode", { code: order.orderCode })}
+                </h1>
+                {isAdditionalOrder && (
+                  <p className="text-xs text-primary font-medium">{t("qrCustomer.additionalOrder")}</p>
+                )}
+              </div>
+            </div>
+          </QrGuestHeaderBar>
         </div>
       </div>
 
@@ -212,9 +222,9 @@ export function QrOrderDetailView({
           </button>
         )}
 
-        {backToMenuHref && (
+        {menuHref && (
           <Link
-            to={backToMenuHref}
+            to={menuHref}
             className="block w-full py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm text-center"
             data-testid="qr-order-back-to-menu"
           >

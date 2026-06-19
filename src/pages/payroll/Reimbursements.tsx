@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -394,7 +395,7 @@ export default function Reimbursements() {
       </Tabs>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>
               {editId ? t("payroll.reimbursements.editDraft") : t("payroll.reimbursements.newExpenseClaim")}
@@ -507,7 +508,7 @@ export default function Reimbursements() {
       </Dialog>
 
       <Dialog open={!!viewRow} onOpenChange={(open) => !open && setViewRow(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{viewRow?.claimNo}</DialogTitle>
           </DialogHeader>

@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -538,7 +539,7 @@ export default function Engine() {
       </Tabs>
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.engine.employeeSalaryProfile")}</DialogTitle>
           </DialogHeader>
@@ -649,7 +650,7 @@ export default function Engine() {
       </Dialog>
 
       <Dialog open={runOpen} onOpenChange={setRunOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.engine.newPayrollRun")}</DialogTitle>
           </DialogHeader>

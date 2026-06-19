@@ -1,16 +1,17 @@
 import { useTranslation } from "react-i18next";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { applyAppLocale, normalizeAppLocale, type AppLocale } from "@/i18n";
+import { applyAppLocale, normalizeAppLocale, writeGuestLocaleToStorage, type AppLocale } from "@/i18n";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchMerchantSettings } from "@/lib/api-integration/settingsDomainEndpoints";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { toast } from "sonner";
 
 type LanguageSwitcherProps = {
-  variant?: "header" | "login";
+  variant?: "header" | "login" | "guest";
+  mode?: "staff" | "guest";
 };
 
-export function LanguageSwitcher({ variant = "header" }: LanguageSwitcherProps) {
+export function LanguageSwitcher({ variant = "header", mode = "staff" }: LanguageSwitcherProps) {
   const { t, i18n } = useTranslation("common");
   const merchant = useSettingsStore((s) => s.merchant);
   const updateMerchant = useSettingsStore((s) => s.updateMerchant);
@@ -20,6 +21,11 @@ export function LanguageSwitcher({ variant = "header" }: LanguageSwitcherProps) 
   const handleChange = (value: string) => {
     const locale = normalizeAppLocale(value) as AppLocale;
     applyAppLocale(locale);
+
+    if (mode === "guest") {
+      writeGuestLocaleToStorage(locale);
+      return;
+    }
 
     const nextMerchant = { ...merchant, language: locale };
     updateMerchant(nextMerchant);
@@ -35,12 +41,16 @@ export function LanguageSwitcher({ variant = "header" }: LanguageSwitcherProps) 
       });
   };
 
+  const triggerClassName =
+    variant === "guest"
+      ? "h-8 w-[120px] text-xs"
+      : variant === "header"
+        ? "h-9 w-[140px] text-xs"
+        : "h-9 w-full max-w-[180px] text-xs";
+
   return (
     <Select value={currentLocale} onValueChange={handleChange}>
-      <SelectTrigger
-        className={variant === "header" ? "h-9 w-[140px] text-xs" : "h-9 w-full max-w-[180px] text-xs"}
-        aria-label={t("language.label")}
-      >
+      <SelectTrigger className={triggerClassName} aria-label={t("language.label")}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

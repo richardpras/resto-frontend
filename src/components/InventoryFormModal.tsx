@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,7 +161,7 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
         <DialogHeader>
           <DialogTitle className="text-lg">{editItem ? "Edit Inventory Item" : "Add Inventory Item"}</DialogTitle>
         </DialogHeader>

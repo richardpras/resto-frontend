@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
 import {
   Select,
   SelectContent,
@@ -389,7 +390,7 @@ export default function Preparation() {
       </Tabs>
 
       <Dialog open={periodOpen} onOpenChange={setPeriodOpen}>
-        <DialogContent>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
           <DialogHeader>
             <DialogTitle>{t("payroll.preparation.newPeriod")}</DialogTitle>
           </DialogHeader>

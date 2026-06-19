@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function RolesList() {
+  const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const qr = useQuery({ queryKey: ["roles"], queryFn: listRoles });
   const qp = useQuery({ queryKey: ["permissions"], queryFn: listPermissions });
@@ -72,12 +74,12 @@ export default function RolesList() {
     mutationFn: () => createRole({ name: name.trim(), description: desc.trim() || null }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["roles"] });
-      toast.success("Role created");
+      toast.success(t("usersManagement.roles.roleCreated"));
       setOpen(false);
       setName("");
       setDesc("");
     },
-    onError: (e: unknown) => toast.error(e instanceof ApiHttpError ? e.message : "Failed to create role"),
+    onError: (e: unknown) => toast.error(e instanceof ApiHttpError ? e.message : t("usersManagement.roles.createFailed")),
   });
 
   const assignMu = useMutation({
@@ -85,10 +87,10 @@ export default function RolesList() {
       assignRolePermissions(roleId, permissionIds),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["roles"] });
-      toast.success("Permissions updated");
+      toast.success(t("usersManagement.roles.permissionsUpdated"));
       setPermsOpen(null);
     },
-    onError: (e: unknown) => toast.error(e instanceof ApiHttpError ? e.message : "Failed to update permissions"),
+    onError: (e: unknown) => toast.error(e instanceof ApiHttpError ? e.message : t("usersManagement.roles.updatePermissionsFailed")),
   });
 
   const loading = qr.isLoading || qp.isLoading || qu.isLoading;
@@ -110,20 +112,20 @@ export default function RolesList() {
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button onClick={() => { setName(""); setDesc(""); setOpen(true); }}>
-          <Plus className="h-4 w-4" /> Add Role
+          <Plus className="h-4 w-4" /> {t("usersManagement.roles.addRole")}
         </Button>
       </div>
 
       <Card className="rounded-2xl overflow-hidden">
-        <SkeletonBusyRegion busy={loading} label="Loading roles">
+        <SkeletonBusyRegion busy={loading} label={t("usersManagement.roles.loading")}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Role</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead>Permissions</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("usersManagement.roles.columns.role")}</TableHead>
+                <TableHead>{t("usersManagement.roles.columns.description")}</TableHead>
+                <TableHead>{t("usersManagement.roles.columns.users")}</TableHead>
+                <TableHead>{t("usersManagement.roles.columns.permissions")}</TableHead>
+                <TableHead className="text-right">{t("usersManagement.roles.columns.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             {loading ? (
@@ -136,11 +138,11 @@ export default function RolesList() {
                     <TableCell className="text-muted-foreground text-sm">{r.description ?? "—"}</TableCell>
                     <TableCell>{userCountByRoleId[r.id] ?? 0}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{(r.permissions ?? []).length} perms</Badge>
+                      <Badge variant="secondary">{t("usersManagement.roles.permsCount", { count: (r.permissions ?? []).length })}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="outline" onClick={() => setPermsOpen(r)}>
-                        <Shield className="h-4 w-4" /> Permissions
+                        <Shield className="h-4 w-4" /> {t("usersManagement.roles.permissionsBtn")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -153,27 +155,27 @@ export default function RolesList() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Create Role</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("usersManagement.roles.createTitle")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Role Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Supervisor" />
+              <Label>{t("usersManagement.roles.roleName")}</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("usersManagement.roles.roleNamePlaceholder")} />
             </div>
             <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Short description" />
+              <Label>{t("usersManagement.roles.description")}</Label>
+              <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("usersManagement.roles.descriptionPlaceholder")} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("usersManagement.roles.cancel")}</Button>
             <Button
               onClick={() => {
-                if (!name.trim()) { toast.error("Role name required"); return; }
+                if (!name.trim()) { toast.error(t("usersManagement.roles.roleNameRequired")); return; }
                 createMu.mutate();
               }}
               disabled={createMu.isPending}
             >
-              {createMu.isPending ? "Saving…" : "Save"}
+              {createMu.isPending ? t("usersManagement.roles.saving") : t("usersManagement.roles.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -182,7 +184,7 @@ export default function RolesList() {
       <Dialog open={!!permsOpen} onOpenChange={(o) => !o && setPermsOpen(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Permissions — {permsOpen?.name}</DialogTitle>
+            <DialogTitle>{t("usersManagement.roles.permissionsTitle", { name: permsOpen?.name ?? "" })}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {permGroups.map((g) => {
@@ -194,10 +196,10 @@ export default function RolesList() {
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <p className="font-medium">{g.label}</p>
-                      <p className="text-xs text-muted-foreground">{onCount}/{ids.length} enabled</p>
+                      <p className="text-xs text-muted-foreground">{t("usersManagement.roles.enabledCount", { on: onCount, total: ids.length })}</p>
                     </div>
                     <Button size="sm" variant="outline" type="button" onClick={() => toggleGroup(ids, allOn)}>
-                      {allOn ? "Disable all" : "Enable all"}
+                      {allOn ? t("usersManagement.roles.disableAll") : t("usersManagement.roles.enableAll")}
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -221,7 +223,7 @@ export default function RolesList() {
             })}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPermsOpen(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setPermsOpen(null)}>{t("usersManagement.roles.cancel")}</Button>
             <Button
               onClick={() => {
                 if (!permsOpen) return;
@@ -229,7 +231,7 @@ export default function RolesList() {
               }}
               disabled={assignMu.isPending}
             >
-              {assignMu.isPending ? "Saving…" : "Save Permissions"}
+              {assignMu.isPending ? t("usersManagement.roles.saving") : t("usersManagement.roles.savePermissions")}
             </Button>
           </DialogFooter>
         </DialogContent>
