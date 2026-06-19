@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Clock, Timer, Wallet, CalendarDays, Banknote, Calculator, CalendarRange, CalendarClock, ClipboardCheck, Palmtree, FileStack, Cog, HandCoins, FileText, Shield, Receipt, ReceiptText, LockKeyhole, BookOpen } from "lucide-react";
-import Preparation from "./payroll/Preparation";
-import Engine from "./payroll/Engine";
-import Leave from "./payroll/Leave";
-import AttendanceReview from "./payroll/AttendanceReview";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { usePayrollStore } from "@/stores/payrollStore";
+import Preparation from "./payroll/Preparation";
+import Engine from "./payroll/Engine";
+import Leave from "./payroll/Leave";
+import AttendanceReview from "./payroll/AttendanceReview";
 import Employees from "./payroll/Employees";
 import Attendance from "./payroll/Attendance";
 import Overtime from "./payroll/Overtime";
@@ -28,29 +27,8 @@ import Scheduling from "./payroll/Scheduling";
 import PayrollRunPage from "./payroll/PayrollRun";
 import { useAuthStore } from "@/stores/authStore";
 import { getVisiblePayrollTabs, hasPayrollFullAccess, type PayrollTabKey } from "@/domain/permissionGates";
-
-const TAB_ICONS: Record<PayrollTabKey, typeof Calculator> = {
-  payroll: Calculator,
-  employees: Users,
-  "shift-assignments": CalendarRange,
-  scheduling: CalendarClock,
-  attendance: Clock,
-  "attendance-review": ClipboardCheck,
-  leave: Palmtree,
-  overtime: Timer,
-  preparation: FileStack,
-  engine: Cog,
-  adjustments: Wallet,
-  shifts: CalendarDays,
-  loans: Banknote,
-  "cash-advances": HandCoins,
-  payslips: FileText,
-  bpjs: Shield,
-  tax: Receipt,
-  reimbursements: ReceiptText,
-  closing: LockKeyhole,
-  posting: BookOpen,
-};
+import { getVisiblePayrollTabGroups } from "@/domain/payrollTabGroups";
+import { PayrollSectionNav } from "@/components/payroll/PayrollSectionNav";
 
 const TAB_REFRESH_KEYS: Partial<Record<PayrollTabKey, "employees" | "attendance" | "payrolls" | "overtime" | "adjustments" | "shifts" | "loans">> = {
   payroll: "payrolls",
@@ -68,6 +46,7 @@ export default function Payroll() {
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const visibleTabs = useMemo(() => getVisiblePayrollTabs(user), [user]);
+  const visibleTabGroups = useMemo(() => getVisiblePayrollTabGroups(visibleTabs), [visibleTabs]);
   const payrollFull = useMemo(() => hasPayrollFullAccess(user), [user]);
   const requestedTab = searchParams.get("tab") as PayrollTabKey | null;
   const resolvedDefaultTab =
@@ -145,16 +124,18 @@ export default function Payroll() {
           });
         }}
       >
-        <TabsList className="flex flex-wrap h-auto gap-1 w-full">
-          {visibleTabs.map((key) => {
-            const Icon = TAB_ICONS[key];
-            return (
-              <TabsTrigger key={key} value={key} className="gap-1.5 text-xs">
-                <Icon className="h-3.5 w-3.5" />{t(`payroll.tabs.${key}`)}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+        <PayrollSectionNav
+          activeTab={activeTab}
+          visibleTabGroups={visibleTabGroups}
+          onTabChange={(next) => {
+            setActiveTab(next);
+            setSearchParams((prev) => {
+              const p = new URLSearchParams(prev);
+              p.set("tab", next);
+              return p;
+            });
+          }}
+        />
         {visibleTabs.includes("payroll") && <TabsContent value="payroll" className="mt-6"><PayrollRunPage /></TabsContent>}
         {visibleTabs.includes("employees") && <TabsContent value="employees" className="mt-6"><Employees /></TabsContent>}
         {visibleTabs.includes("shift-assignments") && <TabsContent value="shift-assignments" className="mt-6"><ShiftAssignments /></TabsContent>}

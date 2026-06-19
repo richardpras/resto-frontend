@@ -275,6 +275,10 @@
     "limitedAccessSubtitle": "HR modules available for your role — payroll processing requires payroll.manage",
     "noPermission": "You do not have permission to view any payroll modules.",
     "loadFailed": "Failed to load payroll data",
+    "nav": {
+      "groupsAria": "Payroll module categories",
+      "tabsAria": "Payroll sub-pages"
+    },
     "tabs": {
       "payroll": "Payroll",
       "employees": "Employees",

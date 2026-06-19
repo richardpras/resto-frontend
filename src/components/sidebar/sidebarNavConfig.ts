@@ -4,6 +4,7 @@ import {
   Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase, LockKeyhole, Bell,
 } from "lucide-react";
 import { PERMISSIONS } from "@/stores/authStore";
+import { PAYROLL_TAB_GROUPS } from "@/domain/payrollTabGroups";
 import { canAccessPayrollModule, canViewEmployees, canViewFinancialStatements, getVisiblePayrollTabs, type PayrollTabKey } from "@/domain/permissionGates";
 import type { AuthUser } from "@/stores/authStore";
 import type { SidebarNavItem, SidebarNavSection } from "./sidebarNavTypes";
@@ -31,43 +32,6 @@ const PAYROLL_TAB_KEYS: Record<PayrollTabKey, string> = {
   posting: "nav.payroll.posting",
 };
 
-const PAYROLL_GROUP_KEYS = {
-  setup: "nav.payrollGroupSetup",
-  daily: "nav.payrollGroupDaily",
-  payroll: "nav.payrollGroupPayroll",
-  close: "nav.payrollGroupClose",
-} as const;
-
-const PAYROLL_GROUPS: { separatorKey: string; tabs: PayrollTabKey[] }[] = [
-  {
-    separatorKey: PAYROLL_GROUP_KEYS.setup,
-    tabs: ["employees", "shifts", "scheduling", "shift-assignments"],
-  },
-  {
-    separatorKey: PAYROLL_GROUP_KEYS.daily,
-    tabs: ["attendance", "attendance-review", "leave", "overtime"],
-  },
-  {
-    separatorKey: PAYROLL_GROUP_KEYS.payroll,
-    tabs: [
-      "payroll",
-      "preparation",
-      "engine",
-      "adjustments",
-      "payslips",
-      "bpjs",
-      "tax",
-      "reimbursements",
-      "loans",
-      "cash-advances",
-    ],
-  },
-  {
-    separatorKey: PAYROLL_GROUP_KEYS.close,
-    tabs: ["closing", "posting"],
-  },
-];
-
 function nav(titleKey: string, rest: Omit<SidebarNavItem, "title" | "titleKey">): SidebarNavItem {
   return { title: "", titleKey, kind: "link", ...rest };
 }
@@ -84,10 +48,10 @@ function buildPayrollChildren(user: AuthUser | null): SidebarNavItem[] {
   const visible = new Set(getVisiblePayrollTabs(user));
   const children: SidebarNavItem[] = [];
 
-  for (const group of PAYROLL_GROUPS) {
+  for (const group of PAYROLL_TAB_GROUPS) {
     const tabs = group.tabs.filter((tab) => visible.has(tab));
     if (tabs.length === 0) continue;
-    children.push(separator(group.separatorKey));
+    children.push(separator(group.labelKey));
     children.push(...tabs.map(payrollLink));
   }
 

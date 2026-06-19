@@ -275,6 +275,10 @@
     "limitedAccessSubtitle": "Modul HR tersedia untuk peran Anda — proses payroll memerlukan payroll.manage",
     "noPermission": "Anda tidak memiliki izin untuk melihat modul payroll.",
     "loadFailed": "Gagal memuat data payroll",
+    "nav": {
+      "groupsAria": "Kategori modul payroll",
+      "tabsAria": "Sub-halaman payroll"
+    },
     "tabs": {
       "payroll": "Payroll",
       "employees": "Karyawan",
