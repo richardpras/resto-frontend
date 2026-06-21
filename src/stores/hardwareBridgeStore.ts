@@ -4,8 +4,11 @@ import {
   closeHardwareBridgeSession,
   enqueueHardwareBridgeCommand,
   listHardwareBridgeDevices,
+  listHardwareBridgeDeviceSummaries,
   nackHardwareBridgeCommand,
   openHardwareBridgeSession,
+  initHardwarePairing,
+  revokeHardwareBridgeDevice,
   type EnqueueHardwareBridgeCommandPayload,
   type HardwareBridgeCommandAckPayload,
   type OpenHardwareBridgeSessionPayload,
@@ -13,6 +16,7 @@ import {
 import {
   mapHardwareBridgeCommandApiToModel,
   mapHardwareBridgeDeviceApiToModel,
+  mapHardwareBridgeDeviceSummaryApiToModel,
   mapHardwareBridgeSessionApiToModel,
   type HardwareBridgeDevice,
   type HardwareBridgeHealthState,
@@ -32,6 +36,7 @@ import {
 } from "@/domain/realtimeAdapter";
 import { selectUserCapabilities } from "@/domain/accessControl";
 import { ApiHttpError } from "@/lib/api-integration/client";
+import { createVisibilityAwareInterval } from "@/lib/pollingVisibility";
 
 const HEALTHY_HEARTBEAT_MS = 90_000;
 const STALE_HEARTBEAT_MS = 300_000;
@@ -52,6 +57,8 @@ type HardwareBridgeStore = {
   lastSyncAt: string | null;
   pollingActive: boolean;
   pollingTimer: ReturnType<typeof setInterval> | null;
+  pollingIntervalMs: number | null;
+  pollingVisibilityCleanup: (() => void) | null;
   realtimeState: RealtimeConnectionState;
   realtimeTransport: "polling" | "websocket";
   lastRealtimeSeq: number;
@@ -72,16 +79,33 @@ type HardwareBridgeStore = {
   runtime: HardwareBridgeRuntimeDeploymentState;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchSnapshot: (outletId: number, mode?: "initial" | "background") => Promise<void>;
+  inFlightSnapshot: Promise<void> | null;
+  inFlightSnapshotOutletId: number | null;
+  pairingCode: string | null;
+  pairingExpiresAt: string | null;
+  pairingPending: boolean;
+  pairingOutletId: number | null;
+  fetchSnapshot: (
+    outletId: number,
+    mode?: "initial" | "background",
+    options?: { detail?: "summary" | "full" },
+  ) => Promise<void>;
   startRealtime: () => void;
   stopRealtime: () => void;
-  startMonitoring: (outletId: number, intervalMs?: number) => Promise<void>;
+  startMonitoring: (
+    outletId: number,
+    intervalMs?: number,
+    options?: { diagnostics?: boolean },
+  ) => Promise<void>;
   stopMonitoring: () => void;
   openSession: (payload: OpenHardwareBridgeSessionPayload) => Promise<void>;
   closeSession: (sessionId: number, reason?: string) => Promise<void>;
   enqueueCommand: (payload: EnqueueHardwareBridgeCommandPayload) => Promise<void>;
   ackCommand: (commandId: number, payload?: HardwareBridgeCommandAckPayload) => Promise<void>;
   nackCommand: (commandId: number, payload?: HardwareBridgeCommandAckPayload) => Promise<void>;
+  initPairing: (outletId: number, displayLabel?: string) => Promise<void>;
+  revokeDevice: (deviceId: number) => Promise<void>;
+  clearPairing: () => void;
   reset: () => void;
 };
 
@@ -334,6 +358,8 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
   lastSyncAt: null,
   pollingActive: false,
   pollingTimer: null,
+  pollingIntervalMs: null,
+  pollingVisibilityCleanup: null,
   realtimeState: "idle",
   realtimeTransport: "polling",
   lastRealtimeSeq: 0,
@@ -347,45 +373,74 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
   runtime: emptyRuntimeDeploymentState(),
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
+  inFlightSnapshot: null,
+  inFlightSnapshotOutletId: null,
+  pairingCode: null,
+  pairingExpiresAt: null,
+  pairingPending: false,
+  pairingOutletId: null,
 
-  fetchSnapshot: async (outletId, mode = "background") => {
+  fetchSnapshot: async (outletId, mode = "background", options = {}) => {
     if (!selectUserCapabilities().hardwareBridge) return;
+
+    const detail = options.detail ?? "summary";
+
+    const inFlight = get().inFlightSnapshot;
+    if (inFlight && get().inFlightSnapshotOutletId === outletId) {
+      return inFlight;
+    }
+
     const state = get();
     const isFirstLoad = !state.hasLoadedOnce;
     const isOutletSwitch = state.monitoredOutletId !== null && state.monitoredOutletId !== outletId;
     const shouldUseInitialLoading = mode === "initial" || isFirstLoad || isOutletSwitch;
-    set({
-      isLoading: shouldUseInitialLoading,
-      initialLoading: shouldUseInitialLoading,
-      backgroundRefreshing: !shouldUseInitialLoading,
-      error: null,
-      monitoredOutletId: outletId,
-    });
-    try {
-      const devices = (await listHardwareBridgeDevices(outletId)).map(mapHardwareBridgeDeviceApiToModel);
-      const health = deriveHealth(devices);
-      const runtimeCapabilities = deriveRuntimeCapabilities(devices, null);
-      const runtimeState = deriveRuntimeState(get().realtimeState, health.bridgeStatus, health.reconnectState, null);
-      const metadataState = deriveRuntimeMetadata(devices);
+
+    const job = (async () => {
       set({
-        devices,
-        ...health,
-        runtimeState,
-        runtimeCapabilities,
-        provisioning: metadataState.provisioning,
-        watchdog: metadataState.watchdog,
-        runtime: metadataState.runtime,
-        lastSyncAt: new Date().toISOString(),
-        hasLoadedOnce: true,
+        isLoading: shouldUseInitialLoading,
+        initialLoading: shouldUseInitialLoading,
+        backgroundRefreshing: !shouldUseInitialLoading,
+        error: null,
+        monitoredOutletId: outletId,
       });
-    } catch (error) {
-      if (error instanceof ApiHttpError && error.status === 403) {
+      try {
+        const devices =
+          detail === "full"
+            ? (await listHardwareBridgeDevices(outletId)).map(mapHardwareBridgeDeviceApiToModel)
+            : (await listHardwareBridgeDeviceSummaries(outletId)).map(mapHardwareBridgeDeviceSummaryApiToModel);
+        const health = deriveHealth(devices);
+        const runtimeCapabilities = deriveRuntimeCapabilities(devices, null);
+        const runtimeState = deriveRuntimeState(get().realtimeState, health.bridgeStatus, health.reconnectState, null);
+        const metadataState = deriveRuntimeMetadata(devices);
+        set({
+          devices,
+          ...health,
+          runtimeState,
+          runtimeCapabilities,
+          provisioning: metadataState.provisioning,
+          watchdog: metadataState.watchdog,
+          runtime: metadataState.runtime,
+          lastSyncAt: new Date().toISOString(),
+          hasLoadedOnce: true,
+        });
+      } catch (error) {
+        if (error instanceof ApiHttpError && error.status === 403) {
+          set({ error: mapError(error), isLoading: false, initialLoading: false, backgroundRefreshing: false });
+          return;
+        }
+        set({ error: mapError(error) });
+      } finally {
         set({ isLoading: false, initialLoading: false, backgroundRefreshing: false });
-        return;
       }
-      set({ error: mapError(error) });
+    })();
+
+    set({ inFlightSnapshot: job, inFlightSnapshotOutletId: outletId });
+    try {
+      await job;
     } finally {
-      set({ isLoading: false, initialLoading: false, backgroundRefreshing: false });
+      if (get().inFlightSnapshot === job) {
+        set({ inFlightSnapshot: null, inFlightSnapshotOutletId: null });
+      }
     }
   },
 
@@ -504,21 +559,69 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
     });
   },
 
-  startMonitoring: async (outletId, intervalMs = 5000) => {
+  startMonitoring: async (outletId, intervalMs = 5000, options = {}) => {
     if (!selectUserCapabilities().hardwareBridge) return;
-    get().stopMonitoring();
-    set({ monitoredOutletId: outletId });
+
+    const diagnostics = options.diagnostics ?? false;
+
+    const state = get();
+    if (
+      state.pollingActive &&
+      state.monitoredOutletId === outletId &&
+      state.pollingIntervalMs === intervalMs &&
+      (state.pollingTimer !== null || state.pollingVisibilityCleanup !== null)
+    ) {
+      if (state.inFlightSnapshot && state.inFlightSnapshotOutletId === outletId) {
+        await state.inFlightSnapshot;
+      }
+      return;
+    }
+
+    const keepRealtime = state.monitoredOutletId === outletId && state.realtimeUnsubscribe !== null;
+    if (state.pollingVisibilityCleanup) {
+      state.pollingVisibilityCleanup();
+    }
+    if (state.pollingTimer) {
+      clearInterval(state.pollingTimer);
+    }
+    if (!keepRealtime) {
+      get().stopRealtime();
+    }
+
+    set({
+      monitoredOutletId: outletId,
+      pollingTimer: null,
+      pollingActive: false,
+      pollingIntervalMs: intervalMs,
+      pollingVisibilityCleanup: null,
+    });
     get().startRealtime();
-    await get().fetchSnapshot(outletId, "initial");
-    const pollingTimer = setInterval(() => {
-      void get().fetchSnapshot(outletId, "background");
+    await get().fetchSnapshot(outletId, "initial", { detail: diagnostics ? "full" : "summary" });
+
+    const visibilityInterval = createVisibilityAwareInterval(() => {
+      void get().fetchSnapshot(outletId, "background", { detail: "summary" });
     }, intervalMs);
-    set({ pollingTimer, pollingActive: true });
+    set({
+      pollingTimer: null,
+      pollingActive: true,
+      pollingVisibilityCleanup: visibilityInterval.clear,
+    });
   },
 
   stopMonitoring: () => {
-    if (get().pollingTimer) clearInterval(get().pollingTimer as ReturnType<typeof setInterval>);
-    set({ pollingTimer: null, pollingActive: false });
+    const state = get();
+    if (state.pollingVisibilityCleanup) {
+      state.pollingVisibilityCleanup();
+    }
+    if (state.pollingTimer) {
+      clearInterval(state.pollingTimer);
+    }
+    set({
+      pollingTimer: null,
+      pollingActive: false,
+      pollingIntervalMs: null,
+      pollingVisibilityCleanup: null,
+    });
     get().stopRealtime();
   },
 
@@ -581,6 +684,27 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
     }
   },
 
+  initPairing: async (outletId, displayLabel) => {
+    set({ error: null });
+    const result = await initHardwarePairing({ outletId, displayLabel });
+    set({
+      pairingCode: result.code,
+      pairingExpiresAt: result.expiresAt,
+      pairingPending: true,
+      pairingOutletId: outletId,
+    });
+  },
+
+  revokeDevice: async (deviceId) => {
+    set({ error: null });
+    await revokeHardwareBridgeDevice(deviceId);
+    set({ pairingPending: false, pairingCode: null, pairingExpiresAt: null });
+  },
+
+  clearPairing: () => {
+    set({ pairingPending: false, pairingCode: null, pairingExpiresAt: null, pairingOutletId: null });
+  },
+
   reset: () => {
     get().stopMonitoring();
     set({
@@ -599,6 +723,8 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
       lastSyncAt: null,
       pollingActive: false,
       pollingTimer: null,
+      pollingIntervalMs: null,
+      pollingVisibilityCleanup: null,
       realtimeState: "idle",
       realtimeTransport: "polling",
       lastRealtimeSeq: 0,
@@ -612,6 +738,12 @@ export const useHardwareBridgeStore = create<HardwareBridgeStore>((set, get) => 
       runtime: emptyRuntimeDeploymentState(),
       realtimeUnsubscribe: null,
       realtimeConnectionUnsubscribe: null,
+      inFlightSnapshot: null,
+      inFlightSnapshotOutletId: null,
+      pairingCode: null,
+      pairingExpiresAt: null,
+      pairingPending: false,
+      pairingOutletId: null,
     });
   },
 }));

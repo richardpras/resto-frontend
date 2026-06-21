@@ -71,7 +71,7 @@ export default function Settings() {
       merchant: ["merchant"],
       outlets: ["outlets"],
       taxes: ["taxes"],
-      printers: ["printers", "outlets"],
+      printers: ["printers"],
       payments: ["paymentMethods", "outlets"],
       system: ["system"],
       integration: ["integration"],

@@ -119,12 +119,9 @@ describe("QROrdersList store boundary", () => {
     );
   });
 
-  it("delegates polling and opens preview drawer from pending card", () => {
+  it("renders pending queue from store and opens preview drawer", () => {
     const { container } = render(<QROrdersList />);
-    expect(mockStartPolling).toHaveBeenCalledWith(
-      { outletId: 2, status: "pending_cashier_confirmation", perPage: 25, page: 1 },
-      10000,
-    );
+    expect(mockStartPolling).not.toHaveBeenCalled();
     expect(container.firstChild).toHaveClass("p-4");
 
     fireEvent.click(screen.getByTestId("qr-order-preview-button"));

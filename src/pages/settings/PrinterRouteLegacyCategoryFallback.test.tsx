@@ -52,19 +52,19 @@ vi.mock("@/stores/hardwareBridgeStore", () => ({
     }),
 }));
 
-vi.mock("@/lib/api-integration/productionStationEndpoints", () => ({
-  listProductionStations: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock("@/lib/api-integration/printerRouteEndpoints", () => ({
-  listPrinterRoutes: vi.fn().mockResolvedValue([]),
-  assignPrinterRoute: vi.fn(),
+vi.mock("@/lib/api-integration/endpoints", () => ({
+  listMenuCategories: vi.fn().mockResolvedValue([
+    { id: 1, name: "Food", nameEn: "Food", nameId: "Makanan", sortOrder: 10, isActive: true },
+  ]),
+  listMenuCategoryPrinterMappings: vi.fn().mockResolvedValue([]),
+  saveMenuCategoryPrinterMapping: vi.fn(),
+  deleteMenuCategoryPrinterMapping: vi.fn(),
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
   useSettingsStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
-      printers: [{ id: "10", name: "Kitchen Printer", printerType: "kitchen", connection: "lan", ip: "10.0.0.2", outletId: 1 }],
+      printers: [{ id: "10", name: "Kitchen Printer", printerType: "kitchen", connection: "lan", ip: "10.0.0.2", outletId: 1, printerProfileId: 10 }],
       outlets: [{ id: 1, code: "OUT-1", name: "Outlet 1", address: "", phone: "", manager: "", status: "active" }],
       upsertPrinter: vi.fn(),
       ensureSectionsLoaded: vi.fn(),
@@ -83,11 +83,17 @@ vi.mock("@/stores/authStore", () => ({
 }));
 
 describe("PrinterRouteLegacyCategoryFallback", () => {
-  it("shows legacy category routing in printer dialog", () => {
+  it("does not show category routing panel in printer settings", () => {
+    render(<PrinterSettings />);
+    expect(screen.queryByTestId("menu-category-unmapped-banner")).not.toBeInTheDocument();
+    expect(screen.queryByText(/category routing/i)).not.toBeInTheDocument();
+  });
+
+  it("does not show legacy category routing in printer dialog", () => {
     render(<PrinterSettings />);
     fireEvent.click(screen.getByRole("button", { name: /add printer/i }));
-    expect(screen.getByTestId("printer-legacy-category-routing")).toBeInTheDocument();
-    expect(screen.getByText(/legacy category routing/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("printer-legacy-category-routing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/legacy category routing/i)).not.toBeInTheDocument();
   });
 
   it("renders existing printer profile table without crash when stations are absent", async () => {

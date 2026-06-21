@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
+import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
 import { createPaymentAllocations } from "@/features/pos/splitPaymentUtils";
 import {
   apiMethodFromCheckoutMethod,
@@ -268,6 +269,10 @@ export default function Cashier() {
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<CashierOrder | null>(null);
+  const printStatusOutletId = useMemo(
+    () => resolvePrintStatusOutletId(activeOutletId, paymentModalOrder?.outletId),
+    [activeOutletId, paymentModalOrder?.outletId],
+  );
   const [selectedCheckoutCode, setSelectedCheckoutCode] = useState<string | null>(null);
   const [showStaticQrisModal, setShowStaticQrisModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1450,7 +1455,7 @@ export default function Cashier() {
                   </div>
                 </div>
               )}
-              <PosPrintStatusBar outletId={typeof activeOutletId === "number" ? activeOutletId : null} />
+              <PosPrintStatusBar outletId={printStatusOutletId} />
             </motion.div>
           </motion.div>
         )}

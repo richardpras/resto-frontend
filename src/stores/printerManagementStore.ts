@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { PrinterProfileInput, PrinterQueueSummary } from "@/domain/operationsTypes";
 import { listPrinterQueues, retryPrinterQueueJob } from "@/lib/api-integration/printerManagementEndpoints";
-import { patchPrinter, postPrinter } from "@/lib/api-integration/settingsDomainEndpoints";
+import { patchPrinter, postPrinter, testPrinter } from "@/lib/api-integration/settingsDomainEndpoints";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { useSettingsStore, type Printer } from "@/stores/settingsStore";
 import { selectUserCapabilities } from "@/domain/accessControl";
@@ -10,9 +10,11 @@ type PrinterManagementStore = {
   queueByPrinter: PrinterQueueSummary[];
   isLoadingQueue: boolean;
   isSavingProfile: boolean;
+  testingPrinterId: string | null;
   error: string | null;
   fetchQueueStatus: () => Promise<void>;
   saveProfile: (profile: PrinterProfileInput) => Promise<void>;
+  sendTestPrint: (printerId: string) => Promise<void>;
   retryFailedJob: (printerId: string, jobId: string) => Promise<void>;
   reset: () => void;
 };
@@ -34,6 +36,7 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
   queueByPrinter: [],
   isLoadingQueue: false,
   isSavingProfile: false,
+  testingPrinterId: null,
   error: null,
 
   fetchQueueStatus: async () => {
@@ -76,6 +79,20 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
     }
   },
 
+  sendTestPrint: async (printerId) => {
+    if (!selectUserCapabilities().printerAdmin) return;
+    set({ testingPrinterId: printerId, error: null });
+    try {
+      await testPrinter(printerId);
+      await get().fetchQueueStatus();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to send test print" });
+      throw error;
+    } finally {
+      set({ testingPrinterId: null });
+    }
+  },
+
   retryFailedJob: async (printerId, jobId) => {
     if (!selectUserCapabilities().printerAdmin) return;
     set({ error: null });
@@ -106,6 +123,7 @@ export const usePrinterManagementStore = create<PrinterManagementStore>((set, ge
       queueByPrinter: [],
       isLoadingQueue: false,
       isSavingProfile: false,
+      testingPrinterId: null,
       error: null,
     });
   },

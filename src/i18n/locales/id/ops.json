@@ -326,6 +326,7 @@
     "outletSettings": "Pengaturan Outlet",
     "namePlaceholder": "mis. Nasi Goreng Spesial",
     "categoryPlaceholder": "mis. Hidangan Utama",
+    "selectCategory": "Pilih kategori",
     "posNameOverride": "Override nama POS",
     "priceOverride": "Override harga",
     "receiptName": "Nama di struk",
@@ -539,7 +540,7 @@
     "timeHr": "{{n}} jam lalu",
     "selectOutlet": "Pilih outlet di header dengan id numerik yang dikonfigurasi untuk menampilkan permintaan QR outlet tersebut.",
     "noTable": "Tanpa meja",
-    "menuItemTag": "Menu #{{id}} ×{{qty}}",
+    "menuItemTag": "{{name}} ×{{qty}}",
     "showingPending": "Menampilkan {{shown}} dari {{total}} pending",
     "showingInPos": "Menampilkan {{shown}} dari {{total}} di POS",
     "previewModal": {
@@ -835,6 +836,17 @@
     "promotionRemoved": "Promosi dihapus.",
     "promotionVoucherConflict": "Hapus voucher member sebelum menerapkan promosi.",
     "promotionPreview": "Estimasi promosi: {{amount}}",
+    "printStatus": {
+      "online": "Printer online",
+      "offline": "Bridge printer belum online — tunggu setelah nyalakan PC atau hubungi supervisor",
+      "pending": "Antrian print menunggu",
+      "failed": "Antrian print gagal",
+      "pendingCount": "Pending {{count}}",
+      "failedCount": "Gagal {{count}}",
+      "pendingSlowHint": "Print lebih lama dari biasanya. Coba refresh.",
+      "retryFailed": "Coba lagi yang gagal",
+      "reprintLast": "Cetak ulang terakhir"
+    },
     "discountModal": {
       "title": "Kode diskon",
       "description": "Masukkan kode promo, voucher member, atau gift card untuk pesanan ini.",

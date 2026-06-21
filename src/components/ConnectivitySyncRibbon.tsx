@@ -8,9 +8,15 @@ type Props = {
   outletId?: number | null;
   /** When false, skips auto terminal registration / replay (e.g. screen without outlet context). */
   enableReplay?: boolean;
+  /** When false, defers terminal register/sync until POS critical data is ready. */
+  terminalRegistrationReady?: boolean;
 };
 
-export function ConnectivitySyncRibbon({ outletId, enableReplay = true }: Props) {
+export function ConnectivitySyncRibbon({
+  outletId,
+  enableReplay = true,
+  terminalRegistrationReady = true,
+}: Props) {
   const initConnectivityListeners = useOfflineSyncStore((s) => s.initConnectivityListeners);
   const isOnline = useOfflineSyncStore((s) => s.isOnline);
   const pendingQueueCount = useOfflineSyncStore((s) => s.pendingQueueCount);
@@ -29,11 +35,22 @@ export function ConnectivitySyncRibbon({ outletId, enableReplay = true }: Props)
   useEffect(() => {
     if (!enableReplay || !outletId || outletId < 1) return;
     void refreshQueueCounts(outletId);
+  }, [enableReplay, outletId, refreshQueueCounts]);
+
+  useEffect(() => {
+    if (!enableReplay || !terminalRegistrationReady || !outletId || outletId < 1) return;
     void ensureTerminalPresence(outletId);
     if (typeof navigator !== "undefined" && navigator.onLine) {
       void flushQueueForOutlet(outletId);
     }
-  }, [enableReplay, outletId, refreshQueueCounts, ensureTerminalPresence, flushQueueForOutlet, isOnline]);
+  }, [
+    enableReplay,
+    terminalRegistrationReady,
+    outletId,
+    ensureTerminalPresence,
+    flushQueueForOutlet,
+    isOnline,
+  ]);
 
   const resilient = outletId !== null && outletId !== undefined && outletId >= 1;
 

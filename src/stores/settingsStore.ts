@@ -416,6 +416,18 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
 
 export const newId = uid;
 
+export function hydratePosBootstrapSettings(
+  merchant: Partial<Merchant>,
+  system: Partial<SystemPrefs>,
+): void {
+  useSettingsStore.setState((state) => ({
+    merchant: { ...state.merchant, ...merchant },
+    system: { ...state.system, ...system },
+  }));
+  sectionCacheTimestamps.merchant = Date.now();
+  sectionCacheTimestamps.system = Date.now();
+}
+
 export function resetSettingsSectionRequestState(): void {
   (Object.keys(sectionCacheTimestamps) as SettingsSection[]).forEach((key) => {
     delete sectionCacheTimestamps[key];

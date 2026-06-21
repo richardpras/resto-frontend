@@ -35,6 +35,7 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 
 function resetState() {
   useQrOrderStore.getState().stopPolling();
+  useQrOrderStore.getState().stopSummaryPolling();
   useQrOrderStore.setState({
     requests: [],
     isLoading: false,
@@ -47,6 +48,7 @@ function resetState() {
     pollingTimer: null,
     activeRequestId: 0,
     activeAbortController: null,
+    fetchInFlight: false,
     lastRequestMeta: null,
   });
 }
@@ -143,5 +145,57 @@ describe("qrOrderStore recovery", () => {
     const state = useQrOrderStore.getState();
     expect(state.lastListParams?.outletId).toBe(4);
     expect(state.requests[0]?.outletId).toBe(4);
+  });
+
+  it("startPolling is idempotent for identical params", () => {
+    const params = { outletId: 2, status: "pending_cashier_confirmation" as const, perPage: 20 };
+    useQrOrderStore.getState().startPolling(params, 1000);
+    const cleanup = useQrOrderStore.getState().pollingVisibilityCleanup;
+    useQrOrderStore.getState().startPolling(params, 1000);
+    expect(useQrOrderStore.getState().pollingVisibilityCleanup).toBe(cleanup);
+    expect(mockListQrOrdersWithMeta).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips initial fetch while identical request is still in flight", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    mockListQrOrdersWithMeta.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+
+    const params = { outletId: 2, status: "pending_cashier_confirmation" as const, perPage: 20 };
+    void useQrOrderStore.getState().fetchRequests(params, { mode: "initial" });
+    await useQrOrderStore.getState().fetchRequests(params, { mode: "initial" });
+
+    expect(mockListQrOrdersWithMeta).toHaveBeenCalledTimes(1);
+
+    resolveFirst({
+      requests: [buildRequest()],
+      meta: { currentPage: 1, perPage: 20, total: 1, lastPage: 1 },
+    });
+  });
+
+  it("skips background fetch while previous fetch is still in flight", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    mockListQrOrdersWithMeta.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+
+    const params = { outletId: 2, status: "pending_cashier_confirmation" as const, perPage: 20 };
+    void useQrOrderStore.getState().fetchRequests(params, { mode: "background" });
+    await useQrOrderStore.getState().fetchRequests(params, { mode: "background" });
+
+    expect(mockListQrOrdersWithMeta).toHaveBeenCalledTimes(1);
+
+    resolveFirst({
+      requests: [buildRequest()],
+      meta: { currentPage: 1, perPage: 20, total: 1, lastPage: 1 },
+    });
+    await Promise.resolve();
   });
 });

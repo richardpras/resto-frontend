@@ -16,7 +16,9 @@ type PosSessionState = {
   lastSyncAt: string | null;
   inFlightOutletId: number | null;
   inFlightFetch: Promise<PosSessionApi | null> | null;
+  bootstrapSyncedOutletId: number | null;
   fetchCurrent: (outletId: number) => Promise<PosSessionApi | null>;
+  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null) => void;
   open: (outletId: number, openingCash: number, notes?: string) => Promise<PosSessionApi>;
   close: (sessionId: number, closingCash: number, notes?: string) => Promise<PosSessionApi>;
   reset: () => void;
@@ -37,6 +39,20 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
   lastSyncAt: null,
   inFlightOutletId: null,
   inFlightFetch: null,
+  bootstrapSyncedOutletId: null,
+
+  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null) => {
+    set({
+      currentSession: session,
+      activeOutletId: outletId,
+      bootstrapSyncedOutletId: outletId,
+      lastSyncAt: new Date().toISOString(),
+      isLoading: false,
+      error: null,
+      inFlightOutletId: null,
+      inFlightFetch: null,
+    });
+  },
 
   fetchCurrent: async (outletId: number) => {
     const state = usePosSessionStore.getState();
@@ -50,6 +66,7 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
       set({
         currentSession,
         activeOutletId: outletId,
+        bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
         inFlightOutletId: null,
         inFlightFetch: null,
@@ -73,6 +90,7 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
       const currentSession = await openPosSession({ outletId, openingCash, notes });
       set({
         currentSession,
+        bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
       });
       return currentSession;
@@ -91,6 +109,7 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
       const currentSession = await closePosSession(sessionId, { closingCash, notes });
       set({
         currentSession,
+        bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
       });
       return currentSession;
@@ -113,5 +132,6 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
       lastSyncAt: null,
       inFlightOutletId: null,
       inFlightFetch: null,
+      bootstrapSyncedOutletId: null,
     }),
 }));

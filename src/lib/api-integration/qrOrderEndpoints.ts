@@ -23,6 +23,7 @@ export type QrOrderRequestStatus =
 export type QrOrderRequestItemApi = {
   id: number | string;
   menuItemId: number;
+  name?: string | null;
   qty: number;
   notes?: string | null;
 };
@@ -208,6 +209,39 @@ export async function markQrOrderServed(requestId: number | string): Promise<QrO
   const response = await request<{ message: string; data: QrOrderRequestApi }>(
     `/qr-orders/${requestId}/mark-served`,
     { method: "POST" },
+  );
+  return response.data;
+}
+
+export type QrOrderPendingSummaryEntryApi = {
+  id: number | string;
+  requestCode: string;
+  outletId: number;
+  tableId: number;
+  tableName: string;
+  customerName?: string | null;
+  cashierCallCount?: number;
+  cashierCalledAt?: string | null;
+  createdAt: string;
+};
+
+export type QrOrderPendingSummaryApi = {
+  count: number;
+  ids: Array<number | string>;
+  entries: QrOrderPendingSummaryEntryApi[];
+};
+
+export async function getQrOrderPendingSummary(
+  outletId: number,
+  options: QrOrderRequestOptions = {},
+): Promise<QrOrderPendingSummaryApi> {
+  const query = new URLSearchParams({ outletId: String(outletId) });
+  const response = await request<{ data: QrOrderPendingSummaryApi }>(
+    `/qr-orders/pending-summary?${query.toString()}`,
+    {
+      signal: options.signal,
+      headers: options.headers,
+    },
   );
   return response.data;
 }

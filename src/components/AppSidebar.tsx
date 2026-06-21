@@ -1,5 +1,5 @@
 import { Store, LogOut, Lock } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
-import { useOutletStore } from "@/stores/outletStore";
 import { buildSidebarSections } from "@/components/sidebar/sidebarNavConfig";
 import { translateNavItems } from "@/components/sidebar/sidebarNavI18n";
 import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
@@ -18,13 +17,6 @@ export function AppSidebar() {
   const { t } = useTranslation("common");
   const { user, hasPermission, logout, lock } = useAuthStore();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
-  const fetchUnreadCount = useNotificationStore((s) => s.fetchUnreadCount);
-  const activeOutletId = useOutletStore((s) => s.activeOutletId);
-
-  useEffect(() => {
-    if (!user) return;
-    void fetchUnreadCount(activeOutletId);
-  }, [user, activeOutletId, fetchUnreadCount]);
 
   const sections = useMemo(
     () =>

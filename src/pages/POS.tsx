@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Search, Plus, Minus, Trash2, X,
   SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, CreditCard, Undo2, CalendarDays, Ticket,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MenuItemImage } from "@/components/menu/MenuItemImage";
-import { deriveRuntimeFloorTables, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
+import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
 import { type VoucherPreview } from "@/lib/api-integration/orderVoucherEndpoints";
 import {
@@ -20,20 +19,20 @@ import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
-  listMenuItems,
   type CreateOrderPayload,
   type OrderPaymentPayload,
 } from "@/lib/api-integration/endpoints";
-import { listFloorTables } from "@/lib/api-integration/tableEndpoints";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
+import { usePosBootstrap } from "@/hooks/pos/usePosBootstrap";
+import { usePosLazyFloorTables } from "@/hooks/pos/usePosLazyFloorTables";
+import { usePosLazyMembers } from "@/hooks/pos/usePosLazyMembers";
+import { useConsumePosBridge } from "@/hooks/pos/useConsumePosBridge";
+import { consumeOutletCartResetSuppression } from "@/hooks/pos/consumePosBridge";
 import { useOutletStore } from "@/stores/outletStore";
-import { useQrOrderPosBridgeStore } from "@/stores/qrOrderPosBridgeStore";
-import { useReservationPosBridgeStore } from "@/stores/reservationPosBridgeStore";
-import { applyReservationPosPayload, type ApplyReservationPosPayloadDeps } from "@/components/reservations/applyReservationPosPayload";
+import { type ApplyReservationPosPayloadDeps } from "@/components/reservations/applyReservationPosPayload";
 import { PosReservationPickerDialog } from "@/components/pos/PosReservationPickerDialog";
 import { PosDiscountModal } from "@/components/pos/PosDiscountModal";
 import { ensurePosDraftOrder } from "@/features/pos/ensurePosDraftOrder";
-import { usePosSessionStore } from "@/stores/posSessionStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -82,6 +81,7 @@ import {
 } from "@/features/pos/gatewayCheckoutUtils";
 import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
+import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
 import {
@@ -130,6 +130,7 @@ import type { PaymentDraftLine } from "@/features/pos/multiPayment/multiPaymentT
 
 type MenuItem = {
   id: string; name: string; price: number; category: string; emoji: string;
+  menuCategorySortOrder?: number;
   imageUrl?: string | null;
   imageVersion?: number;
 };
@@ -192,7 +193,6 @@ export default function POS() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const stockEnforcementMode = useSettingsStore((s) => s.system.stockEnforcementMode);
   const enableMultiPayment = useSettingsStore((s) => s.system.enableMultiPayment);
-  const ensureSettingsSections = useSettingsStore((s) => s.ensureSectionsLoaded);
   useReservationTableProjectionSync();
   const { tables, orders, replaceFloorTables } = useOrderStore();
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
@@ -206,7 +206,7 @@ export default function POS() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
-  const { searchResults, fetchMembers, searchMembersForOutlet, quickCreateMember } = useMemberStore();
+  const { searchResults, fetchMembers, quickCreateMember } = useMemberStore();
   const membersLoading = useMemberStore((s) => s.searchLoading);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [redeemPointsInput, setRedeemPointsInput] = useState("");
@@ -244,6 +244,10 @@ export default function POS() {
     () => (currentOrderId ? orders.find((o) => o.id === currentOrderId) ?? null : null),
     [orders, currentOrderId],
   );
+  const printStatusOutletId = useMemo(
+    () => resolvePrintStatusOutletId(activeOutletId, currentOpenOrder?.outletId),
+    [activeOutletId, currentOpenOrder?.outletId],
+  );
 
   // Split bill state
   const [splitPersons, setSplitPersons] = useState<SplitPerson[]>([]);
@@ -272,7 +276,6 @@ export default function POS() {
     [checkoutMethods],
   );
   const selectedCheckoutMethod = findCheckoutMethod(checkoutMethods, selectedCheckoutCode);
-  const fetchCurrentPosSession = usePosSessionStore((s) => s.fetchCurrent);
   const paymentIsSubmitting = usePaymentStore((s) => s.isSubmitting);
   const paymentError = usePaymentStore((s) => s.error);
   const paymentTransaction = usePaymentStore((s) => s.currentTransaction);
@@ -291,31 +294,20 @@ export default function POS() {
   const [providerSimulating, setProviderSimulating] = useState(false);
   const previousOutletIdRef = useRef<number | null>(null);
   const loyaltyBalances = useLoyaltyStore((s) => s.pointsBalanceByCustomer);
-  const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
   const enqueueRedemption = useLoyaltyStore((s) => s.enqueueRedemption);
-  const crmLazyFetchedRef = useRef<Record<number, boolean>>({});
+  usePosLazyMembers({
+    activeOutletId,
+    showMemberPicker,
+    memberSearch,
+    crmEnabled: capabilities.crm,
+  });
 
-  useEffect(() => {
-    if (!showMemberPicker) return;
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
-    const timer = setTimeout(() => {
-      void searchMembersForOutlet(activeOutletId, memberSearch).catch((e) => {
-        if (e instanceof ApiHttpError) toast.error(e.message);
-      });
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [activeOutletId, memberSearch, searchMembersForOutlet, showMemberPicker]);
-
-  useEffect(() => {
-    if (!capabilities.crm || !showMemberPicker) return;
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
-    if (crmLazyFetchedRef.current[activeOutletId]) return;
-    crmLazyFetchedRef.current[activeOutletId] = true;
-    void fetchMembers({ outletId: activeOutletId }).catch((e) => {
-      if (e instanceof ApiHttpError) toast.error(e.message);
-    });
-    void refreshLoyalty(activeOutletId);
-  }, [activeOutletId, capabilities.crm, fetchMembers, refreshLoyalty, showMemberPicker]);
+  const { requestTables, tablesLoading } = usePosLazyFloorTables({
+    activeOutletId,
+    orders,
+    replaceFloorTables,
+    orderType,
+  });
 
   useEffect(() => {
     if (!currentOpenOrder) {
@@ -326,94 +318,6 @@ export default function POS() {
     setVoucherPreview(currentOpenOrder.voucherPreview ?? null);
     setPromotionPreview(currentOpenOrder.promotionPreview ?? null);
   }, [currentOpenOrder]);
-
-  const { data: floorMasters } = useQuery({
-    queryKey: ["floor-tables", activeOutletId ?? 0],
-    queryFn: () => listFloorTables(activeOutletId!),
-    enabled: typeof activeOutletId === "number" && activeOutletId >= 1 && Boolean(getApiAccessToken()),
-  });
-
-  useEffect(() => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1 || !getApiAccessToken()) {
-      replaceFloorTables([]);
-      return;
-    }
-    if (!floorMasters) return;
-    replaceFloorTables(deriveRuntimeFloorTables(floorMasters, orders));
-  }, [floorMasters, orders, activeOutletId, replaceFloorTables]);
-
-  useEffect(() => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1 || !getApiAccessToken()) {
-      return;
-    }
-    void fetchCurrentPosSession(activeOutletId).catch(() => {
-      // POS session guard is non-blocking for current UI flow.
-    });
-  }, [activeOutletId, fetchCurrentPosSession]);
-
-  useEffect(() => {
-    const { loadPayload, draftSession, clear } = useQrOrderPosBridgeStore.getState();
-    if (!loadPayload || !draftSession) return;
-
-    setQrOrderContext({
-      requestId: loadPayload.requestId,
-      requestCode: loadPayload.requestCode,
-      tableName: loadPayload.tableName,
-      linkedOrderId: loadPayload.linkedOrderId ?? null,
-    });
-    if (loadPayload.linkedOrderId) {
-      setCurrentOrderId(loadPayload.linkedOrderId);
-      void fetchOrderRemote(loadPayload.linkedOrderId)
-        .then((order) => {
-          hydrateCartFromOrder(order, setCart, 0);
-        })
-        .catch(() => {
-          // Order fetch failure is surfaced elsewhere when cashier acts on the bill.
-        });
-    } else {
-      setCart(
-        loadPayload.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          category: "",
-          emoji: item.emoji ?? "🍽️",
-          qty: item.qty,
-          notes: item.notes ?? "",
-        })),
-      );
-    }
-    if (loadPayload.customerName) setCustomerName(loadPayload.customerName);
-    if (loadPayload.tableId) setSelectedTable(String(loadPayload.tableId));
-    setOrderType("Dine-in");
-    clear();
-  }, []);
-
-  useEffect(() => {
-    const { loadPayload, draftSession, clear } = useReservationPosBridgeStore.getState();
-    if (!loadPayload || !draftSession) return;
-
-    const applyReservationBridge = async () => {
-      await applyReservationPosPayload(loadPayload, {
-        setCurrentOrderId,
-        setCustomerName,
-        setCustomerPhone,
-        setSelectedTable,
-        setOrderType,
-        setSelectedMember,
-        setActiveReservationId,
-        setCart,
-        getCartLength: () => cartLengthRef.current,
-        fetchMembers,
-        fetchOrderRemote,
-        activeOutletId,
-      });
-      setActiveReservationLabel(loadPayload.customerName ?? null);
-      clear();
-    };
-
-    void applyReservationBridge();
-  }, [activeOutletId, fetchMembers, fetchOrderRemote]);
 
   useEffect(() => {
     if (!currentOpenOrder) return;
@@ -430,9 +334,23 @@ export default function POS() {
     }
   }, [currentOpenOrder?.id, currentOpenOrder?.memberId, currentOpenOrder?.customerName, currentOpenOrder?.customerPhone, activeOutletId, fetchMembers, selectedMember?.id]);
 
-  useEffect(() => {
-    void ensureSettingsSections(["system"]).catch(() => {});
-  }, [ensureSettingsSections]);
+  useConsumePosBridge({
+    activeOutletId,
+    setQrOrderContext,
+    setCurrentOrderId,
+    setCart,
+    setCustomerName,
+    setCustomerPhone,
+    setSelectedTable,
+    setOrderType,
+    setSelectedMember,
+    setActiveReservationId,
+    setActiveReservationLabel,
+    getCartLength: () => cartLengthRef.current,
+    fetchMembers,
+    fetchOrderRemote,
+    onTablesPrefetch: requestTables,
+  });
 
   useEffect(() => {
     if (showPayment) return;
@@ -464,7 +382,7 @@ export default function POS() {
       nextOutletId !== null &&
       previousOutletId !== nextOutletId;
 
-    if (didOutletSwitch) {
+    if (didOutletSwitch && !consumeOutletCartResetSuppression()) {
       resetCart();
       setShowPayment(false);
       setShowSplit(false);
@@ -487,15 +405,9 @@ export default function POS() {
     };
   }, [paymentResetAsync]);
 
-  const { data: menuApiItems = [], isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
-    queryKey: ["menu-items", POS_TENANT_ID, activeOutletId ?? 0],
-    queryFn: () =>
-      listMenuItems({
-        tenantId: POS_TENANT_ID,
-        perPage: 200,
-        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
-      }),
-    enabled: typeof activeOutletId === "number" && activeOutletId >= 1,
+  const { menuApiItems, menuLoading, menuError, refetchMenu } = usePosBootstrap({
+    tenantId: POS_TENANT_ID,
+    outletId: activeOutletId,
   });
 
   const menuItems: MenuItem[] = useMemo(() => {
@@ -505,16 +417,27 @@ export default function POS() {
         id: String(m.id),
         name: m.name,
         price: m.price,
-        category: m.category?.trim() ? m.category : "Uncategorized",
+        category: m.menuCategory?.displayName?.trim()
+          ? m.menuCategory.displayName
+          : (m.menuCategory?.name?.trim() ? m.menuCategory.name : (m.category?.trim() ? m.category : "Uncategorized")),
         emoji: m.emoji ?? "🍽️",
+        menuCategorySortOrder: m.menuCategory?.sortOrder ?? 100,
         imageUrl: m.imageUrl ?? null,
         imageVersion: m.imageVersion,
       }));
   }, [menuApiItems]);
 
   const categories = useMemo(() => {
-    const set = new Set(menuItems.map((m) => m.category));
-    return ["All", ...Array.from(set).sort()];
+    const unique = new Map<string, number>();
+    for (const item of menuItems) {
+      if (!unique.has(item.category)) {
+        unique.set(item.category, item.menuCategorySortOrder ?? 100);
+      }
+    }
+    const sorted = Array.from(unique.entries())
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name);
+    return ["All", ...sorted];
   }, [menuItems]);
 
   const filtered = menuItems.filter(
@@ -659,6 +582,9 @@ export default function POS() {
   );
 
   const orderContextReady = typeof activeOutletId === "number" && activeOutletId >= 1;
+  const checkoutReady =
+    orderContextReady &&
+    (!menuLoading || cart.length > 0 || currentOrderId != null);
 
   const orderTypeLabel = (type: string) => {
     if (type === "Dine-in") return t("pos.orderTypes.dine_in");
@@ -1814,7 +1740,7 @@ export default function POS() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      <ConnectivitySyncRibbon outletId={activeOutletId} />
+      <ConnectivitySyncRibbon outletId={activeOutletId} terminalRegistrationReady={!menuLoading} />
       <div className="px-4 py-1 border-b border-border/40 bg-card/30">
         <PosSessionPanel outletId={activeOutletId} />
       </div>
@@ -2080,9 +2006,14 @@ export default function POS() {
               </div>
             )}
             {orderType === "Dine-in" && (
-              <select value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground">
-                <option value="">{t("pos.selectTable")}</option>
+              <select
+                value={selectedTable}
+                onChange={(e) => setSelectedTable(e.target.value)}
+                onFocus={requestTables}
+                onMouseDown={requestTables}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground"
+              >
+                <option value="">{tablesLoading ? t("pos.loadingMenu") : t("pos.selectTable")}</option>
                 {selectableTables.map((table) => (
                   <option key={table.id} value={table.id}>
                     {table.name} {t("pos.seats", { n: table.seats })}
@@ -2216,18 +2147,18 @@ export default function POS() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmOrderDialog(true)}
-                  disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !orderContextReady}
+                  disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !checkoutReady}
                   className="flex-1 py-3 rounded-xl bg-accent text-accent-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 >
                   <ChefHat className="h-4 w-4" /> {t("pos.confirmOrder")}
                 </button>
-                <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
+                <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                   <CreditCard className="h-4 w-4" /> {t("pos.payNow")}
                 </button>
               </>
             ) : (
-              <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !orderContextReady}
+              <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
                 {t("pos.payAmount", { amount: formatRp(total) })}
               </button>
@@ -2268,6 +2199,9 @@ export default function POS() {
               ) : null}
             </div>
           </DialogHeader>
+          {printStatusOutletId ? (
+            <PosPrintStatusBar outletId={printStatusOutletId} />
+          ) : null}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" disabled={submitting} onClick={() => setShowConfirmOrderDialog(false)}>
               {t("shared.cancel")}
@@ -2435,7 +2369,7 @@ export default function POS() {
                   </div>
                 </div>
               )}
-              <PosPrintStatusBar outletId={typeof activeOutletId === "number" ? activeOutletId : null} />
+              <PosPrintStatusBar outletId={printStatusOutletId} />
             </motion.div>
           </motion.div>
         )}

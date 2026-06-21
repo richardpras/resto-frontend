@@ -33,6 +33,7 @@ type MenuItem = {
   name: string;
   price: number;
   category: string;
+  menuCategorySortOrder?: number;
   emoji: string;
   imageUrl?: string | null;
   imageVersion?: number;
@@ -199,7 +200,10 @@ export default function QROrder() {
               id: String(row.id),
               name: row.name,
               price: row.price,
-              category: row.category?.trim() ? row.category : "Uncategorized",
+              category: row.menuCategory?.displayName?.trim()
+                ? row.menuCategory.displayName
+                : (row.menuCategory?.name?.trim() ? row.menuCategory.name : (row.category?.trim() ? row.category : "Uncategorized")),
+              menuCategorySortOrder: row.menuCategory?.sortOrder ?? 100,
               emoji: row.emoji ?? "🍽️",
               imageUrl: row.imageUrl ?? null,
               imageVersion: row.imageVersion,
@@ -220,8 +224,16 @@ export default function QROrder() {
   }, [menuQrPublicId, t]);
 
   const categories = useMemo(() => {
-    const set = new Set(menuItems.map((m) => m.category));
-    return ["All", ...Array.from(set).sort()];
+    const unique = new Map<string, number>();
+    for (const item of menuItems) {
+      if (!unique.has(item.category)) {
+        unique.set(item.category, item.menuCategorySortOrder ?? 100);
+      }
+    }
+    const sorted = Array.from(unique.entries())
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name);
+    return ["All", ...sorted];
   }, [menuItems]);
 
   const filtered = useMemo(() =>

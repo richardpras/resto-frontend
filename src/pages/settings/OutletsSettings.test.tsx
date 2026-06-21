@@ -32,6 +32,7 @@ vi.mock("@/stores/settingsStore", () => ({
       outletsError: null,
       outletsSubmitting: false,
       saveOutlet: saveOutletMock,
+      upsertOutlet: vi.fn(),
       deleteOutletById: deleteOutletByIdMock,
     }),
 }));
@@ -94,12 +95,19 @@ describe("OutletsSettings store boundary", () => {
 
     expect(screen.getByRole("heading", { name: /outlets/i })).toBeTruthy();
     expect(screen.getByText("ID")).toBeTruthy();
-    expect(screen.getByText("Code")).toBeTruthy();
+    expect(screen.getByText("Code (optional)")).toBeTruthy();
     expect(screen.getByText("Name")).toBeTruthy();
     expect(screen.getByText("Address")).toBeTruthy();
     expect(screen.getByText("Phone")).toBeTruthy();
     expect(screen.getByText("Manager")).toBeTruthy();
     expect(screen.getByText("Status")).toBeTruthy();
     expect(screen.getByText("Main Outlet")).toBeTruthy();
+  });
+
+  it("renders logo upload field when editing an existing outlet", () => {
+    render(<OutletsSettings />);
+
+    fireEvent.click(screen.getAllByRole("button")[1]);
+    expect(screen.getByTestId("outlet-logo-upload")).toBeInTheDocument();
   });
 });

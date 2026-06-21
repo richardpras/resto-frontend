@@ -4,17 +4,15 @@ import { soundAlertService } from "@/lib/sound/soundAlertService";
 import { useQrOrderStore } from "@/stores/qrOrderStore";
 
 export function useQrOrderSoundAlerts(canMonitor: boolean): void {
-  const requests = useQrOrderStore((s) => s.requests);
-  const hasLoadedOnce = useQrOrderStore((s) => s.hasLoadedOnce);
+  const pendingSummary = useQrOrderStore((s) => s.pendingSummary);
+  const hasLoadedOnce = useQrOrderStore((s) => s.pendingSummaryLoadedOnce);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
 
   useEffect(() => {
     if (!canMonitor) return;
 
-    const pendingIds = requests
-      .filter((r) => r.status === "pending_cashier_confirmation")
-      .map((r) => r.id);
+    const pendingIds = pendingSummary?.ids ?? [];
 
     if (!initializedRef.current && hasLoadedOnce) {
       initializeKnownIds(pendingIds, knownIdsRef.current);
@@ -35,11 +33,11 @@ export function useQrOrderSoundAlerts(canMonitor: boolean): void {
     markIdsKnown(newIds, knownIdsRef.current);
     const label =
       newIds.length === 1
-        ? requests.find((r) => r.id === newIds[0])?.requestCode
+        ? pendingSummary?.entries.find((entry) => entry.id === newIds[0])?.requestCode
         : `${newIds.length} new orders`;
     void soundAlertService.play("new_order", {
       detail: label ? `New order received · ${label}` : undefined,
       visualFallback: true,
     });
-  }, [requests, hasLoadedOnce, canMonitor]);
+  }, [pendingSummary, hasLoadedOnce, canMonitor]);
 }

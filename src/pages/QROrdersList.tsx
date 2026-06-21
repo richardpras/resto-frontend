@@ -169,7 +169,7 @@ function QrOrderQueueCard({
       <div className="flex items-center gap-1 mb-3 flex-wrap">
         {order.items.map((item) => (
           <span key={item.id} className="text-xs bg-muted px-2 py-1 rounded-lg text-muted-foreground">
-            {t("qrStaff.menuItemTag", { id: item.menuItemId, qty: item.qty })}
+            {`${item.name} ×${item.qty}`}
           </span>
         ))}
       </div>
@@ -211,8 +211,6 @@ export default function QROrders() {
   const backgroundRefreshing = useQrOrderStore((s) => s.backgroundRefreshing);
   const error = useQrOrderStore((s) => s.error);
   const lastSyncAt = useQrOrderStore((s) => s.lastSyncAt);
-  const startPolling = useQrOrderStore((s) => s.startPolling);
-  const stopPolling = useQrOrderStore((s) => s.stopPolling);
   const fetchRequests = useQrOrderStore((s) => s.fetchRequests);
 
   const [searchValue, setSearchValue] = useState("");
@@ -342,21 +340,26 @@ export default function QROrders() {
   };
 
   useEffect(() => {
-    if (!canManage) {
-      stopPolling();
-      return;
-    }
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      stopPolling();
-      setInPosRequests([]);
-      return;
-    }
-    startPolling(
-      { outletId: activeOutletId, status: "pending_cashier_confirmation", perPage: QUEUE_PAGE_SIZE, page: 1 },
-      10000,
-    );
-    return () => stopPolling();
-  }, [activeOutletId, canManage, startPolling, stopPolling]);
+    if (!canManage || typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    void fetchRequests({
+      outletId: activeOutletId,
+      status: "pending_cashier_confirmation",
+      perPage: QUEUE_PAGE_SIZE,
+      page: 1,
+    });
+    const timer = setInterval(() => {
+      void fetchRequests(
+        {
+          outletId: activeOutletId,
+          status: "pending_cashier_confirmation",
+          perPage: QUEUE_PAGE_SIZE,
+          page: 1,
+        },
+        { mode: "background" },
+      );
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [activeOutletId, canManage, fetchRequests]);
 
   useEffect(() => {
     if (!canManage || typeof activeOutletId !== "number" || activeOutletId < 1) return;

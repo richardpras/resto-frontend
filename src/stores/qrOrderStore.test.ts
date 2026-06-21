@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useQrOrderStore } from "./qrOrderStore";
 
 const mockListQrOrdersWithMeta = vi.fn();
+const mockGetQrOrderPendingSummary = vi.fn();
 const mockCreateQrOrder = vi.fn();
 const mockConfirmQrOrder = vi.fn();
 const mockCallQrOrderCashier = vi.fn();
@@ -18,6 +19,7 @@ vi.mock("@/lib/api-integration/qrOrderEndpoints", async () => {
   return {
     ...actual,
     listQrOrdersWithMeta: (...args: unknown[]) => mockListQrOrdersWithMeta(...args),
+    getQrOrderPendingSummary: (...args: unknown[]) => mockGetQrOrderPendingSummary(...args),
     createQrOrder: (...args: unknown[]) => mockCreateQrOrder(...args),
     confirmQrOrder: (...args: unknown[]) => mockConfirmQrOrder(...args),
     callQrOrderCashier: (...args: unknown[]) => mockCallQrOrderCashier(...args),
@@ -57,6 +59,7 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 
 function resetState() {
   useQrOrderStore.getState().stopPolling();
+  useQrOrderStore.getState().stopSummaryPolling();
   useQrOrderStore.setState({
     requests: [],
     isLoading: false,
@@ -70,6 +73,11 @@ function resetState() {
     lastListParams: null,
     pollingMs: 10000,
     pollingTimer: null,
+    pendingSummary: null,
+    pendingSummaryLoadedOnce: false,
+    pendingSummaryRefreshing: false,
+    summaryPollingOutletId: null,
+    summaryPollingVisibilityCleanup: null,
   });
 }
 
@@ -77,6 +85,7 @@ describe("qrOrderStore", () => {
   beforeEach(() => {
     vi.useRealTimers();
     mockListQrOrdersWithMeta.mockReset();
+    mockGetQrOrderPendingSummary.mockReset();
     mockCreateQrOrder.mockReset();
     mockConfirmQrOrder.mockReset();
     mockCallQrOrderCashier.mockReset();
@@ -102,6 +111,40 @@ describe("qrOrderStore", () => {
     expect(mockListQrOrdersWithMeta).toHaveBeenCalled();
     expect(useQrOrderStore.getState().requests).toHaveLength(1);
     useQrOrderStore.getState().stopPolling();
+  });
+
+  it("polls lightweight pending summary for sound alerts", async () => {
+    vi.useFakeTimers();
+    mockGetQrOrderPendingSummary.mockResolvedValue({
+      count: 1,
+      ids: ["10"],
+      entries: [
+        {
+          id: 10,
+          requestCode: "QRR-001",
+          outletId: 2,
+          tableId: 3,
+          tableName: "T03",
+          customerName: "Ana",
+          cashierCallCount: 0,
+          cashierCalledAt: null,
+          createdAt: "2026-05-07T08:00:00.000Z",
+        },
+      ],
+    });
+
+    useQrOrderStore.getState().startSummaryPolling(2, 1000);
+    await vi.runOnlyPendingTimersAsync();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(mockGetQrOrderPendingSummary).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(mockListQrOrdersWithMeta).not.toHaveBeenCalled();
+    expect(useQrOrderStore.getState().pendingSummary?.count).toBe(1);
+    expect(useQrOrderStore.getState().pendingSummary?.ids).toEqual(["10"]);
+    useQrOrderStore.getState().stopSummaryPolling();
   });
 
   it("confirm/reject updates request status correctly", async () => {

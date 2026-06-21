@@ -7,6 +7,7 @@ import {
   type UserNotification,
 } from "@/lib/api-integration/notificationEndpoints";
 import { getApiAccessToken } from "@/lib/api-integration/client";
+import { createVisibilityAwareInterval } from "@/lib/pollingVisibility";
 
 type NotificationStore = {
   unreadCount: number;
@@ -14,6 +15,8 @@ type NotificationStore = {
   loading: boolean;
   error: string | null;
   pollTimer: ReturnType<typeof setInterval> | null;
+  pollingVisibilityCleanup: (() => void) | null;
+  inFlightUnreadCount: Promise<void> | null;
   fetchUnreadCount: (outletId?: number | null) => Promise<void>;
   fetchPreview: (outletId?: number | null) => Promise<void>;
   refresh: (outletId?: number | null) => Promise<void>;
@@ -30,14 +33,31 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   loading: false,
   error: null,
   pollTimer: null,
+  pollingVisibilityCleanup: null,
+  inFlightUnreadCount: null,
 
   fetchUnreadCount: async (outletId) => {
     if (!getApiAccessToken()) return;
+    if (get().inFlightUnreadCount) {
+      return get().inFlightUnreadCount;
+    }
+
+    const job = (async () => {
+      try {
+        const count = await getUserNotificationUnreadCount(outletId);
+        set({ unreadCount: count, error: null });
+      } catch (error) {
+        set({ error: error instanceof Error ? error.message : "Failed to load unread count" });
+      }
+    })();
+
+    set({ inFlightUnreadCount: job });
     try {
-      const count = await getUserNotificationUnreadCount(outletId);
-      set({ unreadCount: count, error: null });
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to load unread count" });
+      await job;
+    } finally {
+      if (get().inFlightUnreadCount === job) {
+        set({ inFlightUnreadCount: null });
+      }
     }
   },
 
@@ -71,21 +91,26 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
   startPolling: (outletId, intervalMs = 30000) => {
     get().stopPolling();
-    void get().refresh(outletId);
-    const timer = setInterval(() => {
+    void get().fetchUnreadCount(outletId);
+    const visibilityInterval = createVisibilityAwareInterval(() => {
       void get().fetchUnreadCount(outletId);
     }, intervalMs);
-    set({ pollTimer: timer });
+    set({ pollTimer: null, pollingVisibilityCleanup: visibilityInterval.clear });
   },
 
   stopPolling: () => {
-    const timer = get().pollTimer;
-    if (timer) clearInterval(timer);
-    set({ pollTimer: null });
+    const state = get();
+    if (state.pollingVisibilityCleanup) {
+      state.pollingVisibilityCleanup();
+    }
+    if (state.pollTimer) {
+      clearInterval(state.pollTimer);
+    }
+    set({ pollTimer: null, pollingVisibilityCleanup: null });
   },
 
   reset: () => {
     get().stopPolling();
-    set({ unreadCount: 0, preview: [], loading: false, error: null });
+    set({ unreadCount: 0, preview: [], loading: false, error: null, inFlightUnreadCount: null });
   },
 }));

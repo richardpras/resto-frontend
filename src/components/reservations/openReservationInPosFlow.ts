@@ -1,5 +1,6 @@
 import type { NavigateFunction } from "react-router-dom";
 import { openReservationInPos } from "@/lib/api-integration/reservationEndpoints";
+import { triggerPosBridgeConsumer } from "@/hooks/pos/consumePosBridge";
 import type {
   ReservationPosDraftSession,
   ReservationPosLoadPayload,
@@ -20,6 +21,10 @@ type InPlaceOptions = {
   apply: ApplyReservationPosPayloadDeps;
 };
 
+function isPosRoute(pathname: string): boolean {
+  return /^\/pos\/?$/.test(pathname);
+}
+
 export async function openReservationInPosFlow(
   reservationId: number,
   options: NavigateOptions | InPlaceOptions,
@@ -32,5 +37,9 @@ export async function openReservationInPosFlow(
   }
 
   options.setFromOpenInPos(result.posSession, result.loadPayload);
+  if (isPosRoute(window.location.pathname)) {
+    triggerPosBridgeConsumer();
+    return;
+  }
   options.navigate("/pos");
 }

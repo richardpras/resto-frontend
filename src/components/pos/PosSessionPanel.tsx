@@ -18,6 +18,7 @@ type Props = {
 
 export function PosSessionPanel({ outletId }: Props) {
   const currentSession = usePosSessionStore((s) => s.currentSession);
+  const bootstrapSyncedOutletId = usePosSessionStore((s) => s.bootstrapSyncedOutletId);
   const fetchCurrent = usePosSessionStore((s) => s.fetchCurrent);
   const openSession = usePosSessionStore((s) => s.open);
   const closeSession = usePosSessionStore((s) => s.close);
@@ -30,8 +31,9 @@ export function PosSessionPanel({ outletId }: Props) {
 
   useEffect(() => {
     if (typeof outletId !== "number" || outletId < 1) return;
+    if (bootstrapSyncedOutletId === outletId) return;
     void fetchCurrent(outletId).catch(() => undefined);
-  }, [outletId, fetchCurrent]);
+  }, [outletId, bootstrapSyncedOutletId, fetchCurrent]);
 
   if (typeof outletId !== "number" || outletId < 1) return null;
 

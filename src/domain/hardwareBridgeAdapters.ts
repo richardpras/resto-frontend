@@ -1,6 +1,7 @@
 import type {
   HardwareBridgeCommandApi,
   HardwareBridgeDeviceApi,
+  HardwareBridgeDeviceSummaryApi,
   HardwareBridgeSessionApi,
 } from "@/lib/api-integration/hardwareBridgeEndpoints";
 
@@ -145,6 +146,69 @@ export function mapHardwareBridgeDeviceApiToModel(row: HardwareBridgeDeviceApi):
     capabilities,
     metadata,
     connectionHint: detectConnectionHint(metadata, capabilities),
+  };
+}
+
+function normalizeConnectionHint(value: string | undefined): HardwareBridgeConnectionHint {
+  if (value === "lan" || value === "bluetooth") return value;
+  return "unknown";
+}
+
+export function mapHardwareBridgeDeviceSummaryApiToModel(row: HardwareBridgeDeviceSummaryApi): HardwareBridgeDevice {
+  const provisioning = row.provisioning ?? {};
+  const watchdog = row.watchdog ?? {};
+  const runtime = row.runtime ?? {};
+  const capabilitiesSummary = row.capabilitiesSummary ?? {};
+  const transportHints = row.transportHints ?? [];
+  const metadata: Record<string, unknown> = {
+    transportHints,
+    runtimeState: row.runtimeState ?? "connected",
+    runtimeVersion: runtime.version ?? "unknown",
+    provisioning: {
+      status: provisioning.status ?? "unpaired",
+      pairedAt: provisioning.pairedAt ?? null,
+      pairedOutletId: provisioning.pairedOutletId ?? null,
+    },
+    auth: {
+      deviceFingerprint: provisioning.deviceFingerprint ?? null,
+      tokenHealth: { status: provisioning.tokenHealth ?? "unknown" },
+      rotation: { rotationDue: provisioning.tokenRotationDue ?? false },
+    },
+    watchdog,
+    deployment: {
+      deploymentMode: runtime.deploymentMode ?? "headless",
+      serviceMode: runtime.serviceMode ?? "unknown",
+      trayMode: runtime.trayMode ?? "unknown",
+    },
+    updates: {
+      channel: runtime.updateChannel ?? "stable",
+      available: runtime.updateAvailable ?? false,
+      targetVersion: runtime.updateTargetVersion ?? null,
+      restartRequired: runtime.updateRestartRequired ?? false,
+    },
+  };
+  const capabilities: Record<string, unknown> = {
+    transports: capabilitiesSummary.transports ?? ["polling"],
+    capabilities: capabilitiesSummary.capabilities ?? [],
+    spool: { supported: capabilitiesSummary.spoolSupported ?? false },
+  };
+  for (const name of capabilitiesSummary.capabilities ?? []) {
+    capabilities[name] = true;
+  }
+
+  return {
+    id: Number(row.id),
+    outletId: Number(row.outletId),
+    deviceKey: String(row.deviceKey),
+    displayLabel: row.displayLabel ?? null,
+    status: String(row.status ?? "offline"),
+    lastSeenAt: asIso(row.lastSeenAt),
+    revokedAt: asIso(row.revokedAt),
+    disabledAt: asIso(row.disabledAt),
+    reconnectCount: Number(row.reconnectCount ?? 0),
+    capabilities,
+    metadata,
+    connectionHint: normalizeConnectionHint(row.connectionHint),
   };
 }
 

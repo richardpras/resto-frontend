@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { ImagePlus, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { useSettingsStore, Outlet } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { getApiAccessToken } from "@/lib/api-integration/client";
+import { deleteOutletLogo, postOutletLogo } from "@/lib/api-integration/settingsDomainEndpoints";
 import { toast } from "sonner";
 
 const empty: Outlet = {
@@ -33,6 +34,7 @@ export default function OutletsSettings() {
   const outletsError = useSettingsStore((s) => s.outletsError);
   const outletsSubmitting = useSettingsStore((s) => s.outletsSubmitting);
   const saveOutlet = useSettingsStore((s) => s.saveOutlet);
+  const upsertOutlet = useSettingsStore((s) => s.upsertOutlet);
   const deleteOutletById = useSettingsStore((s) => s.deleteOutletById);
   const canManageOutletSettings = useAuthStore((s) => s.canManageOutletSettings);
   const canCreateOutlet = canManageOutletSettings();
@@ -42,13 +44,61 @@ export default function OutletsSettings() {
   const showSignInHint = !hasToken && !outletsLoading && outlets.length === 0;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Outlet>(empty);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoRemoving, setLogoRemoving] = useState(false);
+
+  const isEditingExisting = form.id > 0 && outlets.some((outlet) => outlet.id === form.id);
+  const logoBusy = logoUploading || logoRemoving;
+  const displayLogoUrl = logoPreviewUrl ?? form.logoUrl ?? null;
+
+  const handleLogoUpload = useCallback(
+    async (file: File | undefined) => {
+      if (!file || !isEditingExisting || logoBusy || !hasToken) return;
+      const objectUrl = URL.createObjectURL(file);
+      setLogoPreviewUrl(objectUrl);
+      setLogoUploading(true);
+      try {
+        const saved = await postOutletLogo(form.id, file);
+        upsertOutlet(saved);
+        setForm((current) => ({ ...current, ...saved }));
+        toast.success(t("settings.outlets.logoUploaded"));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t("common.saveFailed"));
+      } finally {
+        setLogoUploading(false);
+        URL.revokeObjectURL(objectUrl);
+        setLogoPreviewUrl(null);
+      }
+    },
+    [form.id, hasToken, isEditingExisting, logoBusy, t, upsertOutlet],
+  );
+
+  const handleLogoRemove = useCallback(async () => {
+    if (!isEditingExisting || logoBusy || !hasToken || !form.hasLogo) return;
+    if (!confirm(t("settings.outlets.logoRemoveConfirm"))) return;
+    setLogoRemoving(true);
+    try {
+      const saved = await deleteOutletLogo(form.id);
+      upsertOutlet(saved);
+      setForm((current) => ({ ...current, ...saved }));
+      toast.success(t("settings.outlets.logoRemoved"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.deleteFailed"));
+    } finally {
+      setLogoRemoving(false);
+    }
+  }, [form.hasLogo, form.id, hasToken, isEditingExisting, logoBusy, t, upsertOutlet]);
 
   const openNew = () => {
     setForm({ ...empty });
+    setLogoPreviewUrl(null);
     setOpen(true);
   };
   const openEdit = (outlet: Outlet) => {
     setForm(outlet);
+    setLogoPreviewUrl(null);
     setOpen(true);
   };
 
@@ -203,6 +253,75 @@ export default function OutletsSettings() {
                   </SelectContent>
                 </Select>
               </div>
+              {isEditingExisting ? (
+                <div className="space-y-2" data-testid="outlet-logo-upload">
+                  <Label>{t("settings.outlets.logo")}</Label>
+                  <div
+                    className={`rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 ${logoBusy ? "opacity-60" : ""}`}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void handleLogoUpload(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      {displayLogoUrl ? (
+                        <img
+                          src={displayLogoUrl}
+                          alt={form.name}
+                          className="h-16 w-16 rounded-lg border object-contain bg-background"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-16 items-center justify-center rounded-lg border bg-background text-xs text-muted-foreground">
+                          {t("settings.outlets.noLogo")}
+                        </div>
+                      )}
+                      <div className="flex-1 space-y-2">
+                        <p className="text-xs text-muted-foreground">{t("settings.outlets.logoHint")}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!hasToken || logoBusy}
+                            onClick={() => logoInputRef.current?.click()}
+                          >
+                            {logoUploading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                            ) : (
+                              <ImagePlus className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            {logoUploading ? t("settings.outlets.logoUploading") : t("settings.outlets.uploadLogo")}
+                          </Button>
+                          {form.hasLogo ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={!hasToken || logoBusy}
+                              onClick={() => void handleLogoRemove()}
+                            >
+                              {logoRemoving ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              {t("settings.outlets.removeLogo")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(event) => void handleLogoUpload(event.target.files?.[0])}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={outletsSubmitting}>

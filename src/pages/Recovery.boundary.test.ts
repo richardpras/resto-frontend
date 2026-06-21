@@ -29,8 +29,7 @@ describe("Recovery page store boundary regression", () => {
 
   it("QROrdersList relies on qrOrderStore orchestration", () => {
     const source = readPageSource("QROrdersList.tsx");
-    expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.startPolling\)/);
-    expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.stopPolling\)/);
     expect(source).toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.fetchRequests\)/);
+    expect(source).not.toMatch(/useQrOrderStore\(\(s\)\s*=>\s*s\.startPolling\)/);
   });
 });

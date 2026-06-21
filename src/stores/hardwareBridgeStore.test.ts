@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockListDevices = vi.fn();
+const mockListDeviceSummaries = vi.fn();
 const mockOpenSession = vi.fn();
 const mockEnqueueCommand = vi.fn();
 const mockAdapterConnect = vi.fn();
@@ -17,6 +18,7 @@ const mockCapabilities = vi.fn(() => ({
 
 vi.mock("@/lib/api-integration/hardwareBridgeEndpoints", () => ({
   listHardwareBridgeDevices: (...args: unknown[]) => mockListDevices(...args),
+  listHardwareBridgeDeviceSummaries: (...args: unknown[]) => mockListDeviceSummaries(...args),
   openHardwareBridgeSession: (...args: unknown[]) => mockOpenSession(...args),
   enqueueHardwareBridgeCommand: (...args: unknown[]) => mockEnqueueCommand(...args),
 }));
@@ -49,6 +51,8 @@ describe("hardwareBridgeStore orchestration lifecycle", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockListDevices.mockReset();
+    mockListDeviceSummaries.mockReset();
+    mockListDeviceSummaries.mockResolvedValue([]);
     mockOpenSession.mockReset();
     mockEnqueueCommand.mockReset();
     mockAdapterConnect.mockReset();
@@ -76,10 +80,72 @@ describe("hardwareBridgeStore orchestration lifecycle", () => {
     await useHardwareBridgeStore.getState().startMonitoring(7, 1000);
     expect(mockAdapterConnect).not.toHaveBeenCalled();
     expect(mockListDevices).not.toHaveBeenCalled();
+    expect(mockListDeviceSummaries).not.toHaveBeenCalled();
+  });
+
+  it("dedupes overlapping background snapshot fetches", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    mockListDeviceSummaries.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockListDeviceSummaries.mockResolvedValue([]);
+
+    const first = useHardwareBridgeStore.getState().fetchSnapshot(7, "background");
+    const second = useHardwareBridgeStore.getState().fetchSnapshot(7, "background");
+
+    expect(mockListDeviceSummaries).toHaveBeenCalledTimes(1);
+
+    resolveFirst([]);
+    await first;
+    await second;
+  });
+
+  it("dedupes overlapping initial snapshot fetches", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    mockListDeviceSummaries.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockListDeviceSummaries.mockResolvedValue([]);
+
+    const first = useHardwareBridgeStore.getState().fetchSnapshot(7, "initial");
+    const second = useHardwareBridgeStore.getState().fetchSnapshot(7, "initial");
+
+    expect(mockListDeviceSummaries).toHaveBeenCalledTimes(1);
+
+    resolveFirst([]);
+    await first;
+    await second;
+  });
+
+  it("startMonitoring is idempotent for the same outlet and interval", async () => {
+    mockListDeviceSummaries.mockResolvedValue([]);
+
+    await useHardwareBridgeStore.getState().startMonitoring(3, 5000);
+    await useHardwareBridgeStore.getState().startMonitoring(3, 5000);
+
+    expect(mockListDeviceSummaries).toHaveBeenCalledTimes(1);
+    expect(useHardwareBridgeStore.getState().pollingActive).toBe(true);
+  });
+
+  it("uses full device list once for diagnostics then summary polling", async () => {
+    mockListDevices.mockResolvedValue([]);
+    mockListDeviceSummaries.mockResolvedValue([]);
+
+    await useHardwareBridgeStore.getState().startMonitoring(3, 5000, { diagnostics: true });
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(mockListDevices).toHaveBeenCalledTimes(1);
+    expect(mockListDeviceSummaries).toHaveBeenCalledTimes(1);
   });
 
   it("keeps polling fallback active when websocket is unavailable", async () => {
-    mockListDevices.mockResolvedValue([
+    mockListDeviceSummaries.mockResolvedValue([
       {
         id: 1,
         outletId: 7,
@@ -87,11 +153,13 @@ describe("hardwareBridgeStore orchestration lifecycle", () => {
         displayLabel: "Bridge Main",
         status: "active",
         lastSeenAt: new Date().toISOString(),
-        revokedAt: null,
-        disabledAt: null,
         reconnectCount: 0,
-        capabilities: { printer: true },
-        metadata: { transportHints: ["lan"] },
+        connectionHint: "lan",
+        transportHints: ["lan"],
+        provisioning: { status: "paired" },
+        watchdog: { state: "healthy" },
+        runtime: { version: "16.3.0" },
+        capabilitiesSummary: { transports: ["polling"], capabilities: ["printer"], spoolSupported: false },
       },
     ]);
 
@@ -104,7 +172,7 @@ describe("hardwareBridgeStore orchestration lifecycle", () => {
     expect(state.bridgeStatus).toBe("online");
     expect(state.heartbeatState).toBe("healthy");
     expect(mockAdapterConnect).toHaveBeenCalledTimes(1);
-    expect(mockListDevices).toHaveBeenCalledTimes(2);
+    expect(mockListDeviceSummaries).toHaveBeenCalledTimes(2);
   });
 
   it("applies realtime updates and ignores stale sequence payloads", async () => {

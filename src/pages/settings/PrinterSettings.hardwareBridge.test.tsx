@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PrinterSettings from "./PrinterSettings";
 import type { RealtimeConnectionState } from "@/domain/realtimeAdapter";
@@ -243,9 +243,16 @@ describe("PrinterSettings hardware bridge boundary", () => {
   it("renders bridge and device statuses from store data without direct API calls", async () => {
     render(<PrinterSettings />);
 
+    expect(fetchQueueStatusMock).toHaveBeenCalledTimes(1);
+    expect(startBridgeMonitoringMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bridge-outlet-setup-guide")).toBeTruthy();
+    expect(screen.getByText(/After a PC restart, wait ~30 seconds/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Advanced diagnostics/i }));
+
     expect(screen.getByText("Hardware Bridge Foundation")).toBeTruthy();
-    expect(screen.getByText(/Bridge status/i)).toBeTruthy();
-    expect(screen.getByText(/online/i)).toBeTruthy();
+    expect(screen.getByText(/^Bridge status:/i)).toBeTruthy();
+    expect(screen.getAllByText(/^online$/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/^Heartbeat:/i)).toBeTruthy();
     expect(screen.getAllByText(/healthy/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Runtime state:/i)).toBeTruthy();
@@ -271,8 +278,7 @@ describe("PrinterSettings hardware bridge boundary", () => {
     expect(screen.getByText(/Bluetooth/i)).toBeTruthy();
 
     await waitFor(() => {
-      expect(fetchQueueStatusMock).toHaveBeenCalledTimes(1);
-      expect(startBridgeMonitoringMock).toHaveBeenCalledWith(1, 5000);
+      expect(startBridgeMonitoringMock).toHaveBeenCalledWith(1, 5000, { diagnostics: true });
     });
   });
 
@@ -281,6 +287,7 @@ describe("PrinterSettings hardware bridge boundary", () => {
     bridgeStoreState.runtimeState = "reconnecting";
 
     render(<PrinterSettings />);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced diagnostics/i }));
     expect(screen.getByText(/Realtime reconnect in progress/i)).toBeTruthy();
     expect(screen.getByText(/polling fallback is still active/i)).toBeTruthy();
   });

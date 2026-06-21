@@ -1,3 +1,9 @@
+import { useSettingsStore } from "@/stores/settingsStore";
+import { toast } from "sonner";
+import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
+import { patchOutletReceiptSetting } from "@/lib/api-integration/settingsDomainEndpoints";
+import { ReceiptThermalPreview } from "@/components/receipts/ReceiptThermalPreview";
+import { resolveReceiptPreviewWidthCh } from "@/domain/receiptPreviewUtils";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -5,15 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { useSettingsStore } from "@/stores/settingsStore";
-import { toast } from "sonner";
-import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
-import { patchOutletReceiptSetting } from "@/lib/api-integration/settingsDomainEndpoints";
 
 export default function ReceiptSettings() {
   const { t } = useTranslation("common");
   const outletReceiptRows = useSettingsStore((s) => s.outletReceiptRows);
   const patchOutletReceiptLocal = useSettingsStore((s) => s.patchOutletReceiptLocal);
+  const printers = useSettingsStore((s) => s.printers);
 
   const saveOne = async (row: (typeof outletReceiptRows)[number]) => {
     if (!getApiAccessToken()) {
@@ -72,22 +75,15 @@ export default function ReceiptSettings() {
               <Button type="button" onClick={() => void saveOne(o)}>{t("common.saveShort")}</Button>
             </div>
 
-            <div className="bg-muted/30 rounded-2xl p-6 font-mono text-xs space-y-2 border-2 border-dashed">
-              <div className="text-center">
-                {o.showLogo && <div className="h-10 w-10 mx-auto mb-2 rounded bg-primary/20 flex items-center justify-center text-primary font-bold">LOGO</div>}
-                <p className="font-bold">{o.outletName}</p>
-                <p className="mt-2">{o.receiptHeader}</p>
-              </div>
-              <div className="border-t border-dashed my-2" />
-              <div className="flex justify-between"><span>Item A x1</span><span>15,000</span></div>
-              <div className="flex justify-between"><span>Item B x2</span><span>30,000</span></div>
-              <div className="border-t border-dashed my-2" />
-              <div className="flex justify-between"><span>Subtotal</span><span>45,000</span></div>
-              {o.showTaxBreakdown && <div className="flex justify-between text-muted-foreground"><span>Tax 10%</span><span>4,500</span></div>}
-              <div className="flex justify-between font-bold"><span>Total</span><span>49,500</span></div>
-              <div className="border-t border-dashed my-2" />
-              <p className="text-center whitespace-pre-line">{o.receiptFooter}</p>
-            </div>
+            <ReceiptThermalPreview
+              outletName={o.outletName}
+              header={o.receiptHeader}
+              footer={o.receiptFooter}
+              showLogo={o.showLogo}
+              logoUrl={o.logoUrl}
+              showTaxBreakdown={o.showTaxBreakdown}
+              widthCh={resolveReceiptPreviewWidthCh(o.outletId, printers)}
+            />
           </CardContent>
         </Card>
       ))}

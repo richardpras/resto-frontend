@@ -6,8 +6,12 @@ type MessageEnvelope<T> = { data: T; message?: string };
 
 export type PrinterQueueStatusResponse = {
   outletId: number;
+  dispatchMode?: "queue_worker" | "sync_dispatch" | "scheduled_dispatch";
   pending: number;
   failed: number;
+  retried?: number;
+  recoverable?: number;
+  deadLetter?: number;
   awaitingAck: number;
   doneToday: number;
   bridgeConnected: boolean;

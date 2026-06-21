@@ -1,19 +1,19 @@
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Trash2, ChefHat, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createMenuItem, listIngredients, listMenuItems, listOutlets, updateMenuItem, uploadMenuItemImage, deleteMenuItemImage, type InventoryItemApi, type MenuItemApi } from "@/lib/api";
+import { createMenuItem, listIngredients, listMenuItems, listMenuCategories, listOutlets, updateMenuItem, uploadMenuItemImage, deleteMenuItemImage, type InventoryItemApi, type MenuCategoryApi, type MenuItemApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { MenuProductionStationField } from "@/components/menu/MenuProductionStationField";
 import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import { MenuImageUploadField } from "@/components/menu/MenuImageUploadField";
 import { dialogSize } from "@/lib/ui/dialogSizes";
 import { MenuManagementTableSkeleton } from "@/components/skeletons/menu/MenuManagementTableSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import type { Outlet } from "@/domain/settingsDomainTypes";
+import { mapAssignedOutletsToSettingsOutlets } from "@/domain/outletAdapters";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
@@ -30,10 +30,9 @@ type EditingRecipe = {
 
 type EditMenuForm = {
   name: string;
-  category: string;
+  menuCategoryId: number | null;
   price: string;
   emoji: string;
-  productionStationId: number | null;
   menuItemOutlets: MenuItemOutletForm[];
 };
 
@@ -46,27 +45,12 @@ function filterMenuItemsByActiveOutlet(all: MenuItemApi[], outletId: number | nu
   );
 }
 
-function mapAssignedOutletsToRows(
-  rows: { id: number; name: string; code?: string | null }[] | undefined,
-): OutletRow[] {
-  if (!rows?.length) return [];
-  return rows.map((o) => ({
-    id: o.id,
-    code: o.code ?? "",
-    name: o.name,
-    address: "",
-    phone: "",
-    manager: "",
-    status: "active" as const,
-  }));
-}
-
 async function resolveOutletsForMenuEditor(): Promise<OutletRow[]> {
   const fromSettings = useSettingsStore.getState().outlets;
   if (fromSettings.length > 0) return fromSettings;
 
   const assigned = useAuthStore.getState().user?.assignedOutlets;
-  const fromMe = mapAssignedOutletsToRows(assigned);
+  const fromMe = mapAssignedOutletsToSettingsOutlets(assigned);
   if (fromMe.length > 0) return fromMe;
 
   try {
@@ -92,20 +76,29 @@ export default function MenuManagement() {
   const [items, setItems] = useState<MenuItemApi[]>([]);
   const [allOutletItems, setAllOutletItems] = useState<MenuItemApi[]>([]);
   const [ingredients, setIngredients] = useState<InventoryItemApi[]>([]);
+  const [menuCategories, setMenuCategories] = useState<MenuCategoryApi[]>([]);
   const [outlets, setOutlets] = useState<OutletRow[]>([]);
   const [editingRecipe, setEditingRecipe] = useState<EditingRecipe | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItemApi | null>(null);
   const [creatingItem, setCreatingItem] = useState(false);
-  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: [] });
+  const [editForm, setEditForm] = useState<EditMenuForm>({ name: "", menuCategoryId: null, price: "", emoji: "", menuItemOutlets: [] });
   const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingEdit, setSavingEdit] = useState(false);
-  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: [] });
+  const [createForm, setCreateForm] = useState<EditMenuForm>({ name: "", menuCategoryId: null, price: "", emoji: "", menuItemOutlets: [] });
   const [createErrors, setCreateErrors] = useState<Partial<Record<keyof EditMenuForm, string>>>({});
   const [savingCreate, setSavingCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const latestRequestIdRef = useRef(0);
 
   const [blockOnInsufficient, setBlockOnInsufficient] = useState(false);
+  const defaultCategoryId = useCallback((): number | null => {
+    const uncategorized = menuCategories.find(
+      (category) =>
+        category.code.toLowerCase() === "uncategorized" ||
+        category.name.trim().toLowerCase() === "uncategorized",
+    );
+    return uncategorized?.id ?? menuCategories[0]?.id ?? null;
+  }, [menuCategories]);
 
   const toOutletForms = (allOutlets: OutletRow[], itemOutlets?: MenuItemApi["menuItemOutlets"]): MenuItemOutletForm[] => {
     const mapping = new Map((itemOutlets ?? []).map((row) => [row.outletId, row]));
@@ -131,10 +124,11 @@ export default function MenuManagement() {
         tenantId: TENANT_ID,
         ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
       };
-      const [menuItemsAllOutlets, ingredientsData, outletsData] = await Promise.all([
+      const [menuItemsAllOutlets, ingredientsData, outletsData, categoryRows] = await Promise.all([
         listMenuItems({ tenantId: TENANT_ID, perPage: 500 }),
         listIngredients(ingredientParams),
         resolveOutletsForMenuEditor(),
+        listMenuCategories({ tenantId: TENANT_ID, activeOnly: true }),
       ]);
       if (requestId !== latestRequestIdRef.current) {
         return;
@@ -147,6 +141,7 @@ export default function MenuManagement() {
       setAllOutletItems(menuItemsAllOutlets);
       setIngredients(ingredientsData);
       setOutlets(outletsData);
+      setMenuCategories(categoryRows);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("menu.loadFailed"));
     } finally {
@@ -236,17 +231,16 @@ export default function MenuManagement() {
     setEditingItem(item);
     setEditForm({
       name: sourceItem.name,
-      category: sourceItem.category ?? "",
+      menuCategoryId: sourceItem.menuCategoryId ?? defaultCategoryId(),
       price: String(sourceItem.price),
       emoji: sourceItem.emoji ?? "",
-      productionStationId: sourceItem.productionStation?.id ?? null,
       menuItemOutlets: toOutletForms(outlets, sourceItem.menuItemOutlets),
     });
     setEditErrors({});
   };
 
   const openCreateModal = () => {
-    setCreateForm({ name: "", category: "", price: "", emoji: "", productionStationId: null, menuItemOutlets: toOutletForms(outlets) });
+    setCreateForm({ name: "", menuCategoryId: defaultCategoryId(), price: "", emoji: "", menuItemOutlets: toOutletForms(outlets) });
     setCreateErrors({});
     setCreatingItem(true);
   };
@@ -254,7 +248,7 @@ export default function MenuManagement() {
   const validateEditForm = () => {
     const errors: Partial<Record<keyof EditMenuForm, string>> = {};
     if (!editForm.name.trim()) errors.name = t("shared.nameRequired");
-    if (!editForm.category.trim()) errors.category = t("menu.categoryRequired");
+    if (!editForm.menuCategoryId || editForm.menuCategoryId < 1) errors.menuCategoryId = t("menu.categoryRequired");
     if (editForm.price.trim() === "") {
       errors.price = t("menu.priceRequired");
     } else if (isNaN(Number(editForm.price)) || Number(editForm.price) < 0) {
@@ -274,7 +268,7 @@ export default function MenuManagement() {
   const validateCreateForm = () => {
     const errors: Partial<Record<keyof EditMenuForm, string>> = {};
     if (!createForm.name.trim()) errors.name = t("shared.nameRequired");
-    if (!createForm.category.trim()) errors.category = t("menu.categoryRequired");
+    if (!createForm.menuCategoryId || createForm.menuCategoryId < 1) errors.menuCategoryId = t("menu.categoryRequired");
     if (createForm.price.trim() === "") {
       errors.price = t("menu.priceRequired");
     } else if (isNaN(Number(createForm.price)) || Number(createForm.price) < 0) {
@@ -332,10 +326,9 @@ export default function MenuManagement() {
       setSavingEdit(true);
       const updated = await updateMenuItem(editingItem.id, {
         name: editForm.name.trim(),
-        category: editForm.category.trim(),
+        menuCategoryId: editForm.menuCategoryId ?? undefined,
         price: Number(editForm.price),
         emoji: editForm.emoji.trim(),
-        productionStationId: editForm.productionStationId,
         menuItemOutlets: editForm.menuItemOutlets.map((row) => ({
           outletId: row.outletId,
           isActive: row.isActive,
@@ -365,11 +358,10 @@ export default function MenuManagement() {
         tenantId: TENANT_ID,
         outletId: typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : undefined,
         name: createForm.name.trim(),
-        category: createForm.category.trim(),
+        menuCategoryId: createForm.menuCategoryId ?? undefined,
         price: Number(createForm.price),
         emoji: createForm.emoji.trim(),
         available: true,
-        productionStationId: createForm.productionStationId ?? undefined,
         recipes: [],
         menuItemOutlets: createForm.menuItemOutlets.map((row) => ({
           outletId: row.outletId,
@@ -660,22 +652,27 @@ export default function MenuManagement() {
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">{t("menu.category")}</label>
-                  <input
-                    value={editForm.category}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
+                  <select
+                    value={editForm.menuCategoryId ?? ""}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        menuCategoryId: e.target.value === "" ? null : Number(e.target.value),
+                      }))
+                    }
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                      editErrors.category ? "border-destructive" : "border-border"
+                      editErrors.menuCategoryId ? "border-destructive" : "border-border"
                     }`}
-                    placeholder={t("menu.categoryPlaceholder")}
-                  />
-                  {editErrors.category && <p className="text-xs text-destructive">{editErrors.category}</p>}
+                  >
+                    <option value="">{t("menu.selectCategory")}</option>
+                    {menuCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.displayName ?? category.name}
+                      </option>
+                    ))}
+                  </select>
+                  {editErrors.menuCategoryId && <p className="text-xs text-destructive">{editErrors.menuCategoryId}</p>}
                 </div>
-
-                <MenuProductionStationField
-                  outletId={typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null}
-                  value={editForm.productionStationId}
-                  onChange={(productionStationId) => setEditForm((prev) => ({ ...prev, productionStationId }))}
-                />
 
                 {editingItem ? (
                   <MenuImageUploadField
@@ -854,22 +851,27 @@ export default function MenuManagement() {
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">{t("menu.category")}</label>
-                  <input
-                    value={createForm.category}
-                    onChange={(e) => setCreateForm((prev) => ({ ...prev, category: e.target.value }))}
+                  <select
+                    value={createForm.menuCategoryId ?? ""}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        menuCategoryId: e.target.value === "" ? null : Number(e.target.value),
+                      }))
+                    }
                     className={`w-full px-3 py-2 rounded-lg bg-background border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                      createErrors.category ? "border-destructive" : "border-border"
+                      createErrors.menuCategoryId ? "border-destructive" : "border-border"
                     }`}
-                    placeholder={t("menu.categoryPlaceholder")}
-                  />
-                  {createErrors.category && <p className="text-xs text-destructive">{createErrors.category}</p>}
+                  >
+                    <option value="">{t("menu.selectCategory")}</option>
+                    {menuCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.displayName ?? category.name}
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.menuCategoryId && <p className="text-xs text-destructive">{createErrors.menuCategoryId}</p>}
                 </div>
-
-                <MenuProductionStationField
-                  outletId={typeof activeOutletId === "number" && activeOutletId >= 1 ? activeOutletId : null}
-                  value={createForm.productionStationId}
-                  onChange={(productionStationId) => setCreateForm((prev) => ({ ...prev, productionStationId }))}
-                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

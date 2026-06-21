@@ -317,6 +317,7 @@
     "outletSettings": "Outlet Settings",
     "namePlaceholder": "e.g. Nasi Goreng Special",
     "categoryPlaceholder": "e.g. Main Course",
+    "selectCategory": "Select category",
     "posNameOverride": "POS name override",
     "priceOverride": "Price override",
     "receiptName": "Receipt name",
@@ -530,7 +531,7 @@
     "timeHr": "{{n}} hr ago",
     "selectOutlet": "Select an outlet in the header with a configured numeric id to list QR requests for that outlet.",
     "noTable": "No table",
-    "menuItemTag": "Menu #{{id}} ×{{qty}}",
+    "menuItemTag": "{{name}} ×{{qty}}",
     "showingPending": "Showing {{shown}} of {{total}} pending",
     "showingInPos": "Showing {{shown}} of {{total}} in POS",
     "previewModal": {
@@ -826,6 +827,17 @@
     "promotionRemoved": "Promotion removed.",
     "promotionVoucherConflict": "Remove the member voucher before applying a promotion.",
     "promotionPreview": "Estimated promotion: {{amount}}",
+    "printStatus": {
+      "online": "Printer online",
+      "offline": "Print bridge is not online — wait after turning on the PC or contact your supervisor",
+      "pending": "Print queue pending",
+      "failed": "Print queue failed",
+      "pendingCount": "Pending {{count}}",
+      "failedCount": "Failed {{count}}",
+      "pendingSlowHint": "Printing is taking longer than usual. Tap refresh.",
+      "retryFailed": "Retry failed",
+      "reprintLast": "Reprint last"
+    },
     "discountModal": {
       "title": "Discount codes",
       "description": "Enter a promo, member voucher, or gift card code for this order.",

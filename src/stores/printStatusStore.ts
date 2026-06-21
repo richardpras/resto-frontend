@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { isHardwareBridgeDeviceOnline } from "@/domain/hardwareBridgeStatus";
+import { selectUserCapabilities } from "@/domain/accessControl";
+import { listHardwareBridgeDeviceSummaries } from "@/lib/api-integration/hardwareBridgeEndpoints";
 import { listPrinterQueueStatus, retryPrinterQueueJob } from "@/lib/api-integration/printerManagementEndpoints";
 import { postReceiptReprint } from "@/lib/api-integration/receiptDocumentEndpoints";
 import { listReceiptRenderHistory } from "@/lib/api-integration/receiptDocumentEndpoints";
@@ -33,6 +36,18 @@ function deriveHealth(data: {
   return "online";
 }
 
+async function resolveBridgeConnectedFromHardware(outletId: number): Promise<boolean> {
+  if (!selectUserCapabilities().hardwareBridge) return false;
+  try {
+    const devices = await listHardwareBridgeDeviceSummaries(outletId);
+    return devices.some(
+      (device) => !device.revokedAt && isHardwareBridgeDeviceOnline(device.lastSeenAt ?? null),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const usePrintStatusStore = create<PrintStatusStore>((set, get) => ({
   outletId: null,
   health: "offline",
@@ -48,6 +63,10 @@ export const usePrintStatusStore = create<PrintStatusStore>((set, get) => ({
     set({ isLoading: true, error: null, outletId });
     try {
       const status = await listPrinterQueueStatus(outletId);
+      let bridgeConnected = status.bridgeConnected;
+      if (!bridgeConnected) {
+        bridgeConnected = await resolveBridgeConnectedFromHardware(outletId);
+      }
       let lastReceiptHistoryId = get().lastReceiptHistoryId;
       try {
         const history = await listReceiptRenderHistory(outletId, { sourceType: "order" });
@@ -59,14 +78,17 @@ export const usePrintStatusStore = create<PrintStatusStore>((set, get) => ({
         pending: status.pending,
         failed: status.failed,
         awaitingAck: status.awaitingAck,
-        bridgeConnected: status.bridgeConnected,
+        bridgeConnected,
         lastReceiptHistoryId,
-        health: deriveHealth(status),
+        health: deriveHealth({ ...status, bridgeConnected }),
+        error: null,
       });
     } catch (e) {
+      const bridgeConnected = await resolveBridgeConnectedFromHardware(outletId);
       set({
         error: e instanceof Error ? e.message : "Failed to load print status",
-        health: "offline",
+        bridgeConnected,
+        health: bridgeConnected ? "online" : "offline",
       });
     } finally {
       set({ isLoading: false });

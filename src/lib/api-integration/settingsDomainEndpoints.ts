@@ -11,7 +11,7 @@ import type {
   Tax,
 } from "@/domain/settingsDomainTypes";
 import { mapOutletDtoToViewModel, parseOutletListPayload } from "@/domain/outletAdapters";
-import { apiRequest as request } from "./client";
+import { apiRequest as request, API_BASE_URL, ApiHttpError, getApiAccessToken } from "./client";
 
 type Envelope<T> = { data: T };
 type MessageEnvelope<T> = { message: string; data: T };
@@ -104,6 +104,40 @@ export async function deleteOutletApi(outletId: number): Promise<void> {
   });
 }
 
+/** POST /outlets/:id/logo */
+export async function postOutletLogo(outletId: number, file: File): Promise<Outlet> {
+  const form = new FormData();
+  form.append("image", file, file.name);
+
+  const token = getApiAccessToken();
+  const response = await fetch(`${API_BASE_URL}/outlets/${encodeURIComponent(String(outletId))}/logo`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof body === "object" && body !== null && "message" in body && typeof body.message === "string"
+        ? body.message
+        : `Request failed (${response.status})`;
+    throw new ApiHttpError(response.status, message, body);
+  }
+  return mapOutletDtoToViewModel((body as MessageEnvelope<Record<string, unknown>>).data);
+}
+
+/** DELETE /outlets/:id/logo */
+export async function deleteOutletLogo(outletId: number): Promise<Outlet> {
+  const res = await request<MessageEnvelope<Record<string, unknown>>>(
+    `/outlets/${encodeURIComponent(String(outletId))}/logo`,
+    { method: "DELETE" },
+  );
+  return mapOutletDtoToViewModel(res.data);
+}
+
 /** GET /taxes */
 export async function listTaxes(): Promise<Tax[]> {
   const res = await request<Envelope<Tax[]>>("/taxes");
@@ -154,6 +188,23 @@ export async function patchPrinter(printerId: string, body: Printer): Promise<Pr
 
 export async function deletePrinterApi(printerId: string): Promise<void> {
   await request(`/printers/${encodeURIComponent(printerId)}`, { method: "DELETE" });
+}
+
+export type PrinterTestPrintResult = {
+  printJobId: number;
+  status: string;
+  recoveryState: string;
+  hardwareCommandLogId: number | null;
+  printerProfileId: number;
+  outletId: number;
+};
+
+export async function testPrinter(printerId: string): Promise<PrinterTestPrintResult> {
+  const res = await request<MessageEnvelope<PrinterTestPrintResult>>(
+    `/printers/${encodeURIComponent(printerId)}/test`,
+    { method: "POST" },
+  );
+  return res.data;
 }
 
 /** GET /payment-methods */

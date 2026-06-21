@@ -21,6 +21,9 @@ export interface Outlet {
   manager: string;
   status: "active" | "inactive";
   logo?: string;
+  logoUrl?: string;
+  hasLogo?: boolean;
+  logoVersion?: number;
   invoicePrefix?: string;
   orderPrefix?: string;
 }
@@ -38,11 +41,18 @@ export interface Tax {
 
 export interface Printer {
   id: string;
+  printerProfileId?: number | null;
   name: string;
-  printerType: "kitchen" | "cashier";
-  connection: "bluetooth" | "lan";
+  printerType: "kitchen" | "cashier" | "bar" | "dessert";
+  connection: "bluetooth" | "lan" | "usb" | "shared";
+  thermalPaperWidth?: "58mm" | "80mm";
   ip?: string;
+  port?: number;
   bluetoothDevice?: string;
+  bluetoothAddress?: string;
+  devicePath?: string;
+  sharePath?: string;
+  sharePrinterName?: string;
   outletId: number;
   assignedCategories?: string[];
 }
@@ -99,4 +109,7 @@ export interface OutletReceiptSettingRow {
   receiptFooter: string;
   showLogo: boolean;
   showTaxBreakdown: boolean;
+  logoUrl?: string;
+  hasLogo?: boolean;
+  logoVersion?: number;
 }

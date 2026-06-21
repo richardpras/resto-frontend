@@ -23,7 +23,13 @@ export function PrinterStationRoutePanel({ outletId }: Props) {
   const [draftProfileByStation, setDraftProfileByStation] = useState<Record<number, string>>({});
 
   const kitchenPrinters = useMemo(
-    () => printers.filter((printer) => printer.outletId === outletId && printer.printerType === "kitchen"),
+    () =>
+      printers
+        .filter((printer) => printer.outletId === outletId && printer.printerType === "kitchen" && typeof printer.printerProfileId === "number")
+        .map((printer) => ({
+          ...printer,
+          printerProfileId: Number(printer.printerProfileId),
+        })),
     [printers, outletId],
   );
 
@@ -81,7 +87,7 @@ export function PrinterStationRoutePanel({ outletId }: Props) {
   const assignStation = async (station: ProductionStationApi) => {
     const profileId = Number(draftProfileByStation[station.id] ?? stationRouteById.get(station.id)?.printerProfileId);
     if (!profileId || Number.isNaN(profileId)) {
-      toast.error("Select a printer profile");
+      toast.error("Select a printer");
       return;
     }
     try {
@@ -110,7 +116,7 @@ export function PrinterStationRoutePanel({ outletId }: Props) {
       <div>
         <h3 className="font-medium">Production station routing</h3>
         <p className="text-xs text-muted-foreground">
-          Map each production station to a kitchen printer profile. Category routing below is used only when a menu item has no production station.
+          Map each production station to a kitchen printer. Category routing below is used only when a menu item has no production station.
         </p>
       </div>
 
@@ -123,7 +129,7 @@ export function PrinterStationRoutePanel({ outletId }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>Station</TableHead>
-              <TableHead>Printer profile</TableHead>
+              <TableHead>Printer</TableHead>
               <TableHead className="w-28" />
             </TableRow>
           </TableHeader>
@@ -149,7 +155,7 @@ export function PrinterStationRoutePanel({ outletId }: Props) {
                     >
                       <option value="">Select printer</option>
                       {kitchenPrinters.map((printer) => (
-                        <option key={printer.id} value={printer.id}>
+                        <option key={printer.id} value={String(printer.printerProfileId)}>
                           {printer.name}
                         </option>
                       ))}

@@ -22,6 +22,7 @@ const MenuCostDashboard = lazy(() => import("./pages/menu/costing/MenuCostDashbo
 const MenuCostList = lazy(() => import("./pages/menu/costing/MenuCostList"));
 const MenuCostDetail = lazy(() => import("./pages/menu/costing/MenuCostDetail"));
 const RecipeCostComparison = lazy(() => import("./pages/menu/costing/RecipeCostComparison"));
+const MenuCategoriesPage = lazy(() => import("./pages/menu/MenuCategoriesPage"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const QROrder = lazy(() => import("./pages/QROrder"));
 const QrOrderDetail = lazy(() => import("./pages/QrOrderDetail"));
@@ -217,6 +218,7 @@ const App = () => (
               element={guarded(PERMISSIONS.POS, <ReservationDashboard />)}
             />
             <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
+            <Route path="/menu/categories" element={guarded(PERMISSIONS.MENU, <MenuCategoriesPage />)} />
             <Route path="/menu/costing" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDashboard />)} />
             <Route path="/menu/costing/items" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostList />)} />
             <Route path="/menu/costing/items/:id" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDetail />)} />

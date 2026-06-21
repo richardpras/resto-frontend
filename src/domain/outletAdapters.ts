@@ -11,6 +11,9 @@ export type OutletApiDto = {
   manager?: NullableString;
   status?: "active" | "inactive" | string | null;
   logo?: NullableString;
+  logoUrl?: NullableString;
+  hasLogo?: boolean | null;
+  logoVersion?: number | null;
   invoicePrefix?: NullableString;
   orderPrefix?: NullableString;
   invoice_prefix?: NullableString;
@@ -39,6 +42,9 @@ export function mapOutletDtoToViewModel(dto: OutletApiDto): Outlet {
     manager: toStringOrEmpty(dto.manager),
     status: toOutletStatus(dto.status),
     logo: toOptionalString(dto.logo),
+    logoUrl: toOptionalString(dto.logoUrl),
+    hasLogo: dto.hasLogo === true,
+    logoVersion: typeof dto.logoVersion === "number" ? dto.logoVersion : undefined,
     invoicePrefix: toOptionalString(dto.invoicePrefix ?? dto.invoice_prefix),
     orderPrefix: toOptionalString(dto.orderPrefix ?? dto.order_prefix),
   };
@@ -60,4 +66,24 @@ function getOutletDtoArray(payload: unknown): OutletApiDto[] {
 
 export function parseOutletListPayload(payload: unknown): Outlet[] {
   return getOutletDtoArray(payload).map(mapOutletDtoToViewModel);
+}
+
+export type AssignedOutletRef = {
+  id: number;
+  name: string;
+  code?: string | null;
+};
+
+/** Minimal outlet rows from auth `/me` — enough for selectors (printer settings, pairing, etc.). */
+export function mapAssignedOutletsToSettingsOutlets(rows: AssignedOutletRef[] | undefined): Outlet[] {
+  if (!rows?.length) return [];
+  return rows.map((o) => ({
+    id: o.id,
+    code: o.code ?? "",
+    name: o.name,
+    address: "",
+    phone: "",
+    manager: "",
+    status: "active" as const,
+  }));
 }

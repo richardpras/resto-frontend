@@ -1,0 +1,1 @@
+export const GLOBAL_QR_PENDING_POLL_MS = 10_000;

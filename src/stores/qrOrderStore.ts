@@ -5,6 +5,7 @@ import {
   getApiAccessToken,
   type RequestObservabilityMetadata,
 } from "@/lib/api-integration/client";
+import { createVisibilityAwareInterval } from "@/lib/pollingVisibility";
 import {
   listFloorTables,
   resolveLegacyTableQr,
@@ -16,12 +17,14 @@ import {
   callQrOrderCashier as apiCallQrOrderCashier,
   confirmQrOrder as apiConfirmQrOrder,
   createQrOrder as apiCreateQrOrder,
+  getQrOrderPendingSummary as apiGetQrOrderPendingSummary,
   listQrOrdersWithMeta as apiListQrOrdersWithMeta,
   rejectQrOrder as apiRejectQrOrder,
   type ConfirmQrOrderPayload,
   type CreateQrOrderPayload,
   type ListQrOrdersMeta,
   type ListQrOrdersParams,
+  type QrOrderPendingSummaryApi,
   type QrOrderRequestApi,
   type QrOrderRequestStatus,
 } from "@/lib/api-integration/qrOrderEndpoints";
@@ -59,10 +62,29 @@ export type QrOrderRequest = {
   items: {
     id: string;
     menuItemId: number;
+    name: string;
     qty: number;
     notes: string;
   }[];
   createdAt: Date;
+};
+
+export type QrOrderPendingSummaryEntry = {
+  id: string;
+  requestCode: string;
+  outletId: number;
+  tableId: number;
+  tableName: string;
+  customerName: string;
+  cashierCallCount: number;
+  cashierCalledAt: Date | null;
+  createdAt: Date;
+};
+
+export type QrOrderPendingSummary = {
+  count: number;
+  ids: string[];
+  entries: QrOrderPendingSummaryEntry[];
 };
 
 export function qrOrderApiToStore(model: QrOrderRequestApi): QrOrderRequest {
@@ -88,10 +110,29 @@ export function qrOrderApiToStore(model: QrOrderRequestApi): QrOrderRequest {
     items: model.items.map((item) => ({
       id: String(item.id),
       menuItemId: item.menuItemId,
+      name: item.name?.trim() ? item.name : "Unknown item",
       qty: item.qty,
       notes: item.notes ?? "",
     })),
     createdAt: new Date(model.createdAt),
+  };
+}
+
+export function pendingSummaryApiToStore(model: QrOrderPendingSummaryApi): QrOrderPendingSummary {
+  return {
+    count: model.count,
+    ids: model.ids.map((id) => String(id)),
+    entries: model.entries.map((entry) => ({
+      id: String(entry.id),
+      requestCode: entry.requestCode,
+      outletId: entry.outletId,
+      tableId: entry.tableId,
+      tableName: entry.tableName ?? "",
+      customerName: entry.customerName ?? "",
+      cashierCallCount: entry.cashierCallCount ?? 0,
+      cashierCalledAt: entry.cashierCalledAt ? new Date(entry.cashierCalledAt) : null,
+      createdAt: new Date(entry.createdAt),
+    })),
   };
 }
 
@@ -113,6 +154,16 @@ function extractRealtimeSeq(event: RealtimeEnvelope): number {
   const metaSeq =
     event.meta && typeof event.meta.sequence === "number" ? (event.meta.sequence as number) : undefined;
   return event.sequence ?? event.seq ?? metaSeq ?? event.version ?? 0;
+}
+
+function sameQrListParams(a: ListQrOrdersParams | null, b: ListQrOrdersParams): boolean {
+  if (a === null) return false;
+  return (
+    a.outletId === b.outletId &&
+    a.status === b.status &&
+    (a.perPage ?? 20) === (b.perPage ?? 20) &&
+    (a.page ?? 1) === (b.page ?? 1)
+  );
 }
 
 function normalizeRealtimePayload(payload: Record<string, unknown>): Partial<QrOrderRequest> | null {
@@ -156,8 +207,10 @@ type QrOrderStore = {
   lastListParams: ListQrOrdersParams | null;
   pollingMs: number;
   pollingTimer: ReturnType<typeof setInterval> | null;
+  pollingVisibilityCleanup: (() => void) | null;
   activeRequestId: number;
   activeAbortController: AbortController | null;
+  fetchInFlight: boolean;
   lastRequestMeta: RequestObservabilityMetadata | null;
   realtimeConnected: boolean;
   realtimeState: RealtimeConnectionState;
@@ -166,6 +219,15 @@ type QrOrderStore = {
   lastRealtimeSeq: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
+  pendingSummary: QrOrderPendingSummary | null;
+  pendingSummaryLoadedOnce: boolean;
+  pendingSummaryRefreshing: boolean;
+  summaryPollingOutletId: number | null;
+  summaryPollingMs: number;
+  summaryPollingVisibilityCleanup: (() => void) | null;
+  summaryActiveRequestId: number;
+  summaryAbortController: AbortController | null;
+  summaryFetchInFlight: boolean;
   fetchRequests: (
     params?: ListQrOrdersParams,
     options?: { mode?: "initial" | "background"; append?: boolean },
@@ -179,6 +241,12 @@ type QrOrderStore = {
   stopRealtime: () => void;
   startPolling: (params: ListQrOrdersParams, intervalMs?: number) => void;
   stopPolling: () => void;
+  fetchPendingSummary: (
+    outletId: number,
+    options?: { mode?: "initial" | "background" },
+  ) => Promise<QrOrderPendingSummary | null>;
+  startSummaryPolling: (outletId: number, intervalMs?: number) => void;
+  stopSummaryPolling: () => void;
   hasApiAccess: () => boolean;
   resolveTableFromPublicId: (qrPublicId: string) => Promise<QrResolvedTableApi>;
   resolveLegacyTable: (outletId: number, tableId: number) => Promise<QrResolvedTableApi>;
@@ -199,8 +267,10 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   lastListParams: null,
   pollingMs: 10000,
   pollingTimer: null,
+  pollingVisibilityCleanup: null,
   activeRequestId: 0,
   activeAbortController: null,
+  fetchInFlight: false,
   lastRequestMeta: null,
   realtimeConnected: false,
   realtimeState: "idle",
@@ -209,10 +279,29 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   lastRealtimeSeq: 0,
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
+  pendingSummary: null,
+  pendingSummaryLoadedOnce: false,
+  pendingSummaryRefreshing: false,
+  summaryPollingOutletId: null,
+  summaryPollingMs: 10000,
+  summaryPollingVisibilityCleanup: null,
+  summaryActiveRequestId: 0,
+  summaryAbortController: null,
+  summaryFetchInFlight: false,
 
   fetchRequests: async (params, options = {}) => {
-    const requestId = get().activeRequestId + 1;
     const mode = options.mode ?? "initial";
+    const listParams = params ?? get().lastListParams;
+    if (!listParams) return get().requests;
+
+    const state = get();
+    if (state.fetchInFlight && state.lastListParams && sameQrListParams(state.lastListParams, listParams)) {
+      return state.requests;
+    }
+
+    get().activeAbortController?.abort();
+
+    const requestId = get().activeRequestId + 1;
     const append = options.append ?? false;
     const isInitialLike = mode === "initial" && !get().hasLoadedOnce && !append;
     const controller = new AbortController();
@@ -225,14 +314,15 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       isLoading: isInitialLike,
       initialLoading: isInitialLike,
       backgroundRefreshing: mode === "background" || !isInitialLike,
+      fetchInFlight: true,
       error: null,
-      lastListParams: params ?? null,
+      lastListParams: listParams,
       activeRequestId: requestId,
       activeAbortController: controller,
       lastRequestMeta: requestMeta,
     });
     try {
-      const response = await apiListQrOrdersWithMeta(params, {
+      const response = await apiListQrOrdersWithMeta(listParams, {
         signal: controller.signal,
         headers: createObservabilityHeaders(requestMeta),
       });
@@ -246,6 +336,9 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       }));
       return mapped;
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return get().requests;
+      }
       const message = mapApiError(error);
       set({ error: message });
       throw error;
@@ -255,6 +348,7 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
           isLoading: false,
           initialLoading: false,
           backgroundRefreshing: false,
+          fetchInFlight: false,
           activeAbortController: null,
         });
       }
@@ -455,6 +549,10 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
           lastRealtimeMeta: event.meta ?? null,
           lastRealtimeSeq: incomingSeq > 0 ? incomingSeq : current.lastRealtimeSeq,
         }));
+        const summaryOutletId = get().summaryPollingOutletId;
+        if (summaryOutletId !== null) {
+          void get().fetchPendingSummary(summaryOutletId, { mode: "background" });
+        }
       },
     });
     set({ realtimeUnsubscribe: unsubscribe, realtimeConnectionUnsubscribe: connectionUnsubscribe });
@@ -475,27 +573,133 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
     });
   },
 
+  fetchPendingSummary: async (outletId, options = {}) => {
+    if (outletId < 1) return get().pendingSummary;
+
+    const mode = options.mode ?? "initial";
+    const state = get();
+    if (state.summaryFetchInFlight && state.summaryPollingOutletId === outletId) {
+      return state.pendingSummary;
+    }
+
+    get().summaryAbortController?.abort();
+
+    const requestId = get().summaryActiveRequestId + 1;
+    const controller = new AbortController();
+    const requestMeta: RequestObservabilityMetadata = {
+      scope: "qr-order-store",
+      action: "fetch-pending-summary",
+      requestId,
+    };
+    const isInitialLike = mode === "initial" && !get().pendingSummaryLoadedOnce;
+    set({
+      pendingSummaryRefreshing: !isInitialLike,
+      summaryFetchInFlight: true,
+      summaryPollingOutletId: outletId,
+      summaryActiveRequestId: requestId,
+      summaryAbortController: controller,
+      lastRequestMeta: requestMeta,
+    });
+
+    try {
+      const response = await apiGetQrOrderPendingSummary(outletId, {
+        signal: controller.signal,
+        headers: createObservabilityHeaders(requestMeta),
+      });
+      const mapped = pendingSummaryApiToStore(response);
+      if (get().summaryActiveRequestId !== requestId) return mapped;
+      set({
+        pendingSummary: mapped,
+        pendingSummaryLoadedOnce: true,
+        lastSyncAt: new Date().toISOString(),
+      });
+      return mapped;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return get().pendingSummary;
+      }
+      const message = mapApiError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      if (get().summaryActiveRequestId === requestId) {
+        set({
+          pendingSummaryRefreshing: false,
+          summaryFetchInFlight: false,
+          summaryAbortController: null,
+        });
+      }
+    }
+  },
+
+  startSummaryPolling: (outletId, intervalMs = 10000) => {
+    const state = get();
+    if (
+      state.summaryPollingVisibilityCleanup &&
+      state.summaryPollingOutletId === outletId &&
+      state.summaryPollingMs === intervalMs
+    ) {
+      return;
+    }
+    get().stopSummaryPolling();
+    set({ summaryPollingMs: intervalMs, summaryPollingOutletId: outletId });
+    get().startRealtime();
+    void get().fetchPendingSummary(outletId, { mode: "initial" });
+    const visibilityInterval = createVisibilityAwareInterval(() => {
+      void get().fetchPendingSummary(outletId, { mode: "background" });
+    }, intervalMs);
+    set({ summaryPollingVisibilityCleanup: visibilityInterval.clear });
+  },
+
+  stopSummaryPolling: () => {
+    const { summaryPollingVisibilityCleanup, summaryAbortController } = get();
+    if (summaryPollingVisibilityCleanup) {
+      summaryPollingVisibilityCleanup();
+    }
+    summaryAbortController?.abort();
+    get().stopRealtime();
+    set({
+      summaryPollingVisibilityCleanup: null,
+      summaryPollingOutletId: null,
+      summaryAbortController: null,
+      summaryActiveRequestId: get().summaryActiveRequestId + 1,
+      summaryFetchInFlight: false,
+    });
+  },
+
   startPolling: (params, intervalMs = 10000) => {
     const state = get();
-    if (state.pollingTimer) clearInterval(state.pollingTimer);
+    if (
+      state.pollingVisibilityCleanup &&
+      state.lastListParams &&
+      sameQrListParams(state.lastListParams, params) &&
+      state.pollingMs === intervalMs
+    ) {
+      return;
+    }
+    get().stopPolling();
     set({ pollingMs: intervalMs, lastListParams: params });
     get().startRealtime();
     void get().fetchRequests(params, { mode: "initial" });
-    const timer = setInterval(() => {
+    const visibilityInterval = createVisibilityAwareInterval(() => {
       void get().fetchRequests(params, { mode: "background" });
     }, intervalMs);
-    set({ pollingTimer: timer });
+    set({ pollingTimer: null, pollingVisibilityCleanup: visibilityInterval.clear });
   },
 
   stopPolling: () => {
-    const { pollingTimer, activeAbortController } = get();
-    const timer = pollingTimer;
-    if (timer) clearInterval(timer);
+    const { pollingTimer, pollingVisibilityCleanup, activeAbortController } = get();
+    if (pollingVisibilityCleanup) {
+      pollingVisibilityCleanup();
+    }
+    if (pollingTimer) clearInterval(pollingTimer);
     activeAbortController?.abort();
     set({
       pollingTimer: null,
+      pollingVisibilityCleanup: null,
       activeAbortController: null,
       activeRequestId: get().activeRequestId + 1,
+      fetchInFlight: false,
       lastRequestMeta: null,
     });
   },
@@ -522,6 +726,7 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
   resetAsync: () => {
     get().stopRealtime();
     get().stopPolling();
+    get().stopSummaryPolling();
     set({
       isLoading: false,
       initialLoading: false,
@@ -539,6 +744,12 @@ export const useQrOrderStore = create<QrOrderStore>((set, get) => ({
       realtimeTransport: "polling",
       lastRealtimeMeta: null,
       lastRealtimeSeq: 0,
+      pendingSummary: null,
+      pendingSummaryLoadedOnce: false,
+      pendingSummaryRefreshing: false,
+      summaryPollingOutletId: null,
+      summaryAbortController: null,
+      summaryFetchInFlight: false,
     });
   },
 }));

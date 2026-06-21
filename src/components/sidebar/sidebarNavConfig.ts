@@ -185,6 +185,7 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
           icon: UtensilsCrossed,
           children: [
             nav("nav.menuItems", { href: "/menu", permission: PERMISSIONS.MENU }),
+            nav("nav.menuCategories", { href: "/menu/categories", permission: PERMISSIONS.MENU }),
             nav("nav.menuCosting", { href: "/menu/costing", permission: PERMISSIONS.COST_VIEW }),
             nav("nav.menuIntelligence", { href: "/dashboard/menu", permission: PERMISSIONS.MENU_DASHBOARD }),
           ],

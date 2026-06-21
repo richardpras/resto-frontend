@@ -4,6 +4,15 @@ export type PublicMenuItemApi = {
   id: string;
   name: string;
   category?: string | null;
+  menuCategory?: {
+    id: number;
+    code: string;
+    name: string;
+    nameEn?: string | null;
+    nameId?: string | null;
+    displayName?: string;
+    sortOrder: number;
+  } | null;
   price: number;
   emoji?: string | null;
   available: boolean;

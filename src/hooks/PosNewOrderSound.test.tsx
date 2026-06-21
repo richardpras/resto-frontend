@@ -12,9 +12,15 @@ vi.mock("@/lib/sound/soundAlertService", () => ({
   },
 }));
 
+type MockSummary = {
+  count: number;
+  ids: string[];
+  entries: Array<{ id: string; requestCode: string }>;
+};
+
 let mockState = {
-  requests: [] as Array<{ id: string; status: string; requestCode: string }>,
-  hasLoadedOnce: false,
+  pendingSummary: null as MockSummary | null,
+  pendingSummaryLoadedOnce: false,
 };
 
 vi.mock("@/stores/qrOrderStore", () => ({
@@ -25,30 +31,38 @@ describe("PosNewOrderSound", () => {
   beforeEach(() => {
     playSpy.mockClear();
     mockState = {
-      requests: [{ id: "1", status: "pending_cashier_confirmation", requestCode: "QR-1" }],
-      hasLoadedOnce: false,
+      pendingSummary: {
+        count: 1,
+        ids: ["1"],
+        entries: [{ id: "1", requestCode: "QR-1" }],
+      },
+      pendingSummaryLoadedOnce: false,
     };
   });
 
   it("does not play on initial backlog", () => {
-    mockState.hasLoadedOnce = true;
+    mockState.pendingSummaryLoadedOnce = true;
     const { rerender } = renderHook(() => useQrOrderSoundAlerts(true));
     rerender();
     expect(playSpy).not.toHaveBeenCalled();
   });
 
   it("plays when a new pending order appears after init", () => {
-    mockState.hasLoadedOnce = true;
+    mockState.pendingSummaryLoadedOnce = true;
     const { rerender } = renderHook(() => useQrOrderSoundAlerts(true));
     rerender();
     playSpy.mockClear();
 
     mockState = {
-      hasLoadedOnce: true,
-      requests: [
-        { id: "1", status: "pending_cashier_confirmation", requestCode: "QR-1" },
-        { id: "2", status: "pending_cashier_confirmation", requestCode: "QR-2" },
-      ],
+      pendingSummaryLoadedOnce: true,
+      pendingSummary: {
+        count: 2,
+        ids: ["1", "2"],
+        entries: [
+          { id: "1", requestCode: "QR-1" },
+          { id: "2", requestCode: "QR-2" },
+        ],
+      },
     };
     rerender();
     expect(playSpy).toHaveBeenCalledWith("new_order", expect.objectContaining({ visualFallback: true }));

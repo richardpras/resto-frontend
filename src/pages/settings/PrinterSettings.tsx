@@ -22,21 +22,56 @@ import { PrinterQueuePanelSkeleton } from "@/components/skeletons/list/PrinterQu
 import { BridgeDeviceListSkeleton } from "@/components/skeletons/list/BridgeDeviceListSkeleton";
 import { useAuthStore } from "@/stores/authStore";
 import { getUserCapabilities } from "@/domain/accessControl";
-import { PrinterStationRoutePanel } from "@/components/settings/PrinterStationRoutePanel";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { buildPrinterPayload, normalizePrinterForForm } from "@/domain/printerFormUtils";
+import { BridgePairingWizard } from "@/components/hardware-bridge/BridgePairingWizard";
+import { usePrinterSettingsOutlets } from "@/hooks/usePrinterSettingsOutlets";
 
-const empty: Printer = { id: "", name: "", printerType: "kitchen", connection: "lan", ip: "", outletId: 0 };
+const empty: Printer = {
+  id: "",
+  name: "",
+  printerType: "kitchen",
+  connection: "lan",
+  thermalPaperWidth: "58mm",
+  ip: "",
+  port: 9100,
+  outletId: 0,
+};
+
+function formatPaperWidth(printer: Printer): string {
+  return printer.thermalPaperWidth === "80mm" ? "80mm" : "58mm";
+}
+
+function formatPrinterAddress(printer: Printer): string {
+  if (printer.connection === "lan") {
+    const host = printer.ip?.trim();
+    if (!host) return "-";
+    return printer.port && printer.port !== 9100 ? `${host}:${printer.port}` : host;
+  }
+  if (printer.connection === "usb") return printer.devicePath || printer.bluetoothDevice || "-";
+  if (printer.connection === "bluetooth") {
+    return [printer.bluetoothAddress, printer.devicePath || printer.bluetoothDevice].filter(Boolean).join(" / ") || "-";
+  }
+  if (printer.connection === "shared") {
+    return [printer.sharePath || printer.bluetoothDevice, printer.sharePrinterName || printer.ip].filter(Boolean).join(" → ") || "-";
+  }
+  return "-";
+}
+
+const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
 export default function PrinterSettings() {
   const { t } = useTranslation("common");
   const authUser = useAuthStore((s) => s.user);
   const capabilities = getUserCapabilities(authUser);
   const printers = useSettingsStore((s) => s.printers);
-  const outlets = useSettingsStore((s) => s.outlets);
+  const outlets = usePrinterSettingsOutlets();
   const upsertPrinter = useSettingsStore((s) => s.upsertPrinter);
-  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const queueByPrinter = usePrinterManagementStore((s) => s.queueByPrinter);
   const fetchQueueStatus = usePrinterManagementStore((s) => s.fetchQueueStatus);
   const saveProfile = usePrinterManagementStore((s) => s.saveProfile);
+  const sendTestPrint = usePrinterManagementStore((s) => s.sendTestPrint);
+  const testingPrinterId = usePrinterManagementStore((s) => s.testingPrinterId);
   const retryFailedJob = usePrinterManagementStore((s) => s.retryFailedJob);
   const isSavingProfile = usePrinterManagementStore((s) => s.isSavingProfile);
   const isLoadingQueue = usePrinterManagementStore((s) => s.isLoadingQueue);
@@ -67,6 +102,7 @@ export default function PrinterSettings() {
   const stopBridgeMonitoring = useHardwareBridgeStore((s) => s.stopMonitoring);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Printer>(empty);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   useEffect(() => {
     if (!capabilities.printerAdmin) return;
@@ -81,28 +117,36 @@ export default function PrinterSettings() {
   }, [outlets, historyOutletId, setHistoryOutletId]);
 
   useEffect(() => {
-    if (!capabilities.hardwareBridge) return;
-    const outletId = historyOutletId && historyOutletId > 0 ? historyOutletId : outlets[0]?.id;
-    if (!outletId || outletId < 1) return;
-    void startBridgeMonitoring(outletId, 5000);
+    if (!capabilities.hardwareBridge || !diagnosticsOpen) return;
+    const resolvedOutletId =
+      historyOutletId && historyOutletId > 0 ? historyOutletId : outlets[0]?.id;
+    if (!resolvedOutletId || resolvedOutletId < 1) return;
+    void startBridgeMonitoring(resolvedOutletId, 5000, { diagnostics: true });
     return () => {
       stopBridgeMonitoring();
     };
-  }, [historyOutletId, outlets, startBridgeMonitoring, stopBridgeMonitoring, capabilities.hardwareBridge]);
+  }, [
+    diagnosticsOpen,
+    historyOutletId,
+    outlets[0]?.id,
+    startBridgeMonitoring,
+    stopBridgeMonitoring,
+    capabilities.hardwareBridge,
+  ]);
 
   const save = async () => {
     if (!form.name.trim()) return toast.error(t("settings.printers.nameRequired"));
     if (!form.outletId || form.outletId < 1) return toast.error(t("settings.printers.outletRequired"));
     if (form.connection === "lan" && !form.ip?.trim()) return toast.error(t("settings.printers.ipRequired"));
+    if (form.connection === "usb" && !form.devicePath?.trim()) return toast.error(t("settings.printers.devicePath"));
+    if (form.connection === "bluetooth" && !form.bluetoothAddress?.trim() && !form.devicePath?.trim()) {
+      return toast.error(t("settings.printers.bluetoothAddress"));
+    }
+    if (form.connection === "shared" && (!form.sharePath?.trim() || !form.sharePrinterName?.trim())) {
+      return toast.error(t("settings.printers.sharePath"));
+    }
     try {
-      const payload = {
-        ...form,
-        ip: form.connection === "lan" ? form.ip : undefined,
-        bluetoothDevice: form.connection === "bluetooth" ? form.bluetoothDevice : undefined,
-        routeRules: form.assignedCategories ?? [],
-      };
-      await saveProfile(payload);
-      await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
+      await saveProfile(buildPrinterPayload(form));
       toast.success(t("settings.printers.saved"));
       setOpen(false);
     } catch (e) {
@@ -110,11 +154,26 @@ export default function PrinterSettings() {
     }
   };
 
-  const test = () => toast.success(t("settings.printers.testSent"));
+  const test = async (printer: Printer) => {
+    try {
+      await sendTestPrint(printer.id);
+      toast.success(t("settings.printers.testSent"));
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.printers.testFailed"));
+    }
+  };
 
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
+        {capabilities.hardwareBridge ? (
+          <>
+            <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+              {t("settings.bridgeSetup.restartBanner")}
+            </p>
+            <BridgePairingWizard />
+          </>
+        ) : null}
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">{t("settings.printers.title")}</h2>
           <Button
@@ -132,7 +191,8 @@ export default function PrinterSettings() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Connection</TableHead>
-              <TableHead>Address</TableHead><TableHead>Outlet</TableHead><TableHead>Routes</TableHead><TableHead className="w-32"></TableHead>
+              <TableHead>{t("settings.printers.paperWidth")}</TableHead>
+              <TableHead>Address</TableHead><TableHead>Outlet</TableHead><TableHead className="w-32"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -141,13 +201,20 @@ export default function PrinterSettings() {
                 <TableCell className="font-medium flex items-center gap-2"><PrinterIcon className="h-4 w-4 text-muted-foreground" />{p.name}</TableCell>
                 <TableCell><Badge variant="outline" className="capitalize">{p.printerType}</Badge></TableCell>
                 <TableCell className="capitalize">{p.connection}</TableCell>
-                <TableCell className="text-muted-foreground">{p.ip || p.bluetoothDevice || "-"}</TableCell>
+                <TableCell><Badge variant="secondary">{formatPaperWidth(p)}</Badge></TableCell>
+                <TableCell className="text-muted-foreground">{formatPrinterAddress(p)}</TableCell>
                 <TableCell>{outlets.find((o) => o.id === p.outletId)?.name || "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{p.assignedCategories?.join(", ") || "-"}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={test}>Test</Button>
-                    <Button size="icon" variant="ghost" onClick={() => { setForm(p); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={testingPrinterId === p.id}
+                      onClick={() => void test(p)}
+                    >
+                      {testingPrinterId === p.id ? t("settings.printers.testing") : "Test"}
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => { setForm(normalizePrinterForForm(p)); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                     <Button
                       type="button"
                       size="icon"
@@ -157,7 +224,6 @@ export default function PrinterSettings() {
                         void (async () => {
                           try {
                             await removePrinterCascade(p.id);
-                            if (getApiAccessToken()) await ensureSectionsLoaded(["printers"], { force: true, staleMs: 0 });
                           } catch (e) {
                             toast.error(e instanceof ApiHttpError ? e.message : t("common.deleteFailed"));
                           }
@@ -171,8 +237,13 @@ export default function PrinterSettings() {
           </TableBody>
         </Table>
 
-        <PrinterStationRoutePanel outletId={historyOutletId && historyOutletId > 0 ? historyOutletId : (outlets[0]?.id ?? 0)} />
-
+        <Collapsible open={diagnosticsOpen} onOpenChange={setDiagnosticsOpen} className="border-t pt-4">
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" className="px-0 font-medium">
+              {t("settings.printers.advancedDiagnostics")}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-4">
         <div className="space-y-3 border-t pt-4">
           <h3 className="font-medium">Receipt render history (Phase 14)</h3>
           <p className="text-xs text-muted-foreground">
@@ -455,6 +526,8 @@ export default function PrinterSettings() {
             )}
           </SkeletonBusyRegion>
         </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <ReceiptPreviewModal />
 
@@ -466,30 +539,114 @@ export default function PrinterSettings() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>{t("common.type")}</Label>
-                  <Select value={form.printerType} onValueChange={(v: "kitchen" | "cashier") => setForm({ ...form, printerType: v })}>
+                  <Select value={form.printerType} onValueChange={(v: Printer["printerType"]) => setForm({ ...form, printerType: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="kitchen">{t("settings.printers.kitchen")}</SelectItem>
+                      <SelectItem value="bar">{t("settings.printers.bar")}</SelectItem>
+                      <SelectItem value="dessert">{t("settings.printers.dessert")}</SelectItem>
                       <SelectItem value="cashier">{t("settings.printers.cashier")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>{t("settings.printers.connection")}</Label>
-                  <Select value={form.connection} onValueChange={(v: "lan" | "bluetooth") => setForm({ ...form, connection: v })}>
+                  <Select
+                    value={form.connection}
+                    onValueChange={(v: Printer["connection"]) => setForm({ ...form, connection: v })}
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="lan">{t("settings.printers.lan")}</SelectItem>
+                      <SelectItem value="usb">{t("settings.printers.usb")}</SelectItem>
                       <SelectItem value="bluetooth">{t("settings.printers.bluetooth")}</SelectItem>
+                      <SelectItem value="shared">{t("settings.printers.shared")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label>{t("settings.printers.paperWidth")}</Label>
+                <Select
+                  value={form.thermalPaperWidth ?? "58mm"}
+                  onValueChange={(v: NonNullable<Printer["thermalPaperWidth"]>) =>
+                    setForm({ ...form, thermalPaperWidth: v })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="58mm">{t("settings.printers.paperWidth58")}</SelectItem>
+                    <SelectItem value="80mm">{t("settings.printers.paperWidth80")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {form.connection === "lan" ? (
-                <div className="space-y-2"><Label>{t("settings.printers.ipAddress")}</Label><Input placeholder="192.168.1.50" value={form.ip || ""} onChange={(e) => setForm({ ...form, ip: e.target.value })} /></div>
-              ) : (
-                <div className="space-y-2"><Label>{t("settings.printers.bluetoothDevice")}</Label><Input placeholder="POS-58" value={form.bluetoothDevice || ""} onChange={(e) => setForm({ ...form, bluetoothDevice: e.target.value })} /></div>
-              )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.ipAddress")}</Label>
+                    <Input placeholder="192.168.1.50" value={form.ip || ""} onChange={(e) => setForm({ ...form, ip: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.port")}</Label>
+                    <Input
+                      type="number"
+                      placeholder="9100"
+                      value={form.port ?? 9100}
+                      onChange={(e) => setForm({ ...form, port: Number(e.target.value) || 9100 })}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {form.connection === "usb" ? (
+                <div className="space-y-2">
+                  <Label>{t("settings.printers.devicePath")}</Label>
+                  <Input
+                    placeholder="/dev/usb/lp0 or COM5"
+                    value={form.devicePath || ""}
+                    onChange={(e) => setForm({ ...form, devicePath: e.target.value })}
+                  />
+                </div>
+              ) : null}
+              {form.connection === "bluetooth" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.bluetoothAddress")}</Label>
+                    <Input
+                      placeholder="AA:BB:CC:DD:EE:FF"
+                      value={form.bluetoothAddress || ""}
+                      onChange={(e) => setForm({ ...form, bluetoothAddress: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.devicePath")}</Label>
+                    <Input
+                      placeholder="RFCOMM device path"
+                      value={form.devicePath || ""}
+                      onChange={(e) => setForm({ ...form, devicePath: e.target.value })}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {form.connection === "shared" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.sharePath")}</Label>
+                    <Input
+                      placeholder="\\\\server\\share"
+                      value={form.sharePath || ""}
+                      onChange={(e) => setForm({ ...form, sharePath: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("settings.printers.sharePrinterName")}</Label>
+                    <Input
+                      placeholder="EPSON TM-T82"
+                      value={form.sharePrinterName || ""}
+                      onChange={(e) => setForm({ ...form, sharePrinterName: e.target.value })}
+                    />
+                  </div>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label>{t("settings.printers.outlet")}</Label>
                 <Select
@@ -508,15 +665,6 @@ export default function PrinterSettings() {
                   </SelectContent>
                 </Select>
               </div>
-              {form.printerType === "kitchen" && (
-                <div className="space-y-2" data-testid="printer-legacy-category-routing">
-                  <Label>Legacy category routing (fallback)</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Used only when a menu item has no production station assignment.
-                  </p>
-                  <Input placeholder="Food, Beverage" value={form.assignedCategories?.join(", ") || ""} onChange={(e) => setForm({ ...form, assignedCategories: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
-                </div>
-              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSavingProfile}>{t("common.cancel")}</Button>

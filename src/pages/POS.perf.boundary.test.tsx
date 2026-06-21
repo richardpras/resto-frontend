@@ -94,16 +94,37 @@ vi.mock("@/stores/paymentStore", () => ({
     }),
 }));
 
+vi.mock("@/hooks/pos/usePosBootstrap", () => ({
+  usePosBootstrap: () => ({
+    menuApiItems: [],
+    menuLoading: false,
+    menuError: false,
+    refetchMenu: vi.fn(),
+    bootstrapLoading: false,
+    bootstrapError: false,
+  }),
+}));
+
+vi.mock("@/hooks/pos/usePosLazyFloorTables", () => ({
+  usePosLazyFloorTables: () => ({
+    requestTables: vi.fn(),
+    tablesLoading: false,
+  }),
+}));
+
+vi.mock("@/hooks/pos/useConsumePosBridge", () => ({
+  useConsumePosBridge: vi.fn(),
+}));
+
+vi.mock("@/hooks/useReservationTableProjectionSync", () => ({
+  useReservationTableProjectionSync: vi.fn(),
+}));
+
 vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-query")>("@tanstack/react-query");
   return {
     ...actual,
-    useQuery: vi.fn((options: { queryKey: unknown[] }) => {
-      if (Array.isArray(options.queryKey) && options.queryKey[0] === "menu-items") {
-        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-      }
-      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    }),
+    useQuery: vi.fn(() => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() })),
   };
 });
 

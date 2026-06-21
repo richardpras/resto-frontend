@@ -126,10 +126,30 @@ export type MenuProductionStationApi = {
   name: string;
 };
 
+export type MenuCategoryApi = {
+  id: number;
+  tenantId?: number | null;
+  code: string;
+  name: string;
+  nameEn?: string | null;
+  nameId?: string | null;
+  displayName?: string;
+  description?: string | null;
+  descriptionEn?: string | null;
+  descriptionId?: string | null;
+  displayDescription?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export type MenuItemApi = {
   id: string;
   name: string;
   category?: string | null;
+  menuCategory?: MenuCategoryApi | null;
+  menuCategoryId?: number | null;
   price: number;
   available: boolean;
   emoji?: string | null;
@@ -147,6 +167,101 @@ export type MenuPayload = Omit<MenuItemApi, "id"> & {
   tenantId?: number;
   outletId?: number;
 };
+
+export type ListMenuCategoriesParams = {
+  tenantId?: number;
+  activeOnly?: boolean;
+};
+
+export async function listMenuCategories(params?: ListMenuCategoriesParams): Promise<MenuCategoryApi[]> {
+  const query = new URLSearchParams();
+  if (params?.tenantId !== undefined) query.set("tenantId", String(params.tenantId));
+  if (params?.activeOnly === true) query.set("activeOnly", "1");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiListResponse<MenuCategoryApi>>(`/menu-categories${suffix}`);
+  return response.data;
+}
+
+export type MenuCategoryPayload = {
+  tenantId?: number;
+  name: string;
+  nameEn?: string | null;
+  nameId?: string | null;
+  description?: string | null;
+  descriptionEn?: string | null;
+  descriptionId?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export async function createMenuCategory(payload: MenuCategoryPayload): Promise<MenuCategoryApi> {
+  const response = await request<{ data: MenuCategoryApi }>("/menu-categories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateMenuCategory(categoryId: number, payload: MenuCategoryPayload): Promise<MenuCategoryApi> {
+  const response = await request<{ data: MenuCategoryApi }>(`/menu-categories/${categoryId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export type MenuCategoryPrinterMappingApi = {
+  id: number;
+  tenantId?: number | null;
+  outletId: number;
+  menuCategoryId: number;
+  printerProfileId: number;
+  priority: number;
+  isActive: boolean;
+  meta?: Record<string, unknown> | null;
+  menuCategory?: MenuCategoryApi | null;
+  printerProfile?: {
+    id: number;
+    name: string;
+    code: string;
+    connectionType: string;
+    station?: string | null;
+  } | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export async function listMenuCategoryPrinterMappings(
+  outletId: number,
+  params?: { activeOnly?: boolean },
+): Promise<MenuCategoryPrinterMappingApi[]> {
+  const query = new URLSearchParams({ outletId: String(outletId) });
+  if (params?.activeOnly === true) query.set("activeOnly", "1");
+  const response = await request<{ data: MenuCategoryPrinterMappingApi[] }>(
+    `/menu-category-printer-mappings?${query.toString()}`,
+  );
+  return response.data;
+}
+
+export async function saveMenuCategoryPrinterMapping(payload: {
+  tenantId?: number;
+  outletId: number;
+  menuCategoryId: number;
+  printerProfileId: number;
+  priority?: number;
+  isActive?: boolean;
+  meta?: Record<string, unknown>;
+}): Promise<MenuCategoryPrinterMappingApi> {
+  const response = await request<{ data: MenuCategoryPrinterMappingApi }>("/menu-category-printer-mappings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function deleteMenuCategoryPrinterMapping(mappingId: number): Promise<void> {
+  await request(`/menu-category-printer-mappings/${mappingId}`, { method: "DELETE" });
+}
 
 export type ListMenuItemsParams = {
   tenantId?: number;
