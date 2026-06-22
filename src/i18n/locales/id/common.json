@@ -631,8 +631,32 @@
       "updatePermissionsFailed": "Gagal memperbarui izin"
     },
     "audit": {
-      "unavailable": "Aktivitas audit belum tersedia melalui API.",
-      "hint": "Perubahan sensitif keamanan harus ditinjau di server ketika logging ditambahkan."
+      "loading": "Memuat log audit",
+      "empty": "Belum ada entri audit",
+      "searchPlaceholder": "Cari actor, target, atau aksi",
+      "fromDate": "Dari tanggal",
+      "toDate": "Sampai tanggal",
+      "allActions": "Semua aksi",
+      "columns": {
+        "time": "Waktu",
+        "action": "Aksi",
+        "actor": "Pelaku",
+        "target": "Target",
+        "summary": "Ringkasan"
+      },
+      "detailTitle": "Detail audit",
+      "before": "Sebelum",
+      "after": "Sesudah",
+      "metadata": "Metadata",
+      "actions": {
+        "user.created": "User dibuat",
+        "role_permission_changed": "Role/izin diubah",
+        "user.pin_set": "PIN diset",
+        "user.pin_cleared": "PIN dihapus",
+        "role.created": "Role dibuat",
+        "permission.created": "Izin dibuat"
+      },
+      "loadFailed": "Gagal memuat log audit"
     }
   }
 }

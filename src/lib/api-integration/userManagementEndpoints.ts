@@ -58,6 +58,54 @@ export type PermissionApiRow = {
   description?: string | null;
 };
 
+export type UserManagementAuditLogRow = {
+  id: number;
+  action: string;
+  entityType: string;
+  entityId: number;
+  targetUserId: number | null;
+  targetUserName?: string | null;
+  actorUserId: number | null;
+  actorUserName?: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string | null;
+};
+
+export type ListUserManagementAuditLogsParams = {
+  page?: number;
+  limit?: number;
+  action?: string;
+  entityType?: string;
+  entityId?: number;
+  targetUserId?: number;
+  actorUserId?: number;
+  fromDate?: string;
+  toDate?: string;
+  search?: string;
+};
+
+type PaginatedEnvelope<T> = {
+  data: T[];
+  meta: { currentPage: number; lastPage: number; perPage: number; total: number };
+};
+
+export async function listUserManagementAuditLogs(
+  params: ListUserManagementAuditLogsParams = {},
+): Promise<PaginatedEnvelope<UserManagementAuditLogRow>> {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      qs.set(key, String(value));
+    }
+  });
+  const query = qs.toString();
+  return request<PaginatedEnvelope<UserManagementAuditLogRow>>(
+    `/user-management/audit-logs${query ? `?${query}` : ""}`,
+  );
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
   return request<LoginResponse>("/auth/login", {
     method: "POST",

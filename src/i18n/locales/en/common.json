@@ -635,8 +635,32 @@
       "updatePermissionsFailed": "Failed to update permissions"
     },
     "audit": {
-      "unavailable": "Audit activity is not available through the API yet.",
-      "hint": "Security-sensitive changes should be reviewed on the server when logging is added."
+      "loading": "Loading audit log",
+      "empty": "No audit entries yet",
+      "searchPlaceholder": "Search actor, target, or action",
+      "fromDate": "From date",
+      "toDate": "To date",
+      "allActions": "All actions",
+      "columns": {
+        "time": "Time",
+        "action": "Action",
+        "actor": "Actor",
+        "target": "Target",
+        "summary": "Summary"
+      },
+      "detailTitle": "Audit detail",
+      "before": "Before",
+      "after": "After",
+      "metadata": "Metadata",
+      "actions": {
+        "user.created": "User created",
+        "role_permission_changed": "Roles/permissions changed",
+        "user.pin_set": "PIN set",
+        "user.pin_cleared": "PIN cleared",
+        "role.created": "Role created",
+        "permission.created": "Permission created"
+      },
+      "loadFailed": "Failed to load audit log"
     }
   }
 }
