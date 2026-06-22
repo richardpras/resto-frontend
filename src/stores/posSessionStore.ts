@@ -3,12 +3,15 @@ import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   closePosSession,
   getCurrentPosSession,
+  getPosSessionClosePreview,
   openPosSession,
   type PosSessionApi,
+  type PosSessionClosePreview,
 } from "@/lib/api-integration/posSessionEndpoints";
 
 type PosSessionState = {
   currentSession: PosSessionApi | null;
+  defaultCashFloat: number;
   activeOutletId: number | null;
   isLoading: boolean;
   isSubmitting: boolean;
@@ -18,9 +21,10 @@ type PosSessionState = {
   inFlightFetch: Promise<PosSessionApi | null> | null;
   bootstrapSyncedOutletId: number | null;
   fetchCurrent: (outletId: number) => Promise<PosSessionApi | null>;
-  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null) => void;
-  open: (outletId: number, openingCash: number, notes?: string) => Promise<PosSessionApi>;
-  close: (sessionId: number, closingCash: number, notes?: string) => Promise<PosSessionApi>;
+  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null, defaultCashFloat?: number) => void;
+  open: (outletId: number, openingCash?: number, notes?: string) => Promise<PosSessionApi>;
+  previewClose: (sessionId: number) => Promise<PosSessionClosePreview>;
+  close: (sessionId: number, actualCash: number, notes?: string) => Promise<PosSessionApi>;
   reset: () => void;
 };
 
@@ -32,6 +36,7 @@ function mapError(error: unknown): string {
 
 export const usePosSessionStore = create<PosSessionState>((set) => ({
   currentSession: null,
+  defaultCashFloat: 500000,
   activeOutletId: null,
   isLoading: false,
   isSubmitting: false,
@@ -41,10 +46,11 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
   inFlightFetch: null,
   bootstrapSyncedOutletId: null,
 
-  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null) => {
+  hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null, defaultCashFloat?: number) => {
     set({
       currentSession: session,
       activeOutletId: outletId,
+      defaultCashFloat: defaultCashFloat ?? 500000,
       bootstrapSyncedOutletId: outletId,
       lastSyncAt: new Date().toISOString(),
       isLoading: false,
@@ -61,33 +67,38 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
 
     set({ isLoading: true, error: null });
     const job = (async () => {
-    try {
-      const currentSession = await getCurrentPosSession(outletId);
-      set({
-        currentSession,
-        activeOutletId: outletId,
-        bootstrapSyncedOutletId: null,
-        lastSyncAt: new Date().toISOString(),
-        inFlightOutletId: null,
-        inFlightFetch: null,
-      });
-      return currentSession;
-    } catch (error) {
-      const message = mapError(error);
-      set({ error: message, inFlightOutletId: null, inFlightFetch: null });
-      throw error;
-    } finally {
-      set({ isLoading: false });
-    }
+      try {
+        const { session: currentSession, defaultCashFloat } = await getCurrentPosSession(outletId);
+        set({
+          currentSession,
+          defaultCashFloat,
+          activeOutletId: outletId,
+          bootstrapSyncedOutletId: null,
+          lastSyncAt: new Date().toISOString(),
+          inFlightOutletId: null,
+          inFlightFetch: null,
+        });
+        return currentSession;
+      } catch (error) {
+        const message = mapError(error);
+        set({ error: message, inFlightOutletId: null, inFlightFetch: null });
+        throw error;
+      } finally {
+        set({ isLoading: false });
+      }
     })();
     set({ inFlightOutletId: outletId, inFlightFetch: job });
     return job;
   },
 
-  open: async (outletId: number, openingCash: number, notes?: string) => {
+  open: async (outletId: number, openingCash?: number, notes?: string) => {
     set({ isSubmitting: true, error: null });
     try {
-      const currentSession = await openPosSession({ outletId, openingCash, notes });
+      const payload =
+        typeof openingCash === "number"
+          ? { outletId, openingCash, notes }
+          : { outletId, notes };
+      const currentSession = await openPosSession(payload);
       set({
         currentSession,
         bootstrapSyncedOutletId: null,
@@ -103,12 +114,14 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
     }
   },
 
-  close: async (sessionId: number, closingCash: number, notes?: string) => {
+  previewClose: async (sessionId: number) => getPosSessionClosePreview(sessionId),
+
+  close: async (sessionId: number, actualCash: number, notes?: string) => {
     set({ isSubmitting: true, error: null });
     try {
-      const currentSession = await closePosSession(sessionId, { closingCash, notes });
+      const currentSession = await closePosSession(sessionId, { actualCash, notes });
       set({
-        currentSession,
+        currentSession: null,
         bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
       });
@@ -125,6 +138,7 @@ export const usePosSessionStore = create<PosSessionState>((set) => ({
   reset: () =>
     set({
       currentSession: null,
+      defaultCashFloat: 500000,
       activeOutletId: null,
       isLoading: false,
       isSubmitting: false,

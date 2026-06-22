@@ -27,12 +27,14 @@ import {
 } from "@/lib/api-integration/organizationEndpoints";
 import { listUsers, type UserApiRow } from "@/lib/api-integration/userManagementEndpoints";
 import { useAuthStore } from "@/stores/authStore";
+import { hasPayrollFullAccess } from "@/domain/permissionGates";
 import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
 import { EmployeeAttendanceHistory } from "@/components/hr/EmployeeAttendanceHistory";
 import { EmployeePayslipHistory } from "@/components/hr/EmployeePayslipHistory";
 import { EmployeeCurrentShiftCard } from "@/components/hr/EmployeeCurrentShiftCard";
 import { EmployeeCurrentWeekSchedule } from "@/components/hr/EmployeeCurrentWeekSchedule";
+import { EmployeeSalaryTab } from "@/components/hr/EmployeeSalaryTab";
 import {
   Sheet,
   SheetContent,
@@ -49,6 +51,7 @@ const STATUSES = ["active", "inactive", "resigned", "terminated"] as const;
 export default function Employees() {
   const { t } = useErpTranslation();
   const { user } = useAuthStore();
+  const showSalaryTab = hasPayrollFullAccess(user);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outlets = user?.assignedOutlets ?? [];
   const [outletId, setOutletId] = useState<number | null>(activeOutletId);
@@ -296,6 +299,9 @@ export default function Employees() {
               <TabsTrigger value="schedule">{t("hr.employees.tabs.schedule")}</TabsTrigger>
               <TabsTrigger value="attendance">{t("hr.employees.tabs.attendance")}</TabsTrigger>
               <TabsTrigger value="payslips">{t("hr.employees.tabs.payslips")}</TabsTrigger>
+              {showSalaryTab ? (
+                <TabsTrigger value="salary">{t("hr.employees.tabs.salaryPayroll")}</TabsTrigger>
+              ) : null}
               <TabsTrigger value="account">{t("hr.employees.tabs.account")}</TabsTrigger>
             </ScrollableTabsList>
             <TabsContent value="general" className="grid gap-3 pt-3">
@@ -444,6 +450,15 @@ export default function Employees() {
                 <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstPayslips")}</p>
               )}
             </TabsContent>
+            {showSalaryTab ? (
+              <TabsContent value="salary" className="grid gap-3 pt-3">
+                {editing && outletId ? (
+                  <EmployeeSalaryTab employeeId={editing.id} outletId={outletId} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("hr.employees.saveFirstSalary")}</p>
+                )}
+              </TabsContent>
+            ) : null}
             <TabsContent value="account" className="grid gap-3 pt-3">
               <p className="text-sm text-muted-foreground">
                 {t("hr.employees.accountLinkHint")}

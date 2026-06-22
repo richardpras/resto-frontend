@@ -25,9 +25,14 @@ describe("getOrdersExplorerUiCaps", () => {
     expect(caps.showOperationalCorrectionHint).toBe(false);
   });
 
-  it("shows manager hint for Manager with POS", () => {
-    const caps = getOrdersExplorerUiCaps(user({ role: "Manager", permissions: ["pos.use"] }));
+  it("shows manager hint for Manager with recovery read", () => {
+    const caps = getOrdersExplorerUiCaps(user({ role: "Manager", permissions: ["orders.recovery.read"] }));
     expect(caps.showOperationalCorrectionHint).toBe(true);
+  });
+
+  it("allows execute refund only for Manager with orders.refund.execute", () => {
+    expect(getOrdersExplorerUiCaps(user({ role: "Cashier", permissions: ["orders.refund.execute"] })).canExecuteRefund).toBe(false);
+    expect(getOrdersExplorerUiCaps(user({ role: "Manager", permissions: ["orders.refund.execute"] })).canExecuteRefund).toBe(true);
   });
 
   it("allows recovery timeline when orders.recovery.read is granted", () => {

@@ -426,6 +426,7 @@ export type OrderApi = {
   orderType: string;
   status: "pending" | "confirmed" | "cooking" | "ready" | "completed" | "cancelled";
   paymentStatus: "unpaid" | "partial" | "paid";
+  pendingRecoveryCount?: number;
   kitchenStatus?: KitchenStatus | string;
   items: (OrderItemPayload & { orderItemId?: string })[];
   subtotal: number;
@@ -595,6 +596,8 @@ export type ListOrdersParams = {
   dateTo?: string;
   /** When true, only orders that have at least one voided payment row. */
   hasVoidedPayment?: boolean;
+  /** When true, only orders with at least one recovery_pending line. */
+  hasRecoveryPending?: boolean;
 };
 
 export type CreateOrderApiResult = {
@@ -670,6 +673,7 @@ export async function listOrdersWithMeta(
   if (params?.dateFrom) query.set("dateFrom", params.dateFrom);
   if (params?.dateTo) query.set("dateTo", params.dateTo);
   if (params?.hasVoidedPayment === true) query.set("hasVoidedPayment", "1");
+  if (params?.hasRecoveryPending === true) query.set("hasRecoveryPending", "1");
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   const response = await request<ApiListResponse<OrderApi>>(`/orders${suffix}`, {
@@ -897,6 +901,61 @@ export async function recordOrderItemRecoverySettlement(
 ): Promise<RecordRecoverySettlementResultApi> {
   const response = await request<{ data: RecordRecoverySettlementResultApi }>(
     `/orders/${orderId}/items/${orderItemId}/recovery/settlement/record`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      headers: options.headers,
+    },
+  );
+  return response.data;
+}
+
+export async function getRecoveryPendingCount(outletId?: number): Promise<number> {
+  const query = new URLSearchParams();
+  if (outletId !== undefined && outletId > 0) query.set("outletId", String(outletId));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<{ data: { count: number } }>(`/orders/recovery-pending-count${suffix}`);
+  return Number(response.data?.count ?? 0);
+}
+
+export type RecoverySummaryApi = {
+  pendingCount: number;
+  refundExecutedToday: number;
+  avgResolutionHours: number | null;
+};
+
+export async function getRecoverySummary(outletId?: number): Promise<RecoverySummaryApi> {
+  const query = new URLSearchParams();
+  if (outletId !== undefined && outletId > 0) query.set("outletId", String(outletId));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<{ data: RecoverySummaryApi }>(`/orders/recovery-summary${suffix}`);
+  return response.data;
+}
+
+export type ExecuteOrderRefundBody = {
+  method: "cash";
+  amount: number;
+  idempotencyKey: string;
+  notes?: string | null;
+};
+
+export type ExecuteOrderRefundResult = {
+  paymentId: number;
+  amount: number;
+  paidTotal: number;
+  paymentStatus: string;
+  idempotent: boolean;
+};
+
+export async function executeOrderItemRefund(
+  orderId: string,
+  orderItemId: string | number,
+  body: ExecuteOrderRefundBody,
+  options: EndpointRequestOptions = {},
+): Promise<ExecuteOrderRefundResult> {
+  const response = await request<{ data: ExecuteOrderRefundResult }>(
+    `/orders/${orderId}/items/${orderItemId}/recovery/refund/execute`,
     {
       method: "POST",
       body: JSON.stringify(body),

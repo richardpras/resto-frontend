@@ -30,7 +30,11 @@ export function usePosBootstrap({ tenantId, outletId }: UsePosBootstrapOptions) 
 
       queryClient.setQueryData(["menu-items", tenantId, outletId], data.menuItems.data);
       hydratePosBootstrapSettings(data.merchant, data.system);
-      usePosSessionStore.getState().hydrateFromBootstrap(outletId as number, data.posSession);
+      usePosSessionStore.getState().hydrateFromBootstrap(
+        outletId as number,
+        data.posSession,
+        data.defaultCashFloat,
+      );
 
       return data;
     },

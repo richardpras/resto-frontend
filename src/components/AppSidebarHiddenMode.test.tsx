@@ -166,7 +166,7 @@ describe("AppSidebar hidden mode", () => {
   it("preserves active route state after reopening", () => {
     render(
       <SidebarProvider defaultOpen={false}>
-        <MemoryRouter initialEntries={["/payroll?tab=posting"]}>
+        <MemoryRouter initialEntries={["/hr/payroll/posting"]}>
           <AppSidebar />
           <SidebarTrigger aria-label="Toggle sidebar" />
         </MemoryRouter>
@@ -174,7 +174,7 @@ describe("AppSidebar hidden mode", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open sidebar" }));
-    const postingLink = document.querySelector('a[href="/payroll?tab=posting"]');
+    const postingLink = document.querySelector('a[href="/hr/payroll/posting"]');
     expect(postingLink).not.toBeNull();
     expect(postingLink?.getAttribute("data-active")).toBe("true");
   });

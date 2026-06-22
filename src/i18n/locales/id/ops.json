@@ -108,10 +108,112 @@
     "unsupportedPayment": "Metode pembayaran tidak didukung.",
     "va": "VA:"
   },
+  "posSession": {
+    "label": "Sesi",
+    "none": "Tidak ada",
+    "openLabel": "Buka #{{id}}",
+    "openingCashShort": "Modal {{amount}}",
+    "openShift": "Buka Shift",
+    "closeShift": "Tutup Shift",
+    "openShiftTitle": "Buka Shift Kasir",
+    "closeShiftTitle": "Tutup Shift Kasir",
+    "cashDrawerTitle": "Rekonsiliasi Laci Kas",
+    "defaultFloatHint": "Modal standar laci outlet ini: {{amount}}.",
+    "nextShiftFloatHint": "Sisakan {{amount}} di laci untuk shift kasir berikutnya.",
+    "varianceExternalHint": "Kekurangan atau kelebihan kas ditangani di luar sistem.",
+    "notes": "Catatan",
+    "confirmCloseShift": "Konfirmasi Tutup Shift",
+    "opened": "Shift kasir dibuka.",
+    "closed": "Shift kasir ditutup.",
+    "openFailed": "Gagal membuka shift",
+    "closeFailed": "Gagal menutup shift",
+    "closePreviewFailed": "Gagal memuat pratinjau tutup shift",
+    "actualCashRequired": "Masukkan hitungan kas fisik sebelum menutup."
+  },
+  "ordersExplorer": {
+    "title": "Pesanan",
+    "subtitle": "Riwayat operasional pesanan, pembayaran, struk, dan audit.",
+    "recoveryQueue": {
+      "tabAll": "Semua pesanan",
+      "tabPending": "Menunggu refund",
+      "pendingShort": "pending",
+      "empty": "Tidak ada pesanan yang menunggu review refund manager.",
+      "dashboardTitle": "Recovery refund",
+      "pending": "Pending",
+      "refundedToday": "Refund hari ini",
+      "avgResolution": "Rata-rata penyelesaian",
+      "openQueue": "Buka antrian pending refund"
+    }
+  },
+  "managerRecovery": {
+    "hint": {
+      "manager": "Gunakan wizard recovery di bawah untuk review eskalasi, catat audit settlement, dan eksekusi refund cash.",
+      "readonly": "Layar ini hanya baca untuk investigasi."
+    },
+    "wizard": {
+      "title": "Wizard recovery manager",
+      "continue": "Lanjut",
+      "back": "Kembali ke review",
+      "review": {
+        "title": "Review eskalasi",
+        "line": "Baris",
+        "order": "Pesanan",
+        "reason": "Alasan kasir",
+        "noEvents": "Belum ada event recovery untuk baris ini."
+      },
+      "decide": {
+        "title": "Keputusan manager",
+        "resolution": "Resolusi",
+        "approve": "Setujui (recovery OK)",
+        "refunded": "Tandai refunded",
+        "replaced": "Tandai diganti",
+        "clear": "Hapus / tutup flag",
+        "replacedBy": "Diganti oleh item #",
+        "notesPlaceholder": "Catatan persetujuan (opsional)",
+        "apply": "Terapkan resolusi",
+        "success": "Resolusi recovery tercatat",
+        "failed": "Persetujuan gagal"
+      },
+      "settle": {
+        "title": "Settlement (audit)",
+        "auditOnly": "Mencatat keputusan manager untuk audit. Uang keluar setelah Eksekusi refund (langkah berikutnya).",
+        "refund": "Refund",
+        "storeCredit": "Store credit",
+        "giftCard": "Gift card",
+        "preview": "Preview dampak",
+        "record": "Catat audit",
+        "cap": "Batas refund (aman)",
+        "recorded": "Audit settlement tercatat",
+        "unpaidHint": "Preview settlement relevan setelah pesanan lunas atau sebagian."
+      },
+      "execute": {
+        "title": "Eksekusi refund cash",
+        "hint": "Membuat baris pembayaran refund dan memperbarui total dibayar. Berikan uang tunai ke pelanggan dari laci.",
+        "amount": "Jumlah cash",
+        "suggested": "Saran dari settlement",
+        "submit": "Eksekusi refund cash",
+        "invalidAmount": "Masukkan jumlah refund yang valid",
+        "success": "Refund cash dieksekusi",
+        "failed": "Refund gagal"
+      },
+      "done": {
+        "title": "Baris selesai",
+        "next": "Baris pending berikutnya",
+        "close": "Tutup wizard"
+      }
+    },
+    "refundSlip": {
+      "title": "REFUND CASH",
+      "order": "Pesanan",
+      "line": "Baris",
+      "amount": "Jumlah",
+      "manager": "Manager"
+    }
+  },
   "shiftClose": {
     "title": "Tutup Shift",
     "selectOutlet": "Pilih outlet untuk memulai.",
-    "subtitle": "Preflight akhir shift, rekonsiliasi laci, dan posting.",
+    "subtitle": "Tutup harian outlet: posting keuangan, batch inventori, dan audit.",
     "steps": {
       "preflight": "Preflight",
       "cashDrawer": "Laci Kas",

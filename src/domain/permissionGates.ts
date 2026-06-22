@@ -154,7 +154,6 @@ export function getVisiblePayrollTabs(user?: AuthUser | null): PayrollTabKey[] {
   if (hasPayrollFullAccess(u)) {
     tabs.push(...PAYROLL_FULL_TABS);
   }
-  if (canViewEmployees(u)) tabs.push("employees");
   if (canViewSchedule(u)) tabs.push("shift-assignments", "scheduling");
   if (canViewAttendance(u)) tabs.push("attendance", "attendance-review");
   if (canManageLeave(u)) tabs.push("leave");

@@ -11,6 +11,7 @@ import { DashboardMonitoringSectionSkeleton } from "@/components/skeletons/dashb
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { useAuthStore } from "@/stores/authStore";
 import { getUserCapabilities } from "@/domain/accessControl";
+import { RecoveryDashboardWidget } from "@/components/orders/RecoveryDashboardWidget";
 
 function formatRp(value: number): string {
   return `Rp ${Math.round(value).toLocaleString("id-ID")}`;
@@ -71,6 +72,8 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Overview of today's operations</p>
       </div>
+
+      <RecoveryDashboardWidget />
 
       {/* Existing stat cards (kept additive) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">

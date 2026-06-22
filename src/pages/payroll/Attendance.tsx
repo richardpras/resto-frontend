@@ -24,6 +24,7 @@ import {
 import { DataTable, type Column } from "@/components/DataTable";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import {
+  createAttendanceRecord,
   importAttendanceCsv,
   listAttendanceRecords,
   patchAttendanceRecord,
@@ -35,7 +36,7 @@ import { listDepartments, listOrganizationEmployees, type DepartmentRow, type Or
 import { useAuthStore } from "@/stores/authStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
-import { Pencil, Upload } from "lucide-react";
+import { Pencil, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUSES: AttendanceRecordStatus[] = ["present", "late", "early_leave", "incomplete", "absent"];
@@ -93,6 +94,17 @@ export default function Attendance() {
   const [editing, setEditing] = useState<AttendanceRecordApiRow | null>(null);
   const [editForm, setEditForm] = useState({ clockIn: "", clockOut: "", notes: "" });
   const [saving, setSaving] = useState(false);
+
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    employeeId: "",
+    date: new Date().toISOString().slice(0, 10),
+    clockIn: "",
+    clockOut: "",
+    status: "present" as AttendanceRecordStatus,
+    notes: "",
+  });
 
   const load = useCallback(async () => {
     if (!outletId) return;
@@ -202,6 +214,43 @@ export default function Attendance() {
     }
   };
 
+  const openManual = () => {
+    setManualForm({
+      employeeId: employeeId !== "all" ? employeeId : "",
+      date: new Date().toISOString().slice(0, 10),
+      clockIn: "",
+      clockOut: "",
+      status: "present",
+      notes: "",
+    });
+    setManualOpen(true);
+  };
+
+  const saveManual = async () => {
+    if (!manualForm.employeeId || !manualForm.date) {
+      toast.error(t("payroll.attendance.manualRequired"));
+      return;
+    }
+    setManualSaving(true);
+    try {
+      await createAttendanceRecord({
+        employeeId: Number(manualForm.employeeId),
+        date: manualForm.date,
+        clockIn: manualForm.clockIn || null,
+        clockOut: manualForm.clockOut || null,
+        status: manualForm.status,
+        notes: manualForm.notes || null,
+      });
+      toast.success(t("payroll.attendance.manualCreated"));
+      setManualOpen(false);
+      await load();
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendance.manualFailed"));
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
   const columns: Column<AttendanceRecordApiRow>[] = [
     {
       key: "employee",
@@ -250,10 +299,16 @@ export default function Attendance() {
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-lg font-semibold">{t("payroll.attendance.title")}</h2>
-        <Button size="sm" onClick={() => setImportOpen(true)} disabled={!outletId}>
-          <Upload className="h-4 w-4 mr-1" />
-          {t("payroll.attendance.import")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={openManual} disabled={!outletId}>
+            <Plus className="h-4 w-4 mr-1" />
+            {t("payroll.attendance.addManual")}
+          </Button>
+          <Button size="sm" onClick={() => setImportOpen(true)} disabled={!outletId}>
+            <Upload className="h-4 w-4 mr-1" />
+            {t("payroll.attendance.import")}
+          </Button>
+        </div>
       </div>
 
       <Card className="p-4 space-y-3">
@@ -449,6 +504,98 @@ export default function Attendance() {
               {t("payroll.shared.cancel")}
             </Button>
             <Button onClick={() => void saveEdit()} disabled={saving}>
+              {t("payroll.shared.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
+          <DialogHeader>
+            <DialogTitle>{t("payroll.attendance.addManual")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label>{t("payroll.shared.employee")}</Label>
+              <Select
+                value={manualForm.employeeId || "none"}
+                onValueChange={(v) => setManualForm({ ...manualForm, employeeId: v === "none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("payroll.shared.selectEmployee")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t("payroll.shared.selectEmployee")}</SelectItem>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      {e.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("payroll.shared.date")}</Label>
+                <Input
+                  type="date"
+                  value={manualForm.date}
+                  onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("payroll.attendance.status")}</Label>
+                <Select
+                  value={manualForm.status}
+                  onValueChange={(v) =>
+                    setManualForm({ ...manualForm, status: v as AttendanceRecordStatus })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {t(`payroll.attendance.statuses.${s}`, { defaultValue: s.replace("_", " ") })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("payroll.shared.clockInTime")}</Label>
+                <Input
+                  type="time"
+                  value={manualForm.clockIn}
+                  onChange={(e) => setManualForm({ ...manualForm, clockIn: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("payroll.shared.clockOutTime")}</Label>
+                <Input
+                  type="time"
+                  value={manualForm.clockOut}
+                  onChange={(e) => setManualForm({ ...manualForm, clockOut: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("payroll.shared.notes")}</Label>
+              <Textarea
+                value={manualForm.notes}
+                onChange={(e) => setManualForm({ ...manualForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualOpen(false)}>
+              {t("payroll.shared.cancel")}
+            </Button>
+            <Button onClick={() => void saveManual()} disabled={manualSaving}>
               {t("payroll.shared.save")}
             </Button>
           </DialogFooter>

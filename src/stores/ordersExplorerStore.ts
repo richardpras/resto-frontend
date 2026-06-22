@@ -12,6 +12,8 @@ import {
   listOrdersWithMeta as apiListOrdersWithMeta,
   previewOrderItemRecoverySettlement as apiPreviewOrderItemRecoverySettlement,
   recordOrderItemRecoverySettlement as apiRecordOrderItemRecoverySettlement,
+  executeOrderItemRefund as apiExecuteOrderItemRefund,
+  getRecoveryPendingCount as apiGetRecoveryPendingCount,
   type ListOrdersMeta,
   type ListOrdersParams,
   type OrderApi,
@@ -38,6 +40,7 @@ export type OrdersExplorerFilters = Pick<
   | "dateFrom"
   | "dateTo"
   | "hasVoidedPayment"
+  | "hasRecoveryPending"
 >;
 
 export type OrdersExplorerDetailState = {
@@ -81,6 +84,7 @@ function buildListParams(
   if (filters.dateFrom) params.dateFrom = filters.dateFrom;
   if (filters.dateTo) params.dateTo = filters.dateTo;
   if (filters.hasVoidedPayment === true) params.hasVoidedPayment = true;
+  if (filters.hasRecoveryPending === true) params.hasRecoveryPending = true;
   return params;
 }
 
@@ -99,6 +103,8 @@ type OrdersExplorerState = {
   detailInflight: Map<string, Promise<void>>;
   recoveryApprovalSubmitting: boolean;
   recoverySettlementSubmitting: boolean;
+  refundExecuting: boolean;
+  recoveryPendingCount: number;
   setFilters: (patch: Partial<OrdersExplorerFilters>) => void;
   resetForOutletSwitch: () => void;
   fetchList: (opts?: { append?: boolean; background?: boolean }) => Promise<void>;
@@ -124,6 +130,12 @@ type OrdersExplorerState = {
     body: RecoverySettlementPreviewBody,
   ) => Promise<RecoverySettlementPreviewApi>;
   recordRecoverySettlement: (orderId: string, orderItemId: string | number, body: RecordRecoverySettlementBody) => Promise<void>;
+  executeRefund: (
+    orderId: string,
+    orderItemId: string | number,
+    body: { method: "cash"; amount: number; idempotencyKey: string; notes?: string | null },
+  ) => Promise<void>;
+  fetchRecoveryPendingCount: () => Promise<void>;
 };
 
 export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => ({
@@ -141,6 +153,8 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
   detailInflight: new Map(),
   recoveryApprovalSubmitting: false,
   recoverySettlementSubmitting: false,
+  refundExecuting: false,
+  recoveryPendingCount: 0,
 
   setFilters: (patch) => {
     set((s) => ({
@@ -164,6 +178,8 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
       detailByKey: {},
       recoveryApprovalSubmitting: false,
       recoverySettlementSubmitting: false,
+      refundExecuting: false,
+      recoveryPendingCount: 0,
     });
   },
 
@@ -386,6 +402,8 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
           },
         },
       }));
+      void get().fetchList({ append: false, background: true });
+      void get().fetchRecoveryPendingCount();
     } finally {
       set({ recoveryApprovalSubmitting: false });
     }
@@ -420,6 +438,55 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
       await get().refreshRecoveryEvents(orderId);
     } finally {
       set({ recoverySettlementSubmitting: false });
+    }
+  },
+
+  executeRefund: async (orderId, orderItemId, body) => {
+    useAuthStore.getState().syncApiBearerForRequests();
+    const outletId = useOutletStore.getState().activeOutletId;
+    const key = explorerDetailKey(outletId, orderId);
+    set({ refundExecuting: true });
+    try {
+      await apiExecuteOrderItemRefund(orderId, orderItemId, body);
+      const [order, recoveryEvents] = await Promise.all([
+        apiGetOrder(orderId),
+        apiListOrderRecoveryEvents(orderId).catch(() => [] as OrderItemRecoveryEventApi[]),
+      ]);
+      set((s) => ({
+        detailByKey: {
+          ...s.detailByKey,
+          [key]: {
+            ...(s.detailByKey[key] ?? {
+              order: null,
+              events: [],
+              recoveryEvents: [],
+              receipts: [],
+              loading: false,
+              recoveryRefreshing: false,
+              error: null,
+            }),
+            order,
+            recoveryEvents,
+          },
+        },
+      }));
+      void get().fetchList({ append: false, background: true });
+      void get().fetchRecoveryPendingCount();
+    } finally {
+      set({ refundExecuting: false });
+    }
+  },
+
+  fetchRecoveryPendingCount: async () => {
+    useAuthStore.getState().syncApiBearerForRequests();
+    const outletId = useOutletStore.getState().activeOutletId;
+    try {
+      const count = await apiGetRecoveryPendingCount(
+        typeof outletId === "number" && outletId >= 1 ? outletId : undefined,
+      );
+      set({ recoveryPendingCount: count });
+    } catch {
+      set({ recoveryPendingCount: 0 });
     }
   },
 }));

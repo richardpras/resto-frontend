@@ -5,7 +5,13 @@ import {
 } from "lucide-react";
 import { PERMISSIONS } from "@/stores/authStore";
 import { PAYROLL_TAB_GROUPS } from "@/domain/payrollTabGroups";
-import { canAccessPayrollModule, canViewEmployees, canViewFinancialStatements, getVisiblePayrollTabs, type PayrollTabKey } from "@/domain/permissionGates";
+import { HR_PAYROLL_TAB_ROUTES } from "@/domain/hrRouteMap";
+import {
+  canViewEmployees,
+  canViewFinancialStatements,
+  getVisiblePayrollTabs,
+  type PayrollTabKey,
+} from "@/domain/permissionGates";
 import type { AuthUser } from "@/stores/authStore";
 import type { SidebarNavItem, SidebarNavSection } from "./sidebarNavTypes";
 
@@ -36,26 +42,46 @@ function nav(titleKey: string, rest: Omit<SidebarNavItem, "title" | "titleKey">)
   return { title: "", titleKey, kind: "link", ...rest };
 }
 
-function separator(titleKey: string): SidebarNavItem {
-  return { title: "", titleKey, kind: "separator" };
+function hrPayrollLink(tab: PayrollTabKey): SidebarNavItem {
+  return nav(PAYROLL_TAB_KEYS[tab], { href: HR_PAYROLL_TAB_ROUTES[tab] });
 }
 
-function payrollLink(tab: PayrollTabKey): SidebarNavItem {
-  return nav(PAYROLL_TAB_KEYS[tab], { href: `/payroll?tab=${tab}` });
-}
-
-function buildPayrollChildren(user: AuthUser | null): SidebarNavItem[] {
+function buildHrNavGroups(user: AuthUser | null): SidebarNavItem[] {
   const visible = new Set(getVisiblePayrollTabs(user));
-  const children: SidebarNavItem[] = [];
+  const groups: SidebarNavItem[] = [];
 
-  for (const group of PAYROLL_TAB_GROUPS) {
-    const tabs = group.tabs.filter((tab) => visible.has(tab));
-    if (tabs.length === 0) continue;
-    children.push(separator(group.labelKey));
-    children.push(...tabs.map(payrollLink));
+  const setupPayrollTabs = PAYROLL_TAB_GROUPS[0].tabs.filter((tab) => visible.has(tab));
+  const setupChildren: SidebarNavItem[] = [];
+  if (canViewEmployees(user)) {
+    setupChildren.push(nav("nav.employees", { href: "/hr/employees" }));
+  }
+  setupChildren.push(
+    nav("nav.departments", { href: "/hr/departments", permission: PERMISSIONS.USERS }),
+    nav("nav.positions", { href: "/hr/positions", permission: PERMISSIONS.USERS }),
+    ...setupPayrollTabs.map(hrPayrollLink),
+  );
+  if (setupChildren.length > 0) {
+    groups.push({ title: "", titleKey: "nav.hrGroupSetup", kind: "link", children: setupChildren });
   }
 
-  return children;
+  const groupMeta = [
+    { index: 1, titleKey: "nav.hrGroupDaily" },
+    { index: 2, titleKey: "nav.hrGroupPayroll" },
+    { index: 3, titleKey: "nav.hrGroupClose" },
+  ] as const;
+
+  for (const { index, titleKey } of groupMeta) {
+    const tabs = PAYROLL_TAB_GROUPS[index].tabs.filter((tab) => visible.has(tab));
+    if (tabs.length === 0) continue;
+    groups.push({
+      title: "",
+      titleKey,
+      kind: "link",
+      children: tabs.map(hrPayrollLink),
+    });
+  }
+
+  return groups;
 }
 
 const ACCOUNTING_OPERATIONAL: SidebarNavItem[] = [
@@ -109,7 +135,7 @@ const REPORTS_CHILDREN: SidebarNavItem[] = [
 ];
 
 export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[] {
-  const payrollChildren = buildPayrollChildren(user);
+  const hrNavGroups = buildHrNavGroups(user);
   const accountingChildren = buildAccountingChildren(user);
 
   const customers: SidebarNavItem[] = [
@@ -126,16 +152,8 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
 
   const hr: SidebarNavItem[] = [
     nav("nav.usersRoles", { href: "/users", icon: UserCog, permission: PERMISSIONS.USERS }),
-    nav("nav.employees", { href: "/employees", icon: Users, accessCheck: (u) => canViewEmployees(u) }),
-    nav("nav.departments", { href: "/departments", icon: Building2, permission: PERMISSIONS.USERS }),
-    nav("nav.positions", { href: "/positions", icon: Briefcase, permission: PERMISSIONS.USERS }),
+    ...hrNavGroups,
   ];
-
-  if (payrollChildren.length > 0) {
-    hr.push(
-      nav("nav.payrollMenu", { icon: Users, accessCheck: (u) => canAccessPayrollModule(u), children: payrollChildren }),
-    );
-  }
 
   const finance: SidebarNavItem[] = [];
   if (accountingChildren.length > 0) {

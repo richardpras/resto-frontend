@@ -150,6 +150,29 @@ export default function Scheduling() {
     return m;
   }, [rosters]);
 
+  const openGenerateDialog = () => {
+    setGenForm({
+      fromDate: weekStart,
+      toDate: weekEnd,
+      overwrite: false,
+    });
+    setGenOpen(true);
+  };
+
+  const openCopyDialog = () => {
+    setCopyForm({
+      sourceFrom: weekStart,
+      sourceTo: weekEnd,
+      destFrom: "",
+      destTo: "",
+    });
+    setCopyOpen(true);
+  };
+
+  const focusWeekForDate = (dateStr: string) => {
+    setWeekStart(mondayOf(dateStr));
+  };
+
   const openCell = (empId: number, date: string) => {
     const key = `${empId}-${date}`;
     const existing = rosterMap.get(key) ?? null;
@@ -176,7 +199,11 @@ export default function Scheduling() {
         toast.success(t("payroll.shared.scheduleCreated"));
       }
       setCellOpen(false);
-      await load();
+      if (mondayOf(cellDate) !== weekStart) {
+        focusWeekForDate(cellDate);
+      } else {
+        await load();
+      }
     } catch (e) {
       toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.saveFailed"));
     }
@@ -202,19 +229,22 @@ export default function Scheduling() {
         }),
       );
       setGenOpen(false);
-      await load();
+      focusWeekForDate(genForm.fromDate);
     } catch (e) {
       toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.generateFailed"));
     }
   };
 
   const runCopy = async () => {
-    if (!outletId) return;
+    if (!outletId || !copyForm.destFrom) {
+      toast.error(t("payroll.shared.outletDateRequired"));
+      return;
+    }
     try {
       const stats = await copyRosters({ outletId, ...copyForm });
       toast.success(t("payroll.shared.copiedSkipped", { copied: stats.copied, skipped: stats.skipped }));
       setCopyOpen(false);
-      await load();
+      focusWeekForDate(copyForm.destFrom);
     } catch (e) {
       toast.error(formatApiErrorMessage(e, t) || t("payroll.shared.copyFailed"));
     }
@@ -239,11 +269,11 @@ export default function Scheduling() {
           <p className="text-sm text-muted-foreground">{t("payroll.scheduling.subtitle")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => setGenOpen(true)}>
+          <Button size="sm" variant="outline" onClick={openGenerateDialog}>
             <CalendarPlus className="h-4 w-4 mr-1" />
             {t("payroll.shared.generate")}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setCopyOpen(true)}>
+          <Button size="sm" variant="outline" onClick={openCopyDialog}>
             <Copy className="h-4 w-4 mr-1" />
             {t("payroll.shared.copyWeek")}
           </Button>

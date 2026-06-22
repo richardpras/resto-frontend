@@ -108,10 +108,112 @@
     "statusColon": "Status:",
     "expiresInColon": "Expires in:"
   },
+  "posSession": {
+    "label": "Session",
+    "none": "None",
+    "openLabel": "Open #{{id}}",
+    "openingCashShort": "Opening {{amount}}",
+    "openShift": "Open Shift",
+    "closeShift": "Close Shift",
+    "openShiftTitle": "Open Cashier Shift",
+    "closeShiftTitle": "Close Cashier Shift",
+    "cashDrawerTitle": "Cash Drawer Reconciliation",
+    "defaultFloatHint": "Standard drawer float for this outlet: {{amount}}.",
+    "nextShiftFloatHint": "Leave {{amount}} in the drawer for the next cashier shift.",
+    "varianceExternalHint": "Cash shortfall or surplus is handled outside the system.",
+    "notes": "Notes",
+    "confirmCloseShift": "Confirm Close Shift",
+    "opened": "Cashier shift opened.",
+    "closed": "Cashier shift closed.",
+    "openFailed": "Failed to open shift",
+    "closeFailed": "Failed to close shift",
+    "closePreviewFailed": "Failed to load close preview",
+    "actualCashRequired": "Enter the physical cash count before closing."
+  },
+  "ordersExplorer": {
+    "title": "Orders",
+    "subtitle": "Operational order history, payments, receipts, and audit trail.",
+    "recoveryQueue": {
+      "tabAll": "All orders",
+      "tabPending": "Pending refund",
+      "pendingShort": "pending",
+      "empty": "No orders awaiting manager refund review.",
+      "dashboardTitle": "Refund recovery",
+      "pending": "Pending",
+      "refundedToday": "Refunded today",
+      "avgResolution": "Avg resolution",
+      "openQueue": "Open pending refund queue"
+    }
+  },
+  "managerRecovery": {
+    "hint": {
+      "manager": "Use the recovery wizard below to review escalations, record settlement audit, and execute cash refunds.",
+      "readonly": "This screen is read-only for investigation."
+    },
+    "wizard": {
+      "title": "Manager recovery wizard",
+      "continue": "Continue",
+      "back": "Back to review",
+      "review": {
+        "title": "Review escalation",
+        "line": "Line",
+        "order": "Order",
+        "reason": "Cashier reason",
+        "noEvents": "No prior recovery events for this line."
+      },
+      "decide": {
+        "title": "Manager decision",
+        "resolution": "Resolution",
+        "approve": "Approve (recovery OK)",
+        "refunded": "Mark refunded",
+        "replaced": "Mark replaced",
+        "clear": "Clear / dismiss flag",
+        "replacedBy": "Replaced by item #",
+        "notesPlaceholder": "Approval notes (optional)",
+        "apply": "Apply resolution",
+        "success": "Recovery resolution recorded",
+        "failed": "Approval failed"
+      },
+      "settle": {
+        "title": "Settlement (audit)",
+        "auditOnly": "Records the manager decision for audit. Cash leaves the drawer only after Execute refund (next step).",
+        "refund": "Refund",
+        "storeCredit": "Store credit",
+        "giftCard": "Gift card",
+        "preview": "Preview impact",
+        "record": "Record audit",
+        "cap": "Refund cap (safe)",
+        "recorded": "Settlement audit recorded",
+        "unpaidHint": "Settlement preview applies once the order is paid or partially paid."
+      },
+      "execute": {
+        "title": "Execute cash refund",
+        "hint": "Creates a refund payment row and updates paid total. Give cash to the customer from the drawer.",
+        "amount": "Cash amount",
+        "suggested": "Suggested from settlement",
+        "submit": "Execute cash refund",
+        "invalidAmount": "Enter a valid refund amount",
+        "success": "Cash refund executed",
+        "failed": "Refund failed"
+      },
+      "done": {
+        "title": "Line resolved",
+        "next": "Next pending line",
+        "close": "Close wizard"
+      }
+    },
+    "refundSlip": {
+      "title": "CASH REFUND",
+      "order": "Order",
+      "line": "Line",
+      "amount": "Amount",
+      "manager": "Manager"
+    }
+  },
   "shiftClose": {
     "title": "Shift Close",
     "selectOutlet": "Select an outlet to begin.",
-    "subtitle": "End-of-shift preflight, drawer reconciliation, and posting.",
+    "subtitle": "End-of-day outlet close: financial posting, inventory batch, and audit.",
     "steps": {
       "preflight": "Preflight",
       "cashDrawer": "Cash Drawer",

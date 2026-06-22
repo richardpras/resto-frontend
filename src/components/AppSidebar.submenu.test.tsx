@@ -11,7 +11,7 @@ describe("AppSidebar submenu navigation", () => {
     testNavConfig.pinSet = true;
   });
 
-  it("renders Payroll parent with children", () => {
+  it("renders HR payroll groups with children", () => {
     render(
       <MemoryRouter>
         <AppSidebar />
@@ -22,16 +22,16 @@ describe("AppSidebar submenu navigation", () => {
     expect(screen.getByRole("link", { name: "Preparation" })).toBeTruthy();
   });
 
-  it("links Payroll Posting to /payroll?tab=posting", () => {
+  it("links payroll posting to /hr/payroll/posting", () => {
     render(
       <MemoryRouter>
         <AppSidebar />
       </MemoryRouter>,
     );
     const link = screen.getByRole("link", { name: "Overview" }).closest("a");
-    expect(link?.getAttribute("href")).toBe("/payroll?tab=payroll");
+    expect(link?.getAttribute("href")).toBe("/hr/payroll");
     const postingLink = Array.from(document.querySelectorAll("a")).find(
-      (a) => a.getAttribute("href") === "/payroll?tab=posting",
+      (a) => a.getAttribute("href") === "/hr/payroll/posting",
     );
     expect(postingLink).toBeTruthy();
   });
@@ -73,15 +73,15 @@ describe("AppSidebar submenu navigation", () => {
     expect(screen.getByText("Gift Cards").closest("a")?.getAttribute("href")).toBe("/gift-cards");
   });
 
-  it("renders payroll section labels for grouped submenu", () => {
+  it("renders HR payroll section labels for grouped submenu", () => {
     render(
       <MemoryRouter>
         <AppSidebar />
       </MemoryRouter>,
     );
     expect(screen.getByText("Setup")).toBeTruthy();
-    expect(screen.getByText("Processing")).toBeTruthy();
-    expect(screen.getByText("Close")).toBeTruthy();
+    expect(screen.getByText("Operations")).toBeTruthy();
+    expect(screen.getByText("Period close")).toBeTruthy();
   });
 
   it("renders overview and sales sections", () => {

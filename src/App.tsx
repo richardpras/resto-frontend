@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Outlet } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, Outlet } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,6 +12,9 @@ import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedR
 import { LocaleSync } from "@/hooks/useLocaleSync";
 import { PERMISSIONS } from "@/stores/authStore";
 import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
+import type { HrBootstrapKey } from "@/hooks/useHrPayrollBootstrap";
+import { LegacyPayrollRedirect } from "./pages/hr/LegacyPayrollRedirect";
+import { wrapHrPage } from "./pages/hr/wrapHrPage";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MenuIntelligenceDashboard = lazy(() => import("./pages/dashboard/MenuIntelligenceDashboard"));
@@ -31,8 +34,26 @@ const Tables = lazy(() => import("./pages/Tables"));
 const Reservations = lazy(() => import("./pages/Reservations"));
 const ReservationDashboard = lazy(() => import("./pages/ReservationDashboard"));
 const Purchases = lazy(() => import("./pages/Purchases"));
-const Payroll = lazy(() => import("./pages/Payroll"));
 const Cashier = lazy(() => import("./pages/Cashier"));
+const HrShifts = lazy(() => import("./pages/payroll/Shifts"));
+const HrScheduling = lazy(() => import("./pages/payroll/Scheduling"));
+const HrShiftAssignments = lazy(() => import("./pages/payroll/ShiftAssignments"));
+const HrAttendance = lazy(() => import("./pages/payroll/Attendance"));
+const HrAttendanceReview = lazy(() => import("./pages/payroll/AttendanceReview"));
+const HrLeave = lazy(() => import("./pages/payroll/Leave"));
+const HrOvertime = lazy(() => import("./pages/payroll/Overtime"));
+const HrPayrollRun = lazy(() => import("./pages/payroll/PayrollRun"));
+const HrPreparation = lazy(() => import("./pages/payroll/Preparation"));
+const HrEngine = lazy(() => import("./pages/payroll/Engine"));
+const HrAdjustments = lazy(() => import("./pages/payroll/Adjustments"));
+const HrPayslips = lazy(() => import("./pages/payroll/Payslips"));
+const HrBpjs = lazy(() => import("./pages/payroll/Bpjs"));
+const HrTax = lazy(() => import("./pages/payroll/Tax"));
+const HrReimbursements = lazy(() => import("./pages/payroll/Reimbursements"));
+const HrLoans = lazy(() => import("./pages/payroll/Loans"));
+const HrCashAdvances = lazy(() => import("./pages/payroll/CashAdvances"));
+const HrClosing = lazy(() => import("./pages/payroll/Closing"));
+const HrPosting = lazy(() => import("./pages/payroll/Posting"));
 const OrdersExplorer = lazy(() => import("./pages/OrdersExplorer"));
 const Users = lazy(() => import("./pages/Users"));
 const Employees = lazy(() => import("./pages/Employees"));
@@ -88,6 +109,10 @@ const employeesGuarded = (el: React.ReactElement) => (
   </ProtectedRoute>
 );
 
+const hrPayrollPage = (el: React.ReactElement, bootstrapKeys?: HrBootstrapKey[]) =>
+  payrollGuarded(wrapHrPage(el, bootstrapKeys));
+
+const hrMasterPage = (el: React.ReactElement) => wrapHrPage(el);
 function AppShell() {
   return (
     <AppLayout>
@@ -233,11 +258,33 @@ const App = () => (
             <Route path="/loyalty-programs" element={guarded(PERMISSIONS.MEMBERS, <LoyaltyPrograms />)} />
             <Route path="/gift-cards" element={guarded(PERMISSIONS.GIFT_CARDS, <GiftCards />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
-            <Route path="/payroll" element={payrollGuarded(<Payroll />)} />
+            <Route path="/payroll" element={<LegacyPayrollRedirect />} />
             <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
-            <Route path="/employees" element={employeesGuarded(<Employees />)} />
-            <Route path="/departments" element={guarded(PERMISSIONS.USERS, <Departments />)} />
-            <Route path="/positions" element={guarded(PERMISSIONS.USERS, <Positions />)} />
+            <Route path="/employees" element={<Navigate to="/hr/employees" replace />} />
+            <Route path="/departments" element={<Navigate to="/hr/departments" replace />} />
+            <Route path="/positions" element={<Navigate to="/hr/positions" replace />} />
+            <Route path="/hr/employees" element={employeesGuarded(hrMasterPage(<Employees />))} />
+            <Route path="/hr/departments" element={guarded(PERMISSIONS.USERS, hrMasterPage(<Departments />))} />
+            <Route path="/hr/positions" element={guarded(PERMISSIONS.USERS, hrMasterPage(<Positions />))} />
+            <Route path="/hr/shifts" element={hrPayrollPage(<HrShifts />, ["shifts"])} />
+            <Route path="/hr/scheduling" element={hrPayrollPage(<HrScheduling />)} />
+            <Route path="/hr/shift-assignments" element={hrPayrollPage(<HrShiftAssignments />)} />
+            <Route path="/hr/attendance" element={hrPayrollPage(<HrAttendance />, ["attendance"])} />
+            <Route path="/hr/attendance-review" element={hrPayrollPage(<HrAttendanceReview />, ["attendance"])} />
+            <Route path="/hr/leave" element={hrPayrollPage(<HrLeave />)} />
+            <Route path="/hr/overtime" element={hrPayrollPage(<HrOvertime />, ["overtime"])} />
+            <Route path="/hr/payroll" element={hrPayrollPage(<HrPayrollRun />, ["payrolls"])} />
+            <Route path="/hr/payroll/preparation" element={hrPayrollPage(<HrPreparation />)} />
+            <Route path="/hr/payroll/engine" element={hrPayrollPage(<HrEngine />)} />
+            <Route path="/hr/payroll/adjustments" element={hrPayrollPage(<HrAdjustments />, ["adjustments"])} />
+            <Route path="/hr/payroll/payslips" element={hrPayrollPage(<HrPayslips />)} />
+            <Route path="/hr/payroll/bpjs" element={hrPayrollPage(<HrBpjs />)} />
+            <Route path="/hr/payroll/tax" element={hrPayrollPage(<HrTax />)} />
+            <Route path="/hr/payroll/reimbursements" element={hrPayrollPage(<HrReimbursements />)} />
+            <Route path="/hr/payroll/loans" element={hrPayrollPage(<HrLoans />, ["loans"])} />
+            <Route path="/hr/payroll/cash-advances" element={hrPayrollPage(<HrCashAdvances />)} />
+            <Route path="/hr/payroll/closing" element={hrPayrollPage(<HrClosing />)} />
+            <Route path="/hr/payroll/posting" element={hrPayrollPage(<HrPosting />)} />
             <Route path="/accounting" element={guarded(PERMISSIONS.ACCOUNTING, <Accounting />)} />
             <Route path="/reports" element={guarded(PERMISSIONS.REPORTS, <ReportsHub />)} />
             <Route path="/executive-dashboard" element={guarded(PERMISSIONS.REPORTS, <ExecutiveDashboard />)} />

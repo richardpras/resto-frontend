@@ -22,6 +22,7 @@ export type PosBootstrapResponse = {
     };
   };
   posSession: PosSessionApi | null;
+  defaultCashFloat?: number;
 };
 
 export type FetchPosBootstrapParams = {

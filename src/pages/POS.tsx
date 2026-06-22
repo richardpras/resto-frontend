@@ -42,6 +42,7 @@ import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
 import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
+import { usePosSessionStore } from "@/stores/posSessionStore";
 import { canReconcilePayments } from "@/domain/permissionGates";
 import { PosMenuGridSkeleton } from "@/components/skeletons/card/PosMenuGridSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
@@ -563,6 +564,16 @@ export default function POS() {
     return {};
   }, [activeOutletId]);
 
+  const currentPosSessionId = usePosSessionStore(
+    (s) => (s.currentSession?.status === "open" ? s.currentSession.id : undefined),
+  );
+  const posSessionOrderFields = useMemo((): Pick<CreateOrderPayload, "posSessionId"> => {
+    if (typeof currentPosSessionId === "number" && currentPosSessionId > 0) {
+      return { posSessionId: currentPosSessionId };
+    }
+    return {};
+  }, [currentPosSessionId]);
+
   const reservationApplyDeps = useMemo(
     (): ApplyReservationPosPayloadDeps => ({
       setCurrentOrderId,
@@ -810,6 +821,7 @@ export default function POS() {
   const buildDiscountDraftCreatePayload = (): CreateOrderPayload => ({
     tenantId: POS_TENANT_ID,
     ...outletOrderFields,
+    ...posSessionOrderFields,
     code: POS_AUTO_ORDER_CODE,
     source: "pos",
     orderType,
@@ -894,6 +906,7 @@ export default function POS() {
       const payload: CreateOrderPayload = {
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
+        ...posSessionOrderFields,
         code,
         source: "pos",
         orderType,
@@ -1091,6 +1104,7 @@ export default function POS() {
         const payload: CreateOrderPayload = {
           tenantId: POS_TENANT_ID,
           ...outletOrderFields,
+        ...posSessionOrderFields,
           code,
           source: "pos",
           orderType,
@@ -1503,6 +1517,7 @@ export default function POS() {
       const { order: created } = await createOrderRemote({
         tenantId: POS_TENANT_ID,
         ...outletOrderFields,
+        ...posSessionOrderFields,
         code,
         source: "pos",
         orderType,

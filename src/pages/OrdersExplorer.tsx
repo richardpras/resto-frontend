@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { OrderExplorerDetailModal } from "@/components/orders/OrderExplorerDetailModal";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { ReceiptPreviewModal } from "@/components/receipts/ReceiptPreviewModal";
@@ -33,6 +35,8 @@ const SOURCE_OPTIONS = [
   { value: "qr", label: "QR" },
 ] as const;
 
+type ListTab = "all" | "pendingRefund";
+
 function statusBadgeClass(status: string): string {
   const s = status.toLowerCase();
   if (s === "completed") return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
@@ -43,6 +47,8 @@ function statusBadgeClass(status: string): string {
 }
 
 export default function OrdersExplorer() {
+  const { t } = useTranslation("ops");
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const orders = useOrdersExplorerStore((s) => s.orders);
   const meta = useOrdersExplorerStore((s) => s.meta);
@@ -56,19 +62,35 @@ export default function OrdersExplorer() {
   const startPolling = useOrdersExplorerStore((s) => s.startPolling);
   const stopPolling = useOrdersExplorerStore((s) => s.stopPolling);
   const openOrderDetail = useOrdersExplorerStore((s) => s.openOrderDetail);
+  const fetchRecoveryPendingCount = useOrdersExplorerStore((s) => s.fetchRecoveryPendingCount);
+  const recoveryPendingCount = useOrdersExplorerStore((s) => s.recoveryPendingCount);
 
   const [searchDraft, setSearchDraft] = useState("");
+  const listTab: ListTab = filters.hasRecoveryPending ? "pendingRefund" : "all";
 
   useEffect(() => {
     resetForOutletSwitch();
     if (typeof activeOutletId === "number" && activeOutletId >= 1) {
-      void fetchList({ append: false, background: false });
+      const recoveryPending = searchParams.get("recoveryPending") === "1";
+      if (recoveryPending) {
+        setFilters({ hasRecoveryPending: true, paymentStatus: "paid" });
+      } else {
+        void fetchList({ append: false, background: false });
+      }
+      void fetchRecoveryPendingCount();
       startPolling();
     }
     return () => {
       stopPolling();
     };
-  }, [activeOutletId, resetForOutletSwitch, fetchList, startPolling, stopPolling]);
+  }, [activeOutletId, resetForOutletSwitch, fetchList, startPolling, stopPolling, fetchRecoveryPendingCount]);
+
+  useEffect(() => {
+    const orderId = searchParams.get("orderId");
+    if (orderId) {
+      openOrderDetail(orderId);
+    }
+  }, [searchParams, openOrderDetail]);
 
   useEffect(() => {
     setSearchDraft(filters.search ?? "");
@@ -80,6 +102,18 @@ export default function OrdersExplorer() {
     setFilters({ search: searchDraft });
   };
 
+  const setListTab = (tab: ListTab) => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === "pendingRefund") {
+      next.set("recoveryPending", "1");
+      setFilters({ hasRecoveryPending: true, paymentStatus: "paid" });
+    } else {
+      next.delete("recoveryPending");
+      setFilters({ hasRecoveryPending: undefined });
+    }
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl" data-testid="orders-explorer-page">
       {(!activeOutletId || activeOutletId < 1) && (
@@ -88,8 +122,22 @@ export default function OrdersExplorer() {
         </div>
       )}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Orders</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Operational order history, payments, receipts, and audit trail.</p>
+        <h1 className="text-2xl font-bold text-foreground">{t("ordersExplorer.title", "Orders")}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t("ordersExplorer.subtitle", "Operational order history, payments, receipts, and audit trail.")}</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2" data-testid="orders-explorer-list-tabs">
+        <Button type="button" size="sm" variant={listTab === "all" ? "default" : "outline"} onClick={() => setListTab("all")}>
+          {t("ordersExplorer.recoveryQueue.tabAll", "All orders")}
+        </Button>
+        <Button type="button" size="sm" variant={listTab === "pendingRefund" ? "default" : "outline"} onClick={() => setListTab("pendingRefund")}>
+          {t("ordersExplorer.recoveryQueue.tabPending", "Pending refund")}
+          {recoveryPendingCount > 0 ? (
+            <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-950 dark:text-amber-100">
+              {recoveryPendingCount > 99 ? "99+" : recoveryPendingCount}
+            </span>
+          ) : null}
+        </Button>
       </div>
 
       <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-3">
@@ -220,7 +268,17 @@ export default function OrdersExplorer() {
                   key={o.id}
                   className="w-full grid grid-cols-7 gap-2 rounded-lg px-2 py-2 text-left text-sm items-center hover:bg-muted/40"
                 >
-                  <span className="col-span-2 truncate font-medium text-foreground">{o.code}</span>
+                  <span className="col-span-2 truncate font-medium text-foreground flex items-center gap-1.5">
+                    {o.code}
+                    {(o.pendingRecoveryCount ?? 0) > 0 ? (
+                      <span
+                        className="inline-flex rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[9px] font-semibold text-amber-950 dark:text-amber-100"
+                        data-testid="order-row-recovery-badge"
+                      >
+                        {o.pendingRecoveryCount} {t("ordersExplorer.recoveryQueue.pendingShort", "pending")}
+                      </span>
+                    ) : null}
+                  </span>
                   <span data-testid="order-history-source">
                     <OrderSourceBadge source={o.orderSource ?? null} />
                   </span>
@@ -237,7 +295,11 @@ export default function OrdersExplorer() {
                 </div>
               ))}
               {orders.length === 0 && !showListSkeleton ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No orders for the current filters.</p>
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  {listTab === "pendingRefund"
+                    ? t("ordersExplorer.recoveryQueue.empty", "No orders awaiting manager refund review.")
+                    : "No orders for the current filters."}
+                </p>
               ) : null}
             </div>
           )}

@@ -69,18 +69,23 @@ describe("buildSidebarSections", () => {
     expect(menuParent?.children?.some((child) => child.href === "/dashboard/menu")).toBe(true);
   });
 
-  it("orders payroll children with workflow separators", () => {
+  it("groups HR payroll under 3-level sidebar groups with /hr routes", () => {
     const user = makeUser([...ALL_PERMISSIONS]);
     const sections = buildSidebarSections(user);
     const hr = sections.find((section) => section.labelKey === "sidebar.hr");
-    const payroll = hr?.items.find((item) => item.titleKey === "nav.payrollMenu");
-    const filtered = filterNavItems(payroll?.children ?? [], user, hasPermission);
+    const filtered = filterNavItems(hr?.items ?? [], user, hasPermission);
 
-    expect(filtered[0]?.kind).toBe("separator");
-    expect(filtered[0]?.titleKey).toBe("nav.payrollGroupSetup");
-    expect(filtered.some((item) => item.href === "/payroll?tab=shifts")).toBe(true);
-    expect(filtered.some((item) => item.titleKey === "nav.payrollGroupPayroll")).toBe(true);
-    expect(filtered.some((item) => item.href === "/payroll?tab=posting")).toBe(true);
+    const setup = filtered.find((item) => item.titleKey === "nav.hrGroupSetup");
+    expect(setup?.children?.some((item) => item.href === "/hr/employees")).toBe(true);
+    expect(setup?.children?.some((item) => item.href === "/payroll?tab=employees")).toBe(false);
+    expect(setup?.children?.some((item) => item.href === "/hr/shifts")).toBe(true);
+
+    const payroll = filtered.find((item) => item.titleKey === "nav.hrGroupPayroll");
+    expect(payroll?.children?.some((item) => item.href === "/hr/payroll")).toBe(true);
+
+    const close = filtered.find((item) => item.titleKey === "nav.hrGroupClose");
+    expect(close?.children?.some((item) => item.href === "/hr/payroll/posting")).toBe(true);
+    expect(filtered.some((item) => item.titleKey === "nav.hrGroupDaily")).toBe(true);
   });
 
   it("does not include deprecated promotions nav link", () => {

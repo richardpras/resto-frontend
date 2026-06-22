@@ -447,6 +447,21 @@ export async function patchAttendanceRecord(
   return res.data;
 }
 
+export async function createAttendanceRecord(payload: {
+  employeeId: number;
+  date: string;
+  clockIn?: string | null;
+  clockOut?: string | null;
+  status?: AttendanceRecordStatus;
+  notes?: string | null;
+}): Promise<AttendanceRecordApiRow> {
+  const res = await request<{ data: AttendanceRecordApiRow }>("/attendance", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
 export async function importAttendanceCsv(payload: {
   outletId: number;
   csv: string;

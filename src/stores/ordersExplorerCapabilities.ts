@@ -8,9 +8,11 @@ export type OrdersExplorerUiCaps = {
   canViewRecoveryTimeline: boolean;
   /** Manager / Owner: approve or clear item recovery (backend `orders.recovery.approve`). */
   canApproveItemRecovery: boolean;
+  /** Execute cash refund after settlement (backend `orders.refund.execute`). */
+  canExecuteRefund: boolean;
   /** Customer receipt history preview / reprint (backend `permission:pos.use`). */
   canUseReceiptActions: boolean;
-  /** Show guidance that refunds/voids stay in POS / existing flows. */
+  /** Show manager recovery guidance banner. */
   showOperationalCorrectionHint: boolean;
 };
 
@@ -23,6 +25,7 @@ export function getOrdersExplorerUiCaps(user: AuthUser | null): OrdersExplorerUi
       canViewAuditTimeline: false,
       canViewRecoveryTimeline: false,
       canApproveItemRecovery: false,
+      canExecuteRefund: false,
       canUseReceiptActions: false,
       showOperationalCorrectionHint: false,
     };
@@ -33,11 +36,13 @@ export function getOrdersExplorerUiCaps(user: AuthUser | null): OrdersExplorerUi
   const canViewRecovery = perms.has("orders.recovery.read");
   const isElevated = role === "Owner" || role === "Manager";
   const canApproveRecovery = isElevated && perms.has("orders.recovery.approve");
+  const canExecuteRefund = isElevated && perms.has("orders.refund.execute");
   return {
     canViewAuditTimeline: hasPos,
     canViewRecoveryTimeline: canViewRecovery,
     canApproveItemRecovery: canApproveRecovery,
+    canExecuteRefund,
     canUseReceiptActions: hasPos,
-    showOperationalCorrectionHint: isElevated,
+    showOperationalCorrectionHint: canApproveRecovery || canViewRecovery,
   };
 }

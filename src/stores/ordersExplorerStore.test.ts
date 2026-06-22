@@ -211,6 +211,19 @@ describe("ordersExplorerStore", () => {
     expect(useOrdersExplorerStore.getState().recoveryApprovalSubmitting).toBe(false);
   });
 
+  it("passes hasRecoveryPending filter to list API", async () => {
+    mockListOrdersWithMeta.mockResolvedValue({
+      orders: [],
+      meta: { currentPage: 1, perPage: 25, total: 0, lastPage: 1 },
+    });
+    useOrdersExplorerStore.getState().setFilters({ hasRecoveryPending: true, paymentStatus: "paid" });
+    await Promise.resolve();
+    expect(mockListOrdersWithMeta).toHaveBeenCalled();
+    const arg = mockListOrdersWithMeta.mock.calls.at(-1)?.[0];
+    expect(arg?.hasRecoveryPending).toBe(true);
+    expect(arg?.paymentStatus).toBe("paid");
+  });
+
   it("resetForOutletSwitch clears rows and stops polling", () => {
     useOrdersExplorerStore.setState({
       orders: [{ id: "1", code: "A", source: "pos", orderType: "T", status: "pending", paymentStatus: "unpaid", items: [], subtotal: 0, tax: 0, total: 0, payments: [], customerName: "", customerPhone: "", tableNumber: "" }],

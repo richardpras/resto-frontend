@@ -1,5 +1,5 @@
 import { Store, LogOut, Lock } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
+import { useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
+import { useOutletStore } from "@/stores/outletStore";
 import { buildSidebarSections } from "@/components/sidebar/sidebarNavConfig";
 import { translateNavItems } from "@/components/sidebar/sidebarNavI18n";
 import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
@@ -17,16 +19,32 @@ export function AppSidebar() {
   const { t } = useTranslation("common");
   const { user, hasPermission, logout, lock } = useAuthStore();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const recoveryPendingCount = useOrdersExplorerStore((s) => s.recoveryPendingCount);
+  const fetchRecoveryPendingCount = useOrdersExplorerStore((s) => s.fetchRecoveryPendingCount);
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+
+  useEffect(() => {
+    if (typeof activeOutletId === "number" && activeOutletId >= 1 && user?.permissions.includes("orders.recovery.read")) {
+      void fetchRecoveryPendingCount();
+      const timer = setInterval(() => void fetchRecoveryPendingCount(), 30000);
+      return () => clearInterval(timer);
+    }
+  }, [activeOutletId, fetchRecoveryPendingCount, user?.permissions]);
 
   const sections = useMemo(
     () =>
       buildSidebarSections(user)
         .map((section) => ({
           labelKey: section.labelKey,
-          items: translateNavItems(filterNavItems(section.items, user, hasPermission), t),
+          items: translateNavItems(filterNavItems(section.items, user, hasPermission), t).map((item) => {
+            if (item.href === "/orders" && recoveryPendingCount > 0) {
+              return { ...item, badge: recoveryPendingCount };
+            }
+            return item;
+          }),
         }))
         .filter((section) => section.items.length > 0),
-    [user, hasPermission, t],
+    [user, hasPermission, t, recoveryPendingCount],
   );
 
   const renderGroup = (label: string, items: SidebarNavItem[]) => {

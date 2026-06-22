@@ -11,15 +11,15 @@ describe("AppSidebar active state", () => {
     testNavConfig.pinSet = true;
   });
 
-  it("highlights active payroll child from ?tab= query", () => {
+  it("highlights active payroll child from /hr route", () => {
     render(
-      <MemoryRouter initialEntries={["/payroll?tab=posting"]}>
+      <MemoryRouter initialEntries={["/hr/payroll/posting"]}>
         <AppSidebar />
       </MemoryRouter>,
     );
 
     const postingLink = Array.from(document.querySelectorAll("a")).find(
-      (a) => a.getAttribute("href") === "/payroll?tab=posting",
+      (a) => a.getAttribute("href") === "/hr/payroll/posting",
     );
     expect(postingLink?.parentElement?.getAttribute("data-active")).toBe("true");
   });
@@ -37,13 +37,13 @@ describe("AppSidebar active state", () => {
 
   it("auto-expands parent when child route is active", () => {
     render(
-      <MemoryRouter initialEntries={["/payroll?tab=posting"]}>
+      <MemoryRouter initialEntries={["/hr/payroll/posting"]}>
         <AppSidebar />
       </MemoryRouter>,
     );
 
     const collapsible = screen.getAllByTestId("collapsible").find((el) =>
-      el.textContent?.includes("Payroll"),
+      el.textContent?.includes("Period close"),
     );
     expect(collapsible?.getAttribute("data-open")).toBe("true");
   });

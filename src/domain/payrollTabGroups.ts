@@ -15,7 +15,7 @@ export type PayrollTabGroup = {
 export const PAYROLL_TAB_GROUPS: PayrollTabGroup[] = [
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.setup,
-    tabs: ["employees", "shifts", "scheduling", "shift-assignments"],
+    tabs: ["shifts", "scheduling", "shift-assignments"],
   },
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.daily,
