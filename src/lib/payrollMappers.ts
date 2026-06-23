@@ -1,19 +1,5 @@
-import type { AttendanceApiRow, EmployeeApiRow } from "@/lib/api-integration/hrEndpoints";
-import type { Attendance, AttendanceStatus, Employee } from "@/stores/payrollStore";
-
-function isoToHHmm(iso?: string | null): string | undefined {
-  if (!iso) return undefined;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return undefined;
-  const h = d.getHours();
-  const m = d.getMinutes();
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function normalizeAttendanceStatus(s: string): AttendanceStatus {
-  if (s === "late" || s === "absent" || s === "present") return s;
-  return "present";
-}
+import type { EmployeeApiRow } from "@/lib/api-integration/hrEndpoints";
+import type { Employee } from "@/stores/payrollStore";
 
 export function employeeFromApi(row: EmployeeApiRow): Employee {
   const fullName = row.fullName ?? row.name ?? "";
@@ -65,23 +51,4 @@ export function employeeToUpdatePayload(
   form: EmployeeFormForApi,
 ): import("@/lib/api-integration/hrEndpoints").EmployeeUpdatePayload {
   return employeeToCreatePayload(form);
-}
-
-export function attendanceFromApi(row: AttendanceApiRow): Attendance {
-  return {
-    id: String(row.id),
-    employeeId: String(row.employeeId),
-    date: row.attendanceDate,
-    checkIn: isoToHHmm(row.checkIn),
-    checkOut: isoToHHmm(row.checkOut),
-    status: normalizeAttendanceStatus(row.status),
-    notes: row.notes ?? undefined,
-  };
-}
-
-export function buildCheckInOutIso(dateStr: string, timeHHmm: string): string {
-  const [hh, mm] = timeHHmm.split(":").map((x) => Number.parseInt(x, 10));
-  const d = new Date(dateStr);
-  d.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0, 0, 0);
-  return d.toISOString();
 }

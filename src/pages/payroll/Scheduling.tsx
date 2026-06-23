@@ -31,7 +31,7 @@ import {
 import { listDepartments, type DepartmentRow } from "@/lib/api-integration/organizationEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
-import { usePayrollStore } from "@/stores/payrollStore";
+import { formatShiftTemplateLabel, usePayrollStore } from "@/stores/payrollStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { CalendarPlus, Copy, Send } from "lucide-react";
@@ -426,7 +426,7 @@ export default function Scheduling() {
               <SelectItem value="off">{t("payroll.shared.offNoShift")}</SelectItem>
               {shifts.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
-                  {s.name} ({s.startTime}–{s.endTime})
+                  {formatShiftTemplateLabel(s)}
                 </SelectItem>
               ))}
             </SelectContent>

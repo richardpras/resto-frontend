@@ -16,7 +16,7 @@ export default function ProfitLoss() {
   const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
-  const outlets = useAccountingStore((s) => s.outlets);
+  const outlets = useAccountingStore((s) => s.outletOptions);
   const current = useAccountingStore((s) => s.profitLossCurrent);
   const previous = useAccountingStore((s) => s.profitLossPrevious);
   const fetchProfitLossReport = useAccountingStore((s) => s.fetchProfitLossReport);
@@ -28,15 +28,16 @@ export default function ProfitLoss() {
 
   const [from, setFrom] = useState(startMonth);
   const [to, setTo] = useState(endMonth);
-  const [outlet, setOutlet] = useState("all");
+  const [outletFilter, setOutletFilter] = useState("all");
   const [compare, setCompare] = useState(true);
   useEffect(() => {
     if (!allowed) return;
-    void fetchProfitLossReport({ from, to, outlet, compareFrom: startPrev, compareTo: endPrev })
+    const outletId = outletFilter === "all" ? undefined : Number(outletFilter);
+    void fetchProfitLossReport({ from, to, outletId, compareFrom: startPrev, compareTo: endPrev })
       .catch((e) => {
         toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadProfitLossFailed"));
       });
-  }, [allowed, from, to, outlet, startPrev, endPrev, fetchProfitLossReport, t]);
+  }, [allowed, from, to, outletFilter, startPrev, endPrev, fetchProfitLossReport, t]);
 
   if (!allowed) {
     return (
@@ -79,11 +80,11 @@ export default function ProfitLoss() {
         <div><Label>{t("accounting.reports.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div>
           <Label>{t("accounting.reports.outlet")}</Label>
-          <Select value={outlet} onValueChange={setOutlet}>
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
-              {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              {outlets.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

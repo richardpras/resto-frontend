@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,19 +16,23 @@ import { DataTable, type Column } from "@/components/DataTable";
 import {
   downloadPayslipPdf,
   generatePayslips,
+  getPayslipGenerationStatus,
   listPayrollRunsV2,
   listPayslips,
   publishPayslip,
   regeneratePayslip,
   type PayrollPayslipRow,
   type PayrollRunV2Row,
+  type PayslipGenerationStatus,
 } from "@/lib/api-integration/hrEndpoints";
 import { listOrganizationEmployees, type OrganizationEmployeeRow } from "@/lib/api-integration/organizationEndpoints";
 import { useAuthStore } from "@/stores/authStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
-import { Download, FileText, Play, RefreshCw, Send } from "lucide-react";
+import { Download, FileText, Loader2, Play, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
+
+const POLL_INTERVAL_MS = 3000;
 
 function formatIDR(value: number): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
@@ -39,7 +43,13 @@ function formatIDR(value: number): string {
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "published" || status === "finalized") return "default";
   if (status === "generated") return "secondary";
+  if (status === "processing") return "secondary";
+  if (status === "failed") return "destructive";
   return "outline";
+}
+
+function isGenerationActive(phase?: PayslipGenerationStatus["phase"]): boolean {
+  return phase === "queued" || phase === "processing";
 }
 
 export default function Payslips() {
@@ -52,11 +62,23 @@ export default function Payslips() {
   const [payslips, setPayslips] = useState<PayrollPayslipRow[]>([]);
   const [employees, setEmployees] = useState<OrganizationEmployeeRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [generationByRun, setGenerationByRun] = useState<Record<number, PayslipGenerationStatus>>({});
 
   const [filterEmployeeId, setFilterEmployeeId] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterPeriodFrom, setFilterPeriodFrom] = useState("");
   const [filterPeriodTo, setFilterPeriodTo] = useState("");
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingRunIdRef = useRef<number | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    pollingRunIdRef.current = null;
+  }, []);
 
   const load = useCallback(async () => {
     if (!outletId) return;
@@ -83,9 +105,49 @@ export default function Payslips() {
     }
   }, [outletId, filterEmployeeId, filterStatus, filterPeriodFrom, filterPeriodTo, t]);
 
+  const pollGenerationStatus = useCallback(
+    async (runId: number) => {
+      try {
+        const status = await getPayslipGenerationStatus(runId);
+        setGenerationByRun((prev) => ({ ...prev, [runId]: status }));
+
+        if (status.phase === "completed") {
+          stopPolling();
+          toast.success(t("payroll.payslips.generationComplete"));
+          await load();
+        } else if (status.phase === "failed") {
+          stopPolling();
+          toast.error(t("payroll.payslips.generationFailed"));
+          await load();
+        }
+      } catch (e) {
+        stopPolling();
+        toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.loadFailed"));
+      }
+    },
+    [load, stopPolling, t],
+  );
+
+  const startPolling = useCallback(
+    (runId: number, initial?: PayslipGenerationStatus) => {
+      stopPolling();
+      pollingRunIdRef.current = runId;
+      if (initial) {
+        setGenerationByRun((prev) => ({ ...prev, [runId]: initial }));
+      }
+      void pollGenerationStatus(runId);
+      pollRef.current = setInterval(() => {
+        void pollGenerationStatus(runId);
+      }, POLL_INTERVAL_MS);
+    },
+    [pollGenerationStatus, stopPolling],
+  );
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const finalizedRuns = useMemo(() => runs.filter((r) => r.status === "finalized"), [runs]);
 
@@ -93,11 +155,25 @@ export default function Payslips() {
 
   const generateForRun = async (runId: number) => {
     try {
-      const created = await generatePayslips(runId);
-      toast.success(t("payroll.payslips.generatedCount", { count: created.length }));
+      const { rows, generation } = await generatePayslips(runId);
+      toast.success(t("payroll.payslips.generationQueued", { count: rows.length }));
       await load();
+      if (isGenerationActive(generation.phase)) {
+        startPolling(runId, generation);
+      }
     } catch (e) {
       toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.generateFailed"));
+    }
+  };
+
+  const queueRegenerate = async (payslip: PayrollPayslipRow) => {
+    try {
+      await regeneratePayslip(payslip.id);
+      toast.success(t("payroll.payslips.pdfRegenerated"));
+      await load();
+      startPolling(payslip.payrollRunId);
+    } catch (e) {
+      toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.regenerateFailed"));
     }
   };
 
@@ -115,6 +191,24 @@ export default function Payslips() {
     }
   };
 
+  const renderRunGenerationBadge = (runId: number) => {
+    const gen = generationByRun[runId];
+    if (!gen || gen.phase === "idle" || gen.phase === "completed") return null;
+
+    const done = gen.generated + gen.published + gen.failed;
+    const label =
+      gen.phase === "queued"
+        ? t("payroll.payslips.generationQueued", { count: gen.total })
+        : t("payroll.payslips.generationProgress", { done, total: gen.total });
+
+    return (
+      <Badge variant={gen.phase === "failed" ? "destructive" : "secondary"} className="ml-2">
+        {gen.phase === "processing" && <Loader2 className="h-3 w-3 mr-1 animate-spin inline" />}
+        {label}
+      </Badge>
+    );
+  };
+
   const runColumns: Column<PayrollRunV2Row>[] = useMemo(
     () => [
       {
@@ -130,9 +224,12 @@ export default function Payslips() {
         key: "status",
         header: t("payroll.shared.status"),
         render: (r) => (
-          <Badge variant={statusVariant(r.status)}>
-            {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
-          </Badge>
+          <span className="inline-flex items-center flex-wrap gap-1">
+            <Badge variant={statusVariant(r.status)}>
+              {t(`payroll.shared.${r.status}`, { defaultValue: r.status })}
+            </Badge>
+            {renderRunGenerationBadge(r.id)}
+          </span>
         ),
       },
       {
@@ -144,15 +241,19 @@ export default function Payslips() {
         key: "actions",
         header: t("payroll.shared.actions"),
         className: "text-right",
-        render: (r) => (
-          <Button size="sm" onClick={() => void generateForRun(r.id)}>
-            <Play className="h-3.5 w-3.5 mr-1" />
-            {t("payroll.payslips.generatePayslips")}
-          </Button>
-        ),
+        render: (r) => {
+          const gen = generationByRun[r.id];
+          const busy = isGenerationActive(gen?.phase);
+          return (
+            <Button size="sm" disabled={busy} onClick={() => void generateForRun(r.id)}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-1" />}
+              {t("payroll.payslips.generatePayslips")}
+            </Button>
+          );
+        },
       },
     ],
-    [t],
+    [t, generationByRun, payslips],
   );
 
   const slipColumns: Column<PayrollPayslipRow>[] = useMemo(
@@ -207,20 +308,8 @@ export default function Payslips() {
                 <Send className="h-3.5 w-3.5" />
               </Button>
             )}
-            {p.pdfAvailable && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={async () => {
-                  try {
-                    await regeneratePayslip(p.id);
-                    toast.success(t("payroll.payslips.pdfRegenerated"));
-                    await load();
-                  } catch (e) {
-                    toast.error(formatApiErrorMessage(e, t) || t("payroll.payslips.regenerateFailed"));
-                  }
-                }}
-              >
+            {(p.pdfAvailable || p.status === "failed") && (
+              <Button size="sm" variant="ghost" onClick={() => void queueRegenerate(p)}>
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -300,9 +389,11 @@ export default function Payslips() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">{t("payroll.shared.all")}</SelectItem>
+                  <SelectItem value="draft">{t("payroll.shared.draft")}</SelectItem>
+                  <SelectItem value="processing">{t("payroll.shared.processing")}</SelectItem>
                   <SelectItem value="generated">{t("payroll.shared.generated")}</SelectItem>
                   <SelectItem value="published">{t("payroll.shared.published_status")}</SelectItem>
-                  <SelectItem value="draft">{t("payroll.shared.draft")}</SelectItem>
+                  <SelectItem value="failed">{t("payroll.shared.failed")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -15,6 +15,7 @@ import {
   uploadOutletStaticQrisImage,
   type OutletPaymentMethodConfigApi,
 } from "@/lib/api-integration/outletPaymentMethodEndpoints";
+import ChartAccountSelect from "@/components/settings/ChartAccountSelect";
 import { useOutletStore } from "@/stores/outletStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -78,6 +79,22 @@ export default function OutletPaymentMethodConfigSettings() {
       toast.success("Static QRIS instructions saved");
     } catch (e) {
       toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveChartAccount = async (row: OutletPaymentMethodConfigApi, chartAccountId: number | null) => {
+    if (!outletId) return;
+    setSaving(true);
+    try {
+      await syncOutletPaymentMethodConfigs(outletId, [
+        { paymentMethodCode: row.paymentMethodCode, chartAccountId },
+      ]);
+      await queryClient.invalidateQueries({ queryKey: ["outlet-payment-method-configs", outletId] });
+      toast.success("GL account updated");
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
     } finally {
       setSaving(false);
     }
@@ -153,6 +170,15 @@ export default function OutletPaymentMethodConfigSettings() {
                       checked={row.enabled}
                       disabled={saving}
                       onCheckedChange={(checked) => void toggleEnabled(row, checked)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>GL Account</Label>
+                    <ChartAccountSelect
+                      value={row.chartAccountId ?? null}
+                      onChange={(chartAccountId) => void saveChartAccount(row, chartAccountId)}
+                      disabled={saving}
                     />
                   </div>
 

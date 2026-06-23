@@ -19,6 +19,8 @@ export type OutletPaymentMethodConfigApi = {
   isDefault: boolean;
   label: string;
   settlementMethod: string;
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
   settings?: {
     instructions?: string;
     qr_image_path?: string;
@@ -52,6 +54,7 @@ export async function syncOutletPaymentMethodConfigs(
     isDefault?: boolean;
     provider?: string | null;
     settings?: Record<string, unknown>;
+    chartAccountId?: number | null;
   }>,
 ): Promise<OutletPaymentMethodConfigApi[]> {
   const response = await request<{ data: OutletPaymentMethodConfigApi[] }>(

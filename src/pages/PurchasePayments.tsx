@@ -17,6 +17,7 @@ import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, Search, Check, Upload, Ban, Eye } from "lucide-react";
 import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { toast } from "sonner";
 
 const statusColors = {
@@ -56,6 +57,8 @@ export default function PurchasePayments() {
   const [supplierId, setSupplierId] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
+  const [bankAccountId, setBankAccountId] = useState("");
+  const banks = useSettingsStore((s) => s.banks);
   const [referenceNo, setReferenceNo] = useState("");
   const [amount, setAmount] = useState(0);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
@@ -125,6 +128,7 @@ export default function PurchasePayments() {
         supplierId,
         paymentDate,
         paymentMethod,
+        bankAccountId: paymentMethod === "bank_transfer" && bankAccountId ? bankAccountId : undefined,
         referenceNo: referenceNo || undefined,
         amount,
         allocations: allocRows,
@@ -301,6 +305,21 @@ export default function PurchasePayments() {
                   </SelectContent>
                 </Select>
               </div>
+              {paymentMethod === "bank_transfer" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Bank Account</label>
+                  <Select value={bankAccountId} onValueChange={setBankAccountId}>
+                    <SelectTrigger><SelectValue placeholder="Select bank account" /></SelectTrigger>
+                    <SelectContent>
+                      {banks.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.bankName} — {b.accountNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">{t("purchases.pay.form.referenceNo")}</label>
                 <Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} />

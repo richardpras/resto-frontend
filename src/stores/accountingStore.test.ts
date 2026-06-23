@@ -32,7 +32,7 @@ function resetState() {
   useAccountingStore.setState({
     accounts: [],
     journals: [],
-    outlets: [],
+    outletOptions: [],
     isLoading: false,
     isSubmitting: false,
     error: null,
@@ -77,7 +77,7 @@ describe("accountingStore async lifecycle", () => {
     await useAccountingStore.getState().fetchTrialBalanceReport({
       from: "2026-05-01",
       to: "2026-05-31",
-      outlet: "Main",
+      outletId: 2,
       perPage: 20,
       page: 1,
     });
@@ -86,14 +86,14 @@ describe("accountingStore async lifecycle", () => {
     expect(mockGetTrialBalanceReport).toHaveBeenCalledWith({
       from: "2026-05-01",
       to: "2026-05-31",
-      outlet: "Main",
+      outletId: 2,
       perPage: 20,
       page: 1,
     });
     expect(state.trialBalanceRows).toHaveLength(2);
     expect(state.trialBalanceSummary?.balanced).toBe(true);
     expect(state.lastSyncAt).not.toBeNull();
-    expect(state.trialBalanceParams?.outlet).toBe("Main");
+    expect(state.trialBalanceParams?.outletId).toBe(2);
   });
 
   it("computes basic trial balance aggregation integrity path", () => {

@@ -12,6 +12,7 @@ import { useSettingsStore, BankAccount, newId, removeBankCascade } from "@/store
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchBankAccount, postBankAccount } from "@/lib/api-integration/settingsDomainEndpoints";
+import ChartAccountSelect from "@/components/settings/ChartAccountSelect";
 
 const empty: BankAccount = { id: "", bankName: "", accountName: "", accountNumber: "", isDefault: false };
 
@@ -69,7 +70,8 @@ export default function BankSettings() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("settings.banks.bankName")}</TableHead><TableHead>{t("settings.banks.accountName")}</TableHead><TableHead>{t("settings.banks.accountNumber")}</TableHead>
+              <TableHead>{t("settings.banks.bankName")}</TableHead><TableHead>{t("settings.banks.accountName")}</TableHead>              <TableHead>{t("settings.banks.accountNumber")}</TableHead>
+              <TableHead>GL Account</TableHead>
               <TableHead>{t("common.default")}</TableHead><TableHead className="w-32"></TableHead>
             </TableRow>
           </TableHeader>
@@ -79,6 +81,7 @@ export default function BankSettings() {
                 <TableCell className="font-medium">{b.bankName}</TableCell>
                 <TableCell>{b.accountName}</TableCell>
                 <TableCell className="font-mono text-sm">{b.accountNumber}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{b.chartAccountCode ?? "—"}</TableCell>
                 <TableCell>{b.isDefault && <Badge><Star className="h-3 w-3 mr-1" />{t("common.default")}</Badge>}</TableCell>
                 <TableCell>
                   <div className="flex gap-1">
@@ -136,6 +139,13 @@ export default function BankSettings() {
                 <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
                 {t("settings.banks.setDefaultAccount")}
               </label>
+              <div className="space-y-2">
+                <Label>GL Account</Label>
+                <ChartAccountSelect
+                  value={form.chartAccountId ?? null}
+                  onChange={(chartAccountId) => setForm({ ...form, chartAccountId })}
+                />
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>{t("common.cancel")}</Button>

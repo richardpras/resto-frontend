@@ -9,13 +9,14 @@ describe("hrRouteMap", () => {
     expect(resolveLegacyPayrollTabRedirect("posting")).toBe("/hr/payroll/posting");
   });
 
-  it("defaults unknown tab to payroll run", () => {
-    expect(resolveLegacyPayrollTabRedirect(null)).toBe("/hr/payroll");
-    expect(resolveLegacyPayrollTabRedirect("unknown")).toBe("/hr/payroll");
+  it("defaults unknown tab and legacy overview tab to payroll engine", () => {
+    expect(resolveLegacyPayrollTabRedirect(null)).toBe("/hr/payroll/engine");
+    expect(resolveLegacyPayrollTabRedirect("unknown")).toBe("/hr/payroll/engine");
+    expect(resolveLegacyPayrollTabRedirect("payroll")).toBe("/hr/payroll/engine");
   });
 
   it("covers every payroll tab key", () => {
     expect(Object.keys(HR_PAYROLL_TAB_ROUTES).length).toBeGreaterThan(10);
-    expect(HR_PAYROLL_TAB_ROUTES.payroll).toBe("/hr/payroll");
+    expect(HR_PAYROLL_TAB_ROUTES.engine).toBe("/hr/payroll/engine");
   });
 });

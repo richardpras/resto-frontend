@@ -71,6 +71,7 @@ export type JournalApiRow = {
   reference: string;
   description: string;
   outlet: string;
+  outletId?: number | null;
   status: "draft" | "posted";
   lines: JournalLineApi[];
   postedAt?: string | null;
@@ -253,6 +254,12 @@ export type TrialBalanceReportRow = {
   closingCredit?: number;
 };
 
+/** Raw API row may nest account metadata under `account`. */
+export type TrialBalanceReportApiRow = TrialBalanceReportRow & {
+  account?: Pick<TrialBalanceReportRow, "accountId" | "code" | "name"> & { id?: string };
+  balance?: number;
+};
+
 export type TrialBalanceReportData = {
   rows: TrialBalanceReportRow[];
   totalDebit: number;
@@ -283,13 +290,13 @@ export async function getLedgerReport(params: {
   accountId: string;
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
 }): Promise<LedgerReportData> {
   const qs = new URLSearchParams();
   qs.set("accountId", params.accountId);
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
-  if (params.outlet) qs.set("outlet", params.outlet);
+  if (params.outletId !== undefined) qs.set("outletId", String(params.outletId));
   const res = await request<ApiSingleEnvelope<LedgerReportData>>(`/reports/ledger?${qs.toString()}`);
   return res.data;
 }
@@ -297,12 +304,12 @@ export async function getLedgerReport(params: {
 export async function getProfitLossReport(params: {
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
 }): Promise<ProfitLossReportData> {
   const qs = new URLSearchParams();
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
-  if (params.outlet) qs.set("outlet", params.outlet);
+  if (params.outletId !== undefined) qs.set("outletId", String(params.outletId));
   const suffix = qs.toString();
   const res = await request<ApiSingleEnvelope<ProfitLossReportData>>(`/reports/profit-loss${suffix ? `?${suffix}` : ""}`);
   return res.data;
@@ -310,11 +317,11 @@ export async function getProfitLossReport(params: {
 
 export async function getBalanceSheetReport(params: {
   to?: string;
-  outlet?: string;
+  outletId?: number;
 }): Promise<BalanceSheetReportData> {
   const qs = new URLSearchParams();
   if (params.to) qs.set("to", params.to);
-  if (params.outlet) qs.set("outlet", params.outlet);
+  if (params.outletId !== undefined) qs.set("outletId", String(params.outletId));
   const suffix = qs.toString();
   const res = await request<ApiSingleEnvelope<BalanceSheetReportData>>(`/reports/balance-sheet${suffix ? `?${suffix}` : ""}`);
   return res.data;
@@ -323,14 +330,14 @@ export async function getBalanceSheetReport(params: {
 export async function getTrialBalanceReport(params: {
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
   page?: number;
   perPage?: number;
 }): Promise<TrialBalanceReportData> {
   const qs = new URLSearchParams();
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
-  if (params.outlet) qs.set("outlet", params.outlet);
+  if (params.outletId !== undefined) qs.set("outletId", String(params.outletId));
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.perPage !== undefined) qs.set("perPage", String(params.perPage));
   const suffix = qs.toString();

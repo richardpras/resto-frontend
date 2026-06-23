@@ -12,7 +12,7 @@ describe("sidebarNavUtils nested hr routes", () => {
     titleKey: "nav.hrGroupPayroll",
     kind: "link",
     children: [
-      { title: "Run", titleKey: "nav.payroll.overview", kind: "link", href: "/hr/payroll" },
+      { title: "Preparation", titleKey: "nav.payroll.preparation", kind: "link", href: "/hr/payroll/preparation" },
       { title: "Engine", titleKey: "nav.payroll.engine", kind: "link", href: "/hr/payroll/engine" },
     ],
   };
@@ -24,8 +24,8 @@ describe("sidebarNavUtils nested hr routes", () => {
     expect(isNavItemActive(loc, payrollGroup.children![0])).toBe(false);
   });
 
-  it("activates payroll run without matching engine path", () => {
-    const loc = location("/hr/payroll");
+  it("activates preparation without matching engine path", () => {
+    const loc = location("/hr/payroll/preparation");
     expect(isNavItemActive(loc, payrollGroup.children![0])).toBe(true);
     expect(isNavItemActive(loc, payrollGroup.children![1])).toBe(false);
   });

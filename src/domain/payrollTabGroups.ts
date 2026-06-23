@@ -24,7 +24,6 @@ export const PAYROLL_TAB_GROUPS: PayrollTabGroup[] = [
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.payroll,
     tabs: [
-      "payroll",
       "preparation",
       "engine",
       "adjustments",

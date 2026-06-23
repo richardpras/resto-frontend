@@ -744,6 +744,7 @@ export async function createSupplierPayment(payload: {
   outletId?: number;
   paymentDate: string;
   paymentMethod?: SupplierPaymentApiRow["paymentMethod"];
+  bankAccountId?: string | null;
   referenceNo?: string;
   notes?: string;
   amount: number;

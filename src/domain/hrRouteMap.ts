@@ -2,7 +2,6 @@ import type { PayrollTabKey } from "@/domain/permissionGates";
 
 /** Dedicated `/hr/*` path for each former payroll tab key (legacy `?tab=` redirects). */
 export const HR_PAYROLL_TAB_ROUTES: Record<PayrollTabKey, string> = {
-  payroll: "/hr/payroll",
   employees: "/hr/employees",
   "shift-assignments": "/hr/shift-assignments",
   scheduling: "/hr/scheduling",
@@ -25,10 +24,13 @@ export const HR_PAYROLL_TAB_ROUTES: Record<PayrollTabKey, string> = {
 };
 
 export function resolveLegacyPayrollTabRedirect(tab: string | null): string {
+  if (tab === "payroll") {
+    return HR_PAYROLL_TAB_ROUTES.engine;
+  }
   if (tab && tab in HR_PAYROLL_TAB_ROUTES) {
     return HR_PAYROLL_TAB_ROUTES[tab as PayrollTabKey];
   }
-  return HR_PAYROLL_TAB_ROUTES.payroll;
+  return HR_PAYROLL_TAB_ROUTES.engine;
 }
 
 export function isPayrollTabKey(value: string): value is PayrollTabKey {

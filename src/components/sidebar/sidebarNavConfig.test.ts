@@ -81,7 +81,7 @@ describe("buildSidebarSections", () => {
     expect(setup?.children?.some((item) => item.href === "/hr/shifts")).toBe(true);
 
     const payroll = filtered.find((item) => item.titleKey === "nav.hrGroupPayroll");
-    expect(payroll?.children?.some((item) => item.href === "/hr/payroll")).toBe(true);
+    expect(payroll?.children?.some((item) => item.href === "/hr/payroll/engine")).toBe(true);
 
     const close = filtered.find((item) => item.titleKey === "nav.hrGroupClose");
     expect(close?.children?.some((item) => item.href === "/hr/payroll/posting")).toBe(true);

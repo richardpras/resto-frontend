@@ -16,7 +16,6 @@ import type { AuthUser } from "@/stores/authStore";
 import type { SidebarNavItem, SidebarNavSection } from "./sidebarNavTypes";
 
 const PAYROLL_TAB_KEYS: Record<PayrollTabKey, string> = {
-  payroll: "nav.payroll.overview",
   employees: "nav.payroll.employees",
   "shift-assignments": "nav.payroll.assignments",
   scheduling: "nav.payroll.scheduling",

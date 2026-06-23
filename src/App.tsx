@@ -42,7 +42,6 @@ const HrAttendance = lazy(() => import("./pages/payroll/Attendance"));
 const HrAttendanceReview = lazy(() => import("./pages/payroll/AttendanceReview"));
 const HrLeave = lazy(() => import("./pages/payroll/Leave"));
 const HrOvertime = lazy(() => import("./pages/payroll/Overtime"));
-const HrPayrollRun = lazy(() => import("./pages/payroll/PayrollRun"));
 const HrPreparation = lazy(() => import("./pages/payroll/Preparation"));
 const HrEngine = lazy(() => import("./pages/payroll/Engine"));
 const HrAdjustments = lazy(() => import("./pages/payroll/Adjustments"));
@@ -269,19 +268,19 @@ const App = () => (
             <Route path="/hr/shifts" element={hrPayrollPage(<HrShifts />, ["shifts"])} />
             <Route path="/hr/scheduling" element={hrPayrollPage(<HrScheduling />)} />
             <Route path="/hr/shift-assignments" element={hrPayrollPage(<HrShiftAssignments />)} />
-            <Route path="/hr/attendance" element={hrPayrollPage(<HrAttendance />, ["attendance"])} />
-            <Route path="/hr/attendance-review" element={hrPayrollPage(<HrAttendanceReview />, ["attendance"])} />
+            <Route path="/hr/attendance" element={hrPayrollPage(<HrAttendance />)} />
+            <Route path="/hr/attendance-review" element={hrPayrollPage(<HrAttendanceReview />)} />
             <Route path="/hr/leave" element={hrPayrollPage(<HrLeave />)} />
-            <Route path="/hr/overtime" element={hrPayrollPage(<HrOvertime />, ["overtime"])} />
-            <Route path="/hr/payroll" element={hrPayrollPage(<HrPayrollRun />, ["payrolls"])} />
+            <Route path="/hr/overtime" element={hrPayrollPage(<HrOvertime />)} />
+            <Route path="/hr/payroll" element={payrollGuarded(<Navigate to="/hr/payroll/engine" replace />)} />
             <Route path="/hr/payroll/preparation" element={hrPayrollPage(<HrPreparation />)} />
             <Route path="/hr/payroll/engine" element={hrPayrollPage(<HrEngine />)} />
-            <Route path="/hr/payroll/adjustments" element={hrPayrollPage(<HrAdjustments />, ["adjustments"])} />
+            <Route path="/hr/payroll/adjustments" element={hrPayrollPage(<HrAdjustments />)} />
             <Route path="/hr/payroll/payslips" element={hrPayrollPage(<HrPayslips />)} />
             <Route path="/hr/payroll/bpjs" element={hrPayrollPage(<HrBpjs />)} />
             <Route path="/hr/payroll/tax" element={hrPayrollPage(<HrTax />)} />
             <Route path="/hr/payroll/reimbursements" element={hrPayrollPage(<HrReimbursements />)} />
-            <Route path="/hr/payroll/loans" element={hrPayrollPage(<HrLoans />, ["loans"])} />
+            <Route path="/hr/payroll/loans" element={hrPayrollPage(<HrLoans />)} />
             <Route path="/hr/payroll/cash-advances" element={hrPayrollPage(<HrCashAdvances />)} />
             <Route path="/hr/payroll/closing" element={hrPayrollPage(<HrClosing />)} />
             <Route path="/hr/payroll/posting" element={hrPayrollPage(<HrPosting />)} />

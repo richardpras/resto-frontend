@@ -17,19 +17,20 @@ export default function BalanceSheet() {
   const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
-  const outlets = useAccountingStore((s) => s.outlets);
+  const outlets = useAccountingStore((s) => s.outletOptions);
   const bs = useAccountingStore((s) => s.balanceSheetReport);
   const fetchBalanceSheetReport = useAccountingStore((s) => s.fetchBalanceSheetReport);
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
-  const [outlet, setOutlet] = useState("all");
+  const [outletFilter, setOutletFilter] = useState("all");
 
   useEffect(() => {
     if (!allowed) return;
-    void fetchBalanceSheetReport({ to: asOf, outlet })
+    const outletId = outletFilter === "all" ? undefined : Number(outletFilter);
+    void fetchBalanceSheetReport({ to: asOf, outletId })
       .catch((e) => {
         toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadBalanceSheetFailed"));
       });
-  }, [allowed, asOf, outlet, fetchBalanceSheetReport, t]);
+  }, [allowed, asOf, outletFilter, fetchBalanceSheetReport, t]);
 
   if (!allowed) {
     return (
@@ -64,11 +65,11 @@ export default function BalanceSheet() {
         <div><Label>{t("accounting.reports.asOfDate")}</Label><Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} /></div>
         <div>
           <Label>{t("accounting.reports.outlet")}</Label>
-          <Select value={outlet} onValueChange={setOutlet}>
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
-              {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              {outlets.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

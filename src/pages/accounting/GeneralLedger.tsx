@@ -18,14 +18,14 @@ export default function GeneralLedger() {
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
   const accounts = useAccountingStore((s) => s.accounts);
-  const outlets = useAccountingStore((s) => s.outlets);
+  const outlets = useAccountingStore((s) => s.outletOptions);
   const ledger = useAccountingStore((s) => s.ledgerReport);
   const fetchLedgerReport = useAccountingStore((s) => s.fetchLedgerReport);
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
   const [from, setFrom] = useState(monthAgo.toISOString().slice(0, 10));
   const [to, setTo] = useState(today);
-  const [outlet, setOutlet] = useState("all");
+  const [outletFilter, setOutletFilter] = useState("all");
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
 
   useEffect(() => {
@@ -38,11 +38,12 @@ export default function GeneralLedger() {
     if (!allowed || !accountId) {
       return;
     }
-    void fetchLedgerReport({ accountId, from, to, outlet })
+    const outletId = outletFilter === "all" ? undefined : Number(outletFilter);
+    void fetchLedgerReport({ accountId, from, to, outletId })
       .catch((e) => {
         toast.error(formatApiErrorMessage(e, t) || t("accounting.ledger.loadFailed"));
       });
-  }, [allowed, accountId, from, to, outlet, fetchLedgerReport, t]);
+  }, [allowed, accountId, from, to, outletFilter, fetchLedgerReport, t]);
 
   if (!allowed) {
     return (
@@ -87,11 +88,11 @@ export default function GeneralLedger() {
         <div><Label>{t("accounting.ledger.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div>
           <Label>{t("accounting.ledger.outlet")}</Label>
-          <Select value={outlet} onValueChange={setOutlet}>
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("accounting.ledger.allOutlets")}</SelectItem>
-              {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              {outlets.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

@@ -64,6 +64,8 @@ export interface PaymentMethod {
   integration?: string;
   fee?: number;
   status: "active" | "inactive";
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
 }
 
 export type StockEnforcementMode = "strict" | "warning" | "deferred";
@@ -100,6 +102,8 @@ export interface BankAccount {
   accountName: string;
   accountNumber: string;
   isDefault: boolean;
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
 }
 
 export interface OutletReceiptSettingRow {

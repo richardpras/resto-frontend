@@ -113,7 +113,6 @@ export function canViewProduction(user?: AuthUser | null): boolean {
 }
 
 export type PayrollTabKey =
-  | "payroll"
   | "employees"
   | "shift-assignments"
   | "scheduling"
@@ -135,7 +134,6 @@ export type PayrollTabKey =
   | "posting";
 
 const PAYROLL_FULL_TABS: PayrollTabKey[] = [
-  "payroll",
   "preparation",
   "engine",
   "adjustments",

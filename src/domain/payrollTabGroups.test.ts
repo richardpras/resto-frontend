@@ -7,17 +7,17 @@ import {
 
 describe("payrollTabGroups", () => {
   it("filters groups to visible tabs only", () => {
-    const groups = getVisiblePayrollTabGroups(["shifts", "attendance", "payroll"]);
+    const groups = getVisiblePayrollTabGroups(["shifts", "attendance", "engine"]);
     expect(groups).toHaveLength(3);
     expect(groups[0]?.tabs).toEqual(["shifts"]);
     expect(groups[1]?.tabs).toEqual(["attendance"]);
-    expect(groups[2]?.tabs).toEqual(["payroll"]);
+    expect(groups[2]?.tabs).toEqual(["engine"]);
   });
 
   it("finds group containing the active tab", () => {
-    const groups = getVisiblePayrollTabGroups(["shifts", "attendance", "overtime", "payroll"]);
+    const groups = getVisiblePayrollTabGroups(["shifts", "attendance", "overtime", "engine"]);
     expect(findPayrollTabGroupForTab("overtime", groups)?.labelKey).toBe(PAYROLL_GROUP_LABEL_KEYS.daily);
-    expect(findPayrollTabGroupForTab("payroll", groups)?.labelKey).toBe(PAYROLL_GROUP_LABEL_KEYS.payroll);
+    expect(findPayrollTabGroupForTab("engine", groups)?.labelKey).toBe(PAYROLL_GROUP_LABEL_KEYS.payroll);
   });
 
   it("falls back to first group when tab is not in any group", () => {
@@ -26,6 +26,6 @@ describe("payrollTabGroups", () => {
   });
 
   it("returns undefined when no groups are visible", () => {
-    expect(findPayrollTabGroupForTab("payroll", [])).toBeUndefined();
+    expect(findPayrollTabGroupForTab("engine", [])).toBeUndefined();
   });
 });

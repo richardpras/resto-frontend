@@ -250,6 +250,7 @@ type PurchaseStore = {
     supplierId: string;
     paymentDate: string;
     paymentMethod?: SupplierPayment["paymentMethod"];
+    bankAccountId?: string;
     referenceNo?: string;
     amount: number;
     allocations: Array<{ invoiceId: string; allocatedAmount: number }>;

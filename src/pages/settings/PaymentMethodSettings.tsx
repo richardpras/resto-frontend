@@ -13,6 +13,7 @@ import { useSettingsStore, PaymentMethod, newId, removePaymentCascade } from "@/
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchPaymentMethod, postPaymentMethod } from "@/lib/api-integration/settingsDomainEndpoints";
+import ChartAccountSelect from "@/components/settings/ChartAccountSelect";
 
 const empty: PaymentMethod = { id: "", name: "", type: "cash", status: "active" };
 
@@ -64,7 +65,7 @@ export default function PaymentMethodSettings() {
           <TableHeader>
             <TableRow>
               <TableHead>{t("common.name")}</TableHead><TableHead>{t("common.type")}</TableHead><TableHead>{t("settings.payments.integration")}</TableHead>
-              <TableHead>{t("settings.payments.fee")}</TableHead><TableHead>{t("common.status")}</TableHead><TableHead className="w-24"></TableHead>
+              <TableHead>{t("settings.payments.fee")}</TableHead><TableHead>GL Account</TableHead><TableHead>{t("common.status")}</TableHead><TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -74,6 +75,7 @@ export default function PaymentMethodSettings() {
                 <TableCell><Badge variant="outline" className="capitalize">{p.type}</Badge></TableCell>
                 <TableCell className="text-muted-foreground">{p.integration || "-"}</TableCell>
                 <TableCell>{p.fee ? `${p.fee}%` : "-"}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{p.chartAccountCode ?? "—"}</TableCell>
                 <TableCell><Badge variant={p.status === "active" ? "default" : "secondary"}>{p.status === "active" ? t("common.active") : t("common.inactive")}</Badge></TableCell>
                 <TableCell>
                   <div className="flex gap-1">
@@ -127,6 +129,13 @@ export default function PaymentMethodSettings() {
                     <SelectItem value="inactive">{t("common.inactive")}</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>GL Account</Label>
+                <ChartAccountSelect
+                  value={form.chartAccountId ?? null}
+                  onChange={(chartAccountId) => setForm({ ...form, chartAccountId })}
+                />
               </div>
             </div>
             <DialogFooter>

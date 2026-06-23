@@ -20,7 +20,7 @@ export default function JournalEntries() {
   const { t } = useErpTranslation();
   const journals = useAccountingStore((s) => s.journals);
   const accounts = useAccountingStore((s) => s.accounts);
-  const outlets = useAccountingStore((s) => s.outlets);
+  const outletOptions = useAccountingStore((s) => s.outletOptions);
   const createJournalRemote = useAccountingStore((s) => s.createJournalRemote);
   const updateJournalRemote = useAccountingStore((s) => s.updateJournalRemote);
   const deleteJournalRemote = useAccountingStore((s) => s.deleteJournalRemote);
@@ -39,7 +39,7 @@ export default function JournalEntries() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [reference, setReference] = useState("");
   const [description, setDescription] = useState("");
-  const [outlet, setOutlet] = useState(outlets[0]);
+  const [outlet, setOutlet] = useState(outletOptions[0]?.name ?? "");
   const [lines, setLines] = useState<JournalLine[]>([blankLine(), blankLine()]);
 
   const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
@@ -48,7 +48,7 @@ export default function JournalEntries() {
 
   const reset = () => {
     setDate(new Date().toISOString().slice(0, 10));
-    setReference(""); setDescription(""); setOutlet(outlets[0]);
+    setReference(""); setDescription(""); setOutlet(outletOptions[0]?.name ?? "");
     setLines([blankLine(), blankLine()]);
     setEditingId(null);
   };
@@ -213,7 +213,7 @@ export default function JournalEntries() {
                 <Label>{t("accounting.journal.outlet")}</Label>
                 <Select value={outlet} onValueChange={setOutlet}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  <SelectContent>{outletOptions.map((o) => <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>

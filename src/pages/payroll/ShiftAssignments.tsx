@@ -34,7 +34,7 @@ import {
   updateShiftAssignment,
   type ShiftAssignmentApiRow,
 } from "@/lib/api-integration/hrEndpoints";
-import { usePayrollStore } from "@/stores/payrollStore";
+import { formatShiftTemplateLabel, usePayrollStore } from "@/stores/payrollStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { History, Plus } from "lucide-react";
@@ -297,7 +297,7 @@ export default function ShiftAssignments() {
                 <SelectContent>
                   {shifts.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.startTime}–{s.endTime})
+                      {formatShiftTemplateLabel(s)}
                     </SelectItem>
                   ))}
                 </SelectContent>

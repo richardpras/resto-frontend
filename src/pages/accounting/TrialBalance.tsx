@@ -16,7 +16,7 @@ export default function TrialBalance() {
   const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
-  const outlets = useAccountingStore((s) => s.outlets);
+  const outlets = useAccountingStore((s) => s.outletOptions);
   const trialBalanceRows = useAccountingStore((s) => s.trialBalanceRows);
   const trialBalanceSummary = useAccountingStore((s) => s.trialBalanceSummary);
   const fetchTrialBalanceReport = useAccountingStore((s) => s.fetchTrialBalanceReport);
@@ -24,15 +24,16 @@ export default function TrialBalance() {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
-  const [outlet, setOutlet] = useState("all");
+  const [outletFilter, setOutletFilter] = useState("all");
 
   useEffect(() => {
     if (!allowed) return;
-    void fetchTrialBalanceReport({ from, to, outlet })
+    const outletId = outletFilter === "all" ? undefined : Number(outletFilter);
+    void fetchTrialBalanceReport({ from, to, outletId })
       .catch((e) => {
         toast.error(formatApiErrorMessage(e, t) || t("accounting.reports.loadTrialBalanceFailed"));
       });
-  }, [allowed, from, to, outlet, fetchTrialBalanceReport, t]);
+  }, [allowed, from, to, outletFilter, fetchTrialBalanceReport, t]);
 
   if (!allowed) {
     return (
@@ -56,11 +57,11 @@ export default function TrialBalance() {
         <div><Label>{t("accounting.reports.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div>
           <Label>{t("accounting.reports.outlet")}</Label>
-          <Select value={outlet} onValueChange={setOutlet}>
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
-              {outlets.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              {outlets.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

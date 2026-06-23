@@ -69,8 +69,14 @@ export interface JournalEntry {
   reference?: string;
   description: string;
   outlet: string;
+  outletId?: number | null;
   status: "draft" | "posted";
   lines: JournalLine[];
+}
+
+export interface AccountingOutletOption {
+  id: number;
+  name: string;
 }
 
 export interface AccountingPeriod {
@@ -87,7 +93,7 @@ export interface AccountingPeriod {
 interface AccountingState {
   accounts: Account[];
   journals: JournalEntry[];
-  outlets: string[];
+  outletOptions: AccountingOutletOption[];
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
@@ -140,7 +146,7 @@ interface AccountingState {
 export type TrialBalanceQuery = {
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
   page?: number;
   perPage?: number;
 };
@@ -149,20 +155,20 @@ export type LedgerQuery = {
   accountId: string;
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
 };
 
 export type ProfitLossQuery = {
   from?: string;
   to?: string;
-  outlet?: string;
+  outletId?: number;
   compareFrom?: string;
   compareTo?: string;
 };
 
 export type BalanceSheetQuery = {
   to?: string;
-  outlet?: string;
+  outletId?: number;
 };
 
 const EMPTY_LEDGER: LedgerReportData = { account: null, rows: [], opening: 0, closing: 0 };
@@ -211,7 +217,7 @@ function accountingPeriodFromApi(row: AccountingPeriodApiRow): AccountingPeriod 
 export const useAccountingStore = create<AccountingState>((set, get) => ({
   accounts: [],
   journals: [],
-  outlets: [],
+  outletOptions: [],
   isLoading: false,
   isSubmitting: false,
   error: null,
@@ -248,7 +254,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       set((state) => ({
         accounts: accRows.items.map(accountFromApi),
         journals: jourRows.items.map(journalFromApi),
-        outlets: outletRows.map((outlet) => outlet.name),
+        outletOptions: outletRows.map((outlet) => ({ id: outlet.id, name: outlet.name })),
         lastSyncAt: new Date().toISOString(),
         pagination: {
           accounts: accRows.meta,
@@ -318,8 +324,8 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     set({ isLoading: true, error: null, profitLossParams: params });
     try {
       const [current, previous] = await Promise.all([
-        getProfitLossReportApi({ from: params.from, to: params.to, outlet: params.outlet }),
-        getProfitLossReportApi({ from: params.compareFrom, to: params.compareTo, outlet: params.outlet }),
+        getProfitLossReportApi({ from: params.from, to: params.to, outletId: params.outletId }),
+        getProfitLossReportApi({ from: params.compareFrom, to: params.compareTo, outletId: params.outletId }),
       ]);
       set({
         profitLossCurrent: current,
