@@ -59,9 +59,13 @@ export default function PurchasePayments() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [bankAccountId, setBankAccountId] = useState("");
   const banks = useSettingsStore((s) => s.banks);
+  const ensureSectionsLoaded = useSettingsStore((s) => s.ensureSectionsLoaded);
   const [referenceNo, setReferenceNo] = useState("");
   const [amount, setAmount] = useState(0);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+
+  const defaultBankId = () => banks.find((b) => b.isDefault)?.id ?? banks[0]?.id ?? "";
+  const usesBankAccount = paymentMethod === "bank_transfer" || paymentMethod === "giro" || paymentMethod === "check";
 
   const loadDashboard = async () => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
@@ -77,6 +81,10 @@ export default function PurchasePayments() {
       setAging(null);
     }
   };
+
+  useEffect(() => {
+    void ensureSectionsLoaded(["banks"], { staleMs: 90_000 });
+  }, [ensureSectionsLoaded]);
 
   useEffect(() => {
     void Promise.all([fetchSupplierPayments(), fetchPurchaseInvoices(), fetchSuppliers(), loadDashboard()]);
@@ -100,6 +108,7 @@ export default function PurchasePayments() {
     setSupplierId("");
     setPaymentDate(new Date().toISOString().slice(0, 10));
     setPaymentMethod("bank_transfer");
+    setBankAccountId(defaultBankId());
     setReferenceNo("");
     setAmount(0);
     setAllocations({});
@@ -128,7 +137,7 @@ export default function PurchasePayments() {
         supplierId,
         paymentDate,
         paymentMethod,
-        bankAccountId: paymentMethod === "bank_transfer" && bankAccountId ? bankAccountId : undefined,
+        bankAccountId: usesBankAccount && bankAccountId ? bankAccountId : undefined,
         referenceNo: referenceNo || undefined,
         amount,
         allocations: allocRows,
@@ -305,11 +314,11 @@ export default function PurchasePayments() {
                   </SelectContent>
                 </Select>
               </div>
-              {paymentMethod === "bank_transfer" && (
+              {usesBankAccount && (
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Bank Account</label>
+                  <label className="text-sm font-medium">{t("purchases.pay.form.bankAccount")}</label>
                   <Select value={bankAccountId} onValueChange={setBankAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select bank account" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={t("purchases.pay.form.selectBankAccount")} /></SelectTrigger>
                     <SelectContent>
                       {banks.map((b) => (
                         <SelectItem key={b.id} value={b.id}>

@@ -31,6 +31,10 @@ vi.mock("@/components/sound/SoundAlertPrompt", () => ({
   SoundAlertPrompt: () => null,
 }));
 
+vi.mock("@/components/pwa/StaffInstallPrompt", () => ({
+  StaffInstallPrompt: () => null,
+}));
+
 vi.mock("@/components/notifications/NotificationBell", () => ({
   NotificationBell: () => null,
 }));

@@ -13,6 +13,7 @@ import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useOutletStore } from "@/stores/outletStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
 import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
+import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
@@ -71,6 +72,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <SoundAlertsProvider />
           <div data-app-chrome>
+            <StaffInstallPrompt />
             <SoundAlertPrompt />
           </div>
           <header

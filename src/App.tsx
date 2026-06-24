@@ -10,6 +10,8 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
 import { LocaleSync } from "@/hooks/useLocaleSync";
+import { PwaRouteController } from "@/pwa/useStaffPwa";
+import { PublicGuestStandaloneGuard } from "@/components/pwa/PublicGuestStandaloneGuard";
 import { PERMISSIONS } from "@/stores/authStore";
 import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
 import type { HrBootstrapKey } from "@/hooks/useHrPayrollBootstrap";
@@ -129,6 +131,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <LocaleSync />
+        <PwaRouteController />
         <Routes>
           <Route
             path="/login"
@@ -176,7 +179,9 @@ const App = () => (
             path="/qr-order"
             element={
               <Suspense fallback={routeFallback}>
-                <QROrder />
+                <PublicGuestStandaloneGuard>
+                  <QROrder />
+                </PublicGuestStandaloneGuard>
               </Suspense>
             }
           />
@@ -184,7 +189,9 @@ const App = () => (
             path="/qr/:qrPublicId"
             element={
               <Suspense fallback={routeFallback}>
-                <QROrder />
+                <PublicGuestStandaloneGuard>
+                  <QROrder />
+                </PublicGuestStandaloneGuard>
               </Suspense>
             }
           />
@@ -192,7 +199,9 @@ const App = () => (
             path="/qr/order/:orderCode"
             element={
               <Suspense fallback={routeFallback}>
-                <QrOrderDetail />
+                <PublicGuestStandaloneGuard>
+                  <QrOrderDetail />
+                </PublicGuestStandaloneGuard>
               </Suspense>
             }
           />
@@ -200,7 +209,9 @@ const App = () => (
             path="/payment-status"
             element={
               <Suspense fallback={routeFallback}>
-                <PaymentStatus />
+                <PublicGuestStandaloneGuard>
+                  <PaymentStatus />
+                </PublicGuestStandaloneGuard>
               </Suspense>
             }
           />

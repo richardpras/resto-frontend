@@ -1,9 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Matches Tables page card grid (`grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6`). */
+/** Matches Tables page card grid (`grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`). */
 export function TablesBoardSkeleton({ tiles = 12 }: { tiles?: number }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 min-h-[200px]" aria-hidden>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 min-h-[200px]" aria-hidden>
       {Array.from({ length: tiles }).map((_, i) => (
         <div key={i} className="bg-card rounded-2xl border overflow-hidden min-h-[160px] flex flex-col">
           <div className="px-4 py-3 border-b bg-muted/30 flex justify-between">

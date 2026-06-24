@@ -392,7 +392,20 @@
     "selectTableAria": "Pilih {{name}}",
     "qrGenerateFailed": "Gagal membuat identitas QR",
     "qrRegenerateFailed": "Gagal membuat ulang identitas QR",
-    "outletFromHeader": "Outlet diambil dari pemilih header (outlet {{id}})."
+    "outletFromHeader": "Outlet diambil dari pemilih header (outlet {{id}}).",
+    "searchPlaceholder": "Cari nama meja…",
+    "filterAll": "Semua",
+    "modeFloor": "Lantai",
+    "modeManage": "Kelola",
+    "noSearchResults": "Tidak ada meja yang cocok dengan pencarian atau filter.",
+    "filteredSubtitle": "{{shown}} dari {{total}} meja ditampilkan · {{available}} kosong",
+    "detailTitle": "Detail meja",
+    "sectionOperational": "Operasional",
+    "sectionQr": "Pesanan QR",
+    "sectionMaster": "Data master",
+    "openDetailAria": "Buka detail {{name}}",
+    "editTable": "Ubah meja",
+    "deleteConfirmTitle": "Hapus meja?"
   },
   "menu": {
     "title": "Manajemen Menu",

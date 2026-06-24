@@ -15,6 +15,7 @@ import BalanceSheet from "./accounting/BalanceSheet";
 import TrialBalance from "./accounting/TrialBalance";
 import AccountingPeriods from "./accounting/AccountingPeriods";
 import AccountingHealth from "./accounting/AccountingHealth";
+import AccountingPostingMappings from "./accounting/AccountingPostingMappings";
 import CashFlow from "./accounting/CashFlow";
 import AccountingReconciliation from "./accounting/AccountingReconciliation";
 
@@ -23,6 +24,7 @@ type AccountingTabKey =
   | "journal"
   | "periods"
   | "health"
+  | "posting"
   | "ledger"
   | "tb"
   | "pl"
@@ -37,6 +39,7 @@ const OPERATIONAL_TAB_ORDER: AccountingTabKey[] = [
   "journal",
   "periods",
   "health",
+  "posting",
   "recon",
 ];
 
@@ -45,6 +48,7 @@ const ACCOUNTING_TAB_KEYS: AccountingTabKey[] = [
   "journal",
   "periods",
   "health",
+  "posting",
   "ledger",
   "tb",
   "pl",
@@ -104,17 +108,20 @@ export default function Accounting() {
         <TabsContent value="coa" className="mt-4"><ChartOfAccounts /></TabsContent>
         <TabsContent value="journal" className="mt-4"><JournalEntries /></TabsContent>
         <TabsContent value="periods" className="mt-4"><AccountingPeriods /></TabsContent>
-        <TabsContent value="health" className="mt-4"><AccountingHealth /></TabsContent>
+        {showFinancialStatements && (
+          <TabsContent value="cf" className="mt-4"><CashFlow /></TabsContent>
+        )}
+        <TabsContent value="recon" className="mt-4"><AccountingReconciliation /></TabsContent>
         {showFinancialStatements && (
           <>
             <TabsContent value="ledger" className="mt-4"><GeneralLedger /></TabsContent>
             <TabsContent value="tb" className="mt-4"><TrialBalance /></TabsContent>
             <TabsContent value="pl" className="mt-4"><ProfitLoss /></TabsContent>
             <TabsContent value="bs" className="mt-4"><BalanceSheet /></TabsContent>
-            <TabsContent value="cf" className="mt-4"><CashFlow /></TabsContent>
           </>
         )}
-        <TabsContent value="recon" className="mt-4"><AccountingReconciliation /></TabsContent>
+        <TabsContent value="health" className="mt-4"><AccountingHealth /></TabsContent>
+        <TabsContent value="posting" className="mt-4"><AccountingPostingMappings /></TabsContent>
       </Tabs>
     </div>
   );

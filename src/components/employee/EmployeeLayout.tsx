@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useEmployeeAuthStore } from "@/stores/employeeAuthStore";
 import { LayoutDashboard, LogOut, User } from "lucide-react";
+import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 
 export function EmployeeLayout() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export function EmployeeLayout() {
 
   return (
     <div className="min-h-screen bg-muted/30">
+      <StaffInstallPrompt />
       <header className="border-b bg-card">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div>

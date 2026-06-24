@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { QrPrintTemplate } from "@/components/tables/QrPrintTemplate";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import {
   fetchTableQrImageBlob,
   type FloorTableApi,
   getTableQrDetail,
   type TableQrDetailApi,
 } from "@/lib/api-integration/tableEndpoints";
-import { QrPrintTemplate } from "@/components/tables/QrPrintTemplate";
+import { captureElementAsPngBlob, printCapturedLabel } from "@/lib/qrLabelCapture";
 
 type Props = {
   open: boolean;
@@ -25,6 +27,8 @@ function qrStatusLabel(status?: string): string {
 }
 
 export function QrPreviewModal({ open, table, outletName, onOpenChange, onRegenerate }: Props) {
+  const { t } = useOpsTranslation();
+  const labelRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<TableQrDetailApi | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,9 +82,9 @@ export function QrPreviewModal({ open, table, outletName, onOpenChange, onRegene
   };
 
   const handleDownload = async () => {
-    if (!table) return;
+    if (!table || !labelRef.current) return;
     try {
-      const blob = await fetchTableQrImageBlob(table.id);
+      const blob = await captureElementAsPngBlob(labelRef.current);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -92,30 +96,16 @@ export function QrPreviewModal({ open, table, outletName, onOpenChange, onRegene
     }
   };
 
-  const handlePrint = () => {
-    if (!table || !imageUrl) return;
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
-    if (!printWindow) {
-      toast.error("Pop-up blocked. Allow pop-ups to print QR.");
-      return;
+  const handlePrint = async () => {
+    if (!table || !imageUrl || !labelRef.current) return;
+    try {
+      await printCapturedLabel(labelRef.current, `Print QR ${table.name}`);
+    } catch {
+      toast.error(t("tables.printFailed"));
     }
-    printWindow.document.write(`
-      <html><head><title>Print QR ${table.name}</title>
-      <style>body{font-family:sans-serif;padding:16px;} @media print { body { margin: 0; } }</style>
-      </head><body>
-      <div style="text-align:center;border:1px solid #ccc;border-radius:8px;padding:16px;max-width:320px;margin:0 auto;">
-        <div style="font-weight:700;font-size:14px;">Restaurant</div>
-        <div style="font-size:12px;color:#555;margin-bottom:8px;">${outletName ?? "Outlet"}</div>
-        <div style="font-size:22px;font-weight:800;margin-bottom:12px;">${table.name}</div>
-        <img src="${imageUrl}" alt="QR" style="width:180px;height:180px;object-fit:contain;" />
-        <div style="font-size:12px;margin-top:12px;">Scan to order from your table</div>
-        <div style="font-size:10px;color:#666;margin-top:8px;word-break:break-all;">${detail?.qrUrl ?? table.qrUrl ?? ""}</div>
-      </div>
-      <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
-      </body></html>
-    `);
-    printWindow.document.close();
   };
+
+  const displayTable = table;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,14 +125,18 @@ export function QrPreviewModal({ open, table, outletName, onOpenChange, onRegene
             {detail.qrStatusReason ? (
               <p className="text-xs text-amber-700 dark:text-amber-300">{detail.qrStatusReason}</p>
             ) : null}
-            {imageUrl ? (
-              <div className="flex justify-center">
-                <QrPrintTemplate table={table} qrImageSrc={imageUrl} outletName={outletName ?? undefined} />
-              </div>
+            {imageUrl && displayTable ? (
+              <QrPrintTemplate
+                ref={labelRef}
+                table={displayTable}
+                qrImageSrc={imageUrl}
+                restaurantName={t("tables.printRestaurant")}
+                outletName={outletName ?? "Outlet"}
+                scanHint={t("tables.printScanHint")}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">QR image unavailable. Configure Customer App URL and generate QR.</p>
             )}
-            <p className="text-xs break-all text-muted-foreground">{detail.qrUrl ?? "No URL"}</p>
           </div>
         ) : null}
 

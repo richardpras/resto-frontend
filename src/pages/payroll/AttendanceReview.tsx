@@ -24,11 +24,10 @@ import {
 import { DataTable, type Column } from "@/components/DataTable";
 import {
   approveAttendancePeriod,
-  createAttendancePeriod,
   getAttendancePayrollPreparation,
   listAttendancePeriods,
   listAttendanceSummaries,
-  lockAttendancePeriod,
+  reopenAttendancePeriod,
   reviewAttendanceSummary,
   type AttendanceDailySummaryRow,
   type AttendancePayrollPrepMeta,
@@ -163,17 +162,6 @@ export default function AttendanceReview() {
       setPeriodsLoading(false);
     }
   }, [outletId, t]);
-
-  const createPeriod = async () => {
-    if (!outletId) return;
-    try {
-      await createAttendancePeriod({ outletId, periodStart: fromDate, periodEnd: toDate });
-      toast.success(t("payroll.attendanceReview.periodCreated"));
-      await Promise.all([loadPeriods(), loadPrep()]);
-    } catch (e) {
-      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.createPeriodFailed"));
-    }
-  };
 
   const canReview = prepMeta?.lockStatus !== "locked" && prepMeta?.lockStatus !== "approved";
 
@@ -313,25 +301,27 @@ export default function AttendanceReview() {
             )}
             {r.status === "approved" && (
               <Button
-                variant="default"
+                variant="outline"
                 size="sm"
                 onClick={() =>
-                  void lockAttendancePeriod(r.id)
+                  void reopenAttendancePeriod(r.id)
                     .then(() => {
-                      toast.success(t("payroll.attendanceReview.periodLocked"));
-                      return Promise.all([loadPeriods(), loadPrep(), loadSummaries()]);
+                      toast.success(t("payroll.attendanceReview.periodReopened"));
+                      return Promise.all([loadPeriods(), loadPrep()]);
                     })
-                    .catch((e) => toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.lockFailed")))
+                    .catch((e) =>
+                      toast.error(formatApiErrorMessage(e, t) || t("payroll.attendanceReview.reopenFailed")),
+                    )
                 }
               >
-                {t("payroll.shared.lock")}
+                {t("payroll.shared.reopen")}
               </Button>
             )}
           </div>
         ),
       },
     ],
-    [t, loadPeriods, loadPrep, loadSummaries],
+    [t, loadPeriods, loadPrep],
   );
 
   const prepColumns: Column<AttendancePayrollPrepRow>[] = useMemo(
@@ -432,12 +422,7 @@ export default function AttendanceReview() {
         </TabsContent>
 
         <TabsContent value="periods" className="mt-4 space-y-3">
-          <div className="flex justify-between items-center gap-2">
-            <p className="text-sm text-muted-foreground">{t("payroll.attendanceReview.periodsHint")}</p>
-            <Button size="sm" onClick={() => void createPeriod()}>
-              {t("payroll.attendanceReview.createPeriod", { from: fromDate, to: toDate })}
-            </Button>
-          </div>
+          <p className="text-sm text-muted-foreground">{t("payroll.attendanceReview.periodsHint")}</p>
           <DataTable
             data={periods}
             columns={periodColumns}

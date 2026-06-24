@@ -604,6 +604,8 @@ export type AttendancePeriodLockRow = {
   lockedAt?: string | null;
   notes?: string | null;
   employeeCount?: number;
+  payrollPreparationPeriodId?: number | null;
+  isLinkedToPayrollMaster?: boolean;
 };
 
 export type AttendancePayrollPrepMeta = {
@@ -651,6 +653,12 @@ export async function reopenAttendancePeriod(id: number): Promise<AttendancePeri
     method: "PATCH",
   });
   return res.data;
+}
+
+export async function deleteAttendancePeriod(id: number): Promise<void> {
+  await request<{ message: string }>(`/attendance/periods/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getAttendancePayrollPreparation(params: {
@@ -947,6 +955,8 @@ export type PayrollPreparationPeriodRow = {
   lockedAt?: string | null;
   generatedAt?: string | null;
   employeeCount?: number;
+  attendancePeriodId?: number | null;
+  attendancePeriodStatus?: AttendancePeriodStatus | null;
 };
 
 export type PayrollPreparationSnapshotRow = {
@@ -1018,6 +1028,10 @@ export async function lockPayrollPreparationPeriod(periodId: number): Promise<Pa
     method: "PATCH",
   });
   return res.data;
+}
+
+export async function deletePayrollPreparationPeriod(periodId: number): Promise<void> {
+  await request(`/payroll-preparation-periods/${periodId}`, { method: "DELETE" });
 }
 
 export async function listPayrollPreparationSnapshots(periodId: number): Promise<PayrollPreparationSnapshotRow[]> {

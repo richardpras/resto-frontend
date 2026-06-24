@@ -139,6 +139,7 @@
       "journalEntries": "Journal Entries",
       "periods": "Periods",
       "health": "Health",
+      "posting": "Posting Rules",
       "reconciliation": "Reconciliation",
       "generalLedger": "General Ledger",
       "trialBalance": "Trial Balance",
@@ -579,6 +580,16 @@
     "toggleSidebar": "Toggle sidebar",
     "outletPlaceholder": "Outlet",
     "notifications": "Notifications"
+  },
+  "pwa": {
+    "installMessage": "Install RestoHub on this device for quick access.",
+    "install": "Install",
+    "installing": "Installing…",
+    "notNow": "Not now",
+    "installAria": "Install RestoHub app",
+    "dismissAria": "Dismiss install prompt",
+    "guestStandaloneTitle": "Open in a regular browser",
+    "guestStandaloneBody": "Table ordering links are for guest browsers only. Open the QR link in Chrome or Safari instead of the installed staff app."
   },
   "usersManagement": {
     "pageTitle": "User Management",

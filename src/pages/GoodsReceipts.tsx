@@ -16,6 +16,7 @@ import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
 import { Plus, PackageCheck, Search, Check, Upload, Ban, Eye } from "lucide-react";
 import PostingStatusIndicator, { PostingStatusBadge } from "@/components/procurement/PostingStatusIndicator";
+import { useOutletInventory } from "@/hooks/useOutletInventory";
 import { toast } from "sonner";
 
 const statusColors: Record<GRNStatus, string> = {
@@ -39,6 +40,7 @@ export default function GoodsReceipts() {
     fetchPurchaseOrders,
   } = usePurchaseStore();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const { resolveItemName } = useOutletInventory();
 
   const [formOpen, setFormOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
@@ -183,7 +185,8 @@ export default function GoodsReceipts() {
     }
   };
 
-  const getItemName = (id: string) => `Item #${id}`;
+  const getItemName = (id: string, ingredientName?: string | null) =>
+    ingredientName?.trim() || resolveItemName(id);
   const filtered = goodsReceipts.filter((g) =>
     g.grnNumber.toLowerCase().includes(search.toLowerCase()) ||
     g.poReference.toLowerCase().includes(search.toLowerCase())
@@ -398,6 +401,42 @@ export default function GoodsReceipts() {
                 <div><span className="text-muted-foreground">{t("purchases.grn.receivedBy")}:</span> {viewedGrn.receivedBy ?? "—"}</div>
                 <div><span className="text-muted-foreground">{t("purchases.grn.relatedInvoices")}:</span> {viewedGrn.relatedInvoiceCount ?? 0}</div>
                 <div><span className="text-muted-foreground">{t("purchases.grn.receivedValue")}:</span> {(viewedGrn.receivedValue ?? 0).toLocaleString()}</div>
+              </div>
+
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>{t("purchases.grn.item")}</TableHead>
+                      <TableHead className="w-24">{t("purchases.grn.ordered")}</TableHead>
+                      <TableHead className="w-24">{t("purchases.grn.receiveNow")}</TableHead>
+                      <TableHead className="w-28">{t("purchases.grn.unitCost")}</TableHead>
+                      <TableHead className="w-28 text-right">{t("purchases.grn.lineValue")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {viewedGrn.items.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          {t("purchases.grn.noItems")}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {viewedGrn.items.map((item) => (
+                      <TableRow key={item.id ?? item.inventoryItemId}>
+                        <TableCell className="text-sm font-medium">
+                          {getItemName(item.inventoryItemId, item.ingredientName)}
+                        </TableCell>
+                        <TableCell className="text-sm">{item.orderedQty}</TableCell>
+                        <TableCell className="text-sm">{item.receivedQty}</TableCell>
+                        <TableCell className="text-sm">{(item.unitCost ?? 0).toLocaleString()}</TableCell>
+                        <TableCell className="text-sm text-right">
+                          {((item.receivedQty ?? 0) * (item.unitCost ?? 0)).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
 
               {progress && (

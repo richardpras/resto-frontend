@@ -112,9 +112,12 @@ export type PurchaseOrder = {
 };
 
 export type GRNItem = {
+  id?: string;
   inventoryItemId: string;
+  ingredientName?: string | null;
   orderedQty: number;
   receivedQty: number;
+  unitCost?: number;
   unit: string;
 };
 
@@ -347,9 +350,12 @@ const mapGoodsReceipt = (row: GoodsReceiptApiRow): GoodsReceipt => ({
   receivedValue: row.receivedValue,
   relatedInvoiceCount: row.relatedInvoiceCount,
   items: row.items.map((item) => ({
+    id: item.id,
     inventoryItemId: item.inventoryItemId,
+    ingredientName: item.ingredientName ?? undefined,
     orderedQty: item.orderedQty,
     receivedQty: item.receivedQty,
+    unitCost: item.unitCost,
     unit: item.unit ?? "",
   })),
   createdAt: row.createdAt,

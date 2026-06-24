@@ -26,10 +26,35 @@ describe("TableQrPrint", () => {
       />,
     );
 
+    expect(screen.getByTestId("qr-print-label")).toBeInTheDocument();
     expect(screen.getByText("Demo Resto")).toBeInTheDocument();
     expect(screen.getByText("Main Hall")).toBeInTheDocument();
     expect(screen.getByText("A01")).toBeInTheDocument();
     expect(screen.getByText("Scan to order from your table")).toBeInTheDocument();
+    expect(screen.queryByText("https://order.example.com/qr/tok")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "QR for A01" })).toHaveAttribute("src", "data:image/png;base64,abc");
+  });
+
+  it("renders custom scan hint when provided", () => {
+    render(
+      <QrPrintTemplate
+        table={{
+          id: 1,
+          outletId: 1,
+          name: "B02",
+          capacity: 2,
+          status: "active",
+          active: true,
+          qrEnabled: true,
+          qrPublicId: "tok2",
+          qrUrl: "https://order.example.com/qr/tok2",
+          qrStatus: "ready",
+        }}
+        qrImageSrc="data:image/png;base64,xyz"
+        scanHint="Scan untuk pesan dari meja Anda"
+      />,
+    );
+
+    expect(screen.getByText("Scan untuk pesan dari meja Anda")).toBeInTheDocument();
   });
 });

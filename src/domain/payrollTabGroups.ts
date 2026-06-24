@@ -12,27 +12,28 @@ export type PayrollTabGroup = {
   tabs: PayrollTabKey[];
 };
 
+/** Sidebar setup group is built manually in sidebarNavConfig; index 0 is label-only. */
 export const PAYROLL_TAB_GROUPS: PayrollTabGroup[] = [
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.setup,
-    tabs: ["shifts", "scheduling", "shift-assignments"],
+    tabs: [],
   },
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.daily,
-    tabs: ["attendance", "attendance-review", "leave", "overtime"],
+    tabs: ["overtime", "leave", "attendance", "attendance-review"],
   },
   {
     labelKey: PAYROLL_GROUP_LABEL_KEYS.payroll,
     tabs: [
-      "preparation",
-      "engine",
-      "adjustments",
-      "payslips",
       "bpjs",
       "tax",
       "reimbursements",
       "loans",
       "cash-advances",
+      "preparation",
+      "adjustments",
+      "engine",
+      "payslips",
     ],
   },
   {

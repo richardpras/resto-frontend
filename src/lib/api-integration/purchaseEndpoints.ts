@@ -118,6 +118,7 @@ export type GoodsReceiptApiRow = {
   items: Array<{
     id: string;
     inventoryItemId: string;
+    ingredientName?: string | null;
     orderedQty: number;
     receivedQty: number;
     unitCost?: number;

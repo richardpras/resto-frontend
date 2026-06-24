@@ -24,6 +24,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import {
   approvePayrollPreparationPeriod,
   createPayrollPreparationPeriod,
+  deletePayrollPreparationPeriod,
   generatePayrollPreparationSnapshot,
   getPayrollPreparationSummary,
   listPayrollPreparationPeriods,
@@ -36,7 +37,7 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
-import { Lock, Play, Plus, ShieldCheck } from "lucide-react";
+import { Lock, Play, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 function periodStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
@@ -116,7 +117,7 @@ export default function Preparation() {
         periodStart: periodForm.periodStart,
         periodEnd: periodForm.periodEnd,
       });
-      toast.success(t("payroll.preparation.periodCreated"));
+      toast.success(t("payroll.preparation.periodCreatedWithAttendance"));
       setPeriodOpen(false);
       setSelectedPeriodId(String(created.id));
       await loadPeriods();
@@ -155,6 +156,18 @@ export default function Preparation() {
             {t(`payroll.shared.${p.status}`, { defaultValue: p.status })}
           </Badge>
         ),
+      },
+      {
+        key: "attendanceStatus",
+        header: t("payroll.preparation.attendanceStatus"),
+        render: (p) =>
+          p.attendancePeriodStatus ? (
+            <Badge variant={periodStatusVariant(p.attendancePeriodStatus)} className="capitalize">
+              {t(`payroll.shared.${p.attendancePeriodStatus}`, { defaultValue: p.attendancePeriodStatus })}
+            </Badge>
+          ) : (
+            "—"
+          ),
       },
       { key: "employees", header: t("payroll.shared.employeesCount"), render: (p) => p.employeeCount ?? 0 },
       {
@@ -210,11 +223,32 @@ export default function Preparation() {
                 {t("payroll.shared.lock")}
               </Button>
             )}
+            {p.status === "draft" && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  const label = p.periodLabel ?? `${p.periodStart} → ${p.periodEnd}`;
+                  if (!window.confirm(t("payroll.preparation.periodDeleteConfirm", { period: label }))) {
+                    return;
+                  }
+                  void runAction("payroll.preparation.periodDeleted", async () => {
+                    await deletePayrollPreparationPeriod(p.id);
+                    if (String(p.id) === selectedPeriodId) {
+                      setSelectedPeriodId("");
+                    }
+                  });
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                {t("payroll.shared.delete")}
+              </Button>
+            )}
           </div>
         ),
       },
     ],
-    [t, runAction],
+    [t, runAction, selectedPeriodId],
   );
 
   const snapshotColumns: Column<PayrollPreparationSnapshotRow>[] = useMemo(
@@ -412,6 +446,7 @@ export default function Preparation() {
               />
             </div>
           </div>
+          <p className="text-sm text-muted-foreground">{t("payroll.preparation.periodCreatesAttendance")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPeriodOpen(false)}>
               {t("payroll.shared.cancel")}

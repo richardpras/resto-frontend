@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ShoppingCart, ChefHat, QrCode, Armchair, CalendarDays, Package, UtensilsCrossed,
-  ClipboardList, Users, UserCog, BarChart3, BookOpen, Settings,
-  Truck, UserCircle, Banknote, ListOrdered, Gift, Building2, Briefcase, LockKeyhole, Bell,
+  ClipboardList, UserCog, BarChart3, BookOpen, Settings,
+  Truck, UserCircle, Banknote, ListOrdered, Gift, LockKeyhole, Bell,
 } from "lucide-react";
 import { PERMISSIONS } from "@/stores/authStore";
 import { PAYROLL_TAB_GROUPS } from "@/domain/payrollTabGroups";
@@ -49,16 +49,22 @@ function buildHrNavGroups(user: AuthUser | null): SidebarNavItem[] {
   const visible = new Set(getVisiblePayrollTabs(user));
   const groups: SidebarNavItem[] = [];
 
-  const setupPayrollTabs = PAYROLL_TAB_GROUPS[0].tabs.filter((tab) => visible.has(tab));
-  const setupChildren: SidebarNavItem[] = [];
+  const setupChildren: SidebarNavItem[] = [
+    nav("nav.departments", { href: "/hr/departments", permission: PERMISSIONS.USERS }),
+    nav("nav.positions", { href: "/hr/positions", permission: PERMISSIONS.USERS }),
+  ];
+  if (visible.has("shifts")) {
+    setupChildren.push(hrPayrollLink("shifts"));
+  }
   if (canViewEmployees(user)) {
     setupChildren.push(nav("nav.employees", { href: "/hr/employees" }));
   }
-  setupChildren.push(
-    nav("nav.departments", { href: "/hr/departments", permission: PERMISSIONS.USERS }),
-    nav("nav.positions", { href: "/hr/positions", permission: PERMISSIONS.USERS }),
-    ...setupPayrollTabs.map(hrPayrollLink),
-  );
+  if (visible.has("shift-assignments")) {
+    setupChildren.push(hrPayrollLink("shift-assignments"));
+  }
+  if (visible.has("scheduling")) {
+    setupChildren.push(hrPayrollLink("scheduling"));
+  }
   if (setupChildren.length > 0) {
     groups.push({ title: "", titleKey: "nav.hrGroupSetup", kind: "link", children: setupChildren });
   }
@@ -83,32 +89,46 @@ function buildHrNavGroups(user: AuthUser | null): SidebarNavItem[] {
   return groups;
 }
 
-const ACCOUNTING_OPERATIONAL: SidebarNavItem[] = [
+const ACCOUNTING_BASE: SidebarNavItem[] = [
   nav("nav.accounting.chartOfAccounts", { href: "/accounting?tab=coa", permission: PERMISSIONS.ACCOUNTING }),
   nav("nav.accounting.journalEntries", { href: "/accounting?tab=journal", permission: PERMISSIONS.ACCOUNTING }),
   nav("nav.accounting.periods", { href: "/accounting?tab=periods", permission: PERMISSIONS.ACCOUNTING }),
-  nav("nav.accounting.health", { href: "/accounting?tab=health", permission: PERMISSIONS.ACCOUNTING }),
-  nav("nav.accounting.reconciliation", { href: "/accounting?tab=recon", permission: PERMISSIONS.ACCOUNTING }),
 ];
 
-const ACCOUNTING_FINANCIAL: SidebarNavItem[] = [
+const ACCOUNTING_LEDGER_AND_CASHFLOW: SidebarNavItem[] = [
   nav("nav.accounting.generalLedger", { href: "/accounting?tab=ledger", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
-  nav("nav.accounting.trialBalance", { href: "/accounting?tab=tb", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
-  nav("nav.accounting.profitLoss", { href: "/accounting?tab=pl", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
-  nav("nav.accounting.balanceSheet", { href: "/accounting?tab=bs", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
   nav("nav.accounting.cashFlow", { href: "/accounting?tab=cf", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
 ];
 
+const ACCOUNTING_RECONCILIATION: SidebarNavItem[] = [
+  nav("nav.accounting.reconciliation", { href: "/accounting?tab=recon", permission: PERMISSIONS.ACCOUNTING }),
+];
+
+const ACCOUNTING_STATEMENTS: SidebarNavItem[] = [
+  nav("nav.accounting.trialBalance", { href: "/accounting?tab=tb", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
+  nav("nav.accounting.profitLoss", { href: "/accounting?tab=pl", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
+  nav("nav.accounting.balanceSheet", { href: "/accounting?tab=bs", permissionsAll: [PERMISSIONS.ACCOUNTING, PERMISSIONS.REPORTS] }),
+];
+
+const ACCOUNTING_HEALTH: SidebarNavItem[] = [
+  nav("nav.accounting.health", { href: "/accounting?tab=health", permission: PERMISSIONS.ACCOUNTING }),
+];
+
+const ACCOUNTING_POSTING: SidebarNavItem[] = [
+  nav("nav.accounting.posting", { href: "/accounting?tab=posting", permission: PERMISSIONS.ACCOUNTING }),
+];
+
 function buildAccountingChildren(user: AuthUser | null): SidebarNavItem[] {
-  const children: SidebarNavItem[] = [...ACCOUNTING_OPERATIONAL];
+  const children: SidebarNavItem[] = [...ACCOUNTING_BASE];
   if (canViewFinancialStatements(user)) {
-    const reconIndex = children.findIndex((c) => c.href === "/accounting?tab=recon");
-    if (reconIndex >= 0) {
-      children.splice(reconIndex, 0, ...ACCOUNTING_FINANCIAL);
-    } else {
-      children.push(...ACCOUNTING_FINANCIAL);
-    }
+    children.push(...ACCOUNTING_LEDGER_AND_CASHFLOW);
   }
+  children.push(...ACCOUNTING_RECONCILIATION);
+  if (canViewFinancialStatements(user)) {
+    children.push(...ACCOUNTING_STATEMENTS);
+  }
+  children.push(...ACCOUNTING_HEALTH);
+  children.push(...ACCOUNTING_POSTING);
   return children;
 }
 
@@ -131,6 +151,11 @@ const REPORTS_CHILDREN: SidebarNavItem[] = [
   nav("nav.reports.auditCenter", { href: "/system/audit", permission: PERMISSIONS.SETTINGS }),
   nav("nav.reports.failedJobs", { href: "/system/failed-jobs", permission: PERMISSIONS.SETTINGS }),
   nav("nav.reports.bugReports", { href: "/system/bug-reports", permission: PERMISSIONS.SETTINGS }),
+];
+
+const RESERVATIONS_CHILDREN: SidebarNavItem[] = [
+  nav("nav.reservations", { href: "/reservations", permission: PERMISSIONS.POS }),
+  nav("nav.reservationOps", { href: "/reservations/operations", permission: PERMISSIONS.POS }),
 ];
 
 export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[] {
@@ -174,7 +199,12 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
     {
       labelKey: "sidebar.sales",
       items: [
+        nav("nav.reservationsMenu", {
+          icon: CalendarDays,
+          children: RESERVATIONS_CHILDREN,
+        }),
         nav("nav.posCashier", { href: "/pos", icon: ShoppingCart, permission: PERMISSIONS.POS }),
+        nav("nav.qrOrders", { href: "/qr-orders", icon: QrCode, permission: PERMISSIONS.QR_ORDERS }),
         nav("nav.openBills", { href: "/cashier", icon: Banknote, permission: PERMISSIONS.POS }),
         nav("nav.orders", { href: "/orders", icon: ListOrdered, permission: PERMISSIONS.POS }),
         nav("nav.shiftClose", { href: "/shift-close", icon: LockKeyhole, permission: PERMISSIONS.FINANCE_SHIFT_CLOSE }),
@@ -184,20 +214,14 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
       labelKey: "sidebar.floor",
       items: [
         nav("nav.kitchenDisplay", { href: "/kitchen", icon: ChefHat, permission: PERMISSIONS.KITCHEN }),
-        nav("nav.qrOrders", { href: "/qr-orders", icon: QrCode, permission: PERMISSIONS.QR_ORDERS }),
         nav("nav.tables", { href: "/tables", icon: Armchair, permission: PERMISSIONS.TABLES }),
-        nav("nav.reservationsMenu", {
-          icon: CalendarDays,
-          children: [
-            nav("nav.reservations", { href: "/reservations", permission: PERMISSIONS.POS }),
-            nav("nav.reservationOps", { href: "/reservations/operations", permission: PERMISSIONS.POS }),
-          ],
-        }),
       ],
     },
     {
       labelKey: "sidebar.menuStock",
       items: [
+        nav("nav.suppliers", { href: "/suppliers", icon: Truck, permission: PERMISSIONS.SUPPLIERS }),
+        nav("nav.inventory", { href: "/inventory", icon: Package, permission: PERMISSIONS.INVENTORY }),
         nav("nav.menu", {
           icon: UtensilsCrossed,
           children: [
@@ -207,8 +231,6 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
             nav("nav.menuIntelligence", { href: "/dashboard/menu", permission: PERMISSIONS.MENU_DASHBOARD }),
           ],
         }),
-        nav("nav.inventory", { href: "/inventory", icon: Package, permission: PERMISSIONS.INVENTORY }),
-        nav("nav.suppliers", { href: "/suppliers", icon: Truck, permission: PERMISSIONS.SUPPLIERS }),
         nav("nav.purchasesMenu", { icon: ClipboardList, permission: PERMISSIONS.PURCHASE, children: PURCHASES_CHILDREN }),
       ],
     },

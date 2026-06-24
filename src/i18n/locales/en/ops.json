@@ -383,7 +383,20 @@
     "selectTableAria": "Select {{name}}",
     "qrGenerateFailed": "Failed to generate QR identity",
     "qrRegenerateFailed": "Failed to regenerate QR identity",
-    "outletFromHeader": "Outlet is taken from the header selector (outlet {{id}})."
+    "outletFromHeader": "Outlet is taken from the header selector (outlet {{id}}).",
+    "searchPlaceholder": "Search table name…",
+    "filterAll": "All",
+    "modeFloor": "Floor",
+    "modeManage": "Manage",
+    "noSearchResults": "No tables match your search or filter.",
+    "filteredSubtitle": "{{shown}} of {{total}} tables shown · {{available}} available",
+    "detailTitle": "Table details",
+    "sectionOperational": "Operations",
+    "sectionQr": "QR ordering",
+    "sectionMaster": "Master data",
+    "openDetailAria": "Open details for {{name}}",
+    "editTable": "Edit table",
+    "deleteConfirmTitle": "Delete table?"
   },
   "menu": {
     "title": "Menu Management",

@@ -25,13 +25,13 @@ const SETTINGS_TAB_KEYS = [
   "outlets",
   "taxes",
   "printers",
+  "numbering",
+  "receipt",
+  "warehouses",
+  "banks",
   "payments",
   "system",
   "integration",
-  "numbering",
-  "banks",
-  "receipt",
-  "warehouses",
 ] as const;
 
 export default function Settings() {
@@ -179,13 +179,13 @@ export default function Settings() {
           <TabsTrigger value="outlets">{t("settings.tabs.outlets")}</TabsTrigger>
           <TabsTrigger value="taxes">{t("settings.tabs.taxes")}</TabsTrigger>
           <TabsTrigger value="printers">{t("settings.tabs.printers")}</TabsTrigger>
+          <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger>
+          <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger>
+          <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger>
+          <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger>
           <TabsTrigger value="payments">{t("settings.tabs.payments")}</TabsTrigger>
           <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger>
           <TabsTrigger value="integration">{t("settings.tabs.integration")}</TabsTrigger>
-          <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger>
-          <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger>
-          <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger>
-          <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger>
         </TabsList>
         <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>

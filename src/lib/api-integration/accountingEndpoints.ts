@@ -508,6 +508,86 @@ export async function updateAccountingSettings(payload: {
   return res.data;
 }
 
+export type PostingMappingRuleRow = {
+  ruleKey: string;
+  label: string;
+  required: boolean;
+  accountTypes: AccountApiRow["type"][];
+  configured: boolean;
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
+  chartAccountName?: string | null;
+};
+
+export type PostingMappingModule = "procurement" | "pos" | "payroll" | "inventory";
+
+export type PostingMappingBankOverrideRow = {
+  bankAccountId: string;
+  ruleKey: string;
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
+  chartAccountName?: string | null;
+};
+
+export type PostingMappingPaymentOverrideRow = {
+  paymentMethodCode: string;
+  ruleKey: string;
+  chartAccountId?: number | null;
+  chartAccountCode?: string | null;
+  chartAccountName?: string | null;
+};
+
+export type PostingMappingsPayload = {
+  module: string;
+  tenantId?: number | null;
+  outletId?: number | null;
+  rules: PostingMappingRuleRow[];
+  bankOverrides: PostingMappingBankOverrideRow[];
+  paymentOverrides: PostingMappingPaymentOverrideRow[];
+  missingRequiredCount: number;
+};
+
+export async function getPostingMappings(params: {
+  module: PostingMappingModule;
+  outletId?: number;
+  tenantId?: number;
+}): Promise<PostingMappingsPayload> {
+  const search = new URLSearchParams({ module: params.module });
+  if (params.outletId) search.set("outletId", String(params.outletId));
+  if (params.tenantId) search.set("tenantId", String(params.tenantId));
+  const res = await request<{ data: PostingMappingsPayload }>(`/accounting/posting-mappings?${search}`);
+  return res.data;
+}
+
+export async function getPostingMappingsStatus(params: {
+  module: PostingMappingModule;
+  outletId?: number;
+  tenantId?: number;
+}): Promise<{ module: string; missingRequiredCount: number; totalRequired: number }> {
+  const search = new URLSearchParams({ module: params.module });
+  if (params.outletId) search.set("outletId", String(params.outletId));
+  if (params.tenantId) search.set("tenantId", String(params.tenantId));
+  const res = await request<{ data: { module: string; missingRequiredCount: number; totalRequired: number } }>(
+    `/accounting/posting-mappings/status?${search}`,
+  );
+  return res.data;
+}
+
+export async function updatePostingMappings(payload: {
+  module: PostingMappingModule;
+  outletId?: number | null;
+  tenantId?: number | null;
+  mappings: Array<{ ruleKey: string; chartAccountId: number }>;
+  bankOverrides?: Array<{ bankAccountId: string; chartAccountId: number | null }>;
+  paymentOverrides?: Array<{ paymentMethodCode: string; chartAccountId: number | null }>;
+}): Promise<PostingMappingsPayload> {
+  const res = await request<{ data: PostingMappingsPayload }>(`/accounting/posting-mappings`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
 export async function listAccountingPostingFailures(status?: string): Promise<AccountingPostingFailureRow[]> {
   const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
   const res = await request<{ data: AccountingPostingFailureRow[] }>(`/accounting/posting-failures${suffix}`);

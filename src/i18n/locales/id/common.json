@@ -139,6 +139,7 @@
       "journalEntries": "Jurnal",
       "periods": "Periode",
       "health": "Kesehatan",
+      "posting": "Aturan Jurnal",
       "reconciliation": "Rekonsiliasi",
       "generalLedger": "Buku Besar",
       "trialBalance": "Neraca Saldo",
@@ -575,6 +576,16 @@
     "toggleSidebar": "Buka/tutup sidebar",
     "outletPlaceholder": "Outlet",
     "notifications": "Notifikasi"
+  },
+  "pwa": {
+    "installMessage": "Pasang RestoHub di perangkat ini untuk akses cepat.",
+    "install": "Pasang",
+    "installing": "Memasang…",
+    "notNow": "Nanti saja",
+    "installAria": "Pasang aplikasi RestoHub",
+    "dismissAria": "Tutup prompt pemasangan",
+    "guestStandaloneTitle": "Buka di browser biasa",
+    "guestStandaloneBody": "Halaman pesanan meja hanya untuk browser tamu. Buka link QR di Chrome atau Safari biasa, bukan dari aplikasi staff yang terpasang."
   },
   "usersManagement": {
     "pageTitle": "Manajemen Pengguna",
