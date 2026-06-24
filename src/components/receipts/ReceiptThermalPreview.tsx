@@ -16,8 +16,9 @@ const SAMPLE_ITEMS = [
 ] as const;
 
 const SAMPLE_SUBTOTAL = 45000;
+const SAMPLE_DISCOUNT = 5000;
 const SAMPLE_TAX = 4500;
-const SAMPLE_TOTAL = 49500;
+const SAMPLE_TOTAL = SAMPLE_SUBTOTAL - SAMPLE_DISCOUNT + SAMPLE_TAX;
 
 function MetaRow({ label, value, widthCh }: { label: string; value: string; widthCh: number }) {
   return (
@@ -75,6 +76,8 @@ export function ReceiptThermalPreview({
         <MetaRow label="Customer" value="Budi" widthCh={widthCh} />
         <MetaRow label="Time" value={timeLabel} widthCh={widthCh} />
         <MetaRow label="Type" value="Dine In" widthCh={widthCh} />
+        <MetaRow label="Cashier" value="Siti" widthCh={widthCh} />
+        <MetaRow label="Split" value="Guest A" widthCh={widthCh} />
       </div>
 
       <div className="my-2 whitespace-pre">{divider}</div>
@@ -101,12 +104,20 @@ export function ReceiptThermalPreview({
 
       <div className="space-y-1">
         <MetaRow label="Subtotal" value={formatPreviewMoney(SAMPLE_SUBTOTAL)} widthCh={widthCh} />
+        <MetaRow label="Promo (SAVE10)" value={formatPreviewMoney(-SAMPLE_DISCOUNT)} widthCh={widthCh} />
         {showTaxBreakdown ? (
           <MetaRow label="Tax" value={formatPreviewMoney(SAMPLE_TAX)} widthCh={widthCh} />
         ) : null}
         <div className="whitespace-pre font-bold">
           {formatPreviewColumns("TOTAL", formatPreviewMoney(SAMPLE_TOTAL), widthCh)}
         </div>
+      </div>
+
+      <div className="my-2 whitespace-pre">{divider}</div>
+
+      <div className="space-y-1">
+        <MetaRow label="Cash" value={formatPreviewMoney(30000)} widthCh={widthCh} />
+        <MetaRow label="QRIS" value={formatPreviewMoney(14500)} widthCh={widthCh} />
       </div>
 
       <div className="my-2 whitespace-pre">{divider}</div>

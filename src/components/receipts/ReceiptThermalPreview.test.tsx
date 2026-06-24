@@ -21,6 +21,11 @@ describe("ReceiptThermalPreview", () => {
     expect(screen.getByText("Item B")).toBeInTheDocument();
     expect(screen.getByText(/Customer/)).toBeInTheDocument();
     expect(screen.getByText(/Type/)).toBeInTheDocument();
+    expect(screen.getByText(/Cashier/)).toBeInTheDocument();
+    expect(screen.getByText(/Split/)).toBeInTheDocument();
+    expect(screen.getByText(/Promo \(SAVE10\)/)).toBeInTheDocument();
+    expect(screen.getByText(/^Cash\s+30,000\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/^QRIS\s+14,500\.00/)).toBeInTheDocument();
     expect(screen.getByText("Thank you")).toBeInTheDocument();
   });
 
