@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard";
+import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
 import { getInventoryPostingHealth } from "@/lib/api-integration/inventoryPostingEndpoints";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
@@ -22,7 +23,7 @@ export function ExecutiveInventoryReliabilityWidget() {
   const enabled = canView && typeof activeOutletId === "number" && activeOutletId >= 1;
 
   const healthQ = useQuery({
-    queryKey: ["executive", "inventory-posting-health", activeOutletId],
+    queryKey: executiveQueryKeys.inventoryPostingHealth(activeOutletId),
     queryFn: () => getInventoryPostingHealth(activeOutletId!),
     enabled,
     staleTime: 60_000,

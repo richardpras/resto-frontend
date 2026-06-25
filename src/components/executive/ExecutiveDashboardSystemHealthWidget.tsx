@@ -1,4 +1,4 @@
-import { useSystemHealthData } from "@/hooks/system-health/useSystemHealthData";
+import { useExecutiveSystemHealthSummary } from "@/hooks/executive/useExecutiveSystemHealthSummary";
 import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard";
 import { SystemHealthStatusBadge } from "@/components/system-health/SystemHealthStatusBadge";
 import { useAuthStore } from "@/stores/authStore";
@@ -16,7 +16,7 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 export function ExecutiveDashboardSystemHealthWidget() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
-  const health = useSystemHealthData(activeOutletId, hasPermission);
+  const health = useExecutiveSystemHealthSummary(activeOutletId, hasPermission);
 
   const status = health.loading
     ? "loading"

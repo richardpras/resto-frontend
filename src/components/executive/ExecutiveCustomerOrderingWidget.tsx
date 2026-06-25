@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard";
+import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
 import { getQrOrderCustomerHealth } from "@/lib/api-integration/qrOrderEndpoints";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
@@ -20,7 +21,7 @@ export function ExecutiveCustomerOrderingWidget() {
   const enabled = canView && typeof activeOutletId === "number" && activeOutletId >= 1;
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["executive", "qr-customer-health", activeOutletId],
+    queryKey: executiveQueryKeys.qrCustomerHealth(activeOutletId),
     queryFn: () => getQrOrderCustomerHealth(activeOutletId!),
     enabled,
     staleTime: 60_000,

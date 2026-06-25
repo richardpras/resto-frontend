@@ -31,6 +31,7 @@ import {
   severityToScore,
   type ExecutiveScoreResult,
 } from "@/lib/executive/executiveScore";
+import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
 
 const STALE_TIME_MS = 60_000;
 
@@ -128,11 +129,12 @@ export function useExecutiveDashboardData(
   const canMenuDashboard = hasPermission(PERMISSIONS.MENU_DASHBOARD);
   const canNotifications = scopedOutletId !== null;
   const canAudit = canManagePlatformSettings(user);
+  const fetchFoodCostSeparately = canMenuAnalytics && !canMenuDashboard;
 
   const queries = useQueries({
     queries: [
       {
-        queryKey: ["executive", "sales", scopedOutletId, today.startDate],
+        queryKey: executiveQueryKeys.executiveSales(scopedOutletId, today.startDate, today.endDate),
         queryFn: () =>
           fetchExecutiveSalesReport({
             outletId: scopedOutletId ?? undefined,
@@ -144,35 +146,35 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: ["executive", "accounting-health", scopedOutletId],
+        queryKey: executiveQueryKeys.accountingHealth(scopedOutletId),
         queryFn: () => getAccountingHealth({ outletId: scopedOutletId ?? undefined }),
         enabled: canAccounting && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "gift-card", scopedOutletId],
+        queryKey: executiveQueryKeys.giftCardReconciliation(scopedOutletId),
         queryFn: () => getGiftCardReconciliation({ outletId: scopedOutletId ?? undefined }),
         enabled: canAccounting && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "payment-health", scopedOutletId],
+        queryKey: executiveQueryKeys.paymentHealth(scopedOutletId),
         queryFn: () => getPaymentHealth({ outletId: scopedOutletId ?? undefined }),
         enabled: canPayment && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "monitoring", scopedOutletId],
+        queryKey: executiveQueryKeys.operationalMetrics(scopedOutletId),
         queryFn: () => getOperationalMetrics(scopedOutletId),
         enabled: canMonitoring && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "loyalty", scopedOutletId, loyaltyRange.startDate],
+        queryKey: executiveQueryKeys.loyaltyDashboard(scopedOutletId, loyaltyRange.startDate, loyaltyRange.endDate),
         queryFn: () =>
           fetchLoyaltyAnalyticsDashboard({
             outletId: scopedOutletId!,
@@ -184,24 +186,24 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: ["executive", "food-cost", scopedOutletId],
+        queryKey: executiveQueryKeys.executiveAnalytics(scopedOutletId),
         queryFn: async () => {
           const analytics = await getExecutiveAnalytics(scopedOutletId!);
           return analytics.averageFoodCostPercent;
         },
-        enabled: canMenuAnalytics && scopedOutletId !== null,
+        enabled: fetchFoodCostSeparately && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "menu-dashboard", scopedOutletId],
+        queryKey: executiveQueryKeys.menuDashboardSummary(scopedOutletId),
         queryFn: () => getMenuDashboardSummary(scopedOutletId!),
         enabled: canMenuDashboard && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "notifications", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "recent:10"),
         queryFn: () =>
           listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -213,14 +215,14 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: ["executive", "notifications-unread", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsUnread(scopedOutletId),
         queryFn: () => getUserNotificationUnreadCount(scopedOutletId),
         enabled: canNotifications,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["executive", "notifications-critical", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "critical:50"),
         queryFn: async () => {
           const res = await listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -235,7 +237,7 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: ["executive", "notifications-warning", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "warning:50"),
         queryFn: async () => {
           const res = await listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -250,7 +252,7 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: ["executive", "audit-activity", scopedOutletId],
+        queryKey: executiveQueryKeys.auditCenterSummary(scopedOutletId),
         queryFn: () => getAuditCenterSummary(scopedOutletId ?? undefined),
         enabled: canAudit && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
@@ -283,6 +285,10 @@ export function useExecutiveDashboardData(
 
   const menuOpenAlerts = menuDashboardQ.data?.automation.openAlerts;
   const menuCriticalAlerts = menuDashboardQ.data?.automation.criticalAlerts;
+  const foodCostPercentValue =
+    canMenuDashboard && menuDashboardQ.data
+      ? menuDashboardQ.data.kpis.foodCostPercent
+      : foodCostQ.data;
 
   const executiveScore = useMemo(() => {
     const financial =
@@ -294,7 +300,7 @@ export function useExecutiveDashboardData(
         : null;
 
     const commercial = computeCommercialPillarScore(
-      foodCostQ.data,
+      foodCostPercentValue,
       menuOpenAlerts,
       menuCriticalAlerts,
     );
@@ -312,7 +318,7 @@ export function useExecutiveDashboardData(
   }, [
     accountingQ.data,
     paymentQ.data,
-    foodCostQ.data,
+    foodCostPercentValue,
     menuOpenAlerts,
     menuCriticalAlerts,
     criticalQ.data,
@@ -325,9 +331,12 @@ export function useExecutiveDashboardData(
   const scoreLoading =
     (canAccounting && accountingQ.isLoading) ||
     (canPayment && paymentQ.isLoading) ||
-    (canMenuAnalytics && foodCostQ.isLoading) ||
+    (fetchFoodCostSeparately && foodCostQ.isLoading) ||
     (canMenuDashboard && menuDashboardQ.isLoading) ||
     (canNotifications && criticalQ.isLoading);
+
+  const foodCostLoading = fetchFoodCostSeparately ? foodCostQ.isLoading : menuDashboardQ.isLoading;
+  const foodCostEnabled = (fetchFoodCostSeparately || canMenuDashboard) && scopedOutletId !== null;
 
   return {
     sales: resolveWidgetState(
@@ -379,12 +388,12 @@ export function useExecutiveDashboardData(
       loyaltyQ.data,
     ),
     foodCostPercent: resolveWidgetState(
-      canMenuAnalytics && scopedOutletId !== null,
-      "analytics.view",
-      foodCostQ.isLoading,
-      foodCostQ.isError,
-      foodCostQ.error,
-      foodCostQ.data,
+      foodCostEnabled,
+      fetchFoodCostSeparately ? "analytics.view" : PERMISSIONS.MENU_DASHBOARD,
+      foodCostLoading,
+      fetchFoodCostSeparately ? foodCostQ.isError : menuDashboardQ.isError,
+      fetchFoodCostSeparately ? foodCostQ.error : menuDashboardQ.error,
+      foodCostPercentValue,
     ),
     menuOpenAlerts: resolveWidgetState(
       canMenuDashboard && scopedOutletId !== null,

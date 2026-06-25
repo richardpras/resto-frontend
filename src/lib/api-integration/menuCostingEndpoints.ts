@@ -204,6 +204,21 @@ export async function getMenuProfitability(menuItemId: string | number, outletId
   return response.data;
 }
 
+export async function listMenuProfitability(
+  outletId: number,
+  menuItemIds: Array<string | number>,
+): Promise<MenuProfitability[]> {
+  if (menuItemIds.length === 0) return [];
+  const query = new URLSearchParams({ outletId: String(outletId) });
+  for (const id of menuItemIds) {
+    query.append("menuItemIds[]", String(id));
+  }
+  const response = await request<{ data: MenuProfitability[] }>(
+    `/menu-profitability/menu-items?${query.toString()}`,
+  );
+  return response.data;
+}
+
 export async function getMenuProfitabilityHistory(
   menuItemId: string | number,
   outletId: number,
@@ -261,35 +276,37 @@ export async function enrichMenuItemsWithProfitability(
   items: MenuItemApi[],
   outletId: number,
 ): Promise<MenuCostRow[]> {
-  const rows = await Promise.all(
-    items.map(async (item) => {
-      try {
-        const profit = await getMenuProfitability(item.id, outletId);
-        return {
-          menuItemId: item.id,
-          menuItemName: item.name,
-          category: item.category ?? null,
-          sellingPrice: profit.sellingPrice,
-          foodCost: profit.cost,
-          contributionMargin: profit.contributionMargin,
-          marginPercent: profit.marginPercent,
-          classification: profit.classification,
-          lastUpdated: item.createdAt ?? null,
-        } satisfies MenuCostRow;
-      } catch {
-        return {
-          menuItemId: item.id,
-          menuItemName: item.name,
-          category: item.category ?? null,
-          sellingPrice: item.price,
-          foodCost: 0,
-          contributionMargin: item.price,
-          marginPercent: 0,
-          classification: "LOW",
-          lastUpdated: item.createdAt ?? null,
-        } satisfies MenuCostRow;
-      }
-    }),
+  const profits = await listMenuProfitability(
+    outletId,
+    items.map((item) => item.id),
   );
-  return rows;
+  const profitById = new Map(profits.map((row) => [String(row.menuItemId), row]));
+
+  return items.map((item) => {
+    const profit = profitById.get(String(item.id));
+    if (profit) {
+      return {
+        menuItemId: item.id,
+        menuItemName: item.name,
+        category: item.category ?? null,
+        sellingPrice: profit.sellingPrice,
+        foodCost: profit.cost,
+        contributionMargin: profit.contributionMargin,
+        marginPercent: profit.marginPercent,
+        classification: profit.classification,
+        lastUpdated: item.createdAt ?? null,
+      } satisfies MenuCostRow;
+    }
+    return {
+      menuItemId: item.id,
+      menuItemName: item.name,
+      category: item.category ?? null,
+      sellingPrice: item.price,
+      foodCost: 0,
+      contributionMargin: item.price,
+      marginPercent: 0,
+      classification: "LOW",
+      lastUpdated: item.createdAt ?? null,
+    } satisfies MenuCostRow;
+  });
 }

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard";
+import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
 import { getShiftCloseReadiness } from "@/lib/api-integration/shiftCloseEndpoints";
 import { formatMoney } from "@/lib/format/currency";
 import { useAuthStore } from "@/stores/authStore";
@@ -22,7 +23,7 @@ export function ExecutiveShiftCloseWidget() {
   const enabled = canView && typeof activeOutletId === "number" && activeOutletId >= 1;
 
   const readinessQ = useQuery({
-    queryKey: ["executive", "shift-close-readiness", activeOutletId],
+    queryKey: executiveQueryKeys.shiftCloseReadiness(activeOutletId),
     queryFn: () => getShiftCloseReadiness(activeOutletId!),
     enabled,
     staleTime: 60_000,

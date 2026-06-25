@@ -3,10 +3,10 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockUseSystemHealthData = vi.fn();
+const mockUseExecutiveSystemHealthSummary = vi.fn();
 
-vi.mock("@/hooks/system-health/useSystemHealthData", () => ({
-  useSystemHealthData: () => mockUseSystemHealthData(),
+vi.mock("@/hooks/executive/useExecutiveSystemHealthSummary", () => ({
+  useExecutiveSystemHealthSummary: () => mockUseExecutiveSystemHealthSummary(),
 }));
 
 vi.mock("@/stores/authStore", () => ({
@@ -21,7 +21,7 @@ import { ExecutiveDashboardSystemHealthWidget } from "./ExecutiveDashboardSystem
 
 describe("ExecutiveDashboardSystemHealthWidget", () => {
   beforeEach(() => {
-    mockUseSystemHealthData.mockReturnValue({
+    mockUseExecutiveSystemHealthSummary.mockReturnValue({
       loading: false,
       score: 82,
       severity: "warning",

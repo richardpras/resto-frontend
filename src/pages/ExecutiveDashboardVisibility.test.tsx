@@ -23,6 +23,22 @@ vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
 }));
 
+vi.mock("@/components/executive/ExecutiveDashboardSystemHealthWidget", () => ({
+  ExecutiveDashboardSystemHealthWidget: () => <div>System Health Summary</div>,
+}));
+
+vi.mock("@/components/executive/ExecutiveInventoryReliabilityWidget", () => ({
+  ExecutiveInventoryReliabilityWidget: () => null,
+}));
+
+vi.mock("@/components/executive/ExecutiveShiftCloseWidget", () => ({
+  ExecutiveShiftCloseWidget: () => null,
+}));
+
+vi.mock("@/components/executive/ExecutiveCustomerOrderingWidget", () => ({
+  ExecutiveCustomerOrderingWidget: () => null,
+}));
+
 import ExecutiveDashboard from "@/pages/ExecutiveDashboard";
 
 function widgetState<T>(status: "success" | "restricted" | "loading", data?: T) {
@@ -48,6 +64,7 @@ describe("ExecutiveDashboard visibility", () => {
       unreadCount: widgetState("success", 0),
       criticalNotifications: widgetState("success", []),
       warningNotifications: widgetState("success", []),
+      auditActivity: widgetState("restricted"),
       executiveScore: { score: 72, partial: true, pillarCount: 1, weights: {} },
       scoreLoading: false,
       refetchAll: vi.fn(),

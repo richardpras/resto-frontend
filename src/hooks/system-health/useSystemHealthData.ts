@@ -8,6 +8,8 @@ import {
 } from "@/lib/api-integration/accountingEndpoints";
 import { getAuditCenterSummary, type AuditCenterSummary } from "@/lib/api-integration/auditCenterEndpoints";
 import { listBugReports, type BugReportRow } from "@/lib/api-integration/bugReportEndpoints";
+import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
+import { fetchBugReportCounts, type BugReportCounts } from "@/hooks/system-health/bugReportCounts";
 import {
   getFailedJobsSummary,
   getFailedJobsTrends,
@@ -61,13 +63,6 @@ function isForbidden(error: unknown): boolean {
   return error instanceof ApiHttpError && (error.status === 403 || error.status === 401);
 }
 
-export type BugReportCounts = {
-  open: number;
-  critical: number;
-  investigating: number;
-  fixedToday: number;
-};
-
 export type SystemHealthData = {
   loading: boolean;
   refetchAll: () => void;
@@ -100,31 +95,6 @@ export type SystemHealthData = {
   };
 };
 
-async function fetchBugReportCounts(): Promise<BugReportCounts> {
-  const [openRes, criticalRes, investigatingRes, fixedRes] = await Promise.all([
-    listBugReports({ status: "open", limit: 1 }),
-    listBugReports({ severity: "critical", limit: 50 }),
-    listBugReports({ status: "investigating", limit: 1 }),
-    listBugReports({ status: "fixed", limit: 50 }),
-  ]);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const fixedToday = fixedRes.data.filter(
-    (r) => r.resolvedAt?.slice(0, 10) === today || r.updatedAt?.slice(0, 10) === today,
-  ).length;
-
-  const openCritical = criticalRes.data.filter(
-    (r) => r.status !== "closed" && r.status !== "wont_fix" && r.status !== "fixed",
-  ).length;
-
-  return {
-    open: openRes.meta.total + investigatingRes.meta.total,
-    critical: openCritical,
-    investigating: investigatingRes.meta.total,
-    fixedToday,
-  };
-}
-
 export function useSystemHealthData(
   outletId: number | null | undefined,
   hasPermission: (perm: string) => boolean,
@@ -140,35 +110,35 @@ export function useSystemHealthData(
   const queries = useQueries({
     queries: [
       {
-        queryKey: ["system-health", "accounting", scopedOutletId],
+        queryKey: executiveQueryKeys.accountingHealth(scopedOutletId),
         queryFn: () => getAccountingHealth({ outletId: scopedOutletId ?? undefined }),
         enabled: canAccounting && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "payment", scopedOutletId],
+        queryKey: executiveQueryKeys.paymentHealth(scopedOutletId),
         queryFn: () => getPaymentHealth({ outletId: scopedOutletId ?? undefined }),
         enabled: canSettings && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "failed-jobs"],
+        queryKey: executiveQueryKeys.failedJobsSummary(),
         queryFn: () => getFailedJobsSummary(),
         enabled: canSettings,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "bug-counts"],
+        queryKey: executiveQueryKeys.bugReportCounts(),
         queryFn: () => fetchBugReportCounts(),
         enabled: canSettings,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "bug-critical-list"],
+        queryKey: executiveQueryKeys.bugReportsCritical(),
         queryFn: async () => {
           const res = await listBugReports({ severity: "critical", limit: 10 });
           return res.data.filter((r) => !["closed", "wont_fix", "fixed"].includes(r.status));
@@ -178,7 +148,7 @@ export function useSystemHealthData(
         retry: false,
       },
       {
-        queryKey: ["system-health", "notifications-critical", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "critical:50"),
         queryFn: async () => {
           const res = await listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -192,14 +162,14 @@ export function useSystemHealthData(
         retry: false,
       },
       {
-        queryKey: ["system-health", "notifications-unread", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsUnread(scopedOutletId),
         queryFn: () => getUserNotificationUnreadCount(scopedOutletId),
         enabled: canNotifications,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "notifications-recent", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "recent:50"),
         queryFn: (): Promise<ListNotificationsResponse> =>
           listUserNotifications({ outletId: scopedOutletId ?? undefined, limit: 50 }),
         enabled: canNotifications,
@@ -207,7 +177,7 @@ export function useSystemHealthData(
         retry: false,
       },
       {
-        queryKey: ["system-health", "inventory-alerts", scopedOutletId],
+        queryKey: executiveQueryKeys.inventoryNotificationAlerts(scopedOutletId),
         queryFn: async () => {
           const res = await listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -222,7 +192,7 @@ export function useSystemHealthData(
         retry: false,
       },
       {
-        queryKey: ["system-health", "menu-alerts-nc", scopedOutletId],
+        queryKey: executiveQueryKeys.notificationsList(scopedOutletId, "menu-intelligence:20"),
         queryFn: async () => {
           const res = await listUserNotifications({
             outletId: scopedOutletId ?? undefined,
@@ -236,14 +206,14 @@ export function useSystemHealthData(
         retry: false,
       },
       {
-        queryKey: ["system-health", "audit", scopedOutletId],
+        queryKey: executiveQueryKeys.auditCenterSummary(scopedOutletId),
         queryFn: () => getAuditCenterSummary(scopedOutletId ?? undefined),
         enabled: canSettings && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: ["system-health", "menu-dashboard", scopedOutletId],
+        queryKey: executiveQueryKeys.menuDashboardSummary(scopedOutletId),
         queryFn: () => getMenuDashboardSummary(scopedOutletId!),
         enabled: canMenuDashboard && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
