@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS } from "@/stores/authStore";
+import { resolvePostLoginPath } from "@/domain/permissionGates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,10 +13,11 @@ import { motion } from "framer-motion";
 
 export default function Login() {
   const { t } = useTranslation("common");
-  const { user, login } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || "/";
+  const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/";
+  const user = useAuthStore((s) => s.user);
+  const login = useAuthStore((s) => s.login);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +25,9 @@ export default function Login() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  if (user) return <Navigate to={from} replace />;
+  if (user) {
+    return <Navigate to={resolvePostLoginPath(user, from)} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +37,10 @@ export default function Login() {
     try {
       const res = await login(email.trim(), password);
       if (!res.ok) setError(res.error ?? t("auth.loginFailed"));
-      else navigate(from, { replace: true });
+      else {
+        const nextUser = useAuthStore.getState().user;
+        navigate(resolvePostLoginPath(nextUser, from), { replace: true });
+      }
     } finally {
       setIsLoading(false);
     }

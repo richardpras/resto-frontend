@@ -20,10 +20,13 @@ export interface AuthUser {
   email: string;
   role: RoleName;
   outletIds: number[];
+  /** Raw permission codes from `/auth/me` (no privilege inflation). */
+  permissionCodes: string[];
   /** Outlets from `/auth/me` (no `settings.view` required) — used for POS/Menu outlet matrices. */
   assignedOutlets?: { id: number; name: string; code?: string | null }[];
   /** Whether a screen-unlock PIN is stored on the server (hashed); verify via API only. */
   pinSet: boolean;
+  /** Expanded route-guard aliases — do not use for platform write checks; prefer `permissionCodes`. */
   permissions: string[];
 }
 
@@ -55,6 +58,7 @@ export const PERMISSIONS = {
   LOYALTY_DASHBOARD: "members.manage",
   FINANCE_RECONCILE: "finance.reconcile",
   FINANCE_SHIFT_CLOSE: "finance.shift_close",
+  GIFT_CARDS: "members.manage",
   /** HRM granular groups — never inflate into PAYROLL. */
   EMPLOYEES: "employees.view",
   ATTENDANCE: "attendance.view",
@@ -62,7 +66,6 @@ export const PERMISSIONS = {
   SCHEDULING: "schedule.view",
   LEAVE: "leave.manage",
   OVERTIME: "overtime.view",
-  GIFT_CARDS: "pos.use",
 } as const;
 
 const allPermValues = new Set<string>(Object.values(PERMISSIONS));
@@ -76,30 +79,25 @@ function resolveRole(roles: { name: string }[]): RoleName {
   return "Manager";
 }
 
-/** Merges API /auth/me permission codes with template route-guard keys. */
-function expandPermissionCodes(codes: string[]): string[] {
+/** Merges API /auth/me permission codes with safe route-guard aliases (no view→manage upgrades). */
+export function expandPermissionCodes(codes: string[]): string[] {
   const out = new Set<string>();
   for (const c of codes) out.add(c);
 
   const has = (...keys: string[]) => keys.some((k) => codes.includes(k));
 
   if (has("dashboard.view", "dashboard.manage")) out.add(PERMISSIONS.MENU_DASHBOARD);
-  if (has("foodcost.view", "pos.use", "recipe.view")) out.add(PERMISSIONS.COST_VIEW);
+  if (has("foodcost.view", "recipe.view")) out.add(PERMISSIONS.COST_VIEW);
   if (has("menu.manage", "recipe.manage")) out.add(PERMISSIONS.COST_MANAGE);
-  if (has("users.view", "users.create", "users.assign_roles", "users.manage")) out.add(PERMISSIONS.USERS);
-  if (has("roles.view", "roles.create", "roles.assign_permissions")) out.add(PERMISSIONS.USERS);
-  if (has("permissions.view", "permissions.create")) out.add(PERMISSIONS.USERS);
   if (has("employees.view", "employees.manage")) out.add(PERMISSIONS.EMPLOYEES);
   if (has("attendance.view", "attendance.manage")) out.add(PERMISSIONS.ATTENDANCE);
   if (has("shift.view", "shift.manage")) out.add(PERMISSIONS.SHIFTS);
   if (has("schedule.view", "schedule.manage")) out.add(PERMISSIONS.SCHEDULING);
   if (has("leave.manage")) out.add(PERMISSIONS.LEAVE);
   if (has("overtime.view", "overtime.manage")) out.add(PERMISSIONS.OVERTIME);
-  if (has("settings.view", "settings.update")) out.add(PERMISSIONS.SETTINGS);
   if (codes.includes("payroll.manage")) out.add(PERMISSIONS.PAYROLL);
   if (codes.includes("finance.reconcile")) out.add(PERMISSIONS.FINANCE_RECONCILE);
   if (codes.includes("finance.shift_close")) out.add(PERMISSIONS.FINANCE_SHIFT_CLOSE);
-  if (codes.includes("pos.use")) out.add(PERMISSIONS.GIFT_CARDS);
   if (codes.includes("tables.manage")) {
     out.add(PERMISSIONS.TABLES);
     out.add(PERMISSIONS.TABLES_MANAGE);
@@ -107,9 +105,6 @@ function expandPermissionCodes(codes: string[]): string[] {
   if (codes.includes("qr_orders.view")) out.add(PERMISSIONS.QR_ORDERS);
   if (codes.includes("tables.manage") && codes.includes("pos.use")) {
     out.add(PERMISSIONS.QR_ORDERS);
-  }
-  if (codes.includes("purchase.manage")) {
-    out.add(PERMISSIONS.PURCHASE_APPROVE);
   }
 
   for (const c of codes) {
@@ -121,7 +116,8 @@ function expandPermissionCodes(codes: string[]): string[] {
 
 function mapMeToAuthUser(meData: MeResponse): AuthUser {
   const role = resolveRole(meData.roles);
-  const permissions = expandPermissionCodes(meData.permissionCodes);
+  const permissionCodes = [...meData.permissionCodes];
+  const permissions = expandPermissionCodes(permissionCodes);
   const outletIds = Array.isArray(meData.outlets)
     ? meData.outlets.map((o) => o.id).filter((id): id is number => typeof id === "number")
     : [];
@@ -132,6 +128,7 @@ function mapMeToAuthUser(meData: MeResponse): AuthUser {
     email: meData.email,
     role,
     outletIds,
+    permissionCodes,
     assignedOutlets: Array.isArray(meData.outlets)
       ? meData.outlets.map((o) => ({
           id: o.id,
@@ -174,7 +171,10 @@ interface AuthStore {
   setAutoLock: (v: boolean) => void;
   setIdleMinutes: (n: number) => void;
   hasPermission: (perm: string) => boolean;
+  hasPermissionCode: (code: string) => boolean;
   canManageOutletSettings: (outletId?: number) => boolean;
+  canCreateOutlet: () => boolean;
+  canDeleteOutlet: () => boolean;
   restoreSessionFromApi: () => Promise<void>;
   /** Ensures Passport bearer is on the HTTP client (call before API requests after rehydrate / navigation). */
   syncApiBearerForRequests: () => void;
@@ -283,15 +283,20 @@ export const useAuthStore = create<AuthStore>()(
         if (!u) return false;
         return u.permissions.includes(perm);
       },
+      hasPermissionCode: (code) => {
+        const u = get().user;
+        if (!u) return false;
+        return (u.permissionCodes ?? []).includes(code);
+      },
       canManageOutletSettings: (outletId) => {
         const u = get().user;
         if (!u) return false;
 
-        const canWriteSettings =
-          u.permissions.includes("settings.update") || u.permissions.includes(PERMISSIONS.SETTINGS);
+        const codes = u.permissionCodes ?? [];
+        const canWriteSettings = codes.includes("settings.update") || codes.includes("settings.manage");
         if (!canWriteSettings) return false;
 
-        if (u.permissions.includes("outlets.view_all") || u.permissions.includes(PERMISSIONS.DASHBOARD_ALL)) {
+        if (codes.includes("outlets.view_all") || codes.includes("dashboard.view_all_outlets")) {
           return true;
         }
 
@@ -301,6 +306,8 @@ export const useAuthStore = create<AuthStore>()(
 
         return u.outletIds.length > 0;
       },
+      canCreateOutlet: () => get().hasPermissionCode("settings.manage"),
+      canDeleteOutlet: () => get().hasPermissionCode("settings.manage"),
     }),
     {
       name: "resto-auth",

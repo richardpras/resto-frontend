@@ -1,6 +1,124 @@
 import { PERMISSIONS, type AuthUser } from "@/stores/authStore";
 import { useAuthStore } from "@/stores/authStore";
 
+export function hasPermissionCode(user: AuthUser | null, code: string): boolean {
+  if (!user) return false;
+  return (user.permissionCodes ?? []).includes(code);
+}
+
+export function hasAnyPermissionCode(user: AuthUser | null, codes: string[]): boolean {
+  if (!user) return false;
+  const granted = new Set(user.permissionCodes ?? []);
+  return codes.some((code) => granted.has(code));
+}
+
+export function canAccessDashboard(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, [
+    "dashboard.view",
+    "dashboard.view_own_outlet",
+    "dashboard.view_all_outlets",
+    "dashboard.manage",
+    "reports.view",
+  ]);
+}
+
+export function canAccessNotifications(user?: AuthUser | null): boolean {
+  return canAccessDashboard(user);
+}
+
+export function canAccessSettingsPage(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["settings.view", "settings.update", "settings.manage"]);
+}
+
+export function canManagePlatformSettings(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasPermissionCode(u, "settings.manage");
+}
+
+export function canUpdateOperationalSettings(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["settings.update", "settings.manage"]);
+}
+
+export function canAccessUsersAdmin(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasPermissionCode(u, "users.manage");
+}
+
+export function canViewFoodCost(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["foodcost.view", "recipe.view"]);
+}
+
+export function canApprovePurchases(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasPermissionCode(u, "purchase.approve");
+}
+
+export function canDeleteOutlet(user?: AuthUser | null): boolean {
+  return canManagePlatformSettings(user);
+}
+
+export type SettingsTabKey =
+  | "merchant"
+  | "outlets"
+  | "taxes"
+  | "printers"
+  | "numbering"
+  | "receipt"
+  | "warehouses"
+  | "banks"
+  | "payments"
+  | "system"
+  | "integration";
+
+export function canViewSettingsTab(tab: SettingsTabKey, user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  const operational = canUpdateOperationalSettings(u);
+  const platform = canManagePlatformSettings(u);
+  const readSettings = canAccessSettingsPage(u);
+
+  switch (tab) {
+    case "taxes":
+    case "printers":
+    case "payments":
+      return operational;
+    case "merchant":
+    case "outlets":
+      return readSettings;
+    case "numbering":
+    case "receipt":
+    case "warehouses":
+    case "banks":
+    case "system":
+    case "integration":
+      return platform;
+    default:
+      return false;
+  }
+}
+
+export function resolveDefaultLandingPath(user: AuthUser | null): string {
+  if (!user) return "/login";
+  if (hasPermissionCode(user, "pos.use")) return "/pos";
+  if (hasPermissionCode(user, "kitchen.use")) return "/kitchen";
+  if (canAccessDashboard(user)) return "/";
+  if (canAccessSettingsPage(user)) return "/settings";
+  if (hasPermissionCode(user, "reports.view")) return "/reports";
+  if (hasPermissionCode(user, "accounting.manage")) return "/accounting";
+  return "/";
+}
+
+export function resolvePostLoginPath(user: AuthUser | null, requestedPath?: string): string {
+  const path = requestedPath && requestedPath !== "/" ? requestedPath : "/";
+  if (path === "/" && !canAccessDashboard(user)) {
+    return resolveDefaultLandingPath(user);
+  }
+  return path;
+}
+
 export function hasAnyPermission(user: AuthUser | null, perms: string[]): boolean {
   if (!user) return false;
   return perms.some((p) => user.permissions.includes(p));

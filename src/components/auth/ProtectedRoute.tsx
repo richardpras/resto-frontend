@@ -1,7 +1,8 @@
-import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
+import { resolveDefaultLandingPath } from "@/domain/permissionGates";
+import { useEffect } from "react";
 
 export function ProtectedRoute({
   children,
@@ -20,11 +21,19 @@ export function ProtectedRoute({
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  if (accessCheck && !accessCheck(user, hasPermission)) {
-    return <Navigate to="/" replace />;
-  } else if (permission && !hasPermission(permission)) {
-    return <Navigate to="/" replace />;
+
+  const denied =
+    (accessCheck && !accessCheck(user, hasPermission)) ||
+    (permission && !hasPermission(permission));
+
+  if (denied) {
+    const fallback = resolveDefaultLandingPath(user);
+    if (fallback === location.pathname) {
+      return <Navigate to="/login" replace state={{ from: location }} />;
+    }
+    return <Navigate to={fallback} replace />;
   }
+
   return <>{children}</>;
 }
 

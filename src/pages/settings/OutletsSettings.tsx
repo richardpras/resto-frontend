@@ -37,7 +37,8 @@ export default function OutletsSettings() {
   const upsertOutlet = useSettingsStore((s) => s.upsertOutlet);
   const deleteOutletById = useSettingsStore((s) => s.deleteOutletById);
   const canManageOutletSettings = useAuthStore((s) => s.canManageOutletSettings);
-  const canCreateOutlet = canManageOutletSettings();
+  const canCreateOutlet = useAuthStore((s) => s.canCreateOutlet);
+  const canDeleteOutlet = useAuthStore((s) => s.canDeleteOutlet);
   const hasToken = Boolean(getApiAccessToken());
   const showEmptyScopeHint =
     hasToken && !outletsLoading && !outletsError && outlets.length === 0;
@@ -128,7 +129,7 @@ export default function OutletsSettings() {
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">{t("settings.outlets.title")}</h2>
-          {canCreateOutlet && (
+          {canCreateOutlet() && (
             <Button type="button" onClick={openNew}>
               <Plus className="h-4 w-4 mr-2" />
               {t("settings.outlets.add")}
@@ -192,9 +193,11 @@ export default function OutletsSettings() {
                         <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(outlet)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(outlet.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canDeleteOutlet() ? (
+                          <Button type="button" size="icon" variant="ghost" onClick={() => void onDelete(outlet.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                       </>
                     )}
                   </div>

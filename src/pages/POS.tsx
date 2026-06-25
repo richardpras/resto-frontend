@@ -80,7 +80,12 @@ import {
   shouldBlockDuplicateGatewayAttempt,
   splitPaymentsForGatewayCreate,
 } from "@/features/pos/gatewayCheckoutUtils";
-import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
+import {
+  buildSplitPaymentForPerson,
+  syncSplitPersonsToServer,
+} from "@/features/pos/syncSplitPersonsToServer";
+import { postPrintCustomerBill } from "@/lib/api-integration/receiptDocumentEndpoints";
+import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
@@ -256,6 +261,8 @@ export default function POS() {
   const [splitCount, setSplitCount] = useState(2);
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
+  const [showKitchenReprint, setShowKitchenReprint] = useState(false);
+  const [printingBill, setPrintingBill] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paymentStockError, setPaymentStockError] = useState<PosStockErrorPayload | null>(null);
   const [paymentAckRequired, setPaymentAckRequired] = useState(false);
@@ -1485,7 +1492,7 @@ export default function POS() {
 
   const allSplitPaid = splitPersons.every((p) => {
     const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
-    return paid >= p.totalDue;
+    return paid >= p.totalDue - 0.02 && p.totalDue > 0;
   });
 
   const byItemAllocationComplete = useMemo(() => {
@@ -1493,80 +1500,113 @@ export default function POS() {
     return byItemFullyAllocated(splitPersons, cart.map((l) => ({ id: l.id, qty: l.qty })));
   }, [splitMethod, splitPersons, cart]);
 
-  const completeSplitOrder = async () => {
-    if (submitting || splitPersons.length === 0) return;
+  const ensureSplitOrderOnServer = async (): Promise<{ orderId: string; order: import("@/stores/orderStore").Order }> => {
+    if (currentOrderId) {
+      const fresh = await fetchOrderRemote(currentOrderId);
+      return { orderId: currentOrderId, order: fresh };
+    }
+    const code = POS_AUTO_ORDER_CODE;
+    const { order: created } = await createOrderRemote({
+      tenantId: POS_TENANT_ID,
+      ...outletOrderFields,
+      ...posSessionOrderFields,
+      code,
+      source: "pos",
+      orderType,
+      status: "confirmed",
+      paymentStatus: "unpaid",
+      payments: [],
+      confirmedAt: new Date().toISOString(),
+      idempotencyKey: checkoutAttemptIdRef.current ?? beginCheckoutAttempt("split-bill"),
+      splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
+      ...qrOrderPayloadFields,
+      ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+    });
+    setCurrentOrderId(created.id);
+    if (qrOrderContext) {
+      setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: created.id } : prev));
+    }
+    const fresh = await fetchOrderRemote(created.id);
+    return { orderId: created.id, order: fresh };
+  };
+
+  const finishPosSplitIfComplete = async (persons: SplitPerson[]) => {
+    const done = persons.every((p) => {
+      const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
+      return paid >= p.totalDue - 0.02 && p.totalDue > 0;
+    });
+    if (!done) return;
+    resetCart();
+    setShowSplit(false);
+    clearQrOrderContext();
+    setCurrentOrderId(null);
+    toast.success(t("shared.splitOrderSaved"), { icon: "💰" });
+  };
+
+  const handleSplitPersonPay = async () => {
+    if (payingPersonIdx === null || !splitPayMethod) return;
+    if (submitting) return;
     if (!requireOutletOrderContext()) return;
-    if (!allSplitPaid) return;
-    if (!byItemAllocationComplete) {
-      toast.error(t("shared.assignAllUnitsToast"));
-      return;
-    }
-    const draftPaymentSum = splitPersons.reduce(
-      (s, p) => s + p.payments.reduce((t, pm) => t + pm.amount, 0),
-      0,
-    );
-    if (Math.abs(draftPaymentSum - total) > 0.02) {
-      toast.error(
-        "Split payment drafts do not match the order total. Use Change on a person row to clear duplicate payments, then confirm again.",
-      );
-      return;
-    }
+    const idx = payingPersonIdx;
+    const method = splitPayMethod;
+    const person = splitPersons[idx];
+    if (!person) return;
+    const alreadyPaid = person.payments.reduce((s, p) => s + p.amount, 0);
+    const remaining = person.totalDue - alreadyPaid;
+    if (remaining <= 0) return;
+
     setSubmitting(true);
     try {
-      const code = POS_AUTO_ORDER_CODE;
-      const { order: created } = await createOrderRemote({
-        tenantId: POS_TENANT_ID,
-        ...outletOrderFields,
-        ...posSessionOrderFields,
-        code,
-        source: "pos",
-        orderType,
-        status: "confirmed",
-        paymentStatus: "unpaid",
-        payments: [],
-        confirmedAt: new Date().toISOString(),
-        idempotencyKey: checkoutAttemptIdRef.current ?? beginCheckoutAttempt("split-bill"),
-        splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
-        ...qrOrderPayloadFields,
-        ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
-      });
-      setCurrentOrderId(created.id);
-      if (qrOrderContext) {
-        setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: created.id } : prev));
+      const { orderId, order: serverOrder } = await ensureSplitOrderOnServer();
+      let persons = splitPersons;
+      if (!persons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
+        persons = await syncSplitPersonsToServer(orderId, serverOrder, persons, splitMethod);
+        setSplitPersons(persons);
       }
-      const fresh = await fetchOrderRemote(created.id);
-      const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, cart);
-      const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method, checkoutMethods));
-      const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method, checkoutMethods));
-      const giftCardSettlementIds = await redeemGiftCardForOrder(created.id);
-      const paidOrder = immediatePayments.length > 0
-        ? await addOrderPaymentsRemote(created.id, immediatePayments, paymentExtras)
-        : fresh;
-      if (immediatePayments.length > 0) {
-        await settleGiftCardAfterDirectPayment(created.id, giftCardSettlementIds);
+      const syncedPerson = persons[idx];
+      if (!syncedPerson?.serverSplitId) {
+        toast.error("Split sync failed — try again.");
+        return;
       }
-      const totalPaid = paidOrder.payments.reduce((s, p) => s + p.amount, 0);
-      if (gatewayPayments.length > 0) {
-        const gatewayTotal = gatewayPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const fresh = await fetchOrderRemote(orderId);
+      const paidAt = new Date().toISOString();
+      const payment = buildSplitPaymentForPerson(syncedPerson, method, remaining, fresh, splitMethod, paidAt);
+
+      if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
+        const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
         const tx = await paymentCreateTransaction({
-          orderId: created.id,
+          orderId,
           outletId: activeOutletId ?? undefined,
-          method: gatewayPayments.length === 1 ? gatewayPayments[0].method : "mixed",
-          amount: gatewayTotal,
-          splitPayments: gatewayPayments,
+          method: payment.method,
+          amount: remaining,
+          splitPayments: [payment],
           giftCardSettlementIds: giftCardSettlementIds.length > 0 ? giftCardSettlementIds : undefined,
         });
-        setCurrentOrderId(created.id);
-        setPendingGatewayPayments(gatewayPayments);
+        setCurrentOrderId(orderId);
+        setPendingGatewayPayments([payment]);
         paymentPollTransactionStatus(tx.id);
+        setPayingPersonIdx(null);
+        setSplitPayMethod(null);
         setShowSplit(false);
         setShowPayment(true);
         toast.success(t("shared.splitSavedGateway"), { icon: "💰" });
         return;
       }
-      resetCart();
-      setShowSplit(false);
-      toast.success(t("shared.splitOrderSaved"), { icon: "💰" });
+
+      const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
+      await addOrderPaymentsRemote(orderId, [payment], paymentExtras);
+      await settleGiftCardAfterDirectPayment(orderId, giftCardSettlementIds);
+
+      const nextPersons = persons.map((p, i) =>
+        i === idx
+          ? { ...p, payments: [...p.payments, { method, amount: remaining, paidAt: new Date() }] }
+          : p,
+      );
+      setSplitPersons(nextPersons);
+      setPayingPersonIdx(null);
+      setSplitPayMethod(null);
+      toast.success(t("shared.paidVia", { label: syncedPerson.label, amount: formatRp(remaining), method }));
+      await finishPosSplitIfComplete(nextPersons);
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -1574,28 +1614,22 @@ export default function POS() {
     }
   };
 
-  const handleSplitPersonPay = () => {
-    if (payingPersonIdx === null || !splitPayMethod) return;
-    const idx = payingPersonIdx;
-    const method = splitPayMethod;
-    let recorded: { label: string; amount: number } | null = null;
-    setSplitPersons((prev) => {
-      const person = prev[idx];
-      if (!person) return prev;
-      const alreadyPaid = person.payments.reduce((s, p) => s + p.amount, 0);
-      const remaining = person.totalDue - alreadyPaid;
-      if (remaining <= 0) return prev;
-      recorded = { label: person.label, amount: remaining };
-      return prev.map((p, i) =>
-        i === idx
-          ? { ...p, payments: [...p.payments, { method, amount: remaining, paidAt: new Date() }] }
-          : p,
-      );
-    });
-    setPayingPersonIdx(null);
-    setSplitPayMethod(null);
-    if (recorded) {
-      toast.success(t("shared.paidVia", { label: recorded.label, amount: formatRp(recorded.amount), method }));
+  const handlePrintCustomerBill = async () => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    setPrintingBill(true);
+    try {
+      let orderId = currentOrderId;
+      if (!orderId && cart.length > 0) {
+        const created = await ensureSplitOrderOnServer();
+        orderId = created.orderId;
+      }
+      if (!orderId) return;
+      await postPrintCustomerBill(Number(orderId), activeOutletId);
+      toast.success("Bill dicetak — bukan struk final");
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setPrintingBill(false);
     }
   };
 
@@ -2179,6 +2213,27 @@ export default function POS() {
               </button>
             )}
           </div>
+          {(cart.length > 0 || currentOrderId) && (
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => void handlePrintCustomerBill()}
+                disabled={printingBill || submitting}
+                className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted"
+              >
+                {printingBill ? "…" : "Cetak bill"}
+              </button>
+              {currentOrderId ? (
+                <button
+                  type="button"
+                  onClick={() => setShowKitchenReprint(true)}
+                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+                >
+                  Reprint dapur
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
@@ -2649,8 +2704,8 @@ export default function POS() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleSplitPersonPay}
-                                  disabled={!splitPayMethod}
+                                  onClick={() => void handleSplitPersonPay()}
+                                  disabled={!splitPayMethod || submitting}
                                   className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
                                 >
                                   {t("shared.confirmPayment")}
@@ -2665,19 +2720,20 @@ export default function POS() {
                 })}
               </div>
 
-              <button
-                onClick={() => void completeSplitOrder()}
-                disabled={!allSplitPaid || !byItemAllocationComplete || splitPersons.length === 0 || submitting}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-              >
+              <p className="text-center text-xs text-muted-foreground py-2">
                 {submitting
                   ? t("shared.saving")
                   : !byItemAllocationComplete && splitMethod === "by-item"
                     ? t("shared.assignAllItemUnits")
                     : allSplitPaid
-                      ? t("shared.completeSplitOrder")
-                      : t("shared.paidProgressTitle", { paid: splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length, total: splitPersons.length })}
-              </button>
+                      ? t("shared.splitOrderSaved")
+                      : t("shared.paidProgressTitle", {
+                          paid: splitPersons.filter(
+                            (p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue - 0.02 && p.totalDue > 0,
+                          ).length,
+                          total: splitPersons.length,
+                        })}
+              </p>
             </motion.div>
           </motion.div>
         )}
@@ -2796,6 +2852,19 @@ export default function POS() {
           onLoaded={(row) => setActiveReservationLabel(row.customerName)}
         />
         </>
+      ) : null}
+
+      {currentOrderId ? (
+        <KitchenReprintModal
+          open={showKitchenReprint}
+          orderId={Number(currentOrderId)}
+          items={(currentOpenOrder?.items ?? []).map((it) => ({
+            orderItemId: Number(it.orderItemId ?? it.id),
+            name: it.name,
+            qty: it.qty,
+          }))}
+          onClose={() => setShowKitchenReprint(false)}
+        />
       ) : null}
       </div>
     </div>

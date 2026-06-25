@@ -266,7 +266,8 @@
       "emailInvalid": "Valid email required",
       "savedLocally": "Saved locally (sign in to sync with server)",
       "savedToServer": "Merchant saved to server",
-      "saveFailed": "Could not save to server"
+      "saveFailed": "Could not save to server",
+      "readOnlyHint": "Merchant profile is read-only. Contact an administrator to make changes."
     },
     "outlets": {
       "title": "Outlets",

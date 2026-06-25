@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X, FileText, RefreshCw } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
 import { ManagerRecoveryWizard } from "@/components/orders/recovery/ManagerRecoveryWizard";
@@ -12,6 +12,10 @@ import {
 } from "@/components/orders/recovery/recoveryShared";
 import { Button } from "@/components/ui/button";
 import { useReceiptDocumentStore } from "@/stores/receiptDocumentStore";
+import { postPrintCustomerBill, postReceiptReprint } from "@/lib/api-integration/receiptDocumentEndpoints";
+import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
+import { toast } from "sonner";
+import { ApiHttpError } from "@/lib/api-integration/client";
 import { useAuthStore } from "@/stores/authStore";
 import { getOrdersExplorerUiCaps } from "@/stores/ordersExplorerCapabilities";
 import { explorerDetailKey, useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
@@ -42,6 +46,42 @@ export function OrderExplorerDetailModal() {
     return items.filter((it) => (it.recoveryStatus ?? "").toLowerCase() === "recovery_pending");
   }, [bucket?.order?.items]);
   const openPreview = useReceiptDocumentStore((s) => s.openPreview);
+  const [showKitchenReprint, setShowKitchenReprint] = useState(false);
+  const [printingBill, setPrintingBill] = useState(false);
+  const [reprintingId, setReprintingId] = useState<number | null>(null);
+
+  const receiptKindLabel = (kind: string, splitId: number | null) => {
+    if (kind === "customer_bill") return "Bill (proforma)";
+    if (kind === "customer_receipt" && splitId != null) return `Receipt · split #${splitId}`;
+    return kind.replace(/_/g, " ");
+  };
+
+  const handlePrintBill = async () => {
+    if (!order || typeof outletId !== "number" || outletId < 1) return;
+    if ((order.paymentStatus ?? "") === "paid") return;
+    setPrintingBill(true);
+    try {
+      await postPrintCustomerBill(Number(order.id), outletId);
+      toast.success("Bill dicetak — bukan struk final");
+      void ensureDetailLoaded(selectedOrderId!, { force: true });
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : "Gagal cetak bill.");
+    } finally {
+      setPrintingBill(false);
+    }
+  };
+
+  const handleDirectReprint = async (historyId: number) => {
+    setReprintingId(historyId);
+    try {
+      await postReceiptReprint(historyId);
+      toast.success("Reprint queued");
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : "Reprint failed.");
+    } finally {
+      setReprintingId(null);
+    }
+  };
 
   if (!selectedOrderId) return null;
 
@@ -233,7 +273,32 @@ export function OrderExplorerDetailModal() {
                 ) : null}
 
                 <div>
-                  <p className="text-xs font-semibold text-foreground mb-2">Receipt / print history</p>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs font-semibold text-foreground">Receipt / print history</p>
+                    {caps.canUseReceiptActions && order && order.paymentStatus !== "paid" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        disabled={printingBill}
+                        onClick={() => void handlePrintBill()}
+                      >
+                        {printingBill ? "…" : "Cetak bill"}
+                      </Button>
+                    ) : null}
+                    {caps.canUseReceiptActions && order ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        onClick={() => setShowKitchenReprint(true)}
+                      >
+                        Reprint dapur
+                      </Button>
+                    ) : null}
+                  </div>
                   {!caps.canUseReceiptActions ? (
                     <p className="text-[11px] text-muted-foreground">Receipt actions require POS access.</p>
                   ) : (bucket?.receipts?.length ?? 0) === 0 ? (
@@ -243,19 +308,33 @@ export function OrderExplorerDetailModal() {
                       {(bucket?.receipts ?? []).map((r) => (
                         <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-[11px]">
                           <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{r.kind}</p>
+                            <p className="font-medium text-foreground truncate">
+                              {receiptKindLabel(r.kind, r.orderSplitId)}
+                            </p>
                             <p className="text-muted-foreground">{formatWhen(r.createdAt)}</p>
                           </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-[10px] shrink-0"
-                            disabled={!caps.canUseReceiptActions}
-                            onClick={() => void openPreview(r.id)}
-                          >
-                            <FileText className="h-3 w-3 mr-1" /> View
-                          </Button>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[10px]"
+                              disabled={!caps.canUseReceiptActions || reprintingId === r.id}
+                              onClick={() => void handleDirectReprint(r.id)}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" /> Reprint
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[10px]"
+                              disabled={!caps.canUseReceiptActions}
+                              onClick={() => void openPreview(r.id)}
+                            >
+                              <FileText className="h-3 w-3 mr-1" /> View
+                            </Button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -294,6 +373,19 @@ export function OrderExplorerDetailModal() {
           </div>
         </motion.div>
       </motion.div>
+
+      {order ? (
+        <KitchenReprintModal
+          open={showKitchenReprint}
+          orderId={Number(order.id)}
+          items={order.items.map((it) => ({
+            orderItemId: Number(it.orderItemId ?? it.id),
+            name: it.name,
+            qty: it.qty,
+          }))}
+          onClose={() => setShowKitchenReprint(false)}
+        />
+      ) : null}
     </AnimatePresence>
   );
 }

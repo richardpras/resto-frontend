@@ -19,6 +19,12 @@ import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { ApiHttpError, getApiAccessToken, setApiAccessToken } from "@/lib/api-integration/client";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/authStore";
+import {
+  canViewSettingsTab,
+  canAccessUsersAdmin,
+  type SettingsTabKey,
+} from "@/domain/permissionGates";
 
 const SETTINGS_TAB_KEYS = [
   "merchant",
@@ -32,7 +38,7 @@ const SETTINGS_TAB_KEYS = [
   "payments",
   "system",
   "integration",
-] as const;
+] as const satisfies readonly SettingsTabKey[];
 
 export default function Settings() {
   const { t } = useTranslation("common");
@@ -42,6 +48,25 @@ export default function Settings() {
   const initialTab =
     requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab) ? requestedTab : "merchant";
   const [activeTab, setActiveTab] = useState(initialTab);
+  const authUser = useAuthStore((s) => s.user);
+  const visibleTabs = SETTINGS_TAB_KEYS.filter((tab) => canViewSettingsTab(tab, authUser));
+  const showUsersLink = canAccessUsersAdmin(authUser);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.includes(activeTab as SettingsTabKey)) {
+      const fallback = visibleTabs[0];
+      setActiveTab(fallback);
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("tab", settingsTabToUrlParam(fallback));
+          return params;
+        },
+        { replace: true },
+      );
+    }
+  }, [activeTab, setSearchParams, visibleTabs]);
 
   useEffect(() => {
     const normalized = normalizeSettingsTabKey(searchParams.get("tab"));
@@ -148,9 +173,11 @@ export default function Settings() {
             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2 hidden sm:inline">{t("settings.reloadFromServer")}</span>
           </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />{t("settings.usersPermissions")}</Link>
-          </Button>
+          {showUsersLink ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />{t("settings.usersPermissions")}</Link>
+            </Button>
+          ) : null}
           <Button asChild variant="ghost" size="sm">
             <Link to="/login?redirect=/settings">{t("settings.signIn")}</Link>
           </Button>
@@ -175,17 +202,17 @@ export default function Settings() {
         className="w-full"
       >
         <TabsList className="flex flex-wrap h-auto justify-start">
-          <TabsTrigger value="merchant">{t("settings.tabs.merchant")}</TabsTrigger>
-          <TabsTrigger value="outlets">{t("settings.tabs.outlets")}</TabsTrigger>
-          <TabsTrigger value="taxes">{t("settings.tabs.taxes")}</TabsTrigger>
-          <TabsTrigger value="printers">{t("settings.tabs.printers")}</TabsTrigger>
-          <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger>
-          <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger>
-          <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger>
-          <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger>
-          <TabsTrigger value="payments">{t("settings.tabs.payments")}</TabsTrigger>
-          <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger>
-          <TabsTrigger value="integration">{t("settings.tabs.integration")}</TabsTrigger>
+          {visibleTabs.includes("merchant") ? <TabsTrigger value="merchant">{t("settings.tabs.merchant")}</TabsTrigger> : null}
+          {visibleTabs.includes("outlets") ? <TabsTrigger value="outlets">{t("settings.tabs.outlets")}</TabsTrigger> : null}
+          {visibleTabs.includes("taxes") ? <TabsTrigger value="taxes">{t("settings.tabs.taxes")}</TabsTrigger> : null}
+          {visibleTabs.includes("printers") ? <TabsTrigger value="printers">{t("settings.tabs.printers")}</TabsTrigger> : null}
+          {visibleTabs.includes("numbering") ? <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger> : null}
+          {visibleTabs.includes("receipt") ? <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger> : null}
+          {visibleTabs.includes("warehouses") ? <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger> : null}
+          {visibleTabs.includes("banks") ? <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger> : null}
+          {visibleTabs.includes("payments") ? <TabsTrigger value="payments">{t("settings.tabs.payments")}</TabsTrigger> : null}
+          {visibleTabs.includes("system") ? <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger> : null}
+          {visibleTabs.includes("integration") ? <TabsTrigger value="integration">{t("settings.tabs.integration")}</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>

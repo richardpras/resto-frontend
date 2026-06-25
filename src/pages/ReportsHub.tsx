@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuthStore, PERMISSIONS, type AuthUser } from "@/stores/authStore";
 import {
   canViewFinancialStatements,
+  canManagePlatformSettings,
   hasAnyPermission,
 } from "@/domain/permissionGates";
 import { PaymentHealthHubSummary } from "@/components/payments/PaymentHealthHubSummary";
@@ -145,8 +146,8 @@ const HUB_CARD_DEFS: HubCardStaticDef[] = [
     to: "/settings/payments/health",
     icon: ShieldCheck,
     permissionHint: "settings.manage",
-    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
-    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
+    isVisible: (user) => canManagePlatformSettings(user),
+    isEnabled: (user) => canManagePlatformSettings(user),
     footer: <PaymentHealthHubSummary />,
   },
   {
@@ -154,8 +155,8 @@ const HUB_CARD_DEFS: HubCardStaticDef[] = [
     to: "/system/audit",
     icon: ScrollText,
     permissionHint: "settings.manage",
-    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
-    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
+    isVisible: (user) => canManagePlatformSettings(user),
+    isEnabled: (user) => canManagePlatformSettings(user),
     footer: <AuditCenterHubSummary />,
   },
   {
@@ -163,8 +164,8 @@ const HUB_CARD_DEFS: HubCardStaticDef[] = [
     to: "/system/health",
     icon: HeartPulse,
     permissionHint: "settings.manage",
-    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
-    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
+    isVisible: (user) => canManagePlatformSettings(user),
+    isEnabled: (user) => canManagePlatformSettings(user),
     footer: <SystemHealthHubSummary />,
   },
   {
@@ -172,16 +173,16 @@ const HUB_CARD_DEFS: HubCardStaticDef[] = [
     to: "/system/bug-reports",
     icon: Bug,
     permissionHint: "settings.manage",
-    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
-    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
+    isVisible: (user) => canManagePlatformSettings(user),
+    isEnabled: (user) => canManagePlatformSettings(user),
   },
   {
     id: "system-reliability",
     to: "/system/failed-jobs",
     icon: ServerCrash,
     permissionHint: "settings.manage",
-    isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
-    isEnabled: (user) => hasAnyPermission(user, [PERMISSIONS.SETTINGS]),
+    isVisible: (user) => canManagePlatformSettings(user),
+    isEnabled: (user) => canManagePlatformSettings(user),
     footer: <FailedJobsHubSummary />,
   },
   {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { vi } from "vitest";
-import type { AuthUser } from "@/stores/authStore";
+import { expandPermissionCodes, type AuthUser } from "@/stores/authStore";
 
 export const ALL_PERMISSIONS = [
   "pos.use",
@@ -36,7 +36,7 @@ export const testNavConfig = {
   pinSet: true,
 };
 
-export function makeUser(permissions: string[]): AuthUser {
+export function makeUser(permissionCodes: string[]): AuthUser {
   return {
     id: "1",
     name: "Test User",
@@ -44,51 +44,27 @@ export function makeUser(permissions: string[]): AuthUser {
     role: "Admin",
     outletIds: [1],
     pinSet: testNavConfig.pinSet,
-    permissions,
+    permissionCodes: [...permissionCodes],
+    permissions: expandPermissionCodes(permissionCodes),
   };
 }
 
-vi.mock("@/stores/authStore", () => ({
-  PERMISSIONS: {
-    POS: "pos.use",
-    MENU: "menu.manage",
-    INVENTORY: "inventory.manage",
-    MEMBERS: "members.manage",
-    PURCHASE: "purchase.manage",
-    PROMOTIONS: "promotions.manage",
-    USERS: "users.manage",
-    ACCOUNTING: "accounting.manage",
-    REPORTS: "reports.view",
-    SETTINGS: "settings.manage",
-    MENU_DASHBOARD: "dashboard.view",
-    KITCHEN: "kitchen.use",
-    QR_ORDERS: "qr_orders.manage",
-    TABLES: "tables.manage",
-    CUSTOMERS: "customers.manage",
-    LOYALTY_DASHBOARD: "members.manage",
-    GIFT_CARDS: "gift_cards.manage",
-    SUPPLIERS: "suppliers.manage",
-    COST_VIEW: "foodcost.view",
-    FINANCE_SHIFT_CLOSE: "finance.shift_close",
-    PAYROLL: "payroll.manage",
-    EMPLOYEES: "employees.view",
-    ATTENDANCE: "attendance.view",
-    SCHEDULING: "schedule.view",
-    OVERTIME: "overtime.view",
-    SHIFTS: "shift.view",
-    LEAVE: "leave.manage",
-  },
-  useAuthStore: vi.fn((selector?: (state: unknown) => unknown) => {
-    const user = makeUser(testNavConfig.permissions);
-    const state = {
-      user,
-      hasPermission: (perm: string) => testNavConfig.permissions.includes(perm),
-      logout: vi.fn(),
-      lock: vi.fn(),
-    };
-    return typeof selector === "function" ? selector(state) : state;
-  }),
-}));
+vi.mock("@/stores/authStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/authStore")>();
+  return {
+    ...actual,
+    useAuthStore: vi.fn((selector?: (state: unknown) => unknown) => {
+      const user = makeUser(testNavConfig.permissions);
+      const state = {
+        user,
+        hasPermission: (perm: string) => user.permissions.includes(perm),
+        logout: vi.fn(),
+        lock: vi.fn(),
+      };
+      return typeof selector === "function" ? selector(state) : state;
+    }),
+  };
+});
 
 vi.mock("@/stores/notificationStore", () => ({
   useNotificationStore: vi.fn((selector) =>

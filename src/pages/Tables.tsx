@@ -31,7 +31,7 @@ import {
 } from "@/components/tables/tablesPageUtils";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
-import { useAuthStore, PERMISSIONS } from "@/stores/authStore";
+import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { useOrderStore } from "@/stores/orderStore";
 import { Button } from "@/components/ui/button";
@@ -48,8 +48,8 @@ export default function Tables() {
   const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const orders = useOrderStore((s) => s.orders);
-  const hasPermission = useAuthStore((s) => s.hasPermission);
-  const canManage = hasPermission(PERMISSIONS.TABLES_MANAGE);
+  const hasPermissionCode = useAuthStore((s) => s.hasPermissionCode);
+  const canManage = hasPermissionCode("tables.manage");
 
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -266,7 +266,8 @@
       "emailInvalid": "Email harus valid",
       "savedLocally": "Disimpan lokal (masuk untuk sinkron ke server)",
       "savedToServer": "Merchant disimpan ke server",
-      "saveFailed": "Tidak dapat menyimpan ke server"
+      "saveFailed": "Tidak dapat menyimpan ke server",
+      "readOnlyHint": "Profil merchant hanya dapat dilihat. Hubungi administrator untuk mengubah data."
     },
     "outlets": {
       "title": "Outlet",

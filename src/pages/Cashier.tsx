@@ -36,7 +36,12 @@ import {
   shouldBlockDuplicateGatewayAttempt,
   splitPaymentsForGatewayCreate,
 } from "@/features/pos/gatewayCheckoutUtils";
-import { buildSplitPaymentsPayload } from "@/features/pos/buildSplitPaymentsPayload";
+import {
+  buildSplitPaymentForPerson,
+  syncSplitPersonsToServer,
+} from "@/features/pos/syncSplitPersonsToServer";
+import { postPrintCustomerBill } from "@/lib/api-integration/receiptDocumentEndpoints";
+import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
 import type { OrderPaymentPayload } from "@/lib/api-integration/endpoints";
@@ -298,6 +303,8 @@ export default function Cashier() {
   const [splitCount, setSplitCount] = useState(2);
   const [payingPersonIdx, setPayingPersonIdx] = useState<number | null>(null);
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
+  const [showKitchenReprint, setShowKitchenReprint] = useState(false);
+  const [printingBill, setPrintingBill] = useState(false);
   const { data: checkoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
     enabled: showPaymentModal || showSplitModal,
   });
@@ -629,32 +636,118 @@ export default function Cashier() {
     }
   };
 
-  const handleSplitPersonPay = () => {
-    if (payingPersonIdx === null || !splitPayMethod) return;
+  const ensureCashierSplitsSynced = async (): Promise<SplitPerson[]> => {
+    if (!splitSourceOrder) return splitPersons;
+    if (splitPersons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
+      return splitPersons;
+    }
+    const fresh = await fetchOrderRemote(splitSourceOrder.id);
+    const synced = await syncSplitPersonsToServer(fresh.id, fresh, splitPersons, splitMethod);
+    setSplitPersons(synced);
+    setSplitSourceOrder(snapshotCashierOrder(storeOrderToCashier(fresh)));
+    return synced;
+  };
+
+  const finishCashierSplitIfComplete = async (persons: SplitPerson[]) => {
+    const allPaid = persons.every((p) => {
+      const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
+      return paid >= p.totalDue - 0.02 && p.totalDue > 0;
+    });
+    if (!allPaid) return;
+    toast.success(t("cashier.splitRecorded"), { icon: "💰" });
+    await loadOpenOrders();
+    resetSplitState();
+    setSelectedOrderId(null);
+  };
+
+  const handleSplitPersonPay = async () => {
+    if (payingPersonIdx === null || !splitPayMethod || !splitSourceOrder) return;
+    if (submitting) return;
     const idx = payingPersonIdx;
     const method = splitPayMethod;
-    let recorded: { label: string; amount: number } | null = null;
-    setSplitPersons((prev) => {
-      const person = prev[idx];
-      if (!person) return prev;
-      const alreadyPaid = person.payments.reduce((s, p) => s + p.amount, 0);
-      const remaining = person.totalDue - alreadyPaid;
-      if (remaining <= 0) return prev;
-      recorded = { label: person.label, amount: remaining };
-      return prev.map((p, i) =>
+    const person = splitPersons[idx];
+    if (!person) return;
+    const alreadyPaid = person.payments.reduce((s, p) => s + p.amount, 0);
+    const remaining = person.totalDue - alreadyPaid;
+    if (remaining <= 0) return;
+
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+      toast.error(t("shared.selectOutlet"));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const persons = await ensureCashierSplitsSynced();
+      const syncedPerson = persons[idx];
+      if (!syncedPerson?.serverSplitId) {
+        toast.error("Split sync failed — try again.");
+        return;
+      }
+      const fresh = await fetchOrderRemote(splitSourceOrder.id);
+      const paidAt = new Date().toISOString();
+      const payment = buildSplitPaymentForPerson(
+        syncedPerson,
+        method,
+        remaining,
+        fresh,
+        splitMethod,
+        paidAt,
+      );
+
+      if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
+        const tx = await paymentCreateTransaction({
+          orderId: fresh.id,
+          outletId: activeOutletId,
+          method: payment.method,
+          amount: remaining,
+          splitPayments: [payment],
+        });
+        setGatewayOrderId(fresh.id);
+        setPendingGatewayPayments([payment]);
+        paymentPollTransactionStatus(tx.id);
+        setPayingPersonIdx(null);
+        setSplitPayMethod(null);
+        setShowSplitModal(false);
+        setPaymentModalOrder(snapshotCashierOrder(storeOrderToCashier(fresh)));
+        setShowPaymentModal(true);
+        toast.success(t("shared.splitSavedGateway"), { icon: "💰" });
+        return;
+      }
+
+      await addOrderPaymentsRemote(fresh.id, [payment]);
+      const nextPersons = persons.map((p, i) =>
         i === idx
           ? { ...p, payments: [...p.payments, { method, amount: remaining, paidAt: new Date() }] }
           : p,
       );
-    });
-    setPayingPersonIdx(null);
-    setSplitPayMethod(null);
-    if (recorded) {
-      toast.success(t("shared.paidVia", { label: recorded.label, amount: formatRp(recorded.amount), method }));
+      setSplitPersons(nextPersons);
+      setPayingPersonIdx(null);
+      setSplitPayMethod(null);
+      toast.success(t("shared.paidVia", { label: syncedPerson.label, amount: formatRp(remaining), method }));
+      await finishCashierSplitIfComplete(nextPersons);
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.splitFailed"));
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  /** Draft-only: clears recorded method for this person until you tap Complete split (nothing hits the API). */
+  const handlePrintCustomerBill = async () => {
+    if (!selectedOrder || typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    if (selectedOrder.balanceDue <= 0) return;
+    setPrintingBill(true);
+    try {
+      await postPrintCustomerBill(Number(selectedOrder.id), activeOutletId);
+      toast.success("Bill dicetak — bukan struk final");
+    } catch (error) {
+      toast.error(error instanceof ApiHttpError ? error.message : "Gagal cetak bill.");
+    } finally {
+      setPrintingBill(false);
+    }
+  };
+
+  /** Draft-only: clears recorded method for this person until you pick a method again. */
   const undoSplitPersonDraftPayment = (personIdx: number) => {
     if (submitting) return;
     const label = splitPersons[personIdx]?.label ?? t("shared.person", { n: personIdx + 1 });
@@ -666,6 +759,11 @@ export default function Cashier() {
     toast.message(`${label}: payment choice cleared — pick a method again.`);
   };
 
+  const allSplitPaid = splitPersons.every((p) => {
+    const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
+    return paid >= p.totalDue - 0.02 && p.totalDue > 0;
+  });
+
   const byItemAllocationComplete = useMemo(() => {
     if (splitMethod !== "by-item" || !splitSourceOrder) return true;
     return byItemFullyAllocated(
@@ -673,81 +771,6 @@ export default function Cashier() {
       splitSourceOrder.items.map((l) => ({ id: String(l.id), qty: l.qty })),
     );
   }, [splitMethod, splitSourceOrder, splitPersons]);
-
-  const allSplitPaid = splitPersons.every((p) => {
-    const paid = p.payments.reduce((s, pm) => s + pm.amount, 0);
-    return paid >= p.totalDue;
-  });
-
-  const completeCashierSplit = async () => {
-    if (submitting || splitPersons.length === 0 || !splitSourceOrder) return;
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) {
-      toast.error(t("shared.selectOutlet"));
-      return;
-    }
-    if (!allSplitPaid) return;
-    if (!byItemAllocationComplete) {
-      toast.error(t("shared.assignAllUnitsToast"));
-      return;
-    }
-    const draftPaymentSum = splitPersons.reduce(
-      (s, p) => s + p.payments.reduce((t, pm) => t + pm.amount, 0),
-      0,
-    );
-    if (Math.abs(draftPaymentSum - splitSourceOrder.balanceDue) > 0.02) {
-      toast.error(
-        "Recorded split amounts do not match the balance due. Use Change on a person row to clear duplicate payments, then confirm again.",
-      );
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const fresh = await fetchOrderRemote(splitSourceOrder.id);
-      const batch = buildSplitPaymentsPayload(fresh, splitPersons, splitMethod, fresh.items);
-      const alreadyPaidRemote = fresh.payments.reduce((s, p) => s + p.amount, 0);
-      const batchTotal = batch.reduce((s, p) => s + p.amount, 0);
-      if (alreadyPaidRemote + batchTotal > fresh.total + 0.02) {
-        toast.error(
-          "Draft payments exceed the order balance (duplicate confirm or stale split). Use Change to clear a row and set methods again.",
-        );
-        setSubmitting(false);
-        return;
-      }
-      const immediatePayments = batch.filter((payment) => !isGatewayPaymentMethod(payment.method, checkoutMethods));
-      const gatewayPayments = batch.filter((payment) => isGatewayPaymentMethod(payment.method, checkoutMethods));
-      const paidOrder =
-        immediatePayments.length > 0 ? await addOrderPaymentsRemote(fresh.id, immediatePayments) : fresh;
-      if (gatewayPayments.length > 0) {
-        const gatewayTotal = gatewayPayments.reduce((sum, payment) => sum + payment.amount, 0);
-        const tx = await paymentCreateTransaction({
-          orderId: fresh.id,
-          outletId: activeOutletId,
-          method: gatewayPayments.length === 1 ? gatewayPayments[0].method : "mixed",
-          amount: gatewayTotal,
-          splitPayments: gatewayPayments,
-        });
-        setGatewayOrderId(fresh.id);
-        setPendingGatewayPayments(gatewayPayments);
-        paymentPollTransactionStatus(tx.id);
-        setShowSplitModal(false);
-        setSplitSourceOrder(null);
-        setSplitPersons([]);
-        setPaymentModalOrder(snapshotCashierOrder(storeOrderToCashier(paidOrder)));
-        setShowPaymentModal(true);
-        toast.success(t("shared.splitSavedGateway"), { icon: "💰" });
-        return;
-      }
-      toast.success(t("cashier.splitRecorded"), { icon: "💰" });
-      await loadOpenOrders();
-      resetSplitState();
-      setSelectedOrderId(null);
-    } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : t("cashier.splitFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const completeCashierPayment = async () => {
     if (!paymentModalOrder || submitting) return;
@@ -1273,24 +1296,43 @@ export default function Cashier() {
                 />
               ) : null}
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={openPaymentModal}
-                  disabled={selectedOrder.balanceDue <= 0}
-                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                >
-                  {t("cashier.payBalance")}
-                </button>
-                <button
-                  type="button"
-                  onClick={openSplitFromPanel}
-                  disabled={selectedOrder.balanceDue <= 0}
-                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors flex items-center justify-center gap-2"
-                >
-                  <SplitSquareHorizontal className="h-4 w-4" />
-                  {t("shared.splitBill")}
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={openPaymentModal}
+                    disabled={selectedOrder.balanceDue <= 0}
+                    className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                  >
+                    {t("cashier.payBalance")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openSplitFromPanel}
+                    disabled={selectedOrder.balanceDue <= 0}
+                    className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors flex items-center justify-center gap-2"
+                  >
+                    <SplitSquareHorizontal className="h-4 w-4" />
+                    {t("shared.splitBill")}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handlePrintCustomerBill()}
+                    disabled={selectedOrder.balanceDue <= 0 || printingBill}
+                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted"
+                  >
+                    {printingBill ? "…" : "Cetak bill"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowKitchenReprint(true)}
+                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+                  >
+                    Reprint dapur
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -1755,8 +1797,8 @@ export default function Cashier() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleSplitPersonPay}
-                                  disabled={!splitPayMethod}
+                                  onClick={() => void handleSplitPersonPay()}
+                                  disabled={!splitPayMethod || submitting}
                                   className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
                                 >
                                   {t("shared.confirmPayment")}
@@ -1771,26 +1813,37 @@ export default function Cashier() {
                 })}
               </div>
 
-              <button
-                type="button"
-                onClick={() => void completeCashierSplit()}
-                disabled={
-                  !allSplitPaid || !byItemAllocationComplete || splitPersons.length === 0 || submitting
-                }
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-              >
+              <p className="text-center text-xs text-muted-foreground py-2">
                 {submitting
                   ? t("shared.saving")
                   : !byItemAllocationComplete && splitMethod === "by-item"
                     ? t("shared.assignAllItemUnits")
                     : allSplitPaid
-                      ? t("shared.completeSplitRecord")
-                      : t("shared.paidProgress", { paid: splitPersons.filter((p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue && p.totalDue > 0).length, total: splitPersons.length })}
-              </button>
+                      ? t("cashier.splitRecorded")
+                      : t("shared.paidProgress", {
+                          paid: splitPersons.filter(
+                            (p) => p.payments.reduce((s, pm) => s + pm.amount, 0) >= p.totalDue - 0.02 && p.totalDue > 0,
+                          ).length,
+                          total: splitPersons.length,
+                        })}
+              </p>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {selectedOrder ? (
+        <KitchenReprintModal
+          open={showKitchenReprint}
+          orderId={Number(selectedOrder.id)}
+          items={selectedOrder.items.map((it) => ({
+              orderItemId: Number(it.orderItemId ?? it.id),
+              name: it.name,
+              qty: it.qty,
+            }))}
+          onClose={() => setShowKitchenReprint(false)}
+        />
+      ) : null}
     </div>
   );
 }

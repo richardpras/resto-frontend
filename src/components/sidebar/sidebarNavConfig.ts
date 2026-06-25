@@ -10,6 +10,11 @@ import {
   canViewEmployees,
   canViewFinancialStatements,
   getVisiblePayrollTabs,
+  canAccessDashboard,
+  canAccessSettingsPage,
+  canManagePlatformSettings,
+  canAccessUsersAdmin,
+  canViewFoodCost,
   type PayrollTabKey,
 } from "@/domain/permissionGates";
 import type { AuthUser } from "@/stores/authStore";
@@ -50,8 +55,8 @@ function buildHrNavGroups(user: AuthUser | null): SidebarNavItem[] {
   const groups: SidebarNavItem[] = [];
 
   const setupChildren: SidebarNavItem[] = [
-    nav("nav.departments", { href: "/hr/departments", permission: PERMISSIONS.USERS }),
-    nav("nav.positions", { href: "/hr/positions", permission: PERMISSIONS.USERS }),
+    nav("nav.departments", { href: "/hr/departments", accessCheck: (user) => canAccessUsersAdmin(user) }),
+    nav("nav.positions", { href: "/hr/positions", accessCheck: (user) => canAccessUsersAdmin(user) }),
   ];
   if (visible.has("shifts")) {
     setupChildren.push(hrPayrollLink("shifts"));
@@ -147,10 +152,10 @@ const REPORTS_CHILDREN: SidebarNavItem[] = [
   nav("nav.reports.hub", { href: "/reports", permission: PERMISSIONS.REPORTS }),
   nav("nav.reports.executiveSales", { href: "/reports/executive-sales", permission: PERMISSIONS.REPORTS }),
   nav("nav.reports.executiveDashboard", { href: "/executive-dashboard", permission: PERMISSIONS.REPORTS }),
-  nav("nav.reports.systemHealth", { href: "/system/health", permission: PERMISSIONS.SETTINGS }),
-  nav("nav.reports.auditCenter", { href: "/system/audit", permission: PERMISSIONS.SETTINGS }),
-  nav("nav.reports.failedJobs", { href: "/system/failed-jobs", permission: PERMISSIONS.SETTINGS }),
-  nav("nav.reports.bugReports", { href: "/system/bug-reports", permission: PERMISSIONS.SETTINGS }),
+  nav("nav.reports.systemHealth", { href: "/system/health", accessCheck: (user) => canManagePlatformSettings(user) }),
+  nav("nav.reports.auditCenter", { href: "/system/audit", accessCheck: (user) => canManagePlatformSettings(user) }),
+  nav("nav.reports.failedJobs", { href: "/system/failed-jobs", accessCheck: (user) => canManagePlatformSettings(user) }),
+  nav("nav.reports.bugReports", { href: "/system/bug-reports", accessCheck: (user) => canManagePlatformSettings(user) }),
 ];
 
 const RESERVATIONS_CHILDREN: SidebarNavItem[] = [
@@ -169,13 +174,13 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
       children: [
         nav("nav.loyaltyDashboard", { href: "/loyalty-dashboard", permission: PERMISSIONS.LOYALTY_DASHBOARD }),
         nav("nav.loyaltyPrograms", { href: "/loyalty-programs", permission: PERMISSIONS.MEMBERS }),
-        nav("nav.giftCards", { href: "/gift-cards", permission: PERMISSIONS.GIFT_CARDS }),
+        nav("nav.giftCards", { href: "/gift-cards", permission: PERMISSIONS.MEMBERS }),
       ],
     }),
   ];
 
   const hr: SidebarNavItem[] = [
-    nav("nav.usersRoles", { href: "/users", icon: UserCog, permission: PERMISSIONS.USERS }),
+    nav("nav.usersRoles", { href: "/users", icon: UserCog, accessCheck: (user) => canAccessUsersAdmin(user) }),
     ...hrNavGroups,
   ];
 
@@ -186,14 +191,14 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
     );
   }
   finance.push(nav("nav.reportsMenu", { icon: BarChart3, children: REPORTS_CHILDREN }));
-  finance.push(nav("nav.settings", { href: "/settings", icon: Settings, permission: PERMISSIONS.SETTINGS }));
+  finance.push(nav("nav.settings", { href: "/settings", icon: Settings, accessCheck: (user) => canAccessSettingsPage(user) }));
 
   return [
     {
       labelKey: "sidebar.overview",
       items: [
-        nav("nav.dashboard", { href: "/", icon: LayoutDashboard }),
-        nav("nav.notificationCenter", { href: "/notifications", icon: Bell }),
+        nav("nav.dashboard", { href: "/", icon: LayoutDashboard, accessCheck: (user) => canAccessDashboard(user) }),
+        nav("nav.notificationCenter", { href: "/notifications", icon: Bell, accessCheck: (user) => canAccessDashboard(user) }),
       ],
     },
     {
@@ -227,7 +232,7 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
           children: [
             nav("nav.menuItems", { href: "/menu", permission: PERMISSIONS.MENU }),
             nav("nav.menuCategories", { href: "/menu/categories", permission: PERMISSIONS.MENU }),
-            nav("nav.menuCosting", { href: "/menu/costing", permission: PERMISSIONS.COST_VIEW }),
+            nav("nav.menuCosting", { href: "/menu/costing", accessCheck: (user) => canViewFoodCost(user) }),
             nav("nav.menuIntelligence", { href: "/dashboard/menu", permission: PERMISSIONS.MENU_DASHBOARD }),
           ],
         }),

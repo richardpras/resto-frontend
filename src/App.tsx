@@ -13,7 +13,17 @@ import { LocaleSync } from "@/hooks/useLocaleSync";
 import { PwaRouteController } from "@/pwa/useStaffPwa";
 import { PublicGuestStandaloneGuard } from "@/components/pwa/PublicGuestStandaloneGuard";
 import { PERMISSIONS } from "@/stores/authStore";
-import { canAccessPayrollModule, canViewEmployees } from "@/domain/permissionGates";
+import {
+  canAccessDashboard,
+  canAccessNotifications,
+  canAccessSettingsPage,
+  canAccessUsersAdmin,
+  canManagePlatformSettings,
+  canUpdateOperationalSettings,
+  canViewFoodCost,
+  canAccessPayrollModule,
+  canViewEmployees,
+} from "@/domain/permissionGates";
 import type { HrBootstrapKey } from "@/hooks/useHrPayrollBootstrap";
 import { LegacyPayrollRedirect } from "./pages/hr/LegacyPayrollRedirect";
 import { wrapHrPage } from "./pages/hr/wrapHrPage";
@@ -94,6 +104,15 @@ const routeFallback = <RoutePageSkeleton />;
 
 const guarded = (perm: string | undefined, el: React.ReactElement) => (
   <ProtectedRoute permission={perm}>
+    <Suspense fallback={routeFallback}>{el}</Suspense>
+  </ProtectedRoute>
+);
+
+const accessGuarded = (
+  accessCheck: (user: import("@/stores/authStore").AuthUser, hasPermission: (perm: string) => boolean) => boolean,
+  el: React.ReactElement,
+) => (
+  <ProtectedRoute accessCheck={accessCheck}>
     <Suspense fallback={routeFallback}>{el}</Suspense>
   </ProtectedRoute>
 );
@@ -218,23 +237,11 @@ const App = () => (
           <Route element={<AppShell />}>
             <Route
               path="/"
-              element={
-                <ProtectedRoute>
-                  <Suspense fallback={routeFallback}>
-                    <Dashboard />
-                  </Suspense>
-                </ProtectedRoute>
-              }
+              element={accessGuarded((user) => canAccessDashboard(user), <Dashboard />)}
             />
             <Route
               path="/notifications"
-              element={
-                <ProtectedRoute>
-                  <Suspense fallback={routeFallback}>
-                    <NotificationCenter />
-                  </Suspense>
-                </ProtectedRoute>
-              }
+              element={accessGuarded((user) => canAccessNotifications(user), <NotificationCenter />)}
             />
             <Route
               path="/dashboard/menu"
@@ -254,10 +261,10 @@ const App = () => (
             />
             <Route path="/menu" element={guarded(PERMISSIONS.MENU, <MenuManagement />)} />
             <Route path="/menu/categories" element={guarded(PERMISSIONS.MENU, <MenuCategoriesPage />)} />
-            <Route path="/menu/costing" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDashboard />)} />
-            <Route path="/menu/costing/items" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostList />)} />
-            <Route path="/menu/costing/items/:id" element={guarded(PERMISSIONS.COST_VIEW, <MenuCostDetail />)} />
-            <Route path="/menu/costing/comparison" element={guarded(PERMISSIONS.COST_VIEW, <RecipeCostComparison />)} />
+            <Route path="/menu/costing" element={accessGuarded((user) => canViewFoodCost(user), <MenuCostDashboard />)} />
+            <Route path="/menu/costing/items" element={accessGuarded((user) => canViewFoodCost(user), <MenuCostList />)} />
+            <Route path="/menu/costing/items/:id" element={accessGuarded((user) => canViewFoodCost(user), <MenuCostDetail />)} />
+            <Route path="/menu/costing/comparison" element={accessGuarded((user) => canViewFoodCost(user), <RecipeCostComparison />)} />
             <Route path="/inventory" element={guarded(PERMISSIONS.INVENTORY, <Inventory />)} />
             <Route path="/suppliers" element={guarded(PERMISSIONS.SUPPLIERS, <Suppliers />)} />
             <Route path="/members" element={guarded(PERMISSIONS.MEMBERS, <Members />)} />
@@ -266,16 +273,16 @@ const App = () => (
             <Route path="/customers/:customerId" element={guarded(PERMISSIONS.CUSTOMERS, <CustomerProfile />)} />
             <Route path="/loyalty-dashboard" element={guarded(PERMISSIONS.LOYALTY_DASHBOARD, <LoyaltyDashboard />)} />
             <Route path="/loyalty-programs" element={guarded(PERMISSIONS.MEMBERS, <LoyaltyPrograms />)} />
-            <Route path="/gift-cards" element={guarded(PERMISSIONS.GIFT_CARDS, <GiftCards />)} />
+            <Route path="/gift-cards" element={guarded(PERMISSIONS.MEMBERS, <GiftCards />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
             <Route path="/payroll" element={<LegacyPayrollRedirect />} />
-            <Route path="/users" element={guarded(PERMISSIONS.USERS, <Users />)} />
+            <Route path="/users" element={accessGuarded((user) => canAccessUsersAdmin(user), <Users />)} />
             <Route path="/employees" element={<Navigate to="/hr/employees" replace />} />
             <Route path="/departments" element={<Navigate to="/hr/departments" replace />} />
             <Route path="/positions" element={<Navigate to="/hr/positions" replace />} />
             <Route path="/hr/employees" element={employeesGuarded(hrMasterPage(<Employees />))} />
-            <Route path="/hr/departments" element={guarded(PERMISSIONS.USERS, hrMasterPage(<Departments />))} />
-            <Route path="/hr/positions" element={guarded(PERMISSIONS.USERS, hrMasterPage(<Positions />))} />
+            <Route path="/hr/departments" element={accessGuarded((user) => canAccessUsersAdmin(user), hrMasterPage(<Departments />))} />
+            <Route path="/hr/positions" element={accessGuarded((user) => canAccessUsersAdmin(user), hrMasterPage(<Positions />))} />
             <Route path="/hr/shifts" element={hrPayrollPage(<HrShifts />, ["shifts"])} />
             <Route path="/hr/scheduling" element={hrPayrollPage(<HrScheduling />)} />
             <Route path="/hr/shift-assignments" element={hrPayrollPage(<HrShiftAssignments />)} />
@@ -299,14 +306,14 @@ const App = () => (
             <Route path="/reports" element={guarded(PERMISSIONS.REPORTS, <ReportsHub />)} />
             <Route path="/executive-dashboard" element={guarded(PERMISSIONS.REPORTS, <ExecutiveDashboard />)} />
             <Route path="/reports/executive-sales" element={guarded(PERMISSIONS.REPORTS, <ExecutiveSalesReport />)} />
-            <Route path="/settings" element={guarded(PERMISSIONS.SETTINGS, <Settings />)} />
-            <Route path="/settings/payments/health" element={guarded(PERMISSIONS.SETTINGS, <PaymentHealth />)} />
-            <Route path="/settings/production-stations" element={guarded(PERMISSIONS.SETTINGS, <ProductionStationsSettings />)} />
-            <Route path="/system/failed-jobs" element={guarded(PERMISSIONS.SETTINGS, <FailedJobsDashboard />)} />
-            <Route path="/system/audit" element={guarded(PERMISSIONS.SETTINGS, <AuditCenterPage />)} />
-            <Route path="/system/health" element={guarded(PERMISSIONS.SETTINGS, <SystemHealthCenterPage />)} />
-            <Route path="/system/bug-reports" element={guarded(PERMISSIONS.SETTINGS, <BugReportsPage />)} />
-            <Route path="/system/bug-reports/:id" element={guarded(PERMISSIONS.SETTINGS, <BugReportsPage />)} />
+            <Route path="/settings" element={accessGuarded((user) => canAccessSettingsPage(user), <Settings />)} />
+            <Route path="/settings/payments/health" element={accessGuarded((user) => canManagePlatformSettings(user), <PaymentHealth />)} />
+            <Route path="/settings/production-stations" element={accessGuarded((user) => canUpdateOperationalSettings(user), <ProductionStationsSettings />)} />
+            <Route path="/system/failed-jobs" element={accessGuarded((user) => canManagePlatformSettings(user), <FailedJobsDashboard />)} />
+            <Route path="/system/audit" element={accessGuarded((user) => canManagePlatformSettings(user), <AuditCenterPage />)} />
+            <Route path="/system/health" element={accessGuarded((user) => canManagePlatformSettings(user), <SystemHealthCenterPage />)} />
+            <Route path="/system/bug-reports" element={accessGuarded((user) => canManagePlatformSettings(user), <BugReportsPage />)} />
+            <Route path="/system/bug-reports/:id" element={accessGuarded((user) => canManagePlatformSettings(user), <BugReportsPage />)} />
             <Route
               path="*"
               element={

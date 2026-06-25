@@ -19,7 +19,8 @@ import {
 } from "@/lib/api-integration/notificationEndpoints";
 import { getAuditCenterSummary, type AuditCenterSummary } from "@/lib/api-integration/auditCenterEndpoints";
 import { ApiHttpError } from "@/lib/api-integration/client";
-import { PERMISSIONS } from "@/stores/authStore";
+import { PERMISSIONS, useAuthStore } from "@/stores/authStore";
+import { canManagePlatformSettings } from "@/domain/permissionGates";
 import type { ExecutiveWidgetStatus } from "@/components/executive/ExecutiveWidgetCard";
 import type { OperationalMetricsViewModel } from "@/domain/monitoring/types";
 import type { ExecutiveSalesReport } from "@/lib/api-integration/reportingEndpoints";
@@ -117,15 +118,16 @@ export function useExecutiveDashboardData(
   const today = todayRange();
   const loyaltyRange = last30DaysRange();
 
+  const user = useAuthStore((s) => s.user);
   const canSales = hasPermission(PERMISSIONS.REPORTS);
   const canAccounting = hasPermission(PERMISSIONS.ACCOUNTING);
-  const canPayment = hasPermission(PERMISSIONS.SETTINGS);
+  const canPayment = canManagePlatformSettings(user);
   const canMonitoring = hasPermission(PERMISSIONS.POS);
   const canLoyalty = hasPermission(PERMISSIONS.MEMBERS);
   const canMenuAnalytics = hasPermission("analytics.view");
   const canMenuDashboard = hasPermission(PERMISSIONS.MENU_DASHBOARD);
   const canNotifications = scopedOutletId !== null;
-  const canAudit = hasPermission(PERMISSIONS.SETTINGS);
+  const canAudit = canManagePlatformSettings(user);
 
   const queries = useQueries({
     queries: [

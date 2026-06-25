@@ -25,7 +25,7 @@ describe("buildSplitPaymentsPayload", () => {
           { method: "Cash", amount: 87000, paidAt: new Date("2026-06-12T02:58:54.845Z") },
           { method: "Cash", amount: 8700, paidAt: new Date("2026-06-12T02:59:34.759Z") },
         ],
-        totalDue: 95700,
+        serverSplitId: 11,
       },
       {
         label: "Person 2",
@@ -41,6 +41,7 @@ describe("buildSplitPaymentsPayload", () => {
     const batch = buildSplitPaymentsPayload(order, splitPersons, "by-item", priceLines);
     expect(batch).toHaveLength(2);
     expect(batch[0].amount).toBe(95700);
+    expect(batch[0].orderSplitId).toBe(11);
     expect(batch[1].amount).toBe(170500);
 
     const alloc1023 = batch.flatMap((p) => p.allocations ?? []).filter((a) => a.orderItemId === 1023);

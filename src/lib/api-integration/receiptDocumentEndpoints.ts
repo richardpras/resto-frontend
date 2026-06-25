@@ -35,6 +35,30 @@ export async function postCashierSessionReceiptSummary(body: Record<string, unkn
   return res.data;
 }
 
+export async function postPrintCustomerBill(orderId: number, outletId: number): Promise<ReceiptRenderHistoryRow> {
+  return renderReceiptDocument({
+    outletId,
+    kind: "customer_bill",
+    sourceType: "order",
+    sourceId: orderId,
+    issueFiscal: false,
+    queuePrint: true,
+  });
+}
+
+export async function postKitchenReprint(
+  orderId: number,
+  orderItemIds: number[],
+): Promise<{ printJobIds: number[]; groupedByStation: Array<{ station: string; menuCategoryName: string; itemCount: number }> }> {
+  const res = await apiRequest<
+    SuccessEnvelope<{ printJobIds: number[]; groupedByStation: Array<{ station: string; menuCategoryName: string; itemCount: number }> }>
+  >(`/orders/${orderId}/kitchen-reprint`, {
+    method: "POST",
+    body: JSON.stringify({ orderItemIds, queuePrint: true }),
+  });
+  return res.data;
+}
+
 export async function postReceiptReprint(
   historyId: number,
   reason?: string,

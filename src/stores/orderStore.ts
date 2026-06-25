@@ -57,6 +57,7 @@ export type SplitPerson = {
   items: { itemId: string; qty: number }[];
   payments: PaymentEntry[];
   totalDue: number;
+  serverSplitId?: number;
 };
 
 export type SplitBillData = {

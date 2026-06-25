@@ -6,6 +6,8 @@ import OutletsSettings from "./OutletsSettings";
 const saveOutletMock = vi.fn();
 const deleteOutletByIdMock = vi.fn();
 const canManageOutletSettingsMock = vi.fn();
+const canCreateOutletMock = vi.fn();
+const canDeleteOutletMock = vi.fn();
 
 vi.mock("sonner", () => ({
   toast: {
@@ -41,6 +43,8 @@ vi.mock("@/stores/authStore", () => ({
   useAuthStore: (selector: (s: unknown) => unknown) =>
     selector({
       canManageOutletSettings: canManageOutletSettingsMock,
+      canCreateOutlet: () => canCreateOutletMock(),
+      canDeleteOutlet: () => canDeleteOutletMock(),
     }),
 }));
 
@@ -55,6 +59,8 @@ describe("OutletsSettings store boundary", () => {
     canManageOutletSettingsMock.mockReset().mockImplementation((outletId?: number) =>
       typeof outletId === "number" ? outletId === 1 : true,
     );
+    canCreateOutletMock.mockReset().mockReturnValue(true);
+    canDeleteOutletMock.mockReset().mockReturnValue(true);
     vi.stubGlobal("confirm", vi.fn(() => true));
   });
 
@@ -84,6 +90,8 @@ describe("OutletsSettings store boundary", () => {
 
   it("hides manage actions when auth capability is false", () => {
     canManageOutletSettingsMock.mockReturnValue(false);
+    canCreateOutletMock.mockReturnValue(false);
+    canDeleteOutletMock.mockReturnValue(false);
     render(<OutletsSettings />);
 
     expect(screen.queryByRole("button", { name: /add outlet/i })).toBeNull();

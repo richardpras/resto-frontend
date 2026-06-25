@@ -3,9 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import ReportsHub, { HUB_CARD_DEFS } from "@/pages/ReportsHub";
-import type { AuthUser } from "@/stores/authStore";
+import { expandPermissionCodes, type AuthUser } from "@/stores/authStore";
 
-function makeUser(permissions: string[]): AuthUser {
+function makeUser(permissionCodes: string[]): AuthUser {
   return {
     id: "1",
     name: "Test User",
@@ -13,21 +13,18 @@ function makeUser(permissions: string[]): AuthUser {
     role: "Owner",
     outletIds: [1],
     pinSet: false,
-    permissions,
+    permissionCodes: [...permissionCodes],
+    permissions: expandPermissionCodes(permissionCodes),
   };
 }
 
-vi.mock("@/stores/authStore", () => ({
-  PERMISSIONS: {
-    ACCOUNTING: "accounting.manage",
-    REPORTS: "reports.view",
-    PURCHASE: "purchase.manage",
-    MEMBERS: "members.manage",
-    POS: "pos.use",
-    SETTINGS: "settings.manage",
-  },
-  useAuthStore: vi.fn(),
-}));
+vi.mock("@/stores/authStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/authStore")>();
+  return {
+    ...actual,
+    useAuthStore: vi.fn(),
+  };
+});
 
 import { useAuthStore } from "@/stores/authStore";
 
@@ -79,7 +76,7 @@ describe("ReportsHub visibility", () => {
   });
 
   it("hides Payment Health without settings.manage", () => {
-    renderHub(["reports.view", "pos.use", "members.manage"]);
+    renderHub(["reports.view", "pos.use", "settings.view", "settings.update"]);
 
     expect(screen.queryByText("Payment Health")).toBeNull();
   });
