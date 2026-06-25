@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useAuthStore } from "@/stores/authStore";
 import { usePosRouteBackgroundDefer } from "@/hooks/usePosRouteBackgroundDefer";
 import type { UserNotification, UserNotificationSeverity } from "@/lib/api-integration/notificationEndpoints";
 import type { TFunction } from "i18next";
@@ -97,13 +98,26 @@ export function NotificationBell() {
   const markAllRead = useNotificationStore((s) => s.markAllRead);
   const startPolling = useNotificationStore((s) => s.startPolling);
   const stopPolling = useNotificationStore((s) => s.stopPolling);
+  const locked = useAuthStore((s) => s.locked);
+  const sessionRestoreStatus = useAuthStore((s) => s.sessionRestoreStatus);
   const backgroundDeferReady = usePosRouteBackgroundDefer();
 
   useEffect(() => {
+    if (locked || sessionRestoreStatus === "pending") {
+      stopPolling();
+      return;
+    }
     if (!backgroundDeferReady) return;
     startPolling(activeOutletId, 30000);
     return () => stopPolling();
-  }, [activeOutletId, backgroundDeferReady, startPolling, stopPolling]);
+  }, [
+    activeOutletId,
+    backgroundDeferReady,
+    locked,
+    sessionRestoreStatus,
+    startPolling,
+    stopPolling,
+  ]);
 
   return (
     <DropdownMenu

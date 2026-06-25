@@ -20,9 +20,15 @@ export function SoundAlertsProvider() {
 
   const canMonitorOrders = hasPermission(PERMISSIONS.POS) || hasPermission(PERMISSIONS.QR_ORDERS);
   const userAuthenticated = useAuthStore((s) => Boolean(s.user));
+  const locked = useAuthStore((s) => s.locked);
+  const sessionRestoreStatus = useAuthStore((s) => s.sessionRestoreStatus);
   const backgroundDeferReady = usePosRouteBackgroundDefer();
 
   useEffect(() => {
+    if (locked || sessionRestoreStatus === "pending") {
+      stopSummaryPolling();
+      return;
+    }
     if (!backgroundDeferReady) return;
     if (!canMonitorOrders) {
       stopSummaryPolling();
@@ -34,7 +40,15 @@ export function SoundAlertsProvider() {
     }
     startSummaryPolling(activeOutletId, GLOBAL_QR_PENDING_POLL_MS);
     return () => stopSummaryPolling();
-  }, [backgroundDeferReady, canMonitorOrders, activeOutletId, startSummaryPolling, stopSummaryPolling]);
+  }, [
+    backgroundDeferReady,
+    canMonitorOrders,
+    activeOutletId,
+    locked,
+    sessionRestoreStatus,
+    startSummaryPolling,
+    stopSummaryPolling,
+  ]);
 
   useQrOrderSoundAlerts(canMonitorOrders);
   useCriticalNotificationSoundAlerts(userAuthenticated && prefs.enabled);

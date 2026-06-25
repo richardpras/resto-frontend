@@ -108,15 +108,93 @@ export function resolveDefaultLandingPath(user: AuthUser | null): string {
   if (canAccessSettingsPage(user)) return "/settings";
   if (hasPermissionCode(user, "reports.view")) return "/reports";
   if (hasPermissionCode(user, "accounting.manage")) return "/accounting";
-  return "/";
+  if (canAccessPayrollModule(user)) return "/hr/payroll/engine";
+  if (canViewEmployees(user)) return "/hr/employees";
+  return "/login";
+}
+
+/** True when the user can reach at least one staff module (avoids login ↔ dashboard loops). */
+export function hasStaffAppAccess(user: AuthUser | null): boolean {
+  if (!user) return false;
+  return resolveDefaultLandingPath(user) !== "/login";
+}
+
+function staffPath(user: AuthUser, path: string): string {
+  return (path.split("?")[0] ?? "/").replace(/\/+$/, "") || "/";
+}
+
+/** Mirrors App.tsx route guards for safe post-login redirects. */
+export function canAccessStaffRoute(user: AuthUser | null, pathname: string): boolean {
+  if (!user) return false;
+  const path = staffPath(user, pathname);
+  if (path === "/login") return false;
+  if (path === "/") return canAccessDashboard(user);
+  if (path === "/notifications") return canAccessNotifications(user);
+  if (path === "/pos" || path.startsWith("/pos/")) return hasAnyPermission(user, [PERMISSIONS.POS]);
+  if (path === "/cashier" || path.startsWith("/cashier/")) return hasAnyPermission(user, [PERMISSIONS.POS]);
+  if (path === "/kitchen" || path.startsWith("/kitchen/")) return hasAnyPermission(user, [PERMISSIONS.KITCHEN]);
+  if (path === "/qr-orders" || path.startsWith("/qr-orders/")) {
+    return hasAnyPermission(user, [PERMISSIONS.QR_ORDERS, PERMISSIONS.POS]);
+  }
+  if (path === "/orders" || path.startsWith("/orders/")) return hasAnyPermission(user, [PERMISSIONS.POS]);
+  if (path === "/tables" || path.startsWith("/tables/")) {
+    return hasAnyPermission(user, [PERMISSIONS.TABLES, PERMISSIONS.TABLES_MANAGE]);
+  }
+  if (path.startsWith("/reservations")) return hasAnyPermission(user, [PERMISSIONS.POS]);
+  if (path.startsWith("/menu")) {
+    if (path.startsWith("/menu/costing")) return canViewFoodCost(user);
+    return hasAnyPermission(user, [PERMISSIONS.MENU]);
+  }
+  if (path === "/inventory" || path.startsWith("/inventory/")) {
+    return hasAnyPermission(user, [PERMISSIONS.INVENTORY]);
+  }
+  if (path === "/suppliers" || path.startsWith("/suppliers/")) {
+    return hasAnyPermission(user, [PERMISSIONS.SUPPLIERS]);
+  }
+  if (
+    path.startsWith("/members")
+    || path.startsWith("/customers")
+    || path.startsWith("/loyalty")
+    || path === "/gift-cards"
+  ) {
+    return hasAnyPermission(user, [PERMISSIONS.MEMBERS, PERMISSIONS.CUSTOMERS]);
+  }
+  if (path === "/purchases" || path.startsWith("/purchases/")) {
+    return hasAnyPermission(user, [PERMISSIONS.PURCHASE]);
+  }
+  if (path === "/shift-close" || path.startsWith("/shift-close/")) {
+    return hasAnyPermission(user, [PERMISSIONS.FINANCE_SHIFT_CLOSE]);
+  }
+  if (path === "/users" || path.startsWith("/users/")) return canAccessUsersAdmin(user);
+  if (path.startsWith("/hr/")) {
+    return canAccessPayrollModule(user) || canViewEmployees(user) || canAccessUsersAdmin(user);
+  }
+  if (path === "/accounting" || path.startsWith("/accounting/")) {
+    return hasAnyPermission(user, [PERMISSIONS.ACCOUNTING]);
+  }
+  if (path === "/reports" || path.startsWith("/reports/") || path === "/executive-dashboard") {
+    return hasAnyPermission(user, [PERMISSIONS.REPORTS]);
+  }
+  if (path.startsWith("/settings")) {
+    if (path.startsWith("/settings/payments/health")) return canManagePlatformSettings(user);
+    if (path.startsWith("/settings/production-stations")) return canUpdateOperationalSettings(user);
+    return canAccessSettingsPage(user);
+  }
+  if (path.startsWith("/system/")) return canManagePlatformSettings(user);
+  if (path === "/dashboard/menu" || path.startsWith("/dashboard/")) {
+    return hasAnyPermission(user, [PERMISSIONS.MENU_DASHBOARD, PERMISSIONS.REPORTS]);
+  }
+  return false;
 }
 
 export function resolvePostLoginPath(user: AuthUser | null, requestedPath?: string): string {
-  const path = requestedPath && requestedPath !== "/" ? requestedPath : "/";
-  if (path === "/" && !canAccessDashboard(user)) {
-    return resolveDefaultLandingPath(user);
+  if (!user) return "/login";
+  const raw = (requestedPath ?? "/").trim() || "/";
+  const normalized = raw === "/login" ? "/" : raw;
+  if (canAccessStaffRoute(user, normalized)) {
+    return normalized;
   }
-  return path;
+  return resolveDefaultLandingPath(user);
 }
 
 export function hasAnyPermission(user: AuthUser | null, perms: string[]): boolean {

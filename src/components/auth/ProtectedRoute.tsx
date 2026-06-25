@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
-import { resolveDefaultLandingPath } from "@/domain/permissionGates";
+import { resolveDefaultLandingPath, hasStaffAppAccess } from "@/domain/permissionGates";
 import { useEffect } from "react";
 
 export function ProtectedRoute({
@@ -28,7 +28,7 @@ export function ProtectedRoute({
 
   if (denied) {
     const fallback = resolveDefaultLandingPath(user);
-    if (fallback === location.pathname) {
+    if (fallback === location.pathname || fallback === "/login" || !hasStaffAppAccess(user)) {
       return <Navigate to="/login" replace state={{ from: location }} />;
     }
     return <Navigate to={fallback} replace />;

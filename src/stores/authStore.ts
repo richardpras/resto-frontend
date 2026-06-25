@@ -158,12 +158,15 @@ function syncActiveOutletFromMe(meData: MeResponse): void {
   useOutletStore.getState().setActiveOutletContext(first.id, first.code);
 }
 
+export type SessionRestoreStatus = "idle" | "pending" | "done";
+
 interface AuthStore {
   user: AuthUser | null;
   locked: boolean;
   autoLock: boolean;
   idleMinutes: number;
   accessToken: string | null;
+  sessionRestoreStatus: SessionRestoreStatus;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   lock: () => void;
@@ -180,6 +183,13 @@ interface AuthStore {
   syncApiBearerForRequests: () => void;
 }
 
+export function isSessionRestoreReady(
+  accessToken: string | null,
+  status: SessionRestoreStatus,
+): boolean {
+  return status === "done" || (status === "idle" && !accessToken);
+}
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -188,15 +198,20 @@ export const useAuthStore = create<AuthStore>()(
       autoLock: true,
       idleMinutes: getDefaultIdleLockMinutes(),
       accessToken: null,
+      sessionRestoreStatus: "idle",
 
       restoreSessionFromApi: async () => {
         const token = get().accessToken;
-        if (!token) return;
+        if (!token) {
+          set({ sessionRestoreStatus: "done" });
+          return;
+        }
+        set({ sessionRestoreStatus: "pending" });
         setApiAccessToken(token);
         try {
           const meData = await fetchMe();
           syncActiveOutletFromMe(meData);
-          set({ user: mapMeToAuthUser(meData) });
+          set({ user: mapMeToAuthUser(meData), locked: false });
         } catch (error) {
           if (error instanceof ApiHttpError && error.status === 401) {
             const refreshed = await refreshAccessToken();
@@ -204,7 +219,7 @@ export const useAuthStore = create<AuthStore>()(
               try {
                 const meData = await fetchMe();
                 syncActiveOutletFromMe(meData);
-                set({ user: mapMeToAuthUser(meData) });
+                set({ user: mapMeToAuthUser(meData), locked: false });
                 return;
               } catch {
                 // fall through to logout below
@@ -214,6 +229,10 @@ export const useAuthStore = create<AuthStore>()(
             return;
           }
           // Transient/network errors: keep cached session and token for lock/unlock continuity.
+        } finally {
+          if (get().accessToken) {
+            set({ sessionRestoreStatus: "done" });
+          }
         }
       },
 
@@ -231,7 +250,12 @@ export const useAuthStore = create<AuthStore>()(
           const meData = await fetchMe();
           syncActiveOutletFromMe(meData);
           const user = mapMeToAuthUser(meData);
-          set({ user, locked: false, accessToken: res.data.accessToken });
+          set({
+            user,
+            locked: false,
+            accessToken: res.data.accessToken,
+            sessionRestoreStatus: "done",
+          });
           return { ok: true };
         } catch (e) {
           setApiAccessToken(undefined);
@@ -243,7 +267,7 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: () => {
         const token = get().accessToken;
-        set({ user: null, locked: false, accessToken: null });
+        set({ user: null, locked: false, accessToken: null, sessionRestoreStatus: "done" });
         useOutletStore.getState().clearActiveOutlet();
         setApiAccessToken(undefined);
         if (token) {
@@ -311,20 +335,37 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: "resto-auth",
+      version: 2,
       partialize: (s) => ({
         user: s.user,
-        locked: s.locked,
         autoLock: s.autoLock,
         idleMinutes: s.idleMinutes,
         accessToken: s.accessToken,
       }),
+      migrate: (persisted, version) => {
+        if (version < 2 && persisted && typeof persisted === "object") {
+          const next = { ...(persisted as Record<string, unknown>) };
+          delete next.locked;
+          return next;
+        }
+        return persisted;
+      },
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted ?? {}),
+        locked: false,
+        sessionRestoreStatus: current.sessionRestoreStatus,
+      }),
       onRehydrateStorage: () => (state) => {
+        useAuthStore.setState({ locked: false });
         if (state?.accessToken) {
           setApiAccessToken(state.accessToken);
           queueMicrotask(() => {
             void useAuthStore.getState().restoreSessionFromApi();
           });
+          return;
         }
+        useAuthStore.setState({ sessionRestoreStatus: "done" });
       },
     },
   ),

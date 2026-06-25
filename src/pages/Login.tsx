@@ -3,8 +3,8 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
-import { useAuthStore, DEMO_CREDENTIALS } from "@/stores/authStore";
-import { resolvePostLoginPath } from "@/domain/permissionGates";
+import { useAuthStore, DEMO_CREDENTIALS, isSessionRestoreReady } from "@/stores/authStore";
+import { hasStaffAppAccess, resolvePostLoginPath } from "@/domain/permissionGates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,8 @@ export default function Login() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/";
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const sessionRestoreStatus = useAuthStore((s) => s.sessionRestoreStatus);
   const login = useAuthStore((s) => s.login);
 
   const [email, setEmail] = useState("");
@@ -25,8 +27,24 @@ export default function Login() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  if (user) {
-    return <Navigate to={resolvePostLoginPath(user, from)} replace />;
+  const sessionReady = isSessionRestoreReady(accessToken, sessionRestoreStatus);
+
+  if (accessToken && sessionRestoreStatus === "pending") {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-sidebar-background">
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          {t("auth.restoringSession", { defaultValue: "Restoring session…" })}
+        </div>
+      </div>
+    );
+  }
+
+  if (user && sessionReady && hasStaffAppAccess(user)) {
+    const target = resolvePostLoginPath(user, from);
+    if (target !== "/login") {
+      return <Navigate to={target} replace />;
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +57,11 @@ export default function Login() {
       if (!res.ok) setError(res.error ?? t("auth.loginFailed"));
       else {
         const nextUser = useAuthStore.getState().user;
+        if (!nextUser || !hasStaffAppAccess(nextUser)) {
+          setError(t("auth.noModuleAccess", { defaultValue: "Your account has no module access. Contact an administrator." }));
+          useAuthStore.getState().logout();
+          return;
+        }
         navigate(resolvePostLoginPath(nextUser, from), { replace: true });
       }
     } finally {
