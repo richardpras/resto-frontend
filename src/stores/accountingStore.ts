@@ -33,6 +33,7 @@ import {
   type TrialBalanceReportRow,
 } from "@/lib/api";
 import { accountFromApi, journalFromApi, trialBalanceRowFromApi } from "@/lib/accountingMappers";
+import { setChartAccountsCache } from "@/hooks/useChartAccounts";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 export type AccountSubtype =
@@ -262,6 +263,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           trialBalance: state.pagination?.trialBalance ?? null,
         },
       }));
+      setChartAccountsCache(accRows.items);
     } catch (error) {
       set({ error: mapApiError(error) });
       throw error;

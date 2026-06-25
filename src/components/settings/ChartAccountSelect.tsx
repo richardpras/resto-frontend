@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { listAccounts, type AccountApiRow } from "@/lib/api-integration/accountingEndpoints";
+import type { AccountApiRow } from "@/lib/api-integration/accountingEndpoints";
+import { useChartAccounts } from "@/hooks/useChartAccounts";
 
 type ChartAccountSelectProps = {
   value?: number | null;
@@ -19,21 +20,7 @@ export default function ChartAccountSelect({
   placeholder = "Select GL account",
   disabled = false,
 }: ChartAccountSelectProps) {
-  const [accounts, setAccounts] = useState<AccountApiRow[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void listAccounts()
-      .then((rows) => {
-        if (!cancelled) setAccounts(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setAccounts([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { accounts, loading } = useChartAccounts();
 
   const options = useMemo(
     () => accounts.filter((a) => a.active && a.type === accountType).sort((a, b) => a.code.localeCompare(b.code)),
@@ -46,7 +33,7 @@ export default function ChartAccountSelect({
     <Select
       value={selectValue}
       onValueChange={(next) => onChange(next === NONE_VALUE ? null : Number(next))}
-      disabled={disabled}
+      disabled={disabled || loading}
     >
       <SelectTrigger>
         <SelectValue placeholder={placeholder} />
