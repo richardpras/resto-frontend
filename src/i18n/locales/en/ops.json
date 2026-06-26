@@ -133,6 +133,45 @@
   "ordersExplorer": {
     "title": "Orders",
     "subtitle": "Operational order history, payments, receipts, and audit trail.",
+    "selectOutlet": "Select an outlet in the header to load historical orders for that location.",
+    "filters": {
+      "status": "Status",
+      "payment": "Payment",
+      "source": "Source",
+      "voidedPayment": "Voided payment",
+      "hasVoid": "Has void",
+      "from": "From",
+      "to": "To",
+      "invoiceCode": "Invoice / code",
+      "searchPlaceholder": "Search code or QRO source…",
+      "allStatuses": "All statuses",
+      "allPayments": "All payments",
+      "allSources": "All sources",
+      "statusPending": "Pending",
+      "statusConfirmed": "Confirmed",
+      "statusCooking": "Cooking",
+      "statusReady": "Ready",
+      "statusCompleted": "Completed",
+      "statusCancelled": "Cancelled",
+      "paymentUnpaid": "Unpaid",
+      "paymentPartial": "Partial",
+      "paymentPaid": "Paid",
+      "sourcePos": "POS",
+      "sourceQr": "QR"
+    },
+    "table": {
+      "code": "Code",
+      "source": "Source",
+      "status": "Status",
+      "pay": "Pay",
+      "total": "Total",
+      "detail": "Detail",
+      "view": "View",
+      "loading": "Loading orders",
+      "emptyFiltered": "No orders for the current filters.",
+      "loadMore": "Load more",
+      "pageInfo": "Page {{current}} of {{last}} · {{total}} orders"
+    },
     "recoveryQueue": {
       "tabAll": "All orders",
       "tabPending": "Pending refund",
@@ -143,6 +182,96 @@
       "refundedToday": "Refunded today",
       "avgResolution": "Avg resolution",
       "openQueue": "Open pending refund queue"
+    },
+    "detail": {
+      "title": "Order",
+      "loading": "Loading…",
+      "loadingOrder": "Loading order…",
+      "refreshAria": "Refresh order detail",
+      "closeAria": "Close",
+      "statusLabel": "Status",
+      "paymentLabel": "Payment",
+      "kitchenLabel": "Kitchen",
+      "postedLabel": "Posted",
+      "yes": "Yes",
+      "no": "No",
+      "memberLabel": "Member",
+      "financialSummary": "Financial summary",
+      "subtotalLabel": "Subtotal",
+      "discountLabel": "Discount",
+      "taxApplied": "Tax applied",
+      "taxNotApplied": "No tax",
+      "taxLinePercent": "{{name}} ({{rate}}%)",
+      "taxLineGeneric": "Tax",
+      "totalLabel": "Total",
+      "itemsLabel": "Items",
+      "splitsLabel": "Splits",
+      "itemRecovery": "Item recovery",
+      "refreshingRecovery": "Refreshing recovery events",
+      "noRecoveryEvents": "No recovery events recorded for this order.",
+      "approvedAt": "Approved {{at}}",
+      "notePrefix": "Note:",
+      "eachPrice": "{{price}} each",
+      "receiptHistory": "Receipt / print history",
+      "printBill": "Print bill",
+      "printing": "…",
+      "kitchenReprint": "Kitchen reprint",
+      "receiptActionsRequirePos": "Receipt actions require POS access.",
+      "noReceipts": "No receipt renders stored for this order.",
+      "reprint": "Reprint",
+      "view": "View",
+      "auditTimeline": "Audit timeline",
+      "noPosEvents": "No POS events recorded for this order.",
+      "createdAt": "Created {{at}}",
+      "confirmedAt": "· Confirmed {{at}}",
+      "outlet": "· Outlet #{{id}}",
+      "actor": "· actor {{id}}",
+      "status": {
+        "pending": "Pending",
+        "confirmed": "Confirmed",
+        "cooking": "Cooking",
+        "ready": "Ready",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "paymentStatus": {
+        "unpaid": "Unpaid",
+        "partial": "Partial",
+        "paid": "Paid"
+      },
+      "kitchenStatus": {
+        "queued": "Queued",
+        "in_progress": "In progress",
+        "ready": "Ready",
+        "served": "Served",
+        "cancelled": "Cancelled",
+        "pending_confirmation": "Pending confirmation"
+      },
+      "receiptKinds": {
+        "customerBill": "Bill (proforma)",
+        "customerReceiptSplit": "Receipt · split #{{splitId}}"
+      },
+      "toasts": {
+        "billPrinted": "Bill printed — not a final receipt",
+        "billPrintFailed": "Failed to print bill.",
+        "reprintQueued": "Reprint queued",
+        "reprintFailed": "Reprint failed."
+      }
+    },
+    "kitchenReprint": {
+      "title": "Reprint kitchen / bar",
+      "selectAll": "Select all",
+      "clearAll": "Clear all",
+      "qty": "Qty {{qty}}",
+      "submitting": "Sending…",
+      "printButton": "Reprint ({{count}} item)",
+      "printButton_other": "Reprint ({{count}} items)",
+      "toasts": {
+        "selectAtLeastOne": "Select at least one item.",
+        "queued": "Kitchen reprint queued ({{count}} job)",
+        "queued_other": "Kitchen reprint queued ({{count}} jobs)",
+        "failed": "Kitchen reprint failed."
+      }
     }
   },
   "managerRecovery": {
@@ -315,6 +444,14 @@
       "takeaway": "Takeaway",
       "delivery": "Delivery",
       "qr": "QR Order"
+    },
+    "metrics": {
+      "completedToday": "Today Completed",
+      "avgCookTime": "Average Cook Time",
+      "longestWaiting": "Longest Waiting",
+      "longestWaitingTicket": "Longest Waiting Ticket",
+      "todayKitchen": "Today's Kitchen",
+      "minutesSuffix": " min"
     }
   },
   "tables": {
@@ -519,7 +656,100 @@
     "noMovements": "No movement records for this outlet scope.",
     "loadingValuations": "Loading valuations…",
     "noValuations": "No valuation rows for this outlet.",
-    "loading": "Loading inventory"
+    "loading": "Loading inventory",
+    "posting": {
+      "title": "Pending Inventory Consumption",
+      "subtitle": "Deferred sales waiting for shift close or manual inventory posting.",
+      "refresh": "Refresh",
+      "retryPosting": "Retry Posting",
+      "loadingQueue": "Loading queue…",
+      "noRows": "No pending consumption rows for this outlet.",
+      "columns": {
+        "date": "Date",
+        "order": "Order",
+        "status": "Status",
+        "total": "Total",
+        "notes": "Notes"
+      },
+      "status": {
+        "posted": "Posted",
+        "review": "Review",
+        "failed": "Failed",
+        "pending": "Pending"
+      },
+      "varianceReview": "Variance — review required",
+      "completedTitle": "Inventory posting completed",
+      "completedDesc": "Processed {{processed}}, review required {{reviewRequired}}, failed {{failed}}.",
+      "failedTitle": "Posting failed"
+    },
+    "form": {
+      "editTitle": "Edit Inventory Item",
+      "addTitle": "Add Inventory Item",
+      "tabs": {
+        "details": "Details",
+        "procurement": "Procurement"
+      },
+      "types": {
+        "ingredient": "Ingredient",
+        "atk": "ATK (Office)",
+        "asset": "Asset"
+      },
+      "typeRequired": "Type *",
+      "itemName": "Item Name *",
+      "namePlaceholder": "e.g. Rice, Thermal Paper, Blender",
+      "detailsLabel": "{{type}} Details",
+      "unit": "Unit",
+      "unitRequired": "Unit *",
+      "quantity": "Quantity",
+      "initialStock": "Initial Stock",
+      "minStock": "Minimum Stock",
+      "purchasePrice": "Purchase Price (Rp)",
+      "notes": "Notes",
+      "notesPlaceholder": "Description, serial number, location...",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "updateItem": "Update Item",
+      "saveItem": "Save Item",
+      "validation": {
+        "nameRequired": "Name is required",
+        "typeRequired": "Type is required",
+        "unitRequired": "Unit is required",
+        "invalidNumber": "Invalid number"
+      },
+      "toast": {
+        "updated": "Item updated",
+        "created": "Item created",
+        "updatedDesc": "{{name}} has been updated.",
+        "createdDesc": "{{name}} has been added to inventory.",
+        "saveFailed": "Save failed"
+      },
+      "procurement": {
+        "hint": "Procurement defaults for this item. Saved together with the item update.",
+        "preferredSupplier": "Preferred Supplier",
+        "selectSupplier": "Select supplier",
+        "none": "— None —",
+        "minOrderQty": "Minimum Order Qty",
+        "reorderQty": "Reorder Qty",
+        "leadTimeDays": "Lead Time (days)",
+        "lastPurchasePrice": "Last Purchase Price"
+      }
+    },
+    "stockMovement": {
+      "recordWaste": "Record Waste",
+      "adjustment": "Stock Adjustment",
+      "ingredient": "Ingredient",
+      "selectItem": "Select item",
+      "quantity": "Quantity",
+      "referenceNote": "Reference / Note",
+      "optional": "Optional",
+      "saveMovement": "Save Movement"
+    },
+    "movementTypes": {
+      "purchase": "Purchase",
+      "sale": "Sale",
+      "adjustment": "Adjustment",
+      "waste": "Waste"
+    }
   },
   "reservations": {
     "title": "Reservations",
@@ -591,7 +821,50 @@
     "empty": "No reservations for this outlet.",
     "removeTableAria": "Remove table",
     "actionFailed": "{{action}} failed",
-    "tableFallback": "Table {{id}}"
+    "tableFallback": "Table {{id}}",
+    "dashboard": {
+      "pageTitle": "Reservation Operations",
+      "pageSubtitleBefore": "Today's arrivals, active guests, no-shows, and delay metrics. Manage bookings on the ",
+      "pageSubtitleAfter": " page.",
+      "manageLink": "Reservations",
+      "selectOutlet": "Select an outlet to load reservation operations.",
+      "metrics": {
+        "todayReservations": "Today's reservations",
+        "noShowToday": "No-show today",
+        "noShowRate": "No-show rate",
+        "avgCheckinDelay": "Avg check-in delay",
+        "confirmed": "Confirmed",
+        "checkedIn": "Checked in",
+        "seated": "Seated",
+        "avgSeatingDelay": "Avg seating delay"
+      },
+      "suffixPercent": "%",
+      "suffixMin": "min",
+      "upcomingArrivals": "Upcoming arrivals",
+      "activeGuests": "Active guests",
+      "emptyList": "No reservations in this list.",
+      "guestPax": "{{n}} pax"
+    }
+  },
+  "paymentStatus": {
+    "pageTitle": "Payment Status",
+    "transaction": "Transaction: {{id}}",
+    "loading": "Loading payment status",
+    "statusPaid": "Payment completed",
+    "statusExpired": "Payment expired",
+    "statusFailed": "Payment failed",
+    "statusPending": "Payment pending",
+    "statusCancelled": "Payment cancelled",
+    "statusLabel": "Status:",
+    "method": "Method:",
+    "amount": "Amount:",
+    "expiresIn": "Expires in:",
+    "vaNumber": "VA Number:",
+    "openCheckout": "Open Checkout URL",
+    "openApp": "Open App",
+    "refreshingOrder": "Refreshing order status...",
+    "lastSynced": "Last synced: {{at}}",
+    "retryPayment": "Retry payment"
   },
   "qrStaff": {
     "title": "QR Orders",
@@ -714,6 +987,9 @@
     "notePlaceholder": "e.g. No spicy, extra sauce…",
     "subtotal": "Subtotal",
     "taxPercent": "Tax (10%)",
+    "applyTax": "Apply tax",
+    "tax": "Tax",
+    "taxLine": "Tax ({{label}})",
     "resumeTitle": "Resume Existing Order",
     "resumeTable": "Table {{n}} · {{code}}",
     "resumeHint": "New items will be added to {{code}}.",
@@ -879,6 +1155,9 @@
     "loyaltyRedemption": "Loyalty Redemption",
     "giftCardCredit": "Gift Card / Store Credit",
     "taxPercent": "Tax (10%)",
+    "applyTax": "Apply tax",
+    "tax": "Tax",
+    "taxLine": "Tax ({{label}})",
     "estimatedTotal": "Estimated Total",
     "items": "Items",
     "confirmOrder": "Confirm Order",
@@ -895,6 +1174,8 @@
     "noMenuItems": "No menu items mapped for this outlet (check Menu → Outlet Settings and menu_item_outlets).",
     "noItemsYet": "No items yet",
     "tapToAdd": "Tap menu items to add",
+    "viewCart": "View Cart ({{n}}) · {{total}}",
+    "openCartAria": "Open cart",
     "loadMenuOutlet": "Select an outlet in the header to load the menu for that location.",
     "loadingMenu": "Loading menu",
     "orderTypes": {
@@ -973,6 +1254,15 @@
       "chipPromo": "Promo {{amount}}",
       "chipVoucher": "Voucher {{amount}}",
       "chipGiftCard": "Gift card {{amount}}"
+    },
+    "printBill": "Print bill",
+    "reprintKitchen": "Reprint kitchen",
+    "toasts": {
+      "splitSyncFailed": "Split sync failed — try again.",
+      "billPrinted": "Bill printed — not a final receipt",
+      "billPrintFailed": "Failed to print bill.",
+      "splitDraftsCleared": "Split payment drafts cleared — item assignment changed.",
+      "paymentChoiceCleared": "{{label}}: payment choice cleared — pick a method again."
     }
   },
   "members": {
@@ -1065,6 +1355,87 @@
       "description": "Description",
       "descriptionPlaceholder": "e.g. Birthday redemption",
       "redeem": "Redeem"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Overview of today's operations",
+    "liveBadge": "Live",
+    "kpis": {
+      "revenueToday": "Today's Revenue",
+      "totalOrders": "Total Orders",
+      "avgOrderValue": "Avg Order Value",
+      "customers": "Customers"
+    },
+    "monitoring": {
+      "title": "Operational Monitoring",
+      "transport": "Transport: {{transport}}",
+      "updated": "• Updated {{time}}",
+      "loadingMetrics": "Loading operational metrics",
+      "kitchenCounters": "Kitchen Counters",
+      "kitchenSummary": "Queued {{queued}} • In Progress {{inProgress}} • Ready {{ready}}",
+      "pendingPayments": "Pending Payments",
+      "activeSessions": "Active Sessions",
+      "qrQueueTitle": "Realtime QR Queue",
+      "qrQueueDetail": "Pending confirmation {{pending}} · Expired {{expired}}",
+      "printerQueueTitle": "Printer Queue",
+      "printerQueueSummary": "Pending {{pending}} • Printing {{printing}} • Failed {{failed}}",
+      "reconciliationTitle": "Reconciliation Warnings",
+      "reconciliationCount": "{{count}} warning(s)",
+      "hardwareBridgeTitle": "Hardware Bridge",
+      "hardwareBridgeSummary": "Dead letters {{deadLetters}} • Stale {{staleBridges}}",
+      "offlineSyncTitle": "Offline Sync Failures",
+      "offlineSyncConflicts": "Conflicts {{conflicts}}"
+    },
+    "crm": {
+      "title": "CRM Snapshot",
+      "subtitle": "Gift card + loyalty",
+      "customers": "Customers",
+      "repeatVisitRate": "Repeat Visit Rate",
+      "pointsIssued": "Points Issued",
+      "pointsRedeemed": "Points Redeemed"
+    },
+    "offlineResilience": {
+      "title": "Offline resilience & terminals",
+      "replayApplied": "Replay applied (window)",
+      "replayFailures": "Replay failures",
+      "staleReplayRejections": "Stale replay rejections",
+      "serverConflictsLogged": "Server conflicts logged",
+      "duplicateReplayHits": "Duplicate replay hits",
+      "conflictAuditEvents": "Conflict audit events",
+      "registeredTerminals": "Registered terminals",
+      "staleTerminals": "Stale terminals (heartbeat)"
+    },
+    "charts": {
+      "peakHours": "Peak Hours",
+      "bestSellers": "Best Sellers",
+      "crossOutletBestsellers": "Best Sellers at Other Outlets",
+      "sold": "{{qty}} sold",
+      "soldWithOutlet": "{{outletName}} • {{qty}} sold"
+    },
+    "recentTransactions": {
+      "title": "Recent Transactions",
+      "headers": {
+        "order": "Order",
+        "type": "Type",
+        "total": "Total",
+        "status": "Status",
+        "time": "Time"
+      }
+    },
+    "empty": {
+      "topMenus": "No top menu data yet.",
+      "crossOutlet": "No cross-outlet bestseller data available.",
+      "recentTransactions": "No recent transactions."
+    },
+    "status": {
+      "paid": "Paid",
+      "pending": "Pending"
+    },
+    "trend": {
+      "up": "up",
+      "down": "down",
+      "flat": "flat"
     }
   }
 }

@@ -316,7 +316,21 @@
       "financingActivities": "Financing Activities",
       "total": "Total",
       "netCashChange": "Net Cash Change ({{from}} → {{to}})",
-      "loadCashFlowFailed": "Failed to load cash flow report"
+      "loadCashFlowFailed": "Failed to load cash flow report",
+      "cashFlowStatement": "Cash Flow Statement",
+      "cashFlowEmpty": "No cash flow data for the selected period.",
+      "cashFlowLines": {
+        "netProfit": "Net Profit",
+        "depreciation": "Depreciation",
+        "accountsReceivableChange": "Change in Accounts Receivable",
+        "accountsPayableChange": "Change in Accounts Payable",
+        "inventoryChange": "Change in Inventory",
+        "assetPurchases": "Asset Purchases",
+        "assetDisposals": "Asset Disposals",
+        "loans": "Loans",
+        "capitalInjection": "Capital Injection",
+        "ownerDrawings": "Owner Drawings"
+      }
     },
     "recon": {
       "title": "Reconciliation",
@@ -883,6 +897,7 @@
       "generateHint": "Creates draft roster rows from active shift assignments (SHIFT-01). Skips existing days unless overwrite is enabled.",
       "copyHint": "Duplicate roster rows to another period (same span length).",
       "loadFailed": "Failed to load schedule",
+      "mobileScrollHint": "Swipe horizontally to view the full week schedule.",
       "fromDate": "From date",
       "toDate": "To date"
     },
@@ -1080,8 +1095,9 @@
       "listTab": "Payslip List",
       "payslipNo": "Payslip No",
       "generatePayslips": "Generate Payslips",
-      "finalizedHint": "Only finalized payroll runs can generate payslips. Amounts are snapshotted at generation time.",
+      "finalizedHint": "Finalized, paid, and closed payroll runs appear here. Only non-closed runs can generate payslips. Amounts are snapshotted at generation time.",
       "finalizedStrong": "finalized",
+      "closedRunBadge": "Closed",
       "loadFailed": "Failed to load payslips",
       "generatedCount": "Generated {{count}} payslip(s)",
       "generationQueued": "{{count}} payslip(s) queued for PDF rendering",
@@ -1093,7 +1109,7 @@
       "pdfRegenerated": "PDF queued for regeneration",
       "regenerateFailed": "Regenerate failed",
       "publishFailed": "Publish failed",
-      "emptyRuns": "No finalized payroll runs",
+      "emptyRuns": "No payroll runs in this outlet",
       "emptyList": "No payslips"
     },
     "bpjs": {
@@ -1187,8 +1203,17 @@
     },
     "postingStatus": {
       "posted": "Posted",
+      "not_posted": "Not Posted",
       "reversed": "Reversed",
-      "draft": "Draft"
+      "draft": "Draft",
+      "title": "Posting Status",
+      "journal": "Journal",
+      "postedAt": "Posted At",
+      "openJournal": "Open Journal",
+      "reason": "Reason",
+      "badgePosted": "✅ Posted",
+      "badgeNotPosted": "⚠ Not Posted",
+      "badgeReversed": "↩ Reversed"
     },
     "pr": {
       "title": "Purchase Requests",
@@ -1279,7 +1304,8 @@
       "cancel": "Cancel",
       "editBtn": "Edit",
       "submitHint": "Submit this PO for approval before creating a goods receipt.",
-      "saveAndSubmit": "Save & Submit"
+      "saveAndSubmit": "Save & Submit",
+      "itemLabel": "Item #{{id}}"
     },
     "grn": {
       "title": "Goods Receipt",
@@ -1433,6 +1459,20 @@
         "giro": "Giro",
         "check": "Check",
         "other": "Other"
+      },
+      "statement": {
+        "fromDate": "From Date",
+        "toDate": "To Date",
+        "noSupplierSelected": "Select a supplier to view their statement",
+        "empty": "No invoices or payments in this period",
+        "invoicesTitle": "Invoices",
+        "paymentsTitle": "Payments",
+        "columns": {
+          "invoiceNo": "Invoice #",
+          "dueDate": "Due Date",
+          "paidAmount": "Paid",
+          "outstandingAmount": "Outstanding"
+        }
       }
     },
     "match": {
@@ -1570,6 +1610,20 @@
       "close": "Close",
       "edit": "Edit",
       "actionFailed": "Action failed"
+    },
+    "itemTable": {
+      "item": "Item",
+      "qty": "Qty",
+      "prQty": "PR Qty",
+      "remaining": "Remaining",
+      "unit": "Unit",
+      "price": "Price",
+      "subtotal": "Subtotal",
+      "received": "Received",
+      "notes": "Notes",
+      "empty": "No items added yet",
+      "selectItem": "Select item",
+      "addItem": "Add Item"
     }
   },
   "reportsHub": {
@@ -1942,6 +1996,23 @@
         "automations": "No loyalty automations for this outlet."
       }
     },
+    "dashboard": {
+      "pageTitle": "Loyalty Dashboard",
+      "pageSubtitle": "Realtime loyalty health, tiers, and redemption throughput.",
+      "metrics": {
+        "activeMembers": "Active Loyalty Members",
+        "pointsIssued": "Points Issued",
+        "pointsRedeemed": "Points Redeemed",
+        "redemptionCount": "Redemption Count"
+      },
+      "tiersTitle": "Loyalty Tiers",
+      "loadingTiers": "Loading loyalty tiers",
+      "tierLine": "{{name}} ({{code}}) • min {{minPoints}} pts • {{discountRate}}% discount",
+      "noTier": "No tier configured.",
+      "redemptionsTitle": "Latest Redemptions",
+      "noRedemptions": "No redemption data yet.",
+      "redemptionLine": "{{points}} pts • {{amount}}"
+    },
     "tabs": {
       "programs": "Programs",
       "simulator": "Simulator",
@@ -2294,6 +2365,666 @@
       "deactivated": "Promotion deactivated.",
       "loadFailed": "Failed to load promotions.",
       "failed": "Promotion action failed."
+    }
+  },
+  "members": {
+    "pageTitle": "Members",
+    "pageSubtitle": "Membership master data, loyalty program, CRM points, and gift cards.",
+    "loadFailed": "Failed to load members",
+    "namePhoneRequired": "Name and phone are required",
+    "updated": "Member updated",
+    "added": "Member added",
+    "statusUpdated": "Status updated",
+    "updateFailed": "Update failed",
+    "columns": {
+      "name": "Name",
+      "phone": "Phone",
+      "memberNo": "Member No",
+      "points": "Points",
+      "giftCard": "Gift Card",
+      "status": "Status"
+    },
+    "profile": "Profile",
+    "searchPlaceholder": "Search by name or phone...",
+    "empty": "No members yet",
+    "addMember": "Add member",
+    "allStatus": "All status",
+    "newMember": "New member",
+    "editMember": "Edit member",
+    "birthday": "Birthday",
+    "notes": "Notes",
+    "saveChanges": "Save changes",
+    "create": "Create"
+  },
+  "suppliers": {
+    "pageTitle": "Suppliers",
+    "pageSubtitle": "Manage vendors used across purchase requests, orders and invoices.",
+    "loadFailed": "Failed to load suppliers",
+    "nameRequired": "Name is required",
+    "paymentTermsInvalid": "Payment terms must be a valid number",
+    "leadTimeInvalid": "Lead time must be a valid number",
+    "updated": "Supplier updated",
+    "added": "Supplier added",
+    "statusUpdated": "Status updated",
+    "updateFailed": "Update failed",
+    "columns": {
+      "name": "Name",
+      "contact": "Contact",
+      "leadTime": "Lead time",
+      "address": "Address",
+      "status": "Status"
+    },
+    "leadTimeDays": "{{days}}d",
+    "searchPlaceholder": "Search supplier...",
+    "empty": "No suppliers yet",
+    "addSupplier": "Add supplier",
+    "allStatus": "All status",
+    "newSupplier": "New supplier",
+    "editSupplier": "Edit supplier",
+    "paymentTermsDays": "Payment terms (days)",
+    "leadTimeDaysLabel": "Lead time (days)",
+    "paymentTermsPlaceholder": "e.g. 30",
+    "leadTimePlaceholder": "e.g. 7",
+    "phone": "Phone",
+    "email": "Email",
+    "address": "Address",
+    "taxInfo": "Tax information",
+    "taxNumber": "Tax number (NPWP)",
+    "taxName": "Tax name",
+    "taxAddress": "Tax address",
+    "primaryContact": "Primary contact",
+    "contactPerson": "Contact person",
+    "contactPhone": "Contact phone",
+    "contactEmail": "Contact email",
+    "notes": "Notes",
+    "saveChanges": "Save changes",
+    "create": "Create"
+  },
+  "organization": {
+    "departments": {
+      "pageTitle": "Departments",
+      "pageSubtitle": "Organize teams by department per outlet.",
+      "loadFailed": "Failed to load departments",
+      "codeNameRequired": "Code and name are required",
+      "updated": "Department updated",
+      "created": "Department created",
+      "deleted": "Deleted",
+      "searchPlaceholder": "Search department...",
+      "empty": "No departments yet",
+      "addDepartment": "Add department",
+      "newDepartment": "New department",
+      "editDepartment": "Edit department",
+      "description": "Description"
+    },
+    "positions": {
+      "pageTitle": "Positions",
+      "pageSubtitle": "Job titles and roles within departments.",
+      "loadFailed": "Failed to load positions",
+      "codeNameRequired": "Code and name are required",
+      "updated": "Position updated",
+      "created": "Position created",
+      "deleted": "Deleted",
+      "searchPlaceholder": "Search position...",
+      "empty": "No positions yet",
+      "addPosition": "Add position",
+      "newPosition": "New position",
+      "editPosition": "Edit position",
+      "department": "Department",
+      "optional": "Optional",
+      "none": "— None —",
+      "sortOrder": "Sort order",
+      "description": "Description",
+      "order": "Order"
+    }
+  },
+  "menuCost": {
+    "shared": {
+      "selectOutlet": "Select an outlet in the header to load costing data.",
+      "selectOutletDetail": "Select an outlet in the header to view this menu item's cost.",
+      "selectItemOutlet": "Select a menu item and outlet to compare recipe versions.",
+      "descending": "Descending",
+      "ascending": "Ascending",
+      "allCategories": "All categories",
+      "category": "Category",
+      "pageOf": "Page {{page}} of {{lastPage}} · {{total}} items"
+    },
+    "dashboard": {
+      "pageTitle": "Menu Cost Dashboard",
+      "pageSubtitle": "Theoretical food cost and contribution margin for the active outlet.",
+      "browseItems": "Browse items",
+      "recipeComparison": "Recipe comparison",
+      "totalMenuItems": "Total Menu Items",
+      "avgFoodCostPercent": "Average Food Cost %",
+      "highestCostMenu": "Highest Cost Menu",
+      "lowestMarginMenu": "Lowest Margin Menu",
+      "quickActions": "Quick actions",
+      "viewCostList": "View cost list",
+      "compareRecipeVersions": "Compare recipe versions"
+    },
+    "list": {
+      "pageTitle": "Menu Cost List",
+      "pageSubtitle": "Theoretical cost and profitability by menu item.",
+      "searchPlaceholder": "Search menu items",
+      "sortCost": "Cost",
+      "sortMargin": "Margin",
+      "sortMarginPercent": "Margin %",
+      "sortSellingPrice": "Selling Price",
+      "columns": {
+        "menuItem": "Menu Item",
+        "sellingPrice": "Selling Price",
+        "foodCost": "Food Cost",
+        "contributionMargin": "Contribution Margin",
+        "marginPercent": "Margin %",
+        "lastUpdated": "Last Updated"
+      },
+      "empty": "No menu items found"
+    },
+    "detail": {
+      "backToList": "Back to list",
+      "pageTitleFallback": "Menu Cost Detail",
+      "pageSubtitle": "Recipe breakdown and profitability summary.",
+      "recalculate": "Recalculate cost",
+      "recalculated": "Menu cost recalculated.",
+      "recalcFailed": "Recalculation failed",
+      "breakdownTitle": "Recipe Cost Breakdown",
+      "noIngredients": "No recipe ingredients",
+      "columns": {
+        "ingredient": "Ingredient",
+        "qty": "Qty",
+        "unit": "Unit",
+        "unitCost": "Unit Cost",
+        "lineCost": "Line Cost"
+      },
+      "costSummary": "Cost Summary",
+      "rawCost": "Raw Cost",
+      "yieldLoss": "Yield Loss",
+      "wasteLoss": "Waste Loss",
+      "finalCost": "Final Cost",
+      "yieldWaste": "Yield {{yield}} · Waste {{waste}}",
+      "profitabilitySummary": "Profitability Summary",
+      "sellingPrice": "Selling Price",
+      "contributionMargin": "Contribution Margin",
+      "marginPercent": "Margin %",
+      "classification": "Classification: {{value}}"
+    },
+    "comparison": {
+      "backToDashboard": "Back to dashboard",
+      "pageTitle": "Recipe Cost Comparison",
+      "pageSubtitle": "Compare the active recipe against the previous version and historical cost snapshots.",
+      "selectMenuItem": "Select menu item",
+      "currentRecipe": "Current Recipe",
+      "previousVersion": "Previous Version",
+      "activeLabel": "Active",
+      "noRecipeVersion": "No recipe version found.",
+      "noPreviousVersion": "No previous version to compare.",
+      "margin": "Margin {{amount}}",
+      "deltaTitle": "Cost & Margin Delta",
+      "costDelta": "Cost Delta",
+      "marginDelta": "Margin Delta",
+      "ingredientChanges": "Ingredient Changes",
+      "columns": {
+        "ingredient": "Ingredient",
+        "previousQty": "Previous Qty",
+        "currentQty": "Current Qty"
+      }
+    }
+  },
+  "executive": {
+    "dashboard": {
+      "selectOutlet": "Select an outlet to load the executive dashboard.",
+      "sections": {
+        "financial": "Financial",
+        "notifications": "Notifications"
+      },
+      "criticalAlerts": {
+        "title": "Critical Alerts",
+        "critical": "{{count}} Critical",
+        "warning": "{{count}} Warning",
+        "unread": "{{count}} Unread"
+      },
+      "notificationGroups": {
+        "approvals": "Approvals",
+        "menu": "Menu",
+        "inventory": "Inventory",
+        "accounting": "Accounting",
+        "payments": "Payments"
+      },
+      "widgets": {
+        "executiveSales": {
+          "title": "Executive Sales",
+          "description": "Today — gross, net, and refunds"
+        },
+        "accountingHealth": {
+          "title": "Accounting Health",
+          "description": "Posting integrity and reconciliation signals"
+        },
+        "giftCardLiability": {
+          "title": "Gift Card Liability",
+          "description": "Gift card and store credit GL tie-out"
+        },
+        "paymentHealth": {
+          "title": "Payment Health",
+          "description": "Gateway reliability and incidents"
+        },
+        "auditActivity": {
+          "title": "Audit Activity",
+          "description": "Today's audit events and critical changes"
+        },
+        "operationalMonitoring": {
+          "title": "Operational Monitoring",
+          "description": "Kitchen, payments, printer, bridge, and sync"
+        },
+        "loyaltyOverview": {
+          "title": "Loyalty Overview",
+          "description": "Last 30 days"
+        },
+        "topCustomers": {
+          "title": "Top Customers",
+          "description": "Top 5 members by spend"
+        },
+        "topProducts": {
+          "title": "Top Products",
+          "description": "Today — from executive sales"
+        },
+        "foodCost": {
+          "title": "Food Cost",
+          "description": "Menu analytics average"
+        },
+        "alertSummary": {
+          "title": "Alert Summary",
+          "description": "Latest notifications across domains"
+        }
+      },
+      "metrics": {
+        "grossSales": "Gross Sales",
+        "netSales": "Net Sales",
+        "refundAmount": "Refund Amount",
+        "refundCount": "Refund Count",
+        "healthScore": "Health Score",
+        "severity": "Severity",
+        "failedPostings": "Failed Postings",
+        "priorityQueue": "Priority Queue",
+        "giftCardLiability": "Gift Card Liability",
+        "storeCreditLiability": "Store Credit Liability",
+        "status": "Status",
+        "successRate": "Success Rate",
+        "failedWebhooks": "Failed Webhooks",
+        "openIncidents": "Open Incidents",
+        "todayEvents": "Today's Events",
+        "criticalEvents": "Critical Events",
+        "activeUsers": "Active Users",
+        "kitchenQueue": "Kitchen Queue",
+        "pendingPayments": "Pending Payments",
+        "activeSessions": "Active Sessions",
+        "printerFailures": "Printer Failures",
+        "hardwareBridgeIssues": "Hardware Bridge Issues",
+        "offlineSyncFailures": "Offline Sync Failures",
+        "activeCustomers": "Active Customers",
+        "repeatVisitRate": "Repeat Visit Rate",
+        "voucherRedemptionRate": "Voucher Redemption Rate",
+        "openMenuAlerts": "Open Menu Alerts",
+        "critical": "Critical",
+        "warning": "Warning",
+        "unread": "Unread"
+      },
+      "foodCostTrend": {
+        "high": "High",
+        "elevated": "Elevated",
+        "onTarget": "On Target"
+      },
+      "empty": {
+        "noMemberData": "No member data.",
+        "noProductData": "No product data.",
+        "noRecentNotifications": "No recent notifications."
+      }
+    },
+    "salesReport": {
+      "loadFailed": "Failed to load executive sales report",
+      "selectOutlet": "Select an outlet to load the executive sales report.",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "comparison": "Comparison",
+      "comparisonNone": "None",
+      "comparisonPreviousPeriod": "Previous period",
+      "kpis": {
+        "grossSales": "Gross Sales",
+        "netSales": "Net Sales",
+        "refunds": "Refunds",
+        "refundCount": "{{count}} refund(s)",
+        "finalRevenue": "Final Revenue",
+        "orders": "Orders",
+        "aov": "AOV",
+        "giftCardSettled": "Gift Card Settled",
+        "storeCreditSettled": "Store Credit Settled",
+        "voucherDiscounts": "Voucher Discounts",
+        "manualDiscounts": "Manual Discounts"
+      },
+      "growth": {
+        "revenue": "Revenue growth: {{percent}}%",
+        "orders": "Order growth: {{percent}}%",
+        "aov": "AOV growth: {{percent}}%"
+      },
+      "reconciliation": {
+        "title": "Accounting reconciliation",
+        "detail": "Accounting revenue {{accounting}} · Executive revenue {{executive}} · Difference {{difference}}",
+        "variance": "Variance",
+        "balanced": "Balanced"
+      },
+      "charts": {
+        "salesTrend": "Sales trend",
+        "paymentMix": "Payment mix",
+        "discountBreakdown": "Discount breakdown",
+        "discountNote": "Gift card rows are informational tender, not revenue discounts.",
+        "channelBreakdown": "Channel breakdown",
+        "topProducts": "Top products",
+        "gross": "Gross",
+        "net": "Net",
+        "refunds": "Refunds"
+      },
+      "table": {
+        "channel": "Channel",
+        "sales": "Sales",
+        "orders": "Orders",
+        "aov": "AOV",
+        "product": "Product",
+        "qty": "Qty",
+        "gross": "Gross",
+        "net": "Net",
+        "noProductSales": "No product sales in range."
+      }
+    },
+    "widgetCard": {
+      "open": "Open",
+      "restricted": "Restricted",
+      "permissionRequired": "Additional permission required",
+      "requiresPermission": "Requires {{permission}}",
+      "noData": "No data for the selected outlet.",
+      "loadFailed": "Failed to load widget data."
+    },
+    "scoreGauge": {
+      "calculating": "Calculating…",
+      "ownerScore": "Owner executive score",
+      "partialScore": "Partial Score ({{count}}/4 pillars)",
+      "labels": {
+        "healthy": "Healthy",
+        "watch": "Watch",
+        "atRisk": "At Risk",
+        "critical": "Critical"
+      }
+    },
+    "systemHealthWidget": {
+      "title": "System Health Summary",
+      "description": "Unified reliability and incident overview",
+      "healthCenter": "Health Center",
+      "activeIncidents": "Active Incidents",
+      "criticalBugs": "Critical Bugs",
+      "failedJobs": "Failed Jobs",
+      "partialScore": "Partial score — some modules unavailable"
+    },
+    "inventoryReliability": {
+      "title": "Inventory Reliability",
+      "description": "Posting success, open variances, and pending consumption",
+      "permissionHint": "Requires inventory.manage or settings.manage",
+      "postingSuccessRate": "Posting Success Rate",
+      "openVariances": "Open Variances",
+      "pendingConsumptionValue": "Pending Consumption Value",
+      "mode": "Mode",
+      "viewPending": "View pending consumption"
+    },
+    "shiftClose": {
+      "title": "Last Shift Close",
+      "description": "Snapshot variances and posting status",
+      "permissionHint": "Requires finance.shift_close",
+      "lastClose": "Last Close",
+      "openBills": "Open Bills",
+      "cashVariance": "Cash Variance",
+      "inventoryVariance": "Inventory Variance",
+      "status": "Status",
+      "runShiftClose": "Run shift close"
+    },
+    "customerOrdering": {
+      "title": "Customer Ordering Health",
+      "description": "QR review queue and customer calls",
+      "permissionHint": "Requires POS access",
+      "pendingReviews": "Pending Reviews",
+      "awaitingApproval": "Awaiting Customer Approval",
+      "avgReviewTime": "Avg Review Time (min)",
+      "avgReadyTime": "Avg Ready Time (min)",
+      "customerCallsToday": "Customer Calls Today"
+    }
+  },
+  "system": {
+    "healthCenter": {
+      "permissionDenied": "You need settings.manage permission to view the health center.",
+      "selectOutlet": "Select an outlet to load health data.",
+      "refreshing": "Refreshing health data…",
+      "reportsHub": "Reports Hub",
+      "metrics": {
+        "activeIncidents": "Active Incidents",
+        "criticalAlerts": "Critical Alerts",
+        "openBugs": "Open Bugs",
+        "failedJobs": "Failed Jobs",
+        "unread": "Unread"
+      },
+      "modules": {
+        "accountingHealth": "Accounting Health",
+        "inventoryPosting": "Inventory Posting Issues",
+        "duplicateOrderPrevention": "Duplicate Order Prevention",
+        "paymentHealth": "Payment Health",
+        "failedJobs": "Failed Jobs",
+        "bugReports": "Bug Reports",
+        "notifications": "Notifications",
+        "auditActivity": "Audit Activity",
+        "healthScore": "Health Score",
+        "failedPostings": "Failed Postings",
+        "priorityQueue": "Priority Queue",
+        "latest": "Latest: {{title}}",
+        "pending": "Pending",
+        "reviewRequired": "Review Required",
+        "failed": "Failed",
+        "openIncidents": "Open Incidents",
+        "mode": "Mode",
+        "retries": "Retries",
+        "idempotencyHits": "Idempotency Hits",
+        "duplicatesPrevented": "Duplicates Prevented",
+        "resumedOrders": "Resumed Orders",
+        "qrBillResumes": "QR Bill Resumes",
+        "successRate": "Success Rate",
+        "failedWebhooks": "Failed Webhooks",
+        "totalFailures": "Total Failures",
+        "critical": "Critical",
+        "oldestMinutes": "Oldest (min)",
+        "open": "Open",
+        "investigating": "Investigating",
+        "fixedToday": "Fixed Today",
+        "unread": "Unread",
+        "today": "Today",
+        "topActor": "Top Actor",
+        "topModule": "Top Module"
+      },
+      "incidentTimeline": "Incident Timeline",
+      "priorityQueue": "Priority Action Queue",
+      "reliabilityTrends": "Reliability Trends (30 days)",
+      "trends": {
+        "systemScore": "System Score (proxy)",
+        "failedJobs": "Failed Jobs",
+        "paymentSuccessRate": "Payment Success Rate",
+        "accountingPostingFailures": "Accounting Posting Failures",
+        "paymentIncidents": "Payment Incidents",
+        "bugVolume": "Bug Volume (notifications)",
+        "score": "score",
+        "failures": "failures",
+        "rate": "rate",
+        "incidents": "incidents",
+        "bugs": "bugs"
+      }
+    },
+    "auditCenter": {
+      "permissionDenied": "You need settings.manage permission to view the Audit Center.",
+      "restricted": "Restricted — settings.manage permission is required to access the Audit Center.",
+      "selectOutlet": "Select an outlet to load audit activity.",
+      "loadFailed": "Failed to load audit center",
+      "topActors": "Top Actors",
+      "topModules": "Top Modules",
+      "noActivityToday": "No activity today.",
+      "noModuleActivity": "No module activity today.",
+      "timeline": "Timeline"
+    },
+    "failedJobs": {
+      "loadFailed": "Failed to load failed jobs dashboard",
+      "metrics": {
+        "failedJobs": "Failed Jobs",
+        "criticalFailures": "Critical Failures",
+        "repeatFailures": "Repeat Failures",
+        "health": "Health"
+      },
+      "listTitle": "Failed Job List",
+      "empty": "No failed jobs in queue.",
+      "table": {
+        "job": "Job",
+        "module": "Module",
+        "queue": "Queue",
+        "severity": "Severity",
+        "age": "Age"
+      },
+      "byModule": "By Module",
+      "noGroupedData": "No grouped data.",
+      "criticalCount": "{{count}} ({{critical}} critical)",
+      "trendTitle": "30-Day Trend",
+      "noSnapshots": "No snapshots yet.",
+      "trendRow": "{{total}} total / {{critical}} critical",
+      "severityInfo": "Info"
+    },
+    "bugReports": {
+      "permissionDenied": "You need settings.manage permission to view bug reports.",
+      "filters": "Filters",
+      "searchPlaceholder": "Search title, message, route…",
+      "allStatuses": "All statuses",
+      "allSeverities": "All severities",
+      "status": "Status",
+      "severity": "Severity",
+      "apply": "Apply",
+      "reports": "Reports",
+      "empty": "No bug reports found.",
+      "table": {
+        "severity": "Severity",
+        "status": "Status",
+        "title": "Title",
+        "reporter": "Reporter",
+        "route": "Route",
+        "created": "Created",
+        "assigned": "Assigned"
+      },
+      "detailTitle": "Bug Report #{{id}}",
+      "screenshotAlt": "Bug screenshot",
+      "fields": {
+        "reporter": "Reporter",
+        "route": "Route",
+        "browser": "Browser",
+        "viewport": "Viewport",
+        "appVersion": "App version",
+        "created": "Created"
+      },
+      "diagnostics": "Diagnostics",
+      "noDiagnostics": "No diagnostics captured.",
+      "apiErrors": "API Errors ({{count}})",
+      "consoleErrors": "Console Errors ({{count}})",
+      "otherEvents": "Other Events ({{count}})",
+      "manage": "Manage",
+      "assignToUserId": "Assign to user ID",
+      "userIdPlaceholder": "User ID",
+      "saveChanges": "Save changes",
+      "comments": "Comments",
+      "noComments": "No comments yet.",
+      "commentPlaceholder": "Add a comment…",
+      "addComment": "Add comment",
+      "severityLow": "Low",
+      "severityMedium": "Medium",
+      "statusFixed": "Fixed",
+      "status": {
+        "open": "Open",
+        "triaged": "Triaged",
+        "investigating": "Investigating",
+        "fixed": "Fixed",
+        "closed": "Closed",
+        "wont_fix": "Won't fix"
+      },
+      "loadDetailFailed": "Failed to load detail",
+      "loadFailed": "Failed to load bug reports",
+      "updated": "Bug report updated",
+      "updateFailed": "Update failed",
+      "commentAdded": "Comment added",
+      "commentFailed": "Failed to add comment",
+      "reportModal": {
+        "title": "Report a Bug",
+        "description": "Describe what went wrong. A screenshot and diagnostic data are attached automatically.",
+        "screenshotAlt": "Page screenshot preview",
+        "screenshotUnavailable": "Screenshot capture unavailable for this page.",
+        "titleLabel": "Title",
+        "titlePlaceholder": "Brief summary of the issue",
+        "descriptionLabel": "Description",
+        "descriptionPlaceholder": "What were you doing? What did you expect?",
+        "severityLabel": "Severity (optional)",
+        "severityLow": "Low",
+        "severityMedium": "Medium",
+        "severityHigh": "High",
+        "severityCritical": "Critical",
+        "cancel": "Cancel",
+        "submit": "Submit Report",
+        "submitting": "Submitting…",
+        "requiredFields": "Title and message are required",
+        "success": "Bug report submitted. Thank you!",
+        "failed": "Failed to submit bug report"
+      }
+    }
+  },
+  "settings": {
+    "paymentHealth": {
+      "title": "Payment Health",
+      "integrationSettings": "Integration Settings",
+      "healthScore": "Health Score",
+      "paymentSuccess": "Payment Success",
+      "webhookSuccess": "Webhook Success",
+      "openIncidents": "Open Incidents",
+      "stalePayments": "Stale Payments",
+      "failedWebhooks": "Failed Webhooks",
+      "avgProcessing": "Avg Processing",
+      "provider": "Provider",
+      "providerRanking": "Provider Ranking",
+      "providerRankingEntry": "#{{rank}} {{provider}} ({{score}}%)",
+      "paymentWebhookTrend": "Payment & Webhook Success Trend (30d)",
+      "staleIncidentsTrend": "Stale Payments / Incidents Trend",
+      "chartPayment": "Payment %",
+      "chartWebhook": "Webhook %",
+      "chartIncidents": "Incidents",
+      "providerReliability": "Provider Reliability",
+      "table": {
+        "provider": "Provider",
+        "uptime": "Uptime %",
+        "incidents": "Incidents",
+        "avgResolution": "Avg Resolution (min)",
+        "paymentSuccess": "Payment Success %"
+      },
+      "noReliabilitySnapshots": "No reliability snapshots yet.",
+      "incidentTimeline": "Incident Timeline",
+      "incidentTable": {
+        "opened": "Opened",
+        "provider": "Provider",
+        "severity": "Severity",
+        "title": "Title",
+        "status": "Status"
+      },
+      "noIncidents": "No incidents recorded.",
+      "configuration": "Configuration",
+      "missing": "Missing:",
+      "warnings": "Warnings:",
+      "loadFailed": "Failed to load payment health",
+      "incidentStatus": {
+        "open": "Open",
+        "investigating": "Investigating",
+        "resolved": "Resolved",
+        "closed": "Closed"
+      }
     }
   },
   "api": {

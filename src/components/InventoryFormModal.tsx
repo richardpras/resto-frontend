@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type InventoryItemType } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { Package, Paperclip, Armchair } from "lucide-react";
 import { type InventoryItemApi, type InventoryPayload } from "@/lib/api-integration/inventoryEndpoints";
 import {
@@ -20,10 +21,10 @@ import InventoryProcurementFields, {
   type ProcurementFormState,
 } from "@/components/InventoryProcurementFields";
 
-const typeConfig: Record<InventoryItemType, { label: string; icon: React.ReactNode; units: string[]; color: string }> = {
-  ingredient: { label: "Ingredient", icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },
-  atk: { label: "ATK (Office)", icon: <Paperclip className="h-4 w-4" />, units: ["pcs", "box", "pack", "ream"], color: "text-blue-500" },
-  asset: { label: "Asset", icon: <Armchair className="h-4 w-4" />, units: ["pcs", "unit"], color: "text-amber-500" },
+const typeConfig: Record<InventoryItemType, { icon: React.ReactNode; units: string[]; color: string }> = {
+  ingredient: { icon: <Package className="h-4 w-4" />, units: ["kg", "g", "L", "ml", "pcs", "pack", "box"], color: "text-emerald-500" },
+  atk: { icon: <Paperclip className="h-4 w-4" />, units: ["pcs", "box", "pack", "ream"], color: "text-blue-500" },
+  asset: { icon: <Armchair className="h-4 w-4" />, units: ["pcs", "unit"], color: "text-amber-500" },
 };
 
 type FormData = {
@@ -46,11 +47,14 @@ type Props = {
 };
 
 export default function InventoryFormModal({ open, onOpenChange, editItem, onSave }: Props) {
+  const { t } = useOpsTranslation();
   const [form, setForm] = useState<FormData>(emptyForm);
   const [procurementForm, setProcurementForm] = useState<ProcurementFormState>(emptyProcurementForm);
   const [tab, setTab] = useState("details");
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [saving, setSaving] = useState(false);
+
+  const typeLabel = (type: InventoryItemType) => t(`inventory.form.types.${type}`);
 
   const handleProcurementChange = useCallback((value: ProcurementFormState) => {
     setProcurementForm(value);
@@ -109,12 +113,12 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
 
   const validate = (): boolean => {
     const e: Partial<Record<keyof FormData, string>> = {};
-    if (!form.name.trim()) e.name = "Name is required";
-    if (!form.type) e.type = "Type is required";
-    if (form.type !== "asset" && !form.unit) e.unit = "Unit is required";
-    if (form.stock !== "" && (isNaN(Number(form.stock)) || Number(form.stock) < 0)) e.stock = "Invalid number";
-    if (form.type !== "asset" && form.min !== "" && (isNaN(Number(form.min)) || Number(form.min) < 0)) e.min = "Invalid number";
-    if (form.price !== "" && (isNaN(Number(form.price)) || Number(form.price) < 0)) e.price = "Invalid number";
+    if (!form.name.trim()) e.name = t("inventory.form.validation.nameRequired");
+    if (!form.type) e.type = t("inventory.form.validation.typeRequired");
+    if (form.type !== "asset" && !form.unit) e.unit = t("inventory.form.validation.unitRequired");
+    if (form.stock !== "" && (isNaN(Number(form.stock)) || Number(form.stock) < 0)) e.stock = t("inventory.form.validation.invalidNumber");
+    if (form.type !== "asset" && form.min !== "" && (isNaN(Number(form.min)) || Number(form.min) < 0)) e.min = t("inventory.form.validation.invalidNumber");
+    if (form.price !== "" && (isNaN(Number(form.price)) || Number(form.price) < 0)) e.price = t("inventory.form.validation.invalidNumber");
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -122,7 +126,6 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
-    // simulate async
     await new Promise((r) => setTimeout(r, 400));
 
     const payload: InventoryPayload = {
@@ -141,16 +144,16 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
         await persistProcurementSettings(savedId);
       }
       toast({
-        title: editItem ? "Item updated" : "Item created",
+        title: editItem ? t("inventory.form.toast.updated") : t("inventory.form.toast.created"),
         description: editItem
-          ? `${payload.name} has been updated.`
-          : `${payload.name} has been added to inventory.`,
+          ? t("inventory.form.toast.updatedDesc", { name: payload.name })
+          : t("inventory.form.toast.createdDesc", { name: payload.name }),
       });
       onOpenChange(false);
     } catch (error) {
       toast({
-        title: "Save failed",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("inventory.form.toast.saveFailed"),
+        description: error instanceof Error ? error.message : t("shared.somethingWrong"),
       });
     } finally {
       setSaving(false);
@@ -163,30 +166,29 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${dialogSize.lg} ${dialogScroll}`}>
         <DialogHeader>
-          <DialogTitle className="text-lg">{editItem ? "Edit Inventory Item" : "Add Inventory Item"}</DialogTitle>
+          <DialogTitle className="text-lg">{editItem ? t("inventory.form.editTitle") : t("inventory.form.addTitle")}</DialogTitle>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="py-2">
           {editItem && (
             <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="details">Details</TabsTrigger>
-              <TabsTrigger value="procurement">Procurement</TabsTrigger>
+              <TabsTrigger value="details">{t("inventory.form.tabs.details")}</TabsTrigger>
+              <TabsTrigger value="procurement">{t("inventory.form.tabs.procurement")}</TabsTrigger>
             </TabsList>
           )}
 
           <TabsContent value="details" className="space-y-5 mt-0">
-          {/* Type selector */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Type *</Label>
+            <Label className="text-sm font-medium">{t("inventory.form.typeRequired")}</Label>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(typeConfig) as InventoryItemType[]).map((t) => {
-                const c = typeConfig[t];
-                const active = form.type === t;
+              {(Object.keys(typeConfig) as InventoryItemType[]).map((itemType) => {
+                const c = typeConfig[itemType];
+                const active = form.type === itemType;
                 return (
                   <button
-                    key={t}
+                    key={itemType}
                     type="button"
-                    onClick={() => handleTypeChange(t)}
+                    onClick={() => handleTypeChange(itemType)}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
                       active
                         ? "border-primary bg-primary/5 text-primary"
@@ -194,7 +196,7 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
                     }`}
                   >
                     <span className={active ? "text-primary" : c.color}>{c.icon}</span>
-                    {c.label}
+                    {typeLabel(itemType)}
                   </button>
                 );
               })}
@@ -202,11 +204,10 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
             {errors.type && <p className="text-xs text-destructive">{errors.type}</p>}
           </div>
 
-          {/* Name */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Item Name *</Label>
+            <Label className="text-sm font-medium">{t("inventory.form.itemName")}</Label>
             <Input
-              placeholder="e.g. Rice, Thermal Paper, Blender"
+              placeholder={t("inventory.form.namePlaceholder")}
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               className={errors.name ? "border-destructive" : ""}
@@ -214,16 +215,14 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
             {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
           </div>
 
-          {/* Dynamic fields */}
           <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <span className={cfg.color}>{cfg.icon}</span>
-              {cfg.label} Details
+              {t("inventory.form.detailsLabel", { type: typeLabel(form.type) })}
             </p>
 
-            {/* Unit — always shown */}
             <div className="space-y-2">
-              <Label className="text-sm">Unit {form.type !== "asset" && "*"}</Label>
+              <Label className="text-sm">{form.type !== "asset" ? t("inventory.form.unitRequired") : t("inventory.form.unit")}</Label>
               <Select value={form.unit} onValueChange={(v) => setForm((f) => ({ ...f, unit: v }))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -237,10 +236,9 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
               {errors.unit && <p className="text-xs text-destructive">{errors.unit}</p>}
             </div>
 
-            {/* Stock / Quantity */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-sm">{form.type === "asset" ? "Quantity" : "Initial Stock"}</Label>
+                <Label className="text-sm">{form.type === "asset" ? t("inventory.form.quantity") : t("inventory.form.initialStock")}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -252,10 +250,9 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
                 {errors.stock && <p className="text-xs text-destructive">{errors.stock}</p>}
               </div>
 
-              {/* Minimum Stock — not for assets */}
               {form.type !== "asset" && (
                 <div className="space-y-2">
-                  <Label className="text-sm">Minimum Stock</Label>
+                  <Label className="text-sm">{t("inventory.form.minStock")}</Label>
                   <Input
                     type="number"
                     min="0"
@@ -269,10 +266,9 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
               )}
             </div>
 
-            {/* Price — not for assets */}
             {form.type !== "asset" && (
               <div className="space-y-2">
-                <Label className="text-sm">Purchase Price (Rp)</Label>
+                <Label className="text-sm">{t("inventory.form.purchasePrice")}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -285,12 +281,11 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
               </div>
             )}
 
-            {/* Notes — only for assets */}
             {form.type === "asset" && (
               <div className="space-y-2">
-                <Label className="text-sm">Notes</Label>
+                <Label className="text-sm">{t("inventory.form.notes")}</Label>
                 <Textarea
-                  placeholder="Description, serial number, location..."
+                  placeholder={t("inventory.form.notesPlaceholder")}
                   value={form.notes}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                   rows={3}
@@ -313,10 +308,10 @@ export default function InventoryFormModal({ open, onOpenChange, editItem, onSav
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
+            {t("inventory.form.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : editItem ? "Update Item" : "Save Item"}
+            {saving ? t("inventory.form.saving") : editItem ? t("inventory.form.updateItem") : t("inventory.form.saveItem")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -31,21 +31,24 @@ import {
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import type { TFunction } from "i18next";
 
 const STATUSES: BugReportStatus[] = ["open", "triaged", "investigating", "fixed", "closed", "wont_fix"];
 const SEVERITIES: BugReportSeverity[] = ["low", "medium", "high", "critical"];
 
-function severityBadge(severity: string) {
-  if (severity === "critical") return <Badge variant="destructive">Critical</Badge>;
-  if (severity === "high") return <Badge className="bg-warning/15 text-warning border-warning/30">High</Badge>;
-  if (severity === "medium") return <Badge variant="secondary">Medium</Badge>;
-  return <Badge variant="outline">Low</Badge>;
+function severityBadge(severity: string, t: TFunction) {
+  if (severity === "critical") return <Badge variant="destructive">{t("accounting.health.severityLabels.critical")}</Badge>;
+  if (severity === "high") return <Badge className="bg-warning/15 text-warning border-warning/30">{t("accounting.health.severityLabels.high")}</Badge>;
+  if (severity === "medium") return <Badge variant="secondary">{t("system.bugReports.severityMedium")}</Badge>;
+  return <Badge variant="outline">{t("system.bugReports.severityLow")}</Badge>;
 }
 
-function statusBadge(status: string) {
-  if (status === "closed" || status === "wont_fix") return <Badge variant="outline">{status}</Badge>;
-  if (status === "fixed") return <Badge className="bg-success/15 text-success border-success/30">Fixed</Badge>;
-  return <Badge>{status}</Badge>;
+function statusBadge(status: string, t: TFunction) {
+  const label = t(`system.bugReports.status.${status}`, { defaultValue: status });
+  if (status === "closed" || status === "wont_fix") return <Badge variant="outline">{label}</Badge>;
+  if (status === "fixed") return <Badge className="bg-success/15 text-success border-success/30">{label}</Badge>;
+  return <Badge>{label}</Badge>;
 }
 
 function formatDate(iso: string | null): string {
@@ -53,8 +56,8 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-function DiagnosticsPanel({ diagnostics }: { diagnostics: Record<string, unknown> | null }) {
-  if (!diagnostics) return <p className="text-sm text-muted-foreground">No diagnostics captured.</p>;
+function DiagnosticsPanel({ diagnostics, t }: { diagnostics: Record<string, unknown> | null; t: TFunction }) {
+  if (!diagnostics) return <p className="text-sm text-muted-foreground">{t("system.bugReports.noDiagnostics")}</p>;
 
   const records = Array.isArray(diagnostics.records) ? diagnostics.records : [];
   const apiErrors = records.filter((r) => typeof r === "object" && r !== null && (r as { type?: string }).type === "api_error");
@@ -85,21 +88,21 @@ function DiagnosticsPanel({ diagnostics }: { diagnostics: Record<string, unknown
 
       {apiErrors.length > 0 && (
         <div>
-          <h4 className="font-medium mb-1">API Errors ({apiErrors.length})</h4>
+          <h4 className="font-medium mb-1">{t("system.bugReports.apiErrors", { count: apiErrors.length })}</h4>
           <pre className="bg-muted/50 rounded-lg p-3 overflow-auto max-h-32 text-xs">{JSON.stringify(apiErrors, null, 2)}</pre>
         </div>
       )}
 
       {consoleErrors.length > 0 && (
         <div>
-          <h4 className="font-medium mb-1">Console Errors ({consoleErrors.length})</h4>
+          <h4 className="font-medium mb-1">{t("system.bugReports.consoleErrors", { count: consoleErrors.length })}</h4>
           <pre className="bg-muted/50 rounded-lg p-3 overflow-auto max-h-32 text-xs">{JSON.stringify(consoleErrors, null, 2)}</pre>
         </div>
       )}
 
       {other.length > 0 && (
         <div>
-          <h4 className="font-medium mb-1">Other Events ({other.length})</h4>
+          <h4 className="font-medium mb-1">{t("system.bugReports.otherEvents", { count: other.length })}</h4>
           <pre className="bg-muted/50 rounded-lg p-3 overflow-auto max-h-32 text-xs">{JSON.stringify(other, null, 2)}</pre>
         </div>
       )}
@@ -114,6 +117,7 @@ function BugReportDetail({
   report: BugReportRow;
   onUpdated: (row: BugReportRow) => void;
 }) {
+  const { t } = useErpTranslation();
   const [status, setStatus] = useState<BugReportStatus>(report.status);
   const [severity, setSeverity] = useState<BugReportSeverity>(report.severity);
   const [assigneeId, setAssigneeId] = useState(report.assignedToUserId ? String(report.assignedToUserId) : "");
@@ -147,9 +151,9 @@ function BugReportDetail({
         assignedToUserId: assigneeId.trim() ? Number(assigneeId) : null,
       });
       onUpdated(updated);
-      toast.success("Bug report updated");
+      toast.success(t("system.bugReports.updated"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("system.bugReports.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -163,9 +167,9 @@ function BugReportDetail({
       const refreshed = await getBugReport(report.id);
       onUpdated(refreshed);
       setComment("");
-      toast.success("Comment added");
+      toast.success(t("system.bugReports.commentAdded"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to add comment");
+      toast.error(e instanceof ApiHttpError ? e.message : t("system.bugReports.commentFailed"));
     } finally {
       setSaving(false);
     }
@@ -174,13 +178,13 @@ function BugReportDetail({
   return (
     <div className="space-y-6 pb-8">
       <div className="flex flex-wrap gap-2">
-        {severityBadge(report.severity)}
-        {statusBadge(report.status)}
+        {severityBadge(report.severity, t)}
+        {statusBadge(report.status, t)}
       </div>
 
       {screenshotSrc ? (
         <div className="rounded-lg border overflow-hidden">
-          <img src={screenshotSrc} alt="Bug screenshot" className="w-full max-h-64 object-contain bg-muted/30" />
+          <img src={screenshotSrc} alt={t("system.bugReports.screenshotAlt")} className="w-full max-h-64 object-contain bg-muted/30" />
         </div>
       ) : null}
 
@@ -191,41 +195,41 @@ function BugReportDetail({
 
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <span className="text-muted-foreground">Reporter</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.reporter")}</span>
           <p>{report.reporterName ?? `#${report.reporterUserId}`}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Route</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.route")}</span>
           <p className="font-mono text-xs break-all">{report.currentRoute ?? "—"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Browser</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.browser")}</span>
           <p>{report.browser ?? "—"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Viewport</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.viewport")}</span>
           <p>{report.viewport ?? "—"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">App version</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.appVersion")}</span>
           <p>{report.appVersion ?? "—"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Created</span>
+          <span className="text-muted-foreground">{t("system.bugReports.fields.created")}</span>
           <p>{formatDate(report.createdAt)}</p>
         </div>
       </div>
 
       <div>
-        <h4 className="font-medium mb-2">Diagnostics</h4>
-        <DiagnosticsPanel diagnostics={report.diagnosticsJson} />
+        <h4 className="font-medium mb-2">{t("system.bugReports.diagnostics")}</h4>
+        <DiagnosticsPanel diagnostics={report.diagnosticsJson} t={t} />
       </div>
 
       <div className="space-y-3 border-t pt-4">
-        <h4 className="font-medium">Manage</h4>
+        <h4 className="font-medium">{t("system.bugReports.manage")}</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label>Status</Label>
+            <Label>{t("system.bugReports.status")}</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as BugReportStatus)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -236,7 +240,7 @@ function BugReportDetail({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Severity</Label>
+            <Label>{t("system.bugReports.severity")}</Label>
             <Select value={severity} onValueChange={(v) => setSeverity(v as BugReportSeverity)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -247,17 +251,17 @@ function BugReportDetail({
             </Select>
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Label>Assign to user ID</Label>
-            <Input value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} placeholder="User ID" />
+            <Label>{t("system.bugReports.assignToUserId")}</Label>
+            <Input value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} placeholder={t("system.bugReports.userIdPlaceholder")} />
           </div>
         </div>
-        <Button size="sm" onClick={() => void saveMeta()} disabled={saving}>Save changes</Button>
+        <Button size="sm" onClick={() => void saveMeta()} disabled={saving}>{t("system.bugReports.saveChanges")}</Button>
       </div>
 
       <div className="space-y-3 border-t pt-4">
-        <h4 className="font-medium">Comments</h4>
+        <h4 className="font-medium">{t("system.bugReports.comments")}</h4>
         {(report.comments ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No comments yet.</p>
+          <p className="text-sm text-muted-foreground">{t("system.bugReports.noComments")}</p>
         ) : (
           <ul className="space-y-2">
             {(report.comments ?? []).map((c) => (
@@ -269,9 +273,9 @@ function BugReportDetail({
             ))}
           </ul>
         )}
-        <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment…" rows={3} />
+        <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t("system.bugReports.commentPlaceholder")} rows={3} />
         <Button size="sm" variant="outline" onClick={() => void submitComment()} disabled={saving || !comment.trim()}>
-          Add comment
+          {t("system.bugReports.addComment")}
         </Button>
       </div>
     </div>
@@ -279,6 +283,7 @@ function BugReportDetail({
 }
 
 export default function BugReportsPage() {
+  const { t } = useErpTranslation();
   const { id: routeId } = useParams();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
@@ -309,11 +314,11 @@ export default function BugReportsPage() {
       });
       setRows(res.data);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load bug reports");
+      toast.error(e instanceof Error ? e.message : t("system.bugReports.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [canAccess, activeOutletId, statusFilter, severityFilter, search]);
+  }, [canAccess, activeOutletId, statusFilter, severityFilter, search, t]);
 
   useEffect(() => {
     void load();
@@ -326,7 +331,7 @@ export default function BugReportsPage() {
       const report = await getBugReport(id);
       setSelected(report);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load detail");
+      toast.error(e instanceof Error ? e.message : t("system.bugReports.loadDetailFailed"));
       setDrawerOpen(false);
     } finally {
       setDetailLoading(false);
@@ -344,8 +349,8 @@ export default function BugReportsPage() {
     return (
       <div className="p-6 max-w-lg mx-auto text-center space-y-4">
         <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground" />
-        <h1 className="text-xl font-semibold">Bug Reports</h1>
-        <p className="text-muted-foreground">You need settings.manage permission to view bug reports.</p>
+        <h1 className="text-xl font-semibold">{t("reportsHub.cards.bug-reports.title")}</h1>
+        <p className="text-muted-foreground">{t("system.bugReports.permissionDenied")}</p>
       </div>
     );
   }
@@ -354,71 +359,69 @@ export default function BugReportsPage() {
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Bug Reports</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            In-app bug submissions with screenshots and diagnostic logs.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.bug-reports.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.bug-reports.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t("ops:shared.refresh")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link to="/notifications">Notification Center</Link>
+            <Link to="/notifications">{t("common:nav.notificationCenter")}</Link>
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Filters</CardTitle>
+          <CardTitle className="text-base">{t("system.bugReports.filters")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Input
-            placeholder="Search title, message, route…"
+            placeholder={t("system.bugReports.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-xs"
           />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder={t("system.bugReports.status")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="all">{t("system.bugReports.allStatuses")}</SelectItem>
               {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={severityFilter} onValueChange={setSeverityFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Severity" /></SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder={t("system.bugReports.severity")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All severities</SelectItem>
+              <SelectItem value="all">{t("system.bugReports.allSeverities")}</SelectItem>
               {SEVERITIES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button variant="secondary" size="sm" onClick={() => void load()}>Apply</Button>
+          <Button variant="secondary" size="sm" onClick={() => void load()}>{t("system.bugReports.apply")}</Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Reports</CardTitle>
+          <CardTitle>{t("system.bugReports.reports")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <Skeleton className="h-48 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No bug reports found.</p>
+            <p className="text-sm text-muted-foreground">{t("system.bugReports.empty")}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Reporter</TableHead>
-                  <TableHead>Route</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Assigned</TableHead>
+                  <TableHead>{t("system.bugReports.table.severity")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.status")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.title")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.reporter")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.route")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.created")}</TableHead>
+                  <TableHead>{t("system.bugReports.table.assigned")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -428,8 +431,8 @@ export default function BugReportsPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => void openDetail(row.id)}
                   >
-                    <TableCell>{severityBadge(row.severity)}</TableCell>
-                    <TableCell>{statusBadge(row.status)}</TableCell>
+                    <TableCell>{severityBadge(row.severity, t)}</TableCell>
+                    <TableCell>{statusBadge(row.status, t)}</TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate">{row.title}</TableCell>
                     <TableCell>{row.reporterName ?? `#${row.reporterUserId}`}</TableCell>
                     <TableCell className="font-mono text-xs max-w-[160px] truncate">{row.currentRoute ?? "—"}</TableCell>
@@ -446,7 +449,7 @@ export default function BugReportsPage() {
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Bug Report #{selected?.id ?? "…"}</SheetTitle>
+            <SheetTitle>{t("system.bugReports.detailTitle", { id: selected?.id ?? "…" })}</SheetTitle>
           </SheetHeader>
           {detailLoading || !selected ? (
             <Skeleton className="h-64 w-full mt-4" />

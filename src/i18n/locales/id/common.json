@@ -24,6 +24,14 @@
     "on": "aktif",
     "off": "nonaktif"
   },
+  "dataTable": {
+    "searchPlaceholder": "Cari…",
+    "emptyMessage": "Tidak ada data",
+    "loadingLabel": "Memuat tabel",
+    "rowsPerPage": "Baris per halaman",
+    "showingRange": "Menampilkan {{from}}–{{to}} dari {{total}}",
+    "pageInfo": "Halaman {{current}} / {{total}}"
+  },
   "language": {
     "label": "Bahasa",
     "en": "English",
@@ -340,7 +348,17 @@
       "valueMin": "Nilai harus ≥ 0",
       "savedLocally": "Pajak disimpan lokal",
       "saved": "Pajak disimpan",
-      "deleteConfirm": "Hapus pajak?"
+      "deleteConfirm": "Hapus pajak?",
+      "effective": "Berlaku",
+      "effectiveFrom": "Berlaku dari",
+      "effectiveTo": "Berlaku sampai",
+      "alwaysEffective": "Selalu",
+      "effectiveRangeInvalid": "Tanggal berakhir harus sama atau setelah tanggal mulai",
+      "outletAssignmentsTitle": "Penugasan pajak outlet",
+      "outletAssignmentsDesc": "Tetapkan aturan pajak ke outlet. POS menampilkan toggle pajak hanya untuk outlet yang punya pajak ter-assign.",
+      "outletAssignmentsSaved": "Penugasan pajak outlet disimpan",
+      "outletAssignmentsSavedLocally": "Penugasan pajak outlet disimpan lokal",
+      "noTaxRules": "Belum ada aturan pajak"
     },
     "printers": {
       "title": "Pengaturan Printer",
@@ -379,7 +397,70 @@
       "testSent": "Test print dikirim ke bridge",
       "testFailed": "Test print gagal",
       "testing": "Mengirim...",
-      "deleteConfirm": "Hapus printer?"
+      "deleteConfirm": "Hapus printer?",
+      "receiptHistory": {
+        "title": "Riwayat render struk (Fase 14)",
+        "description": "Snapshot thermal yang dirender server dan metadata invoice. Pencetakan tetap di antrian backend — panel ini hanya pratinjau dan orkestrasi cetak ulang.",
+        "outlet": "Outlet",
+        "selectOutlet": "Pilih outlet",
+        "loadHistory": "Muat riwayat",
+        "empty": "Belum ada baris. Pilih outlet dan muat riwayat.",
+        "preview": "Pratinjau",
+        "columns": {
+          "id": "Id",
+          "kind": "Jenis",
+          "source": "Sumber",
+          "invoice": "Invoice",
+          "flags": "Flag"
+        },
+        "deferred": "Ditunda",
+        "reprintCount": "R{{count}}"
+      },
+      "receiptPreview": {
+        "title": "Pratinjau struk",
+        "loading": "Memuat struk",
+        "noSelection": "Belum ada struk dipilih.",
+        "invoiceBadge": "Invoice {{number}}",
+        "pdfReady": "PDF siap",
+        "pdfUnavailable": "PDF tidak tersedia",
+        "deferredOffline": "Ditunda / offline",
+        "printPathLive": "Jalur cetak aktif",
+        "reprints": "Cetak ulang {{count}}",
+        "outletLogoAlt": "Logo {{name}}",
+        "openPdf": "Buka PDF",
+        "queueReprint": "Antrekan cetak ulang",
+        "markDeferred": "Tandai replay ditunda",
+        "close": "Tutup"
+      },
+      "tableHeaders": {
+        "name": "Nama",
+        "type": "Tipe",
+        "connection": "Koneksi",
+        "address": "Alamat",
+        "test": "Tes"
+      }
+    },
+    "outletPayments": {
+      "title": "Pengaturan Pembayaran Outlet",
+      "subtitle": "Aktifkan atau nonaktifkan metode pembayaran per outlet. Konfigurasi QRIS statis dan instruksi pembayaran pelanggan.",
+      "outlet": "Outlet",
+      "selectOutlet": "Pilih outlet",
+      "selectOutletHint": "Pilih outlet untuk mengonfigurasi metode pembayaran.",
+      "glAccount": "Akun GL",
+      "staticQris": "QRIS Statis",
+      "noQrImage": "Belum ada gambar QR yang diunggah.",
+      "uploadQrImage": "Unggah gambar QR",
+      "paymentInstructions": "Instruksi pembayaran",
+      "instructionsPlaceholder": "mis. Scan QRIS dan kirim bukti ke kasir",
+      "saveInstructions": "Simpan instruksi",
+      "methodEnabled": "{{label}} diaktifkan",
+      "methodDisabled": "{{label}} dinonaktifkan",
+      "updateFailed": "Gagal memperbarui",
+      "instructionsSaved": "Instruksi QRIS statis disimpan",
+      "glAccountUpdated": "Akun GL diperbarui",
+      "imageUploaded": "Gambar QRIS statis diunggah",
+      "uploadFailed": "Gagal mengunggah",
+      "staticQrisAlt": "QRIS Statis"
     },
     "bridgePairing": {
       "title": "Komputer Printer Outlet",
@@ -471,6 +552,7 @@
       "bankName": "Nama Bank",
       "accountName": "Nama Rekening",
       "accountNumber": "Nomor Rekening",
+      "glAccount": "Akun GL",
       "setDefaultAccount": "Jadikan rekening utama",
       "required": "Nama bank & nomor rekening wajib diisi",
       "savedLocally": "Rekening bank disimpan lokal",
@@ -542,6 +624,10 @@
       "toggleEnabled": "{{label}} diaktifkan",
       "toggleDisabled": "{{label}} dinonaktifkan",
       "saveFailed": "Tidak dapat menyimpan pengaturan sistem"
+    },
+    "audit": {
+      "unavailable": "Aktivitas audit belum tersedia melalui API.",
+      "hint": "Perubahan sensitif keamanan harus ditinjau di server saat logging ditambahkan."
     }
   },
   "menuCategories": {

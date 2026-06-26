@@ -3,6 +3,7 @@ import { ExecutiveWidgetCard } from "@/components/executive/ExecutiveWidgetCard"
 import { SystemHealthStatusBadge } from "@/components/system-health/SystemHealthStatusBadge";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function MetricRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -14,6 +15,7 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 }
 
 export function ExecutiveDashboardSystemHealthWidget() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const health = useExecutiveSystemHealthSummary(activeOutletId, hasPermission);
@@ -26,23 +28,23 @@ export function ExecutiveDashboardSystemHealthWidget() {
 
   return (
     <ExecutiveWidgetCard
-      title="System Health Summary"
-      description="Unified reliability and incident overview"
+      title={t("executive.systemHealthWidget.title")}
+      description={t("executive.systemHealthWidget.description")}
       status={status}
       permissionHint="settings.manage"
       openTo="/system/health"
-      openLabel="Health Center"
+      openLabel={t("executive.systemHealthWidget.healthCenter")}
     >
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-2xl font-bold tabular-nums">{health.score}</span>
           <SystemHealthStatusBadge severity={health.severity} />
         </div>
-        <MetricRow label="Active Incidents" value={health.activeIncidents} />
-        <MetricRow label="Critical Bugs" value={health.bugReports.counts?.critical ?? 0} />
-        <MetricRow label="Failed Jobs" value={health.failedJobs.data?.failedJobs ?? 0} />
+        <MetricRow label={t("executive.systemHealthWidget.activeIncidents")} value={health.activeIncidents} />
+        <MetricRow label={t("executive.systemHealthWidget.criticalBugs")} value={health.bugReports.counts?.critical ?? 0} />
+        <MetricRow label={t("executive.systemHealthWidget.failedJobs")} value={health.failedJobs.data?.failedJobs ?? 0} />
         {health.scorePartial ? (
-          <p className="text-xs text-muted-foreground">Partial score — some modules unavailable</p>
+          <p className="text-xs text-muted-foreground">{t("executive.systemHealthWidget.partialScore")}</p>
         ) : null}
       </div>
     </ExecutiveWidgetCard>

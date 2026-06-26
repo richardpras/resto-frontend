@@ -1,5 +1,6 @@
 import { computeKitchenDayMetrics, formatKitchenMetricValue } from "@/domain/kitchenMetrics";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   tickets: KitchenTicket[];
@@ -7,21 +8,23 @@ type Props = {
 };
 
 export function KdsMetricsStrip({ tickets, nowMs }: Props) {
+  const { t } = useOpsTranslation();
   const metrics = computeKitchenDayMetrics(tickets, nowMs);
+  const minSuffix = t("kitchen.metrics.minutesSuffix");
 
   return (
     <div
       className="shrink-0 grid grid-cols-3 gap-2 sm:gap-4 max-h-[80px] mb-3"
       data-testid="kitchen-day-metrics"
     >
-      <MetricCell label="Today Completed" value={String(metrics.completedToday)} />
+      <MetricCell label={t("kitchen.metrics.completedToday")} value={String(metrics.completedToday)} />
       <MetricCell
-        label="Average Cook Time"
-        value={formatKitchenMetricValue(metrics.averageCookTimeMinutes, " min")}
+        label={t("kitchen.metrics.avgCookTime")}
+        value={formatKitchenMetricValue(metrics.averageCookTimeMinutes, minSuffix)}
       />
       <MetricCell
-        label="Longest Waiting"
-        value={formatKitchenMetricValue(metrics.longestWaitingMinutes, " min")}
+        label={t("kitchen.metrics.longestWaiting")}
+        value={formatKitchenMetricValue(metrics.longestWaitingMinutes, minSuffix)}
         data-testid="kds-longest-waiting"
       />
     </div>

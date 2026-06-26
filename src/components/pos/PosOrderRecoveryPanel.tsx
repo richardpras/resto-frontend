@@ -19,11 +19,9 @@ function lineTotal(it: OrderItem): number {
   return (Number(it.price) || 0) * (Number(it.qty) || 0);
 }
 
-function recomputeOrderTotals(items: OrderItem[], priorTax: number): { subtotal: number; tax: number; total: number } {
+function recomputeOrderTotals(items: OrderItem[]): { subtotal: number } {
   const subtotal = Math.round(items.reduce((s, it) => s + lineTotal(it), 0) * 100) / 100;
-  const tax = Math.round((priorTax || 0) * 100) / 100;
-  const total = Math.round((subtotal + tax) * 100) / 100;
-  return { subtotal, tax, total };
+  return { subtotal };
 }
 
 export function PosOrderRecoveryPanel({ order }: { order: Order | null }) {
@@ -67,13 +65,12 @@ export function PosOrderRecoveryPanel({ order }: { order: Order | null }) {
       emoji: it.emoji,
       notes: it.notes || undefined,
     }));
-    const { subtotal, tax, total } = recomputeOrderTotals(remaining, order.tax);
+    const subtotal = Math.round(remaining.reduce((s, it) => s + lineTotal(it), 0) * 100) / 100;
     try {
       await updateOrderRemote(order.id, {
         items: mapped,
         subtotal,
-        tax,
-        total,
+        applyTax: order.applyTax ?? false,
       });
       toast.success("Order updated");
     } catch {

@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ALL_PERMISSIONS, testNavConfig } from "./AppSidebar.testUtils";
 import { AppSidebar } from "@/components/AppSidebar";
+import { ensureEnglishLocale } from "@/test/i18nTestSetup";
+
+vi.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => false,
+  useIsSidebarDrawer: () => false,
+}));
 
 describe("AppSidebar submenu navigation", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureEnglishLocale();
     testNavConfig.permissions = [...ALL_PERMISSIONS];
     testNavConfig.pinSet = true;
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1280 });
   });
 
   it("renders HR payroll groups with children", () => {
@@ -18,8 +26,8 @@ describe("AppSidebar submenu navigation", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Payroll")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Preparation" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Posting" })).toBeTruthy();
   });
 
   it("links payroll posting to /hr/payroll/posting", () => {
@@ -28,8 +36,8 @@ describe("AppSidebar submenu navigation", () => {
         <AppSidebar />
       </MemoryRouter>,
     );
-    const link = screen.getByRole("link", { name: "Overview" }).closest("a");
-    expect(link?.getAttribute("href")).toBe("/hr/payroll");
+    const preparationLink = screen.getByRole("link", { name: "Preparation" }).closest("a");
+    expect(preparationLink?.getAttribute("href")).toBe("/hr/payroll/preparation");
     const postingLink = Array.from(document.querySelectorAll("a")).find(
       (a) => a.getAttribute("href") === "/hr/payroll/posting",
     );

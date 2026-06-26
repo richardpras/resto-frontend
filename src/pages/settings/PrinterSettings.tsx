@@ -190,9 +190,9 @@ export default function PrinterSettings() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Connection</TableHead>
+              <TableHead>{t("settings.printers.tableHeaders.name")}</TableHead><TableHead>{t("settings.printers.tableHeaders.type")}</TableHead><TableHead>{t("settings.printers.tableHeaders.connection")}</TableHead>
               <TableHead>{t("settings.printers.paperWidth")}</TableHead>
-              <TableHead>Address</TableHead><TableHead>Outlet</TableHead><TableHead className="w-32"></TableHead>
+              <TableHead>{t("settings.printers.tableHeaders.address")}</TableHead><TableHead>{t("settings.printers.outlet")}</TableHead><TableHead className="w-32"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -212,7 +212,7 @@ export default function PrinterSettings() {
                       disabled={testingPrinterId === p.id}
                       onClick={() => void test(p)}
                     >
-                      {testingPrinterId === p.id ? t("settings.printers.testing") : "Test"}
+                      {testingPrinterId === p.id ? t("settings.printers.testing") : t("settings.printers.tableHeaders.test")}
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => { setForm(normalizePrinterForForm(p)); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                     <Button
@@ -245,19 +245,19 @@ export default function PrinterSettings() {
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 pt-4">
         <div className="space-y-3 border-t pt-4">
-          <h3 className="font-medium">Receipt render history (Phase 14)</h3>
+          <h3 className="font-medium">{t("settings.printers.receiptHistory.title")}</h3>
           <p className="text-xs text-muted-foreground">
-            Server-rendered thermal snapshots and invoice metadata. Printing stays on the backend queue — this panel is preview and reprint orchestration only.
+            {t("settings.printers.receiptHistory.description")}
           </p>
           <div className="flex flex-wrap gap-2 items-end">
             <div className="space-y-2">
-              <Label>Outlet</Label>
+              <Label>{t("settings.printers.receiptHistory.outlet")}</Label>
               <Select
                 value={historyOutletId && historyOutletId > 0 ? String(historyOutletId) : ""}
                 onValueChange={(v) => setHistoryOutletId(Number(v))}
               >
                 <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Select outlet" />
+                  <SelectValue placeholder={t("settings.printers.receiptHistory.selectOutlet")} />
                 </SelectTrigger>
                 <SelectContent>
                   {outlets.map((o) => (
@@ -276,7 +276,7 @@ export default function PrinterSettings() {
                 if (historyOutletId && historyOutletId > 0) void loadReceiptHistory(historyOutletId);
               }}
             >
-              {isLoadingReceiptHistory ? "Loading…" : "Load history"}
+              {isLoadingReceiptHistory ? t("common.loading") : t("settings.printers.receiptHistory.loadHistory")}
             </Button>
           </div>
           {receiptHistoryError ? <p className="text-sm text-destructive">{receiptHistoryError}</p> : null}
@@ -284,27 +284,27 @@ export default function PrinterSettings() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Id</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Flags</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.id")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.kind")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.source")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.invoice")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.flags")}</TableHead>
                   <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <ShadcnTableSkeletonBody columns={6} rows={6} />
             </Table>
           ) : historyRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No rows loaded. Choose an outlet and load history.</p>
+            <p className="text-sm text-muted-foreground">{t("settings.printers.receiptHistory.empty")}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Id</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Flags</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.id")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.kind")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.source")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.invoice")}</TableHead>
+                  <TableHead>{t("settings.printers.receiptHistory.columns.flags")}</TableHead>
                   <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
@@ -318,13 +318,13 @@ export default function PrinterSettings() {
                     </TableCell>
                     <TableCell className="text-xs">{row.invoiceNumber ?? "—"}</TableCell>
                     <TableCell className="text-xs space-x-1">
-                      {row.deferredReplayPending ? <Badge variant="destructive">Deferred</Badge> : null}
+                      {row.deferredReplayPending ? <Badge variant="destructive">{t("settings.printers.receiptHistory.deferred")}</Badge> : null}
                       {row.pdfAvailable ? <Badge variant="outline">PDF</Badge> : null}
-                      <Badge variant="outline">R{row.reprintCount}</Badge>
+                      <Badge variant="outline">{t("settings.printers.receiptHistory.reprintCount", { count: row.reprintCount })}</Badge>
                     </TableCell>
                     <TableCell>
                       <Button type="button" size="sm" variant="outline" onClick={() => void openReceiptPreview(row.id)}>
-                        Preview
+                        {t("settings.printers.receiptHistory.preview")}
                       </Button>
                     </TableCell>
                   </TableRow>

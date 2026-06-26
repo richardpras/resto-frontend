@@ -27,6 +27,15 @@ const statusColors = {
   void: "bg-destructive/15 text-destructive border-destructive/30",
 } as const;
 
+const invoiceStatusColors: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground",
+  submitted: "bg-info/15 text-info border-info/30",
+  approved: "bg-warning/15 text-warning border-warning/30",
+  partial: "bg-warning/15 text-warning border-warning/30",
+  paid: "bg-success/15 text-success border-success/30",
+  void: "bg-destructive/15 text-destructive border-destructive/30",
+};
+
 type PaymentMethod = "cash" | "bank_transfer" | "giro" | "check" | "other";
 
 export default function PurchasePayments() {
@@ -51,6 +60,8 @@ export default function PurchasePayments() {
   const [aging, setAging] = useState<ApAgingReport | null>(null);
   const [statement, setStatement] = useState<SupplierStatement | null>(null);
   const [statementSupplierId, setStatementSupplierId] = useState("");
+  const [statementFromDate, setStatementFromDate] = useState("");
+  const [statementToDate, setStatementToDate] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
@@ -95,10 +106,15 @@ export default function PurchasePayments() {
       setStatement(null);
       return;
     }
-    void getSupplierStatement({ outletId: activeOutletId, supplierId: Number(statementSupplierId) })
+    void getSupplierStatement({
+      outletId: activeOutletId,
+      supplierId: Number(statementSupplierId),
+      ...(statementFromDate ? { fromDate: statementFromDate } : {}),
+      ...(statementToDate ? { toDate: statementToDate } : {}),
+    })
       .then(setStatement)
       .catch(() => setStatement(null));
-  }, [statementSupplierId, activeOutletId, supplierPayments]);
+  }, [statementSupplierId, statementFromDate, statementToDate, activeOutletId, supplierPayments]);
 
   const payableInvoices = invoices.filter(
     (inv) => inv.supplierId === supplierId && ["approved", "partial"].includes(inv.status),
@@ -169,6 +185,10 @@ export default function PurchasePayments() {
 
   const paymentStatusLabel = (status: keyof typeof statusColors) => t(`purchases.status.${status}`);
 
+  const invoiceStatusLabel = (status: string) => t(`purchases.status.${status}`, { defaultValue: status });
+
+  const statementHasRows = statement && (statement.invoices.length > 0 || statement.payments.length > 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -180,7 +200,7 @@ export default function PurchasePayments() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {summaryCards.map((item) => (
             <Card key={item.label}><CardContent className="p-3"><p className="text-xs text-muted-foreground">{item.label}</p><p className="text-lg font-semibold">{item.value}</p></CardContent></Card>
           ))}
@@ -271,18 +291,116 @@ export default function PurchasePayments() {
         </TabsContent>
 
         <TabsContent value="statement" className="space-y-4">
-          <Select value={statementSupplierId} onValueChange={setStatementSupplierId}>
-            <SelectTrigger className="max-w-sm"><SelectValue placeholder={t("purchases.pay.form.selectSupplier")} /></SelectTrigger>
-            <SelectContent>
-              {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {statement && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("purchases.shared.supplier")}</label>
+              <Select value={statementSupplierId} onValueChange={setStatementSupplierId}>
+                <SelectTrigger className="w-56"><SelectValue placeholder={t("purchases.pay.form.selectSupplier")} /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("purchases.pay.statement.fromDate")}</label>
+              <Input type="date" className="w-40" value={statementFromDate} onChange={(e) => setStatementFromDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("purchases.pay.statement.toDate")}</label>
+              <Input type="date" className="w-40" value={statementToDate} onChange={(e) => setStatementToDate(e.target.value)} />
+            </div>
+          </div>
+
+          {!statementSupplierId && (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">{t("purchases.pay.statement.noSupplierSelected")}</CardContent></Card>
+          )}
+
+          {statementSupplierId && statement && (
             <div className="grid md:grid-cols-3 gap-3">
               <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.invoiced")}</p><p className="text-lg font-semibold">{statement.totalInvoiced.toLocaleString()}</p></CardContent></Card>
               <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.paid")}</p><p className="text-lg font-semibold">{statement.totalPaid.toLocaleString()}</p></CardContent></Card>
               <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t("purchases.pay.summary.outstanding")}</p><p className="text-lg font-semibold">{statement.outstanding.toLocaleString()}</p></CardContent></Card>
             </div>
+          )}
+
+          {statementSupplierId && statement && !statementHasRows && (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">{t("purchases.pay.statement.empty")}</CardContent></Card>
+          )}
+
+          {statementHasRows && (
+            <>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">{t("purchases.pay.statement.invoicesTitle")}</h3>
+                <Card><CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead>{t("purchases.pay.statement.columns.invoiceNo")}</TableHead>
+                        <TableHead>{t("purchases.shared.date")}</TableHead>
+                        <TableHead>{t("purchases.pay.statement.columns.dueDate")}</TableHead>
+                        <TableHead>{t("purchases.shared.total")}</TableHead>
+                        <TableHead>{t("purchases.pay.statement.columns.paidAmount")}</TableHead>
+                        <TableHead>{t("purchases.pay.statement.columns.outstandingAmount")}</TableHead>
+                        <TableHead>{t("purchases.shared.status")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {statement.invoices.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">{t("purchases.pay.statement.empty")}</TableCell>
+                        </TableRow>
+                      ) : statement.invoices.map((inv) => (
+                        <TableRow key={inv.id}>
+                          <TableCell className="font-mono text-sm">{inv.invoiceNumber}</TableCell>
+                          <TableCell>{inv.date}</TableCell>
+                          <TableCell>{inv.dueDate ?? "—"}</TableCell>
+                          <TableCell>{inv.total.toLocaleString()}</TableCell>
+                          <TableCell>{inv.paidAmount.toLocaleString()}</TableCell>
+                          <TableCell>{inv.outstandingAmount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={invoiceStatusColors[inv.status] ?? ""}>{invoiceStatusLabel(inv.status)}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent></Card>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">{t("purchases.pay.statement.paymentsTitle")}</h3>
+                <Card><CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead>{t("purchases.pay.columns.paymentNo")}</TableHead>
+                        <TableHead>{t("purchases.shared.date")}</TableHead>
+                        <TableHead>{t("purchases.shared.total")}</TableHead>
+                        <TableHead>{t("purchases.pay.columns.allocated")}</TableHead>
+                        <TableHead>{t("purchases.pay.form.method")}</TableHead>
+                        <TableHead>{t("purchases.pay.form.referenceNo")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {statement.payments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{t("purchases.pay.statement.empty")}</TableCell>
+                        </TableRow>
+                      ) : statement.payments.map((pay) => (
+                        <TableRow key={pay.id}>
+                          <TableCell className="font-mono text-sm">{pay.paymentNo}</TableCell>
+                          <TableCell>{pay.date}</TableCell>
+                          <TableCell>{pay.amount.toLocaleString()}</TableCell>
+                          <TableCell>{pay.allocatedAmount.toLocaleString()}</TableCell>
+                          <TableCell>{t(`purchases.pay.methods.${pay.paymentMethod as PaymentMethod}`, { defaultValue: pay.paymentMethod })}</TableCell>
+                          <TableCell>{pay.referenceNo ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent></Card>
+              </div>
+            </>
           )}
         </TabsContent>
       </Tabs>

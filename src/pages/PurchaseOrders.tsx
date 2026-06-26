@@ -375,7 +375,7 @@ export default function PurchaseOrders() {
               <div className="border rounded-lg divide-y">
                 {viewed.items.map((item, idx) => (
                   <div key={idx} className="px-3 py-2 grid grid-cols-4 gap-2 text-xs">
-                    <span className="col-span-2">Item #{item.inventoryItemId}</span>
+                    <span className="col-span-2">{t("purchases.po.itemLabel", { id: item.inventoryItemId })}</span>
                     <span>{t("purchases.po.ordered")} {item.qty}</span>
                     <span>{t("purchases.po.receivedQty")} {item.receivedQty} · {t("purchases.po.remaining")} {item.remainingQty ?? Math.max(0, item.qty - item.receivedQty)}</span>
                   </div>

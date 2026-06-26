@@ -4,6 +4,7 @@ import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
 import { getQrOrderCustomerHealth } from "@/lib/api-integration/qrOrderEndpoints";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function MetricRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -15,6 +16,7 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 }
 
 export function ExecutiveCustomerOrderingWidget() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canView = hasPermission("pos.use");
@@ -29,20 +31,20 @@ export function ExecutiveCustomerOrderingWidget() {
 
   return (
     <ExecutiveWidgetCard
-      title="Customer Ordering Health"
-      description="QR review queue and customer calls"
+      title={t("executive.customerOrdering.title")}
+      description={t("executive.customerOrdering.description")}
       status={!canView ? "restricted" : isLoading ? "loading" : isError ? "error" : "success"}
-      permissionHint="Requires POS access"
+      permissionHint={t("executive.customerOrdering.permissionHint")}
       errorMessage={error instanceof Error ? error.message : undefined}
       openTo="/qr-orders"
     >
       {data ? (
         <div className="space-y-2">
-          <MetricRow label="Pending Reviews" value={data.pendingReviews} />
-          <MetricRow label="Awaiting Customer Approval" value={data.adjustedAwaitingApproval} />
-          <MetricRow label="Avg Review Time (min)" value={data.averageReviewTimeMinutes} />
-          <MetricRow label="Avg Ready Time (min)" value={data.averageReadyTimeMinutes} />
-          <MetricRow label="Customer Calls Today" value={data.callCashierVolume} />
+          <MetricRow label={t("executive.customerOrdering.pendingReviews")} value={data.pendingReviews} />
+          <MetricRow label={t("executive.customerOrdering.awaitingApproval")} value={data.adjustedAwaitingApproval} />
+          <MetricRow label={t("executive.customerOrdering.avgReviewTime")} value={data.averageReviewTimeMinutes} />
+          <MetricRow label={t("executive.customerOrdering.avgReadyTime")} value={data.averageReadyTimeMinutes} />
+          <MetricRow label={t("executive.customerOrdering.customerCallsToday")} value={data.callCashierVolume} />
         </div>
       ) : null}
     </ExecutiveWidgetCard>

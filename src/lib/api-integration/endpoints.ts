@@ -367,6 +367,15 @@ export type KitchenStatus =
   | "cancelled"
   | "pending_confirmation";
 
+export type OrderTaxSnapshotLine = {
+  taxId: string;
+  name: string;
+  type: string;
+  rate: number;
+  inclusive: boolean;
+  amount: number;
+};
+
 export type CreateOrderPayload = {
   tenantId?: number;
   outletId?: number;
@@ -378,6 +387,8 @@ export type CreateOrderPayload = {
   items: OrderItemPayload[];
   subtotal: number;
   tax: number;
+  applyTax?: boolean;
+  taxSnapshot?: OrderTaxSnapshotLine[] | null;
   total: number;
   discountAmount?: number;
   payments: OrderPaymentPayload[];
@@ -400,6 +411,8 @@ export type UpdateOrderPayload = Partial<{
   items: OrderItemPayload[];
   subtotal: number;
   tax: number;
+  applyTax?: boolean;
+  taxSnapshot?: OrderTaxSnapshotLine[] | null;
   total: number;
   discountAmount: number;
   customerName: string | null;
@@ -431,6 +444,8 @@ export type OrderApi = {
   items: (OrderItemPayload & { orderItemId?: string })[];
   subtotal: number;
   tax: number;
+  applyTax?: boolean;
+  taxSnapshot?: OrderTaxSnapshotLine[] | null;
   total: number;
   discountAmount?: number;
   balanceDue?: number;

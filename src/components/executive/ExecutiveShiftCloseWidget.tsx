@@ -6,6 +6,7 @@ import { getShiftCloseReadiness } from "@/lib/api-integration/shiftCloseEndpoint
 import { formatMoney } from "@/lib/format/currency";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function MetricRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -17,6 +18,7 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 }
 
 export function ExecutiveShiftCloseWidget() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canView = hasPermission("finance.shift_close");
@@ -33,21 +35,21 @@ export function ExecutiveShiftCloseWidget() {
 
   return (
     <ExecutiveWidgetCard
-      title="Last Shift Close"
-      description="Snapshot variances and posting status"
+      title={t("executive.shiftClose.title")}
+      description={t("executive.shiftClose.description")}
       status={!enabled ? "restricted" : readinessQ.isLoading ? "loading" : readinessQ.isError ? "error" : "success"}
-      permissionHint="Requires finance.shift_close"
+      permissionHint={t("executive.shiftClose.permissionHint")}
       errorMessage={readinessQ.error instanceof Error ? readinessQ.error.message : undefined}
       openTo="/shift-close"
     >
       {readinessQ.data ? (
         <div className="space-y-2">
-          <MetricRow label="Last Close" value={last?.completedAt ? new Date(last.completedAt).toLocaleString() : "—"} />
-          <MetricRow label="Open Bills" value={last?.openBillCount ?? readinessQ.data.checks.openBills} />
-          <MetricRow label="Cash Variance" value={last?.cashVariance != null ? formatMoney(last.cashVariance) : "—"} />
-          <MetricRow label="Inventory Variance" value={last?.inventoryVariance ?? 0} />
-          <MetricRow label="Status" value={last?.status ?? last?.postingStatus ?? "—"} />
-          <Link to="/shift-close" className="text-xs text-primary underline">Run shift close</Link>
+          <MetricRow label={t("executive.shiftClose.lastClose")} value={last?.completedAt ? new Date(last.completedAt).toLocaleString() : "—"} />
+          <MetricRow label={t("executive.shiftClose.openBills")} value={last?.openBillCount ?? readinessQ.data.checks.openBills} />
+          <MetricRow label={t("executive.shiftClose.cashVariance")} value={last?.cashVariance != null ? formatMoney(last.cashVariance) : "—"} />
+          <MetricRow label={t("executive.shiftClose.inventoryVariance")} value={last?.inventoryVariance ?? 0} />
+          <MetricRow label={t("executive.shiftClose.status")} value={last?.status ?? last?.postingStatus ?? "—"} />
+          <Link to="/shift-close" className="text-xs text-primary underline">{t("executive.shiftClose.runShiftClose")}</Link>
         </div>
       ) : null}
     </ExecutiveWidgetCard>

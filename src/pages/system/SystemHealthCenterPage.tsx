@@ -15,6 +15,7 @@ import { SystemHealthTrendChart } from "@/components/system-health/SystemHealthT
 import { useSystemHealthData } from "@/hooks/system-health/useSystemHealthData";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 function MetricRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -26,6 +27,7 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 }
 
 export default function SystemHealthCenterPage() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canAccess = hasPermission("settings.manage");
@@ -47,8 +49,8 @@ export default function SystemHealthCenterPage() {
     return (
       <div className="p-6 max-w-lg mx-auto text-center space-y-4">
         <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground" />
-        <h1 className="text-xl font-semibold">System Health Center</h1>
-        <p className="text-muted-foreground">You need settings.manage permission to view the health center.</p>
+        <h1 className="text-xl font-semibold">{t("reportsHub.cards.system-health-center.title")}</h1>
+        <p className="text-muted-foreground">{t("system.healthCenter.permissionDenied")}</p>
       </div>
     );
   }
@@ -56,33 +58,31 @@ export default function SystemHealthCenterPage() {
   if (typeof activeOutletId !== "number" || activeOutletId < 1) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">System Health Center</h1>
-        <p className="text-sm text-muted-foreground mt-2">Select an outlet to load health data.</p>
+        <h1 className="text-2xl font-bold">{t("reportsHub.cards.system-health-center.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("system.healthCenter.selectOutlet")}</p>
       </div>
     );
   }
 
   const handleRefresh = () => {
     health.refetchAll();
-    toast.message("Refreshing health data…");
+    toast.message(t("system.healthCenter.refreshing"));
   };
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">System Health Center</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Unified operations and reliability command center — cross-module health aggregation.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.system-health-center.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.system-health-center.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t("ops:shared.refresh")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link to="/reports">Reports Hub</Link>
+            <Link to="/reports">{t("system.healthCenter.reportsHub")}</Link>
           </Button>
         </div>
       </div>
@@ -95,30 +95,30 @@ export default function SystemHealthCenterPage() {
           loading={health.loading}
         />
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Active Incidents</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.healthCenter.metrics.activeIncidents")}</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{health.activeIncidents}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Critical Alerts</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.healthCenter.metrics.criticalAlerts")}</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{health.notifications.critical?.length ?? 0}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Open Bugs</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.healthCenter.metrics.openBugs")}</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{health.bugReports.counts?.open ?? 0}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Failed Jobs</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.healthCenter.metrics.failedJobs")}</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{health.failedJobs.data?.failedJobs ?? 0}</p></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Unread</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.healthCenter.metrics.unread")}</CardTitle></CardHeader>
           <CardContent><p className="text-3xl font-bold">{health.notifications.unreadCount ?? 0}</p></CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <SystemModuleHealthCard
-          title="Accounting Health"
+          title={t("system.healthCenter.modules.accountingHealth")}
           status={health.accounting.status}
           severity={health.accounting.data?.healthSeverity}
           openTo="/accounting?tab=health"
@@ -126,12 +126,12 @@ export default function SystemHealthCenterPage() {
         >
           {health.accounting.data ? (
             <div className="space-y-2">
-              <MetricRow label="Health Score" value={health.accounting.data.healthScore} />
-              <MetricRow label="Failed Postings" value={health.accounting.data.failedPostings} />
-              <MetricRow label="Priority Queue" value={health.accounting.data.priorityQueue?.length ?? 0} />
+              <MetricRow label={t("system.healthCenter.modules.healthScore")} value={health.accounting.data.healthScore} />
+              <MetricRow label={t("system.healthCenter.modules.failedPostings")} value={health.accounting.data.failedPostings} />
+              <MetricRow label={t("system.healthCenter.modules.priorityQueue")} value={health.accounting.data.priorityQueue?.length ?? 0} />
               {health.accounting.data.priorityQueue?.[0] ? (
                 <p className="text-xs text-muted-foreground truncate">
-                  Latest: {health.accounting.data.priorityQueue[0].title}
+                  {t("system.healthCenter.modules.latest", { title: health.accounting.data.priorityQueue[0].title })}
                 </p>
               ) : null}
             </div>
@@ -139,7 +139,7 @@ export default function SystemHealthCenterPage() {
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Inventory Posting Issues"
+          title={t("system.healthCenter.modules.inventoryPosting")}
           status={
             inventoryPostingQ.isLoading
               ? "loading"
@@ -153,11 +153,11 @@ export default function SystemHealthCenterPage() {
         >
           {inventoryPostingQ.data ? (
             <div className="space-y-2">
-              <MetricRow label="Pending" value={inventoryPostingQ.data.pendingPostings} />
-              <MetricRow label="Review Required" value={inventoryPostingQ.data.reviewRequiredPostings} />
-              <MetricRow label="Failed" value={inventoryPostingQ.data.failedPostings} />
-              <MetricRow label="Open Incidents" value={inventoryPostingQ.data.openIncidents} />
-              <MetricRow label="Mode" value={inventoryPostingQ.data.enforcementMode} />
+              <MetricRow label={t("system.healthCenter.modules.pending")} value={inventoryPostingQ.data.pendingPostings} />
+              <MetricRow label={t("system.healthCenter.modules.reviewRequired")} value={inventoryPostingQ.data.reviewRequiredPostings} />
+              <MetricRow label={t("system.healthCenter.modules.failed")} value={inventoryPostingQ.data.failedPostings} />
+              <MetricRow label={t("system.healthCenter.modules.openIncidents")} value={inventoryPostingQ.data.openIncidents} />
+              <MetricRow label={t("system.healthCenter.modules.mode")} value={inventoryPostingQ.data.enforcementMode} />
             </div>
           ) : null}
         </SystemModuleHealthCard>
@@ -165,7 +165,7 @@ export default function SystemHealthCenterPage() {
         <ShiftCloseReadinessWidget />
 
         <SystemModuleHealthCard
-          title="Duplicate Order Prevention"
+          title={t("system.healthCenter.modules.duplicateOrderPrevention")}
           status={
             checkoutIntegrityQ.isLoading
               ? "loading"
@@ -178,17 +178,17 @@ export default function SystemHealthCenterPage() {
         >
           {checkoutIntegrityQ.data ? (
             <div className="space-y-2">
-              <MetricRow label="Retries" value={checkoutIntegrityQ.data.retries} />
-              <MetricRow label="Idempotency Hits" value={checkoutIntegrityQ.data.idempotencyHits} />
-              <MetricRow label="Duplicates Prevented" value={checkoutIntegrityQ.data.duplicatePreventionCount} />
-              <MetricRow label="Resumed Orders" value={checkoutIntegrityQ.data.resumeExistingOrderCount} />
-              <MetricRow label="QR Bill Resumes" value={checkoutIntegrityQ.data.qrResumeCount} />
+              <MetricRow label={t("system.healthCenter.modules.retries")} value={checkoutIntegrityQ.data.retries} />
+              <MetricRow label={t("system.healthCenter.modules.idempotencyHits")} value={checkoutIntegrityQ.data.idempotencyHits} />
+              <MetricRow label={t("system.healthCenter.modules.duplicatesPrevented")} value={checkoutIntegrityQ.data.duplicatePreventionCount} />
+              <MetricRow label={t("system.healthCenter.modules.resumedOrders")} value={checkoutIntegrityQ.data.resumeExistingOrderCount} />
+              <MetricRow label={t("system.healthCenter.modules.qrBillResumes")} value={checkoutIntegrityQ.data.qrResumeCount} />
             </div>
           ) : null}
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Payment Health"
+          title={t("system.healthCenter.modules.paymentHealth")}
           status={health.payment.status}
           severity={health.payment.data?.healthSeverity}
           openTo="/settings/payments/health"
@@ -196,15 +196,15 @@ export default function SystemHealthCenterPage() {
         >
           {health.payment.data ? (
             <div className="space-y-2">
-              <MetricRow label="Success Rate" value={`${health.payment.data.paymentSuccessRate ?? "—"}%`} />
-              <MetricRow label="Failed Webhooks" value={health.payment.data.failedWebhooks ?? 0} />
-              <MetricRow label="Open Incidents" value={health.payment.data.openIncidents ?? 0} />
+              <MetricRow label={t("system.healthCenter.modules.successRate")} value={`${health.payment.data.paymentSuccessRate ?? "—"}%`} />
+              <MetricRow label={t("system.healthCenter.modules.failedWebhooks")} value={health.payment.data.failedWebhooks ?? 0} />
+              <MetricRow label={t("system.healthCenter.modules.openIncidents")} value={health.payment.data.openIncidents ?? 0} />
             </div>
           ) : null}
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Failed Jobs"
+          title={t("system.healthCenter.modules.failedJobs")}
           status={health.failedJobs.status}
           severity={health.failedJobs.data?.healthStatus}
           openTo="/system/failed-jobs"
@@ -212,10 +212,10 @@ export default function SystemHealthCenterPage() {
         >
           {health.failedJobs.data ? (
             <div className="space-y-2">
-              <MetricRow label="Total Failures" value={health.failedJobs.data.failedJobs} />
-              <MetricRow label="Critical" value={health.failedJobs.data.criticalFailures} />
+              <MetricRow label={t("system.healthCenter.modules.totalFailures")} value={health.failedJobs.data.failedJobs} />
+              <MetricRow label={t("system.healthCenter.modules.critical")} value={health.failedJobs.data.criticalFailures} />
               <MetricRow
-                label="Oldest (min)"
+                label={t("system.healthCenter.modules.oldestMinutes")}
                 value={health.failedJobs.data.oldestFailureMinutes ?? "—"}
               />
             </div>
@@ -223,7 +223,7 @@ export default function SystemHealthCenterPage() {
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Bug Reports"
+          title={t("system.healthCenter.modules.bugReports")}
           status={health.bugReports.status}
           severity={health.bugReports.counts?.critical ? "critical" : "healthy"}
           openTo="/system/bug-reports"
@@ -231,23 +231,23 @@ export default function SystemHealthCenterPage() {
         >
           {health.bugReports.counts ? (
             <div className="space-y-2">
-              <MetricRow label="Open" value={health.bugReports.counts.open} />
-              <MetricRow label="Critical" value={health.bugReports.counts.critical} />
-              <MetricRow label="Investigating" value={health.bugReports.counts.investigating} />
-              <MetricRow label="Fixed Today" value={health.bugReports.counts.fixedToday} />
+              <MetricRow label={t("system.healthCenter.modules.open")} value={health.bugReports.counts.open} />
+              <MetricRow label={t("system.healthCenter.modules.critical")} value={health.bugReports.counts.critical} />
+              <MetricRow label={t("system.healthCenter.modules.investigating")} value={health.bugReports.counts.investigating} />
+              <MetricRow label={t("system.healthCenter.modules.fixedToday")} value={health.bugReports.counts.fixedToday} />
             </div>
           ) : null}
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Notifications"
+          title={t("system.healthCenter.modules.notifications")}
           status={health.notifications.status}
           openTo="/notifications"
           errorMessage={health.notifications.error}
         >
           <div className="space-y-2">
-            <MetricRow label="Critical" value={health.notifications.critical?.length ?? 0} />
-            <MetricRow label="Unread" value={health.notifications.unreadCount ?? 0} />
+            <MetricRow label={t("system.healthCenter.modules.critical")} value={health.notifications.critical?.length ?? 0} />
+            <MetricRow label={t("system.healthCenter.modules.unread")} value={health.notifications.unreadCount ?? 0} />
             {Object.entries(health.notifications.bySource ?? {})
               .slice(0, 4)
               .map(([source, count]) => (
@@ -257,17 +257,17 @@ export default function SystemHealthCenterPage() {
         </SystemModuleHealthCard>
 
         <SystemModuleHealthCard
-          title="Audit Activity"
+          title={t("system.healthCenter.modules.auditActivity")}
           status={health.audit.status}
           openTo="/system/audit"
           errorMessage={health.audit.error}
         >
           {health.audit.data ? (
             <div className="space-y-2">
-              <MetricRow label="Today" value={health.audit.data.todayEvents} />
-              <MetricRow label="Critical" value={health.audit.data.criticalEvents} />
-              <MetricRow label="Top Actor" value={health.audit.data.topActors?.[0]?.userName ?? "—"} />
-              <MetricRow label="Top Module" value={health.audit.data.topModules?.[0]?.module ?? "—"} />
+              <MetricRow label={t("system.healthCenter.modules.today")} value={health.audit.data.todayEvents} />
+              <MetricRow label={t("system.healthCenter.modules.critical")} value={health.audit.data.criticalEvents} />
+              <MetricRow label={t("system.healthCenter.modules.topActor")} value={health.audit.data.topActors?.[0]?.userName ?? "—"} />
+              <MetricRow label={t("system.healthCenter.modules.topModule")} value={health.audit.data.topModules?.[0]?.module ?? "—"} />
             </div>
           ) : null}
         </SystemModuleHealthCard>
@@ -276,7 +276,7 @@ export default function SystemHealthCenterPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>Incident Timeline</CardTitle>
+            <CardTitle>{t("system.healthCenter.incidentTimeline")}</CardTitle>
           </CardHeader>
           <CardContent>
             <SystemIncidentTimeline incidents={health.incidents} />
@@ -285,7 +285,7 @@ export default function SystemHealthCenterPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Priority Action Queue</CardTitle>
+            <CardTitle>{t("system.healthCenter.priorityQueue")}</CardTitle>
           </CardHeader>
           <CardContent>
             <SystemPriorityQueue actions={health.priorityQueue} />
@@ -295,49 +295,49 @@ export default function SystemHealthCenterPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Reliability Trends (30 days)</CardTitle>
+          <CardTitle>{t("system.healthCenter.reliabilityTrends")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <SystemHealthTrendChart
-              title="System Score (proxy)"
+              title={t("system.healthCenter.trends.systemScore")}
               data={health.trends.systemScore.map((d) => ({ date: d.date, value: d.score }))}
-              valueLabel="score"
+              valueLabel={t("system.healthCenter.trends.score")}
             />
             <SystemHealthTrendChart
-              title="Failed Jobs"
+              title={t("system.healthCenter.trends.failedJobs")}
               data={health.trends.failedJobs.map((d) => ({ date: d.snapshotDate, value: d.totalFailures }))}
-              valueLabel="failures"
+              valueLabel={t("system.healthCenter.trends.failures")}
               color="hsl(var(--destructive))"
             />
             <SystemHealthTrendChart
-              title="Payment Success Rate"
+              title={t("system.healthCenter.trends.paymentSuccessRate")}
               data={(health.trends.payment?.paymentSuccessTrend ?? []).map((d) => ({
                 date: d.date,
                 value: d.rate,
               }))}
-              valueLabel="rate"
+              valueLabel={t("system.healthCenter.trends.rate")}
             />
             <SystemHealthTrendChart
-              title="Accounting Posting Failures"
+              title={t("system.healthCenter.trends.accountingPostingFailures")}
               data={(health.trends.accounting?.postingFailures ?? []).map((d) => ({
                 date: d.date,
                 value: d.count,
               }))}
-              valueLabel="failures"
+              valueLabel={t("system.healthCenter.trends.failures")}
             />
             <SystemHealthTrendChart
-              title="Payment Incidents"
+              title={t("system.healthCenter.trends.paymentIncidents")}
               data={(health.trends.payment?.incidentTrend ?? []).map((d) => ({
                 date: d.date,
                 value: d.count,
               }))}
-              valueLabel="incidents"
+              valueLabel={t("system.healthCenter.trends.incidents")}
             />
             <SystemHealthTrendChart
-              title="Bug Volume (notifications)"
+              title={t("system.healthCenter.trends.bugVolume")}
               data={health.trends.bugVolume.map((d) => ({ date: d.date, value: d.count }))}
-              valueLabel="bugs"
+              valueLabel={t("system.healthCenter.trends.bugs")}
             />
           </div>
         </CardContent>

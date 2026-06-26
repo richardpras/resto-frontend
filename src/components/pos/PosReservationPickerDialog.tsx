@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, User } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AppOverlay } from "@/components/ui/AppOverlay";
 import { toast } from "sonner";
 import { openReservationInPosFlow } from "@/components/reservations/openReservationInPosFlow";
 import type { ApplyReservationPosPayloadDeps } from "@/components/reservations/applyReservationPosPayload";
@@ -136,22 +136,16 @@ export function PosReservationPickerDialog({
   };
 
   return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={onClose}
-          data-testid="pos-reservation-picker-dialog"
-        >
-          <motion.div
-            initial={{ scale: 0.95 }}
-            animate={{ scale: 1 }}
-            className="bg-card rounded-2xl w-full max-w-md p-5 pos-shadow-md"
-            onClick={(e) => e.stopPropagation()}
-          >
+    <AppOverlay
+      open={open}
+      onClose={() => {
+        onClose();
+        setSearch("");
+      }}
+      layer="modal"
+      data-testid="pos-reservation-picker-dialog"
+      panelClassName="p-5"
+    >
             <div className="flex items-center gap-2 mb-3">
               <CalendarDays className="h-4 w-4 text-primary" />
               <h3 className="font-semibold">{t("pos.reservationPickerTitle")}</h3>
@@ -214,9 +208,6 @@ export function PosReservationPickerDialog({
             >
               {t("shared.cancel")}
             </button>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    </AppOverlay>
   );
 }

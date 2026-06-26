@@ -11,6 +11,8 @@ import {
   Undo2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { AppOverlay } from "@/components/ui/AppOverlay";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
@@ -245,6 +247,7 @@ function buildBalancePaymentPayload(order: CashierOrder, apiMethod: string, amou
 
 export default function Cashier() {
   const { t } = useOpsTranslation();
+  const isPhoneViewport = useIsMobile();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
@@ -632,7 +635,7 @@ export default function Cashier() {
       return next.map((p) => ({ ...p, payments: [] }));
     });
     if (hadDraftPayments) {
-      toast.message("Split payment drafts cleared — item assignment changed.");
+      toast.message(t("pos.toasts.splitDraftsCleared"));
     }
   };
 
@@ -681,7 +684,7 @@ export default function Cashier() {
       const persons = await ensureCashierSplitsSynced();
       const syncedPerson = persons[idx];
       if (!syncedPerson?.serverSplitId) {
-        toast.error("Split sync failed — try again.");
+        toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
       const fresh = await fetchOrderRemote(splitSourceOrder.id);
@@ -739,9 +742,9 @@ export default function Cashier() {
     setPrintingBill(true);
     try {
       await postPrintCustomerBill(Number(selectedOrder.id), activeOutletId);
-      toast.success("Bill dicetak — bukan struk final");
+      toast.success(t("pos.toasts.billPrinted"));
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Gagal cetak bill.");
+      toast.error(error instanceof ApiHttpError ? error.message : t("pos.toasts.billPrintFailed"));
     } finally {
       setPrintingBill(false);
     }
@@ -756,7 +759,7 @@ export default function Cashier() {
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
     }
-    toast.message(`${label}: payment choice cleared — pick a method again.`);
+    toast.message(t("pos.toasts.paymentChoiceCleared", { label }));
   };
 
   const allSplitPaid = splitPersons.every((p) => {
@@ -1242,7 +1245,7 @@ export default function Cashier() {
                       <button
                         type="button"
                         onClick={() => setSelectedOrderId(String(order.id))}
-                        className="text-[11px] px-2 py-0.5 rounded border border-border hover:bg-muted"
+                        className="text-sm px-2 py-1 rounded border border-border hover:bg-muted min-h-11"
                       >
                         {t("cashier.open")}
                       </button>
@@ -1267,7 +1270,7 @@ export default function Cashier() {
                     {t("cashier.payFullTable")}
                   </button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">{t("cashier.openBillMultiHint")}</p>
+                <p className="text-sm text-muted-foreground">{t("cashier.openBillMultiHint")}</p>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">{t("cashier.noOpenBill")}</p>
@@ -1323,14 +1326,14 @@ export default function Cashier() {
                     disabled={selectedOrder.balanceDue <= 0 || printingBill}
                     className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted"
                   >
-                    {printingBill ? "…" : "Cetak bill"}
+                    {printingBill ? "…" : t("pos.printBill")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowKitchenReprint(true)}
                     className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
                   >
-                    Reprint dapur
+                    {t("pos.reprintKitchen")}
                   </button>
                 </div>
               </div>
@@ -1339,22 +1342,14 @@ export default function Cashier() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {showPaymentModal && paymentModalOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => closePaymentModal()}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md"
-            >
+      <AppOverlay
+        open={Boolean(showPaymentModal && paymentModalOrder)}
+        onClose={() => closePaymentModal()}
+        layer="modal"
+        align={isPhoneViewport ? "bottom" : "center"}
+        data-testid="cashier-payment-overlay"
+        panelClassName="p-4 sm:p-6"
+      >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">{t("shared.payment")}</h3>
                 <button type="button" onClick={() => closePaymentModal()} className="p-1 rounded-lg hover:bg-muted">
@@ -1498,10 +1493,7 @@ export default function Cashier() {
                 </div>
               )}
               <PosPrintStatusBar outletId={printStatusOutletId} />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AppOverlay>
       <QrisPaymentModal
         open={showPaymentModal && showQrisModal && !!paymentTransaction?.qrString}
         qrString={paymentTransaction?.qrString ?? ""}
@@ -1560,22 +1552,14 @@ export default function Cashier() {
         onConfirmPaid={() => void confirmCashierStaticQrisPayment()}
       />
 
-      <AnimatePresence>
-        {showSplitModal && splitSourceOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-[52] flex items-center justify-center p-4"
-            onClick={() => closeSplitModal()}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-card rounded-2xl p-6 w-full max-w-lg pos-shadow-md max-h-[85vh] overflow-y-auto"
-            >
+      <AppOverlay
+        open={Boolean(showSplitModal && splitSourceOrder)}
+        onClose={() => closeSplitModal()}
+        layer="modal"
+        align={isPhoneViewport ? "bottom" : "center"}
+        data-testid="cashier-split-overlay"
+        panelClassName="p-6 max-w-lg"
+      >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">{t("shared.splitBill")}</h3>
                 <button type="button" onClick={() => closeSplitModal()} className="p-1 rounded-lg hover:bg-muted">
@@ -1827,10 +1811,7 @@ export default function Cashier() {
                           total: splitPersons.length,
                         })}
               </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AppOverlay>
 
       {selectedOrder ? (
         <KitchenReprintModal

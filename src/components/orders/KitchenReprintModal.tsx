@@ -4,6 +4,7 @@ import { X, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { postKitchenReprint } from "@/lib/api-integration/receiptDocumentEndpoints";
 import { ApiHttpError } from "@/lib/api-integration/client";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 export type KitchenReprintLine = {
   orderItemId: number;
@@ -20,6 +21,7 @@ type KitchenReprintModalProps = {
 };
 
 export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenReprintModalProps) {
+  const { t } = useOpsTranslation();
   const [selected, setSelected] = useState<Set<number>>(() => new Set(items.map((it) => it.orderItemId)));
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,16 +42,18 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
   const handlePrint = async () => {
     const orderItemIds = [...selected];
     if (orderItemIds.length === 0) {
-      toast.error("Select at least one item.");
+      toast.error(t("ordersExplorer.kitchenReprint.toasts.selectAtLeastOne"));
       return;
     }
     setSubmitting(true);
     try {
       const result = await postKitchenReprint(orderId, orderItemIds);
-      toast.success(`Kitchen reprint queued (${result.printJobIds.length} job${result.printJobIds.length === 1 ? "" : "s"})`);
+      toast.success(t("ordersExplorer.kitchenReprint.toasts.queued", { count: result.printJobIds.length }));
       onClose();
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Kitchen reprint failed.");
+      toast.error(
+        error instanceof ApiHttpError ? error.message : t("ordersExplorer.kitchenReprint.toasts.failed"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -63,7 +67,7 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-modal bg-black/50 flex items-center justify-center p-4"
         onClick={() => !submitting && onClose()}
         data-testid="kitchen-reprint-backdrop"
       >
@@ -76,7 +80,7 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
         >
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <Printer className="h-5 w-5" /> Reprint dapur / bar
+              <Printer className="h-5 w-5" /> {t("ordersExplorer.kitchenReprint.title")}
             </h3>
             <button type="button" className="p-1 rounded-lg hover:bg-muted" onClick={onClose} disabled={submitting}>
               <X className="h-5 w-5" />
@@ -85,11 +89,11 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
 
           <div className="flex gap-2 text-xs mb-2">
             <button type="button" className="text-primary hover:underline" onClick={selectAll}>
-              Pilih semua
+              {t("ordersExplorer.kitchenReprint.selectAll")}
             </button>
             <span className="text-muted-foreground">·</span>
             <button type="button" className="text-primary hover:underline" onClick={selectNone}>
-              Kosongkan
+              {t("ordersExplorer.kitchenReprint.clearAll")}
             </button>
           </div>
 
@@ -106,7 +110,7 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
                   <span className="min-w-0 flex-1">
                     <span className="text-sm font-medium text-foreground block truncate">{item.name}</span>
                     <span className="text-[11px] text-muted-foreground">
-                      Qty {item.qty}
+                      {t("ordersExplorer.kitchenReprint.qty", { qty: item.qty })}
                       {item.station ? ` · ${item.station}` : ""}
                     </span>
                   </span>
@@ -121,7 +125,9 @@ export function KitchenReprintModal({ open, orderId, items, onClose }: KitchenRe
             onClick={() => void handlePrint()}
             className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40"
           >
-            {submitting ? "Mengirim…" : `Cetak ulang (${selected.size} item)`}
+            {submitting
+              ? t("ordersExplorer.kitchenReprint.submitting")
+              : t("ordersExplorer.kitchenReprint.printButton", { count: selected.size })}
           </button>
         </motion.div>
       </motion.div>

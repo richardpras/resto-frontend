@@ -316,7 +316,21 @@
       "financingActivities": "Aktivitas Pendanaan",
       "total": "Total",
       "netCashChange": "Perubahan Kas Bersih ({{from}} → {{to}})",
-      "loadCashFlowFailed": "Gagal memuat laporan arus kas"
+      "loadCashFlowFailed": "Gagal memuat laporan arus kas",
+      "cashFlowStatement": "Laporan Arus Kas",
+      "cashFlowEmpty": "Tidak ada data arus kas untuk periode yang dipilih.",
+      "cashFlowLines": {
+        "netProfit": "Laba Bersih",
+        "depreciation": "Penyusutan",
+        "accountsReceivableChange": "Perubahan Piutang",
+        "accountsPayableChange": "Perubahan Hutang",
+        "inventoryChange": "Perubahan Persediaan",
+        "assetPurchases": "Pembelian Aset",
+        "assetDisposals": "Penjualan Aset",
+        "loans": "Pinjaman",
+        "capitalInjection": "Penyertaan Modal",
+        "ownerDrawings": "Prive / Penarikan Pemilik"
+      }
     },
     "recon": {
       "title": "Rekonsiliasi",
@@ -882,6 +896,7 @@
       "generateHint": "Membuat baris roster draf dari penugasan shift aktif (SHIFT-01). Melewati hari yang sudah ada kecuali timpa diaktifkan.",
       "copyHint": "Duplikasi baris roster ke periode lain (panjang rentang sama).",
       "loadFailed": "Gagal memuat jadwal",
+      "mobileScrollHint": "Geser horizontal untuk melihat jadwal minggu penuh.",
       "fromDate": "Dari tanggal",
       "toDate": "Sampai tanggal"
     },
@@ -1075,12 +1090,13 @@
     },
     "payslips": {
       "title": "Slip Gaji",
-      "runsTab": "Payroll Run",
+      "runsTab": "Periode Payroll",
       "listTab": "Daftar Slip Gaji",
       "payslipNo": "No. Slip Gaji",
       "generatePayslips": "Generate Slip Gaji",
-      "finalizedHint": "Hanya payroll run final yang dapat generate slip gaji. Jumlah di-snapshot saat generate.",
+      "finalizedHint": "Run payroll final, dibayar, dan ditutup ditampilkan di sini. Hanya run yang belum ditutup yang dapat generate slip gaji. Jumlah di-snapshot saat generate.",
       "finalizedStrong": "final",
+      "closedRunBadge": "Ditutup",
       "loadFailed": "Gagal memuat slip gaji",
       "generatedCount": "Digenerate {{count}} slip gaji",
       "generationQueued": "{{count}} slip gaji dalam antrian render PDF",
@@ -1092,7 +1108,7 @@
       "pdfRegenerated": "PDF dalam antrian generate ulang",
       "regenerateFailed": "Gagal generate ulang",
       "publishFailed": "Terbitkan gagal",
-      "emptyRuns": "Tidak ada payroll run final",
+      "emptyRuns": "Tidak ada periode payroll di outlet ini",
       "emptyList": "Tidak ada slip gaji"
     },
     "bpjs": {
@@ -1186,8 +1202,17 @@
     },
     "postingStatus": {
       "posted": "Diposting",
+      "not_posted": "Belum Diposting",
       "reversed": "Dibalik",
-      "draft": "Draf"
+      "draft": "Draf",
+      "title": "Status Posting",
+      "journal": "Jurnal",
+      "postedAt": "Diposting Pada",
+      "openJournal": "Buka Jurnal",
+      "reason": "Alasan",
+      "badgePosted": "✅ Diposting",
+      "badgeNotPosted": "⚠ Belum Diposting",
+      "badgeReversed": "↩ Dibalik"
     },
     "pr": {
       "title": "Purchase Request",
@@ -1278,7 +1303,8 @@
       "cancel": "Batalkan",
       "editBtn": "Edit",
       "submitHint": "Ajukan PO ini untuk persetujuan sebelum membuat penerimaan barang.",
-      "saveAndSubmit": "Simpan & Ajukan"
+      "saveAndSubmit": "Simpan & Ajukan",
+      "itemLabel": "Barang #{{id}}"
     },
     "grn": {
       "title": "Penerimaan Barang",
@@ -1432,6 +1458,20 @@
         "giro": "Giro",
         "check": "Cek",
         "other": "Lainnya"
+      },
+      "statement": {
+        "fromDate": "Dari Tanggal",
+        "toDate": "Sampai Tanggal",
+        "noSupplierSelected": "Pilih supplier untuk melihat rekening koran",
+        "empty": "Tidak ada invoice atau pembayaran pada periode ini",
+        "invoicesTitle": "Invoice",
+        "paymentsTitle": "Pembayaran",
+        "columns": {
+          "invoiceNo": "No Invoice",
+          "dueDate": "Jatuh Tempo",
+          "paidAmount": "Dibayar",
+          "outstandingAmount": "Outstanding"
+        }
       }
     },
     "match": {
@@ -1550,7 +1590,7 @@
       "supplier": "Supplier",
       "outlet": "Outlet",
       "total": "Total",
-      "qty": "Qty",
+      "qty": "Jumlah",
       "unit": "Satuan",
       "unitPrice": "Harga Satuan",
       "lineTotal": "Total Baris",
@@ -1569,6 +1609,20 @@
       "close": "Tutup",
       "edit": "Edit",
       "actionFailed": "Tindakan gagal"
+    },
+    "itemTable": {
+      "item": "Barang",
+      "qty": "Jumlah",
+      "prQty": "Jumlah PR",
+      "remaining": "Sisa",
+      "unit": "Satuan",
+      "price": "Harga",
+      "subtotal": "Subtotal",
+      "received": "Diterima",
+      "notes": "Catatan",
+      "empty": "Belum ada item",
+      "selectItem": "Pilih barang",
+      "addItem": "Tambah Item"
     }
   },
   "reportsHub": {
@@ -1941,6 +1995,23 @@
         "automations": "Tidak ada otomasi loyalitas untuk outlet ini."
       }
     },
+    "dashboard": {
+      "pageTitle": "Dasbor Loyalitas",
+      "pageSubtitle": "Kesehatan loyalitas real-time, tingkatan, dan throughput penukaran.",
+      "metrics": {
+        "activeMembers": "Member Loyalitas Aktif",
+        "pointsIssued": "Poin Diterbitkan",
+        "pointsRedeemed": "Poin Ditukar",
+        "redemptionCount": "Jumlah Penukaran"
+      },
+      "tiersTitle": "Tingkat Loyalitas",
+      "loadingTiers": "Memuat tingkat loyalitas",
+      "tierLine": "{{name}} ({{code}}) • min {{minPoints}} poin • diskon {{discountRate}}%",
+      "noTier": "Belum ada tingkat yang dikonfigurasi.",
+      "redemptionsTitle": "Penukaran Terbaru",
+      "noRedemptions": "Belum ada data penukaran.",
+      "redemptionLine": "{{points}} poin • {{amount}}"
+    },
     "tabs": {
       "programs": "Program",
       "simulator": "Simulator",
@@ -2293,6 +2364,666 @@
       "deactivated": "Promosi dinonaktifkan.",
       "loadFailed": "Gagal memuat promosi.",
       "failed": "Aksi promosi gagal."
+    }
+  },
+  "members": {
+    "pageTitle": "Member",
+    "pageSubtitle": "Data master keanggotaan, program loyalitas, poin CRM, dan gift card.",
+    "loadFailed": "Gagal memuat member",
+    "namePhoneRequired": "Nama dan telepon wajib diisi",
+    "updated": "Member diperbarui",
+    "added": "Member ditambahkan",
+    "statusUpdated": "Status diperbarui",
+    "updateFailed": "Gagal memperbarui",
+    "columns": {
+      "name": "Nama",
+      "phone": "Telepon",
+      "memberNo": "No. Member",
+      "points": "Poin",
+      "giftCard": "Gift Card",
+      "status": "Status"
+    },
+    "profile": "Profil",
+    "searchPlaceholder": "Cari nama atau telepon...",
+    "empty": "Belum ada member",
+    "addMember": "Tambah member",
+    "allStatus": "Semua status",
+    "newMember": "Member baru",
+    "editMember": "Edit member",
+    "birthday": "Tanggal lahir",
+    "notes": "Catatan",
+    "saveChanges": "Simpan perubahan",
+    "create": "Buat"
+  },
+  "suppliers": {
+    "pageTitle": "Supplier",
+    "pageSubtitle": "Kelola vendor untuk permintaan pembelian, pesanan, dan faktur.",
+    "loadFailed": "Gagal memuat supplier",
+    "nameRequired": "Nama wajib diisi",
+    "paymentTermsInvalid": "Termin pembayaran harus berupa angka valid",
+    "leadTimeInvalid": "Lead time harus berupa angka valid",
+    "updated": "Supplier diperbarui",
+    "added": "Supplier ditambahkan",
+    "statusUpdated": "Status diperbarui",
+    "updateFailed": "Gagal memperbarui",
+    "columns": {
+      "name": "Nama",
+      "contact": "Kontak",
+      "leadTime": "Lead time",
+      "address": "Alamat",
+      "status": "Status"
+    },
+    "leadTimeDays": "{{days}}h",
+    "searchPlaceholder": "Cari supplier...",
+    "empty": "Belum ada supplier",
+    "addSupplier": "Tambah supplier",
+    "allStatus": "Semua status",
+    "newSupplier": "Supplier baru",
+    "editSupplier": "Edit supplier",
+    "paymentTermsDays": "Termin pembayaran (hari)",
+    "leadTimeDaysLabel": "Waktu tunggu (hari)",
+    "paymentTermsPlaceholder": "mis. 30",
+    "leadTimePlaceholder": "mis. 7",
+    "phone": "Telepon",
+    "email": "Email",
+    "address": "Alamat",
+    "taxInfo": "Informasi pajak",
+    "taxNumber": "NPWP",
+    "taxName": "Nama pajak",
+    "taxAddress": "Alamat pajak",
+    "primaryContact": "Kontak utama",
+    "contactPerson": "Nama kontak",
+    "contactPhone": "Telepon kontak",
+    "contactEmail": "Email kontak",
+    "notes": "Catatan",
+    "saveChanges": "Simpan perubahan",
+    "create": "Buat"
+  },
+  "organization": {
+    "departments": {
+      "pageTitle": "Departemen",
+      "pageSubtitle": "Kelompokkan tim per departemen untuk setiap outlet.",
+      "loadFailed": "Gagal memuat departemen",
+      "codeNameRequired": "Kode dan nama wajib diisi",
+      "updated": "Departemen diperbarui",
+      "created": "Departemen dibuat",
+      "deleted": "Dihapus",
+      "searchPlaceholder": "Cari departemen...",
+      "empty": "Belum ada departemen",
+      "addDepartment": "Tambah departemen",
+      "newDepartment": "Departemen baru",
+      "editDepartment": "Edit departemen",
+      "description": "Deskripsi"
+    },
+    "positions": {
+      "pageTitle": "Jabatan",
+      "pageSubtitle": "Jabatan dan peran dalam departemen.",
+      "loadFailed": "Gagal memuat jabatan",
+      "codeNameRequired": "Kode dan nama wajib diisi",
+      "updated": "Jabatan diperbarui",
+      "created": "Jabatan dibuat",
+      "deleted": "Dihapus",
+      "searchPlaceholder": "Cari jabatan...",
+      "empty": "Belum ada jabatan",
+      "addPosition": "Tambah jabatan",
+      "newPosition": "Jabatan baru",
+      "editPosition": "Edit jabatan",
+      "department": "Departemen",
+      "optional": "Opsional",
+      "none": "— Tidak ada —",
+      "sortOrder": "Urutan",
+      "description": "Deskripsi",
+      "order": "Urutan"
+    }
+  },
+  "menuCost": {
+    "shared": {
+      "selectOutlet": "Pilih outlet di header untuk memuat data costing.",
+      "selectOutletDetail": "Pilih outlet di header untuk melihat biaya item menu ini.",
+      "selectItemOutlet": "Pilih item menu dan outlet untuk membandingkan versi resep.",
+      "descending": "Menurun",
+      "ascending": "Menaik",
+      "allCategories": "Semua kategori",
+      "category": "Kategori",
+      "pageOf": "Halaman {{page}} dari {{lastPage}} · {{total}} item"
+    },
+    "dashboard": {
+      "pageTitle": "Dasbor Biaya Menu",
+      "pageSubtitle": "Biaya bahan teoritis dan margin kontribusi untuk outlet aktif.",
+      "browseItems": "Lihat item",
+      "recipeComparison": "Perbandingan resep",
+      "totalMenuItems": "Total Item Menu",
+      "avgFoodCostPercent": "Rata-rata Biaya Bahan %",
+      "highestCostMenu": "Menu Biaya Tertinggi",
+      "lowestMarginMenu": "Menu Margin Terendah",
+      "quickActions": "Aksi cepat",
+      "viewCostList": "Lihat daftar biaya",
+      "compareRecipeVersions": "Bandingkan versi resep"
+    },
+    "list": {
+      "pageTitle": "Daftar Biaya Menu",
+      "pageSubtitle": "Biaya teoritis dan profitabilitas per item menu.",
+      "searchPlaceholder": "Cari item menu",
+      "sortCost": "Biaya",
+      "sortMargin": "Margin",
+      "sortMarginPercent": "Margin %",
+      "sortSellingPrice": "Harga Jual",
+      "columns": {
+        "menuItem": "Item Menu",
+        "sellingPrice": "Harga Jual",
+        "foodCost": "Biaya Bahan",
+        "contributionMargin": "Margin Kontribusi",
+        "marginPercent": "Margin %",
+        "lastUpdated": "Terakhir Diperbarui"
+      },
+      "empty": "Tidak ada item menu"
+    },
+    "detail": {
+      "backToList": "Kembali ke daftar",
+      "pageTitleFallback": "Detail Biaya Menu",
+      "pageSubtitle": "Rincian resep dan ringkasan profitabilitas.",
+      "recalculate": "Hitung ulang biaya",
+      "recalculated": "Biaya menu dihitung ulang.",
+      "recalcFailed": "Gagal menghitung ulang",
+      "breakdownTitle": "Rincian Biaya Resep",
+      "noIngredients": "Tidak ada bahan resep",
+      "columns": {
+        "ingredient": "Bahan",
+        "qty": "Qty",
+        "unit": "Satuan",
+        "unitCost": "Biaya Satuan",
+        "lineCost": "Biaya Baris"
+      },
+      "costSummary": "Ringkasan Biaya",
+      "rawCost": "Biaya Mentah",
+      "yieldLoss": "Kerugian Yield",
+      "wasteLoss": "Kerugian Waste",
+      "finalCost": "Biaya Akhir",
+      "yieldWaste": "Yield {{yield}} · Waste {{waste}}",
+      "profitabilitySummary": "Ringkasan Profitabilitas",
+      "sellingPrice": "Harga Jual",
+      "contributionMargin": "Margin Kontribusi",
+      "marginPercent": "Margin %",
+      "classification": "Klasifikasi: {{value}}"
+    },
+    "comparison": {
+      "backToDashboard": "Kembali ke dasbor",
+      "pageTitle": "Perbandingan Biaya Resep",
+      "pageSubtitle": "Bandingkan resep aktif dengan versi sebelumnya dan snapshot biaya historis.",
+      "selectMenuItem": "Pilih item menu",
+      "currentRecipe": "Resep Saat Ini",
+      "previousVersion": "Versi Sebelumnya",
+      "activeLabel": "Aktif",
+      "noRecipeVersion": "Tidak ada versi resep.",
+      "noPreviousVersion": "Tidak ada versi sebelumnya untuk dibandingkan.",
+      "margin": "Margin {{amount}}",
+      "deltaTitle": "Delta Biaya & Margin",
+      "costDelta": "Delta Biaya",
+      "marginDelta": "Delta Margin",
+      "ingredientChanges": "Perubahan Bahan",
+      "columns": {
+        "ingredient": "Bahan",
+        "previousQty": "Qty Sebelumnya",
+        "currentQty": "Qty Saat Ini"
+      }
+    }
+  },
+  "executive": {
+    "dashboard": {
+      "selectOutlet": "Pilih outlet untuk memuat dasbor eksekutif.",
+      "sections": {
+        "financial": "Keuangan",
+        "notifications": "Notifikasi"
+      },
+      "criticalAlerts": {
+        "title": "Peringatan Kritis",
+        "critical": "{{count}} Kritis",
+        "warning": "{{count}} Peringatan",
+        "unread": "{{count}} Belum Dibaca"
+      },
+      "notificationGroups": {
+        "approvals": "Persetujuan",
+        "menu": "Menu",
+        "inventory": "Inventori",
+        "accounting": "Akuntansi",
+        "payments": "Pembayaran"
+      },
+      "widgets": {
+        "executiveSales": {
+          "title": "Penjualan Eksekutif",
+          "description": "Hari ini — bruto, neto, dan refund"
+        },
+        "accountingHealth": {
+          "title": "Kesehatan Akuntansi",
+          "description": "Integritas posting dan sinyal rekonsiliasi"
+        },
+        "giftCardLiability": {
+          "title": "Kewajiban Gift Card",
+          "description": "Penyesuaian GL gift card dan store credit"
+        },
+        "paymentHealth": {
+          "title": "Kesehatan Pembayaran",
+          "description": "Keandalan gateway dan insiden"
+        },
+        "auditActivity": {
+          "title": "Aktivitas Audit",
+          "description": "Peristiwa audit hari ini dan perubahan kritis"
+        },
+        "operationalMonitoring": {
+          "title": "Pemantauan Operasional",
+          "description": "Dapur, pembayaran, printer, bridge, dan sinkronisasi"
+        },
+        "loyaltyOverview": {
+          "title": "Ringkasan Loyalitas",
+          "description": "30 hari terakhir"
+        },
+        "topCustomers": {
+          "title": "Pelanggan Teratas",
+          "description": "5 member teratas berdasarkan pengeluaran"
+        },
+        "topProducts": {
+          "title": "Produk Teratas",
+          "description": "Hari ini — dari penjualan eksekutif"
+        },
+        "foodCost": {
+          "title": "Biaya Makanan",
+          "description": "Rata-rata analitik menu"
+        },
+        "alertSummary": {
+          "title": "Ringkasan Peringatan",
+          "description": "Notifikasi terbaru lintas domain"
+        }
+      },
+      "metrics": {
+        "grossSales": "Penjualan Bruto",
+        "netSales": "Penjualan Neto",
+        "refundAmount": "Nilai Refund",
+        "refundCount": "Jumlah Refund",
+        "healthScore": "Skor Kesehatan",
+        "severity": "Tingkat Keparahan",
+        "failedPostings": "Posting Gagal",
+        "priorityQueue": "Antrian Prioritas",
+        "giftCardLiability": "Kewajiban Gift Card",
+        "storeCreditLiability": "Kewajiban Store Credit",
+        "status": "Status",
+        "successRate": "Tingkat Keberhasilan",
+        "failedWebhooks": "Webhook Gagal",
+        "openIncidents": "Insiden Terbuka",
+        "todayEvents": "Peristiwa Hari Ini",
+        "criticalEvents": "Peristiwa Kritis",
+        "activeUsers": "Pengguna Aktif",
+        "kitchenQueue": "Antrian Dapur",
+        "pendingPayments": "Pembayaran Tertunda",
+        "activeSessions": "Sesi Aktif",
+        "printerFailures": "Kegagalan Printer",
+        "hardwareBridgeIssues": "Masalah Hardware Bridge",
+        "offlineSyncFailures": "Kegagalan Sinkronisasi Offline",
+        "activeCustomers": "Pelanggan Aktif",
+        "repeatVisitRate": "Tingkat Kunjungan Ulang",
+        "voucherRedemptionRate": "Tingkat Penukaran Voucher",
+        "openMenuAlerts": "Peringatan Menu Terbuka",
+        "critical": "Kritis",
+        "warning": "Peringatan",
+        "unread": "Belum Dibaca"
+      },
+      "foodCostTrend": {
+        "high": "Tinggi",
+        "elevated": "Meningkat",
+        "onTarget": "Sesuai Target"
+      },
+      "empty": {
+        "noMemberData": "Tidak ada data member.",
+        "noProductData": "Tidak ada data produk.",
+        "noRecentNotifications": "Tidak ada notifikasi terbaru."
+      }
+    },
+    "salesReport": {
+      "loadFailed": "Gagal memuat laporan penjualan eksekutif",
+      "selectOutlet": "Pilih outlet untuk memuat laporan penjualan eksekutif.",
+      "startDate": "Tanggal mulai",
+      "endDate": "Tanggal akhir",
+      "comparison": "Perbandingan",
+      "comparisonNone": "Tidak ada",
+      "comparisonPreviousPeriod": "Periode sebelumnya",
+      "kpis": {
+        "grossSales": "Penjualan Bruto",
+        "netSales": "Penjualan Neto",
+        "refunds": "Refund",
+        "refundCount": "{{count}} refund",
+        "finalRevenue": "Pendapatan Final",
+        "orders": "Pesanan",
+        "aov": "AOV",
+        "giftCardSettled": "Gift Card Terselesaikan",
+        "storeCreditSettled": "Store Credit Terselesaikan",
+        "voucherDiscounts": "Diskon Voucher",
+        "manualDiscounts": "Diskon Manual"
+      },
+      "growth": {
+        "revenue": "Pertumbuhan pendapatan: {{percent}}%",
+        "orders": "Pertumbuhan pesanan: {{percent}}%",
+        "aov": "Pertumbuhan AOV: {{percent}}%"
+      },
+      "reconciliation": {
+        "title": "Rekonsiliasi akuntansi",
+        "detail": "Pendapatan akuntansi {{accounting}} · Pendapatan eksekutif {{executive}} · Selisih {{difference}}",
+        "variance": "Selisih",
+        "balanced": "Seimbang"
+      },
+      "charts": {
+        "salesTrend": "Tren penjualan",
+        "paymentMix": "Komposisi pembayaran",
+        "discountBreakdown": "Rincian diskon",
+        "discountNote": "Baris gift card bersifat informatif sebagai tender, bukan diskon pendapatan.",
+        "channelBreakdown": "Rincian kanal",
+        "topProducts": "Produk teratas",
+        "gross": "Bruto",
+        "net": "Neto",
+        "refunds": "Refund"
+      },
+      "table": {
+        "channel": "Kanal",
+        "sales": "Penjualan",
+        "orders": "Pesanan",
+        "aov": "AOV",
+        "product": "Produk",
+        "qty": "Qty",
+        "gross": "Bruto",
+        "net": "Neto",
+        "noProductSales": "Tidak ada penjualan produk dalam rentang ini."
+      }
+    },
+    "widgetCard": {
+      "open": "Buka",
+      "restricted": "Terbatas",
+      "permissionRequired": "Izin tambahan diperlukan",
+      "requiresPermission": "Memerlukan {{permission}}",
+      "noData": "Tidak ada data untuk outlet yang dipilih.",
+      "loadFailed": "Gagal memuat data widget."
+    },
+    "scoreGauge": {
+      "calculating": "Menghitung…",
+      "ownerScore": "Skor eksekutif pemilik",
+      "partialScore": "Skor Parsial ({{count}}/4 pilar)",
+      "labels": {
+        "healthy": "Sehat",
+        "watch": "Waspada",
+        "atRisk": "Berisiko",
+        "critical": "Kritis"
+      }
+    },
+    "systemHealthWidget": {
+      "title": "Ringkasan Kesehatan Sistem",
+      "description": "Gambaran keandalan dan insiden terpadu",
+      "healthCenter": "Pusat Kesehatan",
+      "activeIncidents": "Insiden Aktif",
+      "criticalBugs": "Bug Kritis",
+      "failedJobs": "Job Gagal",
+      "partialScore": "Skor parsial — beberapa modul tidak tersedia"
+    },
+    "inventoryReliability": {
+      "title": "Keandalan Inventori",
+      "description": "Keberhasilan posting, selisih terbuka, dan konsumsi tertunda",
+      "permissionHint": "Memerlukan inventory.manage atau settings.manage",
+      "postingSuccessRate": "Tingkat Keberhasilan Posting",
+      "openVariances": "Selisih Terbuka",
+      "pendingConsumptionValue": "Nilai Konsumsi Tertunda",
+      "mode": "Mode",
+      "viewPending": "Lihat konsumsi tertunda"
+    },
+    "shiftClose": {
+      "title": "Tutup Kasir Terakhir",
+      "description": "Snapshot selisih dan status posting",
+      "permissionHint": "Memerlukan finance.shift_close",
+      "lastClose": "Penutupan Terakhir",
+      "openBills": "Tagihan Terbuka",
+      "cashVariance": "Selisih Kas",
+      "inventoryVariance": "Selisih Inventori",
+      "status": "Status",
+      "runShiftClose": "Jalankan tutup kasir"
+    },
+    "customerOrdering": {
+      "title": "Kesehatan Pemesanan Pelanggan",
+      "description": "Antrian tinjauan QR dan panggilan pelanggan",
+      "permissionHint": "Memerlukan akses POS",
+      "pendingReviews": "Tinjauan Tertunda",
+      "awaitingApproval": "Menunggu Persetujuan Pelanggan",
+      "avgReviewTime": "Rata-rata Waktu Tinjauan (menit)",
+      "avgReadyTime": "Rata-rata Waktu Siap (menit)",
+      "customerCallsToday": "Panggilan Pelanggan Hari Ini"
+    }
+  },
+  "system": {
+    "healthCenter": {
+      "permissionDenied": "Anda memerlukan izin settings.manage untuk melihat pusat kesehatan.",
+      "selectOutlet": "Pilih outlet untuk memuat data kesehatan.",
+      "refreshing": "Memuat ulang data kesehatan…",
+      "reportsHub": "Pusat Laporan",
+      "metrics": {
+        "activeIncidents": "Insiden Aktif",
+        "criticalAlerts": "Peringatan Kritis",
+        "openBugs": "Bug Terbuka",
+        "failedJobs": "Job Gagal",
+        "unread": "Belum Dibaca"
+      },
+      "modules": {
+        "accountingHealth": "Kesehatan Akuntansi",
+        "inventoryPosting": "Masalah Posting Inventori",
+        "duplicateOrderPrevention": "Pencegahan Pesanan Duplikat",
+        "paymentHealth": "Kesehatan Pembayaran",
+        "failedJobs": "Job Gagal",
+        "bugReports": "Laporan Bug",
+        "notifications": "Notifikasi",
+        "auditActivity": "Aktivitas Audit",
+        "healthScore": "Skor Kesehatan",
+        "failedPostings": "Posting Gagal",
+        "priorityQueue": "Antrian Prioritas",
+        "latest": "Terbaru: {{title}}",
+        "pending": "Tertunda",
+        "reviewRequired": "Perlu Ditinjau",
+        "failed": "Gagal",
+        "openIncidents": "Insiden Terbuka",
+        "mode": "Mode",
+        "retries": "Percobaan Ulang",
+        "idempotencyHits": "Hit Idempotensi",
+        "duplicatesPrevented": "Duplikat Dicegah",
+        "resumedOrders": "Pesanan Dilanjutkan",
+        "qrBillResumes": "Lanjutan Tagihan QR",
+        "successRate": "Tingkat Keberhasilan",
+        "failedWebhooks": "Webhook Gagal",
+        "totalFailures": "Total Kegagalan",
+        "critical": "Kritis",
+        "oldestMinutes": "Terlama (menit)",
+        "open": "Terbuka",
+        "investigating": "Sedang Diselidiki",
+        "fixedToday": "Diperbaiki Hari Ini",
+        "unread": "Belum Dibaca",
+        "today": "Hari Ini",
+        "topActor": "Aktor Teratas",
+        "topModule": "Modul Teratas"
+      },
+      "incidentTimeline": "Linimasa Insiden",
+      "priorityQueue": "Antrian Aksi Prioritas",
+      "reliabilityTrends": "Tren Keandalan (30 hari)",
+      "trends": {
+        "systemScore": "Skor Sistem (proxy)",
+        "failedJobs": "Job Gagal",
+        "paymentSuccessRate": "Tingkat Keberhasilan Pembayaran",
+        "accountingPostingFailures": "Kegagalan Posting Akuntansi",
+        "paymentIncidents": "Insiden Pembayaran",
+        "bugVolume": "Volume Bug (notifikasi)",
+        "score": "skor",
+        "failures": "kegagalan",
+        "rate": "tingkat",
+        "incidents": "insiden",
+        "bugs": "bug"
+      }
+    },
+    "auditCenter": {
+      "permissionDenied": "Anda memerlukan izin settings.manage untuk melihat Pusat Audit.",
+      "restricted": "Terbatas — izin settings.manage diperlukan untuk mengakses Pusat Audit.",
+      "selectOutlet": "Pilih outlet untuk memuat aktivitas audit.",
+      "loadFailed": "Gagal memuat pusat audit",
+      "topActors": "Aktor Teratas",
+      "topModules": "Modul Teratas",
+      "noActivityToday": "Tidak ada aktivitas hari ini.",
+      "noModuleActivity": "Tidak ada aktivitas modul hari ini.",
+      "timeline": "Linimasa"
+    },
+    "failedJobs": {
+      "loadFailed": "Gagal memuat dasbor job gagal",
+      "metrics": {
+        "failedJobs": "Job Gagal",
+        "criticalFailures": "Kegagalan Kritis",
+        "repeatFailures": "Kegagalan Berulang",
+        "health": "Kesehatan"
+      },
+      "listTitle": "Daftar Job Gagal",
+      "empty": "Tidak ada job gagal dalam antrian.",
+      "table": {
+        "job": "Job",
+        "module": "Modul",
+        "queue": "Antrian",
+        "severity": "Tingkat Keparahan",
+        "age": "Usia"
+      },
+      "byModule": "Per Modul",
+      "noGroupedData": "Tidak ada data terkelompok.",
+      "criticalCount": "{{count}} ({{critical}} kritis)",
+      "trendTitle": "Tren 30 Hari",
+      "noSnapshots": "Belum ada snapshot.",
+      "trendRow": "{{total}} total / {{critical}} kritis",
+      "severityInfo": "Info"
+    },
+    "bugReports": {
+      "permissionDenied": "Anda memerlukan izin settings.manage untuk melihat laporan bug.",
+      "filters": "Filter",
+      "searchPlaceholder": "Cari judul, pesan, rute…",
+      "allStatuses": "Semua status",
+      "allSeverities": "Semua tingkat keparahan",
+      "status": "Status",
+      "severity": "Tingkat Keparahan",
+      "apply": "Terapkan",
+      "reports": "Laporan",
+      "empty": "Tidak ada laporan bug.",
+      "table": {
+        "severity": "Tingkat Keparahan",
+        "status": "Status",
+        "title": "Judul",
+        "reporter": "Pelapor",
+        "route": "Rute",
+        "created": "Dibuat",
+        "assigned": "Ditugaskan"
+      },
+      "detailTitle": "Laporan Bug #{{id}}",
+      "screenshotAlt": "Tangkapan layar bug",
+      "fields": {
+        "reporter": "Pelapor",
+        "route": "Rute",
+        "browser": "Browser",
+        "viewport": "Viewport",
+        "appVersion": "Versi aplikasi",
+        "created": "Dibuat"
+      },
+      "diagnostics": "Diagnostik",
+      "noDiagnostics": "Tidak ada diagnostik yang tercatat.",
+      "apiErrors": "Error API ({{count}})",
+      "consoleErrors": "Error Konsol ({{count}})",
+      "otherEvents": "Peristiwa Lain ({{count}})",
+      "manage": "Kelola",
+      "assignToUserId": "Tugaskan ke ID pengguna",
+      "userIdPlaceholder": "ID Pengguna",
+      "saveChanges": "Simpan perubahan",
+      "comments": "Komentar",
+      "noComments": "Belum ada komentar.",
+      "commentPlaceholder": "Tambahkan komentar…",
+      "addComment": "Tambah komentar",
+      "severityLow": "Rendah",
+      "severityMedium": "Sedang",
+      "statusFixed": "Diperbaiki",
+      "status": {
+        "open": "Terbuka",
+        "triaged": "Ditriase",
+        "investigating": "Diselidiki",
+        "fixed": "Diperbaiki",
+        "closed": "Ditutup",
+        "wont_fix": "Tidak diperbaiki"
+      },
+      "loadDetailFailed": "Gagal memuat detail",
+      "loadFailed": "Gagal memuat laporan bug",
+      "updated": "Laporan bug diperbarui",
+      "updateFailed": "Gagal memperbarui",
+      "commentAdded": "Komentar ditambahkan",
+      "commentFailed": "Gagal menambahkan komentar",
+      "reportModal": {
+        "title": "Laporkan Bug",
+        "description": "Jelaskan apa yang salah. Tangkapan layar dan data diagnostik dilampirkan otomatis.",
+        "screenshotAlt": "Pratinjau tangkapan layar",
+        "screenshotUnavailable": "Tangkapan layar tidak tersedia untuk halaman ini.",
+        "titleLabel": "Judul",
+        "titlePlaceholder": "Ringkasan singkat masalah",
+        "descriptionLabel": "Deskripsi",
+        "descriptionPlaceholder": "Apa yang Anda lakukan? Apa yang diharapkan?",
+        "severityLabel": "Tingkat keparahan (opsional)",
+        "severityLow": "Rendah",
+        "severityMedium": "Sedang",
+        "severityHigh": "Tinggi",
+        "severityCritical": "Kritis",
+        "cancel": "Batal",
+        "submit": "Kirim Laporan",
+        "submitting": "Mengirim…",
+        "requiredFields": "Judul dan pesan wajib diisi",
+        "success": "Laporan bug terkirim. Terima kasih!",
+        "failed": "Gagal mengirim laporan bug"
+      }
+    }
+  },
+  "settings": {
+    "paymentHealth": {
+      "title": "Kesehatan Pembayaran",
+      "integrationSettings": "Pengaturan Integrasi",
+      "healthScore": "Skor Kesehatan",
+      "paymentSuccess": "Keberhasilan Pembayaran",
+      "webhookSuccess": "Keberhasilan Webhook",
+      "openIncidents": "Insiden Terbuka",
+      "stalePayments": "Pembayaran Stale",
+      "failedWebhooks": "Webhook Gagal",
+      "avgProcessing": "Rata-rata Pemrosesan",
+      "provider": "Provider",
+      "providerRanking": "Peringkat Provider",
+      "providerRankingEntry": "#{{rank}} {{provider}} ({{score}}%)",
+      "paymentWebhookTrend": "Tren Keberhasilan Pembayaran & Webhook (30h)",
+      "staleIncidentsTrend": "Tren Pembayaran Stale / Insiden",
+      "chartPayment": "Pembayaran %",
+      "chartWebhook": "Webhook %",
+      "chartIncidents": "Insiden",
+      "providerReliability": "Reliabilitas Provider",
+      "table": {
+        "provider": "Provider",
+        "uptime": "Uptime %",
+        "incidents": "Insiden",
+        "avgResolution": "Rata-rata Resolusi (menit)",
+        "paymentSuccess": "Keberhasilan Pembayaran %"
+      },
+      "noReliabilitySnapshots": "Belum ada snapshot reliabilitas.",
+      "incidentTimeline": "Linimasa Insiden",
+      "incidentTable": {
+        "opened": "Dibuka",
+        "provider": "Provider",
+        "severity": "Tingkat Keparahan",
+        "title": "Judul",
+        "status": "Status"
+      },
+      "noIncidents": "Tidak ada insiden tercatat.",
+      "configuration": "Konfigurasi",
+      "missing": "Hilang:",
+      "warnings": "Peringatan:",
+      "loadFailed": "Gagal memuat kesehatan pembayaran",
+      "incidentStatus": {
+        "open": "Terbuka",
+        "investigating": "Diselidiki",
+        "resolved": "Terselesaikan",
+        "closed": "Ditutup"
+      }
     }
   },
   "api": {

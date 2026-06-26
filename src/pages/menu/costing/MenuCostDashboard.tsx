@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { ArrowRight, DollarSign, Percent, TrendingDown, TrendingUp, UtensilsCrossed } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ function WidgetCard({
 }
 
 export default function MenuCostDashboard() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { data: rows = [], isLoading } = useMenuCostCatalog(activeOutletId);
 
@@ -74,49 +76,49 @@ export default function MenuCostDashboard() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Menu Cost Dashboard</h1>
+          <h1 className="text-2xl font-bold">{t("menuCost.dashboard.pageTitle")}</h1>
           <p className="text-muted-foreground text-sm">
-            Theoretical food cost and contribution margin for the active outlet.
+            {t("menuCost.dashboard.pageSubtitle")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
-            <Link to="/menu/costing/items">Browse items</Link>
+            <Link to="/menu/costing/items">{t("menuCost.dashboard.browseItems")}</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/menu/costing/comparison">Recipe comparison</Link>
+            <Link to="/menu/costing/comparison">{t("menuCost.dashboard.recipeComparison")}</Link>
           </Button>
         </div>
       </div>
 
       {noOutlet && (
         <Card className="rounded-2xl border-dashed p-6 text-sm text-muted-foreground">
-          Select an outlet in the header to load costing data.
+          {t("menuCost.shared.selectOutlet")}
         </Card>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <WidgetCard
-          title="Total Menu Items"
+          title={t("menuCost.dashboard.totalMenuItems")}
           value={String(stats.totalItems)}
           icon={UtensilsCrossed}
           loading={isLoading}
         />
         <WidgetCard
-          title="Average Food Cost %"
+          title={t("menuCost.dashboard.avgFoodCostPercent")}
           value={formatPercent(stats.avgFoodCostPercent)}
           icon={Percent}
           loading={isLoading}
         />
         <WidgetCard
-          title="Highest Cost Menu"
+          title={t("menuCost.dashboard.highestCostMenu")}
           value={stats.highestCost ? stats.highestCost.menuItemName : "—"}
           hint={stats.highestCost ? formatMoney(stats.highestCost.foodCost) : undefined}
           icon={TrendingUp}
           loading={isLoading}
         />
         <WidgetCard
-          title="Lowest Margin Menu"
+          title={t("menuCost.dashboard.lowestMarginMenu")}
           value={stats.lowestMargin ? stats.lowestMargin.menuItemName : "—"}
           hint={stats.lowestMargin ? formatPercent(stats.lowestMargin.marginPercent) : undefined}
           icon={TrendingDown}
@@ -126,17 +128,17 @@ export default function MenuCostDashboard() {
 
       <Card className="rounded-2xl">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Quick actions</CardTitle>
+          <CardTitle className="text-base">{t("menuCost.dashboard.quickActions")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button asChild>
             <Link to="/menu/costing/items">
-              View cost list <ArrowRight className="ml-2 h-4 w-4" />
+              {t("menuCost.dashboard.viewCostList")} <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <Button variant="secondary" asChild>
             <Link to="/menu/costing/comparison">
-              Compare recipe versions <ArrowRight className="ml-2 h-4 w-4" />
+              {t("menuCost.dashboard.compareRecipeVersions")} <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
         </CardContent>

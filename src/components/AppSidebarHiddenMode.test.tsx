@@ -101,9 +101,10 @@ vi.mock("@/stores/outletStore", () => ({
   useOutletStore: vi.fn((selector) => selector({ activeOutletId: 1 })),
 }));
 
-const useIsMobileMock = vi.fn(() => false);
+const useIsSidebarDrawerMock = vi.fn(() => false);
 vi.mock("@/hooks/use-mobile", () => ({
-  useIsMobile: () => useIsMobileMock(),
+  useIsMobile: () => useIsSidebarDrawerMock(),
+  useIsSidebarDrawer: () => useIsSidebarDrawerMock(),
 }));
 
 describe("AppSidebar hidden mode", () => {
@@ -111,7 +112,7 @@ describe("AppSidebar hidden mode", () => {
     await ensureEnglishLocale();
     testNavConfig.permissions = [...ALL_PERMISSIONS];
     testNavConfig.pinSet = true;
-    useIsMobileMock.mockReturnValue(false);
+    useIsSidebarDrawerMock.mockReturnValue(false);
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1280 });
   });
 
@@ -179,8 +180,8 @@ describe("AppSidebar hidden mode", () => {
     expect(postingLink?.getAttribute("data-active")).toBe("true");
   });
 
-  it("uses drawer on mobile without desktop logo rail", () => {
-    useIsMobileMock.mockReturnValue(true);
+  it("uses drawer on mobile and tablet without desktop logo rail", () => {
+    useIsSidebarDrawerMock.mockReturnValue(true);
 
     renderShell(true);
     expect(screen.queryByRole("button", { name: "Open sidebar" })).not.toBeInTheDocument();

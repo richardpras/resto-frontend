@@ -17,8 +17,8 @@ const SAMPLE_ITEMS = [
 
 const SAMPLE_SUBTOTAL = 45000;
 const SAMPLE_DISCOUNT = 5000;
-const SAMPLE_TAX = 4500;
-const SAMPLE_TOTAL = SAMPLE_SUBTOTAL - SAMPLE_DISCOUNT + SAMPLE_TAX;
+const SAMPLE_TAX_LINES = [{ label: "PB1 10%", amount: 4500 }] as const;
+const SAMPLE_TOTAL = SAMPLE_SUBTOTAL - SAMPLE_DISCOUNT + SAMPLE_TAX_LINES[0].amount;
 
 function MetaRow({ label, value, widthCh }: { label: string; value: string; widthCh: number }) {
   return (
@@ -105,9 +105,11 @@ export function ReceiptThermalPreview({
       <div className="space-y-1">
         <MetaRow label="Subtotal" value={formatPreviewMoney(SAMPLE_SUBTOTAL)} widthCh={widthCh} />
         <MetaRow label="Promo (SAVE10)" value={formatPreviewMoney(-SAMPLE_DISCOUNT)} widthCh={widthCh} />
-        {showTaxBreakdown ? (
-          <MetaRow label="Tax" value={formatPreviewMoney(SAMPLE_TAX)} widthCh={widthCh} />
-        ) : null}
+        {showTaxBreakdown
+          ? SAMPLE_TAX_LINES.map((line) => (
+            <MetaRow key={line.label} label={line.label} value={formatPreviewMoney(line.amount)} widthCh={widthCh} />
+          ))
+          : null}
         <div className="whitespace-pre font-bold">
           {formatPreviewColumns("TOTAL", formatPreviewMoney(SAMPLE_TOTAL), widthCh)}
         </div>

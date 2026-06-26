@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { Link } from "react-router-dom";
 import { Search, ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -18,12 +19,7 @@ import {
 } from "@/hooks/menu/useMenuCostCatalog";
 import { formatMoney, formatPercent } from "@/lib/format/currency";
 
-const SORT_OPTIONS: { value: MenuCostSortKey; label: string }[] = [
-  { value: "foodCost", label: "Cost" },
-  { value: "contributionMargin", label: "Margin" },
-  { value: "marginPercent", label: "Margin %" },
-  { value: "sellingPrice", label: "Selling Price" },
-];
+const SORT_KEYS: MenuCostSortKey[] = ["foodCost", "contributionMargin", "marginPercent", "sellingPrice"];
 
 function classificationVariant(classification: string): "default" | "secondary" | "destructive" | "outline" {
   if (classification === "PREMIUM" || classification === "HIGH") return "default";
@@ -32,6 +28,23 @@ function classificationVariant(classification: string): "default" | "secondary" 
 }
 
 export default function MenuCostList() {
+  const { t } = useErpTranslation();
+  const sortOptions = useMemo(
+    () =>
+      SORT_KEYS.map((value) => ({
+        value,
+        label:
+          value === "foodCost"
+            ? t("menuCost.list.sortCost")
+            : value === "contributionMargin"
+              ? t("menuCost.list.sortMargin")
+              : value === "marginPercent"
+                ? t("menuCost.list.sortMarginPercent")
+                : t("menuCost.list.sortSellingPrice"),
+      })),
+    [t],
+  );
+
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { data: catalog = [], isLoading } = useMenuCostCatalog(activeOutletId);
 
@@ -61,13 +74,13 @@ export default function MenuCostList() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Menu Cost List</h1>
-        <p className="text-muted-foreground text-sm">Theoretical cost and profitability by menu item.</p>
+        <h1 className="text-2xl font-bold">{t("menuCost.list.pageTitle")}</h1>
+        <p className="text-muted-foreground text-sm">{t("menuCost.list.pageSubtitle")}</p>
       </div>
 
       {noOutlet && (
         <Card className="rounded-2xl border-dashed p-6 text-sm text-muted-foreground">
-          Select an outlet in the header to load costing data.
+          {t("menuCost.shared.selectOutlet")}
         </Card>
       )}
 
@@ -81,7 +94,7 @@ export default function MenuCostList() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search menu items"
+              placeholder={t("menuCost.list.searchPlaceholder")}
               className="pl-9"
             />
           </div>
@@ -93,10 +106,10 @@ export default function MenuCostList() {
             }}
           >
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Category" />
+              <SelectValue placeholder={t("menuCost.shared.category")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="all">{t("menuCost.shared.allCategories")}</SelectItem>
               {categories.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
@@ -109,7 +122,7 @@ export default function MenuCostList() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SORT_OPTIONS.map((opt) => (
+              {sortOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -120,7 +133,7 @@ export default function MenuCostList() {
             variant="outline"
             size="icon"
             onClick={() => setSortDesc((d) => !d)}
-            title={sortDesc ? "Descending" : "Ascending"}
+            title={sortDesc ? t("menuCost.shared.descending") : t("menuCost.shared.ascending")}
           >
             <ArrowUpDown className="h-4 w-4" />
           </Button>
@@ -131,12 +144,12 @@ export default function MenuCostList() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Menu Item</TableHead>
-              <TableHead className="text-right">Selling Price</TableHead>
-              <TableHead className="text-right">Food Cost</TableHead>
-              <TableHead className="text-right">Contribution Margin</TableHead>
-              <TableHead className="text-right">Margin %</TableHead>
-              <TableHead>Last Updated</TableHead>
+              <TableHead>{t("menuCost.list.columns.menuItem")}</TableHead>
+              <TableHead className="text-right">{t("menuCost.list.columns.sellingPrice")}</TableHead>
+              <TableHead className="text-right">{t("menuCost.list.columns.foodCost")}</TableHead>
+              <TableHead className="text-right">{t("menuCost.list.columns.contributionMargin")}</TableHead>
+              <TableHead className="text-right">{t("menuCost.list.columns.marginPercent")}</TableHead>
+              <TableHead>{t("menuCost.list.columns.lastUpdated")}</TableHead>
             </TableRow>
           </TableHeader>
           {isLoading ? (
@@ -146,7 +159,7 @@ export default function MenuCostList() {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
-                    No menu items found
+                    {t("menuCost.list.empty")}
                   </TableCell>
                 </TableRow>
               )}
@@ -181,7 +194,7 @@ export default function MenuCostList() {
         {!isLoading && total > 0 && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
             <span>
-              Page {page} of {lastPage} · {total} items
+              {t("menuCost.shared.pageOf", { page, lastPage, total })}
             </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>

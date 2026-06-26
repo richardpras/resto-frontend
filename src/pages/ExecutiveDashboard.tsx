@@ -13,6 +13,8 @@ import { useExecutiveDashboardData } from "@/hooks/executive/useExecutiveDashboa
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { formatMoney, formatPercent } from "@/lib/format/currency";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import type { TFunction } from "i18next";
 import type { UserNotification, UserNotificationSourceModule } from "@/lib/api-integration/notificationEndpoints";
 
 function MetricRow({ label, value }: { label: string; value: string | number }) {
@@ -26,13 +28,20 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 
 const APPROVAL_SOURCES = new Set<UserNotificationSourceModule>(["procurement", "payroll", "hr"]);
 
-function groupLabel(source: UserNotificationSourceModule): string {
-  if (APPROVAL_SOURCES.has(source)) return "Approvals";
-  if (source === "menu_intelligence") return "Menu";
-  if (source === "inventory") return "Inventory";
-  if (source === "accounting") return "Accounting";
-  if (source === "payments") return "Payments";
+function groupLabel(source: UserNotificationSourceModule, t: TFunction): string {
+  if (APPROVAL_SOURCES.has(source)) return t("executive.dashboard.notificationGroups.approvals");
+  if (source === "menu_intelligence") return t("executive.dashboard.notificationGroups.menu");
+  if (source === "inventory") return t("executive.dashboard.notificationGroups.inventory");
+  if (source === "accounting") return t("executive.dashboard.notificationGroups.accounting");
+  if (source === "payments") return t("executive.dashboard.notificationGroups.payments");
   return source;
+}
+
+function formatHealthSeverity(severity: string | null | undefined, t: TFunction): string {
+  if (!severity) return "—";
+  return t(`accounting.health.severityLabels.${severity}`, {
+    defaultValue: severity.charAt(0).toUpperCase() + severity.slice(1),
+  });
 }
 
 function CriticalAlertsStrip({
@@ -46,21 +55,25 @@ function CriticalAlertsStrip({
   unreadCount: number;
   loading: boolean;
 }) {
+  const { t } = useErpTranslation();
+
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-3 py-4">
-        <span className="text-sm font-medium">Critical Alerts</span>
+        <span className="text-sm font-medium">{t("executive.dashboard.criticalAlerts.title")}</span>
         {loading ? (
-          <Badge variant="outline">Loading…</Badge>
+          <Badge variant="outline">{t("ops:shared.loading")}</Badge>
         ) : (
           <>
-            <Badge variant="destructive">{criticalCount} Critical</Badge>
-            <Badge className="bg-warning/15 text-warning border-warning/30">{warningCount} Warning</Badge>
-            <Badge variant="secondary">{unreadCount} Unread</Badge>
+            <Badge variant="destructive">{t("executive.dashboard.criticalAlerts.critical", { count: criticalCount })}</Badge>
+            <Badge className="bg-warning/15 text-warning border-warning/30">
+              {t("executive.dashboard.criticalAlerts.warning", { count: warningCount })}
+            </Badge>
+            <Badge variant="secondary">{t("executive.dashboard.criticalAlerts.unread", { count: unreadCount })}</Badge>
           </>
         )}
         <Button variant="link" size="sm" className="ml-auto px-0" asChild>
-          <Link to="/notifications">View Notification Center</Link>
+          <Link to="/notifications">{t("common:nav.notificationCenter")}</Link>
         </Button>
       </CardContent>
     </Card>
@@ -68,6 +81,7 @@ function CriticalAlertsStrip({
 }
 
 export default function ExecutiveDashboard() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const data = useExecutiveDashboardData(activeOutletId, hasPermission);
@@ -79,8 +93,8 @@ export default function ExecutiveDashboard() {
   if (typeof activeOutletId !== "number" || activeOutletId < 1) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Owner Control Tower</h1>
-        <p className="text-sm text-muted-foreground mt-2">Select an outlet to load the executive dashboard.</p>
+        <h1 className="text-2xl font-bold">{t("reportsHub.cards.executive-dashboard.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("executive.dashboard.selectOutlet")}</p>
       </div>
     );
   }
@@ -94,14 +108,14 @@ export default function ExecutiveDashboard() {
   const foodCostTrendBadge = (() => {
     const pct = data.foodCostPercent.data;
     if (pct === undefined) return null;
-    if (pct > 45) return <Badge variant="destructive">High</Badge>;
-    if (pct > 40) return <Badge className="bg-warning/15 text-warning border-warning/30">Elevated</Badge>;
-    return <Badge variant="outline">On Target</Badge>;
+    if (pct > 45) return <Badge variant="destructive">{t("executive.dashboard.foodCostTrend.high")}</Badge>;
+    if (pct > 40) return <Badge className="bg-warning/15 text-warning border-warning/30">{t("executive.dashboard.foodCostTrend.elevated")}</Badge>;
+    return <Badge variant="outline">{t("executive.dashboard.foodCostTrend.onTarget")}</Badge>;
   })();
 
   const notificationsByGroup = (data.notifications.data?.data ?? []).reduce<Record<string, UserNotification[]>>(
     (acc, item) => {
-      const key = groupLabel(item.sourceModule);
+      const key = groupLabel(item.sourceModule, t);
       acc[key] = acc[key] ?? [];
       acc[key].push(item);
       return acc;
@@ -113,14 +127,12 @@ export default function ExecutiveDashboard() {
     <div className="p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Owner Control Tower</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Cross-functional overview — sales, finance, operations, commercial performance, and alerts.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.executive-dashboard.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.executive-dashboard.description")}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => data.refetchAll()}>
           <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
+          {t("ops:shared.refresh")}
         </Button>
       </div>
 
@@ -142,11 +154,11 @@ export default function ExecutiveDashboard() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Financial</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <h2 className="text-lg font-semibold">{t("executive.dashboard.sections.financial")}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <ExecutiveWidgetCard
-            title="Executive Sales"
-            description="Today — gross, net, and refunds"
+            title={t("executive.dashboard.widgets.executiveSales.title")}
+            description={t("executive.dashboard.widgets.executiveSales.description")}
             status={data.sales.status}
             permissionHint={data.sales.permissionHint}
             errorMessage={data.sales.errorMessage}
@@ -154,17 +166,17 @@ export default function ExecutiveDashboard() {
           >
             {sales ? (
               <div className="space-y-2">
-                <MetricRow label="Gross Sales" value={formatMoney(sales.grossSales)} />
-                <MetricRow label="Net Sales" value={formatMoney(sales.netSales)} />
-                <MetricRow label="Refund Amount" value={formatMoney(sales.refundAmount)} />
-                <MetricRow label="Refund Count" value={sales.refundCount} />
+                <MetricRow label={t("executive.dashboard.metrics.grossSales")} value={formatMoney(sales.grossSales)} />
+                <MetricRow label={t("executive.dashboard.metrics.netSales")} value={formatMoney(sales.netSales)} />
+                <MetricRow label={t("executive.dashboard.metrics.refundAmount")} value={formatMoney(sales.refundAmount)} />
+                <MetricRow label={t("executive.dashboard.metrics.refundCount")} value={sales.refundCount} />
               </div>
             ) : null}
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Accounting Health"
-            description="Posting integrity and reconciliation signals"
+            title={t("executive.dashboard.widgets.accountingHealth.title")}
+            description={t("executive.dashboard.widgets.accountingHealth.description")}
             status={data.accountingHealth.status}
             permissionHint={data.accountingHealth.permissionHint}
             errorMessage={data.accountingHealth.errorMessage}
@@ -172,11 +184,14 @@ export default function ExecutiveDashboard() {
           >
             {data.accountingHealth.data ? (
               <div className="space-y-2">
-                <MetricRow label="Health Score" value={data.accountingHealth.data.healthScore} />
-                <MetricRow label="Severity" value={data.accountingHealth.data.healthSeverity ?? "—"} />
-                <MetricRow label="Failed Postings" value={data.accountingHealth.data.failedPostings} />
+                <MetricRow label={t("executive.dashboard.metrics.healthScore")} value={data.accountingHealth.data.healthScore} />
                 <MetricRow
-                  label="Priority Queue"
+                  label={t("executive.dashboard.metrics.severity")}
+                  value={formatHealthSeverity(data.accountingHealth.data.healthSeverity, t)}
+                />
+                <MetricRow label={t("executive.dashboard.metrics.failedPostings")} value={data.accountingHealth.data.failedPostings} />
+                <MetricRow
+                  label={t("executive.dashboard.metrics.priorityQueue")}
                   value={data.accountingHealth.data.priorityQueue?.length ?? 0}
                 />
               </div>
@@ -184,8 +199,8 @@ export default function ExecutiveDashboard() {
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Gift Card Liability"
-            description="Gift card and store credit GL tie-out"
+            title={t("executive.dashboard.widgets.giftCardLiability.title")}
+            description={t("executive.dashboard.widgets.giftCardLiability.description")}
             status={data.giftCardLiability.status}
             permissionHint={data.giftCardLiability.permissionHint}
             errorMessage={data.giftCardLiability.errorMessage}
@@ -194,14 +209,14 @@ export default function ExecutiveDashboard() {
             {data.giftCardLiability.data ? (
               <div className="space-y-2">
                 <MetricRow
-                  label="Gift Card Liability"
+                  label={t("executive.dashboard.metrics.giftCardLiability")}
                   value={formatMoney(data.giftCardLiability.data.giftCardLiabilityBalance ?? 0)}
                 />
                 <MetricRow
-                  label="Store Credit Liability"
+                  label={t("executive.dashboard.metrics.storeCreditLiability")}
                   value={formatMoney(data.giftCardLiability.data.storeCreditLiabilityBalance ?? 0)}
                 />
-                <MetricRow label="Status" value={data.giftCardLiability.data.status} />
+                <MetricRow label={t("executive.dashboard.metrics.status")} value={data.giftCardLiability.data.status} />
               </div>
             ) : null}
           </ExecutiveWidgetCard>
@@ -209,7 +224,7 @@ export default function ExecutiveDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Operations</h2>
+        <h2 className="text-lg font-semibold">{t("reportsHub.sections.operations")}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <ExecutiveDashboardSystemHealthWidget />
 
@@ -220,8 +235,8 @@ export default function ExecutiveDashboard() {
           <ExecutiveCustomerOrderingWidget />
 
           <ExecutiveWidgetCard
-            title="Payment Health"
-            description="Gateway reliability and incidents"
+            title={t("executive.dashboard.widgets.paymentHealth.title")}
+            description={t("executive.dashboard.widgets.paymentHealth.description")}
             status={data.paymentHealth.status}
             permissionHint={data.paymentHealth.permissionHint}
             errorMessage={data.paymentHealth.errorMessage}
@@ -229,24 +244,27 @@ export default function ExecutiveDashboard() {
           >
             {data.paymentHealth.data ? (
               <div className="space-y-2">
-                <MetricRow label="Severity" value={data.paymentHealth.data.healthSeverity ?? "—"} />
                 <MetricRow
-                  label="Success Rate"
+                  label={t("executive.dashboard.metrics.severity")}
+                  value={formatHealthSeverity(data.paymentHealth.data.healthSeverity, t)}
+                />
+                <MetricRow
+                  label={t("executive.dashboard.metrics.successRate")}
                   value={
                     data.paymentHealth.data.paymentSuccessRate !== undefined
                       ? formatPercent(data.paymentHealth.data.paymentSuccessRate)
                       : "—"
                   }
                 />
-                <MetricRow label="Failed Webhooks" value={data.paymentHealth.data.failedWebhooks ?? 0} />
-                <MetricRow label="Open Incidents" value={data.paymentHealth.data.openIncidents ?? 0} />
+                <MetricRow label={t("executive.dashboard.metrics.failedWebhooks")} value={data.paymentHealth.data.failedWebhooks ?? 0} />
+                <MetricRow label={t("executive.dashboard.metrics.openIncidents")} value={data.paymentHealth.data.openIncidents ?? 0} />
               </div>
             ) : null}
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Audit Activity"
-            description="Today's audit events and critical changes"
+            title={t("executive.dashboard.widgets.auditActivity.title")}
+            description={t("executive.dashboard.widgets.auditActivity.description")}
             status={data.auditActivity.status}
             permissionHint={data.auditActivity.permissionHint}
             errorMessage={data.auditActivity.errorMessage}
@@ -254,16 +272,16 @@ export default function ExecutiveDashboard() {
           >
             {data.auditActivity.data ? (
               <div className="space-y-2">
-                <MetricRow label="Today's Events" value={data.auditActivity.data.todayEvents} />
-                <MetricRow label="Critical Events" value={data.auditActivity.data.criticalEvents} />
-                <MetricRow label="Active Users" value={data.auditActivity.data.activeUsers} />
+                <MetricRow label={t("executive.dashboard.metrics.todayEvents")} value={data.auditActivity.data.todayEvents} />
+                <MetricRow label={t("executive.dashboard.metrics.criticalEvents")} value={data.auditActivity.data.criticalEvents} />
+                <MetricRow label={t("executive.dashboard.metrics.activeUsers")} value={data.auditActivity.data.activeUsers} />
               </div>
             ) : null}
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Operational Monitoring"
-            description="Kitchen, payments, printer, bridge, and sync"
+            title={t("executive.dashboard.widgets.operationalMonitoring.title")}
+            description={t("executive.dashboard.widgets.operationalMonitoring.description")}
             status={data.monitoring.status}
             permissionHint={data.monitoring.permissionHint}
             errorMessage={data.monitoring.errorMessage}
@@ -272,14 +290,14 @@ export default function ExecutiveDashboard() {
             {monitoring ? (
               <div className="space-y-2">
                 <MetricRow
-                  label="Kitchen Queue"
+                  label={t("executive.dashboard.metrics.kitchenQueue")}
                   value={monitoring.kitchen.queued + monitoring.kitchen.inProgress}
                 />
-                <MetricRow label="Pending Payments" value={monitoring.pendingPayments} />
-                <MetricRow label="Active Sessions" value={monitoring.activeSessions} />
-                <MetricRow label="Printer Failures" value={monitoring.printerQueue.failed} />
-                <MetricRow label="Hardware Bridge Issues" value={monitoring.hardware.staleBridges} />
-                <MetricRow label="Offline Sync Failures" value={monitoring.offlineSync.failures} />
+                <MetricRow label={t("executive.dashboard.metrics.pendingPayments")} value={monitoring.pendingPayments} />
+                <MetricRow label={t("executive.dashboard.metrics.activeSessions")} value={monitoring.activeSessions} />
+                <MetricRow label={t("executive.dashboard.metrics.printerFailures")} value={monitoring.printerQueue.failed} />
+                <MetricRow label={t("executive.dashboard.metrics.hardwareBridgeIssues")} value={monitoring.hardware.staleBridges} />
+                <MetricRow label={t("executive.dashboard.metrics.offlineSyncFailures")} value={monitoring.offlineSync.failures} />
               </div>
             ) : null}
           </ExecutiveWidgetCard>
@@ -287,11 +305,11 @@ export default function ExecutiveDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Commercial</h2>
+        <h2 className="text-lg font-semibold">{t("reportsHub.sections.commercial")}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <ExecutiveWidgetCard
-            title="Loyalty Overview"
-            description="Last 30 days"
+            title={t("executive.dashboard.widgets.loyaltyOverview.title")}
+            description={t("executive.dashboard.widgets.loyaltyOverview.description")}
             status={data.loyalty.status}
             permissionHint={data.loyalty.permissionHint}
             errorMessage={data.loyalty.errorMessage}
@@ -299,10 +317,10 @@ export default function ExecutiveDashboard() {
           >
             {loyaltySummary ? (
               <div className="space-y-2">
-                <MetricRow label="Active Customers" value={loyaltySummary.activeMembers} />
-                <MetricRow label="Repeat Visit Rate" value={formatPercent(loyaltySummary.repeatCustomerRate)} />
+                <MetricRow label={t("executive.dashboard.metrics.activeCustomers")} value={loyaltySummary.activeMembers} />
+                <MetricRow label={t("executive.dashboard.metrics.repeatVisitRate")} value={formatPercent(loyaltySummary.repeatCustomerRate)} />
                 <MetricRow
-                  label="Voucher Redemption Rate"
+                  label={t("executive.dashboard.metrics.voucherRedemptionRate")}
                   value={formatPercent(data.loyalty.data?.voucherAnalytics.voucherRedemptionRate ?? 0)}
                 />
               </div>
@@ -310,8 +328,8 @@ export default function ExecutiveDashboard() {
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Top Customers"
-            description="Top 5 members by spend"
+            title={t("executive.dashboard.widgets.topCustomers.title")}
+            description={t("executive.dashboard.widgets.topCustomers.description")}
             status={data.loyalty.status}
             permissionHint={data.loyalty.permissionHint}
             errorMessage={data.loyalty.errorMessage}
@@ -327,13 +345,13 @@ export default function ExecutiveDashboard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No member data.</p>
+              <p className="text-sm text-muted-foreground">{t("executive.dashboard.empty.noMemberData")}</p>
             )}
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Top Products"
-            description="Today — from executive sales"
+            title={t("executive.dashboard.widgets.topProducts.title")}
+            description={t("executive.dashboard.widgets.topProducts.description")}
             status={data.sales.status}
             permissionHint={data.sales.permissionHint}
             errorMessage={data.sales.errorMessage}
@@ -349,13 +367,13 @@ export default function ExecutiveDashboard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No product data.</p>
+              <p className="text-sm text-muted-foreground">{t("executive.dashboard.empty.noProductData")}</p>
             )}
           </ExecutiveWidgetCard>
 
           <ExecutiveWidgetCard
-            title="Food Cost"
-            description="Menu analytics average"
+            title={t("executive.dashboard.widgets.foodCost.title")}
+            description={t("executive.dashboard.widgets.foodCost.description")}
             status={data.foodCostPercent.status}
             permissionHint={data.foodCostPercent.permissionHint}
             errorMessage={data.foodCostPercent.errorMessage}
@@ -368,7 +386,7 @@ export default function ExecutiveDashboard() {
                   {foodCostTrendBadge}
                 </div>
                 {data.menuOpenAlerts.status === "success" ? (
-                  <MetricRow label="Open Menu Alerts" value={data.menuOpenAlerts.data ?? 0} />
+                  <MetricRow label={t("executive.dashboard.metrics.openMenuAlerts")} value={data.menuOpenAlerts.data ?? 0} />
                 ) : null}
               </div>
             ) : null}
@@ -377,10 +395,10 @@ export default function ExecutiveDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Notifications</h2>
+        <h2 className="text-lg font-semibold">{t("executive.dashboard.sections.notifications")}</h2>
         <ExecutiveWidgetCard
-          title="Alert Summary"
-          description="Latest notifications across domains"
+          title={t("executive.dashboard.widgets.alertSummary.title")}
+          description={t("executive.dashboard.widgets.alertSummary.description")}
           status={data.notifications.status}
           permissionHint={data.notifications.permissionHint}
           errorMessage={data.notifications.errorMessage}
@@ -388,9 +406,9 @@ export default function ExecutiveDashboard() {
         >
           <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
             <div className="space-y-2">
-              <MetricRow label="Critical" value={criticalCount} />
-              <MetricRow label="Warning" value={warningCount} />
-              <MetricRow label="Unread" value={unreadCount} />
+              <MetricRow label={t("executive.dashboard.metrics.critical")} value={criticalCount} />
+              <MetricRow label={t("executive.dashboard.metrics.warning")} value={warningCount} />
+              <MetricRow label={t("executive.dashboard.metrics.unread")} value={unreadCount} />
             </div>
             <div className="space-y-4">
               {Object.entries(notificationsByGroup).map(([group, items]) => (
@@ -409,7 +427,7 @@ export default function ExecutiveDashboard() {
                 </div>
               ))}
               {(data.notifications.data?.data.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent notifications.</p>
+                <p className="text-sm text-muted-foreground">{t("executive.dashboard.empty.noRecentNotifications")}</p>
               ) : null}
             </div>
           </div>

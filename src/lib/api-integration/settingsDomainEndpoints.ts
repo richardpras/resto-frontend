@@ -164,6 +164,24 @@ export async function deleteTaxApi(taxId: string): Promise<void> {
   await request(`/taxes/${encodeURIComponent(taxId)}`, { method: "DELETE" });
 }
 
+export type OutletTaxAssignments = {
+  outletId: number;
+  taxIds: string[];
+};
+
+export async function getOutletTaxAssignments(outletId: number): Promise<OutletTaxAssignments> {
+  const res = await request<Envelope<OutletTaxAssignments>>(`/outlets/${encodeURIComponent(String(outletId))}/tax-assignments`);
+  return res.data;
+}
+
+export async function putOutletTaxAssignments(outletId: number, taxIds: string[]): Promise<OutletTaxAssignments> {
+  const res = await request<MessageEnvelope<OutletTaxAssignments>>(`/outlets/${encodeURIComponent(String(outletId))}/tax-assignments`, {
+    method: "PUT",
+    body: JSON.stringify({ taxIds }),
+  });
+  return res.data;
+}
+
 /** GET /printers */
 export async function listPrinters(): Promise<Printer[]> {
   const res = await request<Envelope<Printer[]>>("/printers");

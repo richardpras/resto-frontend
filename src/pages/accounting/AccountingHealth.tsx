@@ -145,7 +145,7 @@ export default function AccountingHealth() {
 
       {health && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             <MetricCard label={t("accounting.health.healthScore")} value={health.healthScore} />
             <MetricCard label={t("accounting.health.failedPostings")} value={health.failedPostings} />
             <MetricCard label={t("accounting.health.severity")} value={severityLabel(health.healthSeverity)} />

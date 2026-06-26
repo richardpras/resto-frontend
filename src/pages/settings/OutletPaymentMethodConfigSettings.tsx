@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { useOutletStore } from "@/stores/outletStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 export default function OutletPaymentMethodConfigSettings() {
+  const { t } = useTranslation("common");
   const outlets = useSettingsStore((s) => s.outlets);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [outletId, setOutletId] = useState<number | null>(
@@ -56,9 +58,9 @@ export default function OutletPaymentMethodConfigSettings() {
       ]);
       await queryClient.invalidateQueries({ queryKey: ["outlet-payment-method-configs", outletId] });
       await queryClient.invalidateQueries({ queryKey: ["outlet-checkout-methods", outletId] });
-      toast.success(`${row.label} ${enabled ? "enabled" : "disabled"}`);
+      toast.success(enabled ? t("settings.outletPayments.methodEnabled", { label: row.label }) : t("settings.outletPayments.methodDisabled", { label: row.label }));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.outletPayments.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -76,9 +78,9 @@ export default function OutletPaymentMethodConfigSettings() {
         },
       ]);
       await queryClient.invalidateQueries({ queryKey: ["outlet-payment-method-configs", outletId] });
-      toast.success("Static QRIS instructions saved");
+      toast.success(t("settings.outletPayments.instructionsSaved"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -92,9 +94,9 @@ export default function OutletPaymentMethodConfigSettings() {
         { paymentMethodCode: row.paymentMethodCode, chartAccountId },
       ]);
       await queryClient.invalidateQueries({ queryKey: ["outlet-payment-method-configs", outletId] });
-      toast.success("GL account updated");
+      toast.success(t("settings.outletPayments.glAccountUpdated"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Update failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.outletPayments.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -107,9 +109,9 @@ export default function OutletPaymentMethodConfigSettings() {
       await uploadOutletStaticQrisImage(outletId, file);
       await queryClient.invalidateQueries({ queryKey: ["outlet-payment-method-configs", outletId] });
       await queryClient.invalidateQueries({ queryKey: ["outlet-checkout-methods", outletId] });
-      toast.success("Static QRIS image uploaded");
+      toast.success(t("settings.outletPayments.imageUploaded"));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Upload failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("settings.outletPayments.uploadFailed"));
     } finally {
       setSaving(false);
     }
@@ -119,20 +121,20 @@ export default function OutletPaymentMethodConfigSettings() {
     <Card>
       <CardContent className="p-6 space-y-4">
         <div>
-          <h2 className="font-semibold">Outlet Payment Settings</h2>
+          <h2 className="font-semibold">{t("settings.outletPayments.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Enable or disable accepted payment methods per outlet. Configure static QRIS and customer payment instructions.
+            {t("settings.outletPayments.subtitle")}
           </p>
         </div>
 
         <div className="max-w-xs space-y-2">
-          <Label>Outlet</Label>
+          <Label>{t("settings.outletPayments.outlet")}</Label>
           <Select
             value={outletId ? String(outletId) : ""}
             onValueChange={(v) => setOutletId(Number(v))}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select outlet" />
+              <SelectValue placeholder={t("settings.outletPayments.selectOutlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -145,7 +147,7 @@ export default function OutletPaymentMethodConfigSettings() {
         </div>
 
         {!outletId ? (
-          <p className="text-sm text-muted-foreground">Select an outlet to configure payment methods.</p>
+          <p className="text-sm text-muted-foreground">{t("settings.outletPayments.selectOutletHint")}</p>
         ) : isLoading ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : (
@@ -174,7 +176,7 @@ export default function OutletPaymentMethodConfigSettings() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>GL Account</Label>
+                    <Label>{t("settings.outletPayments.glAccount")}</Label>
                     <ChartAccountSelect
                       value={row.chartAccountId ?? null}
                       onChange={(chartAccountId) => void saveChartAccount(row, chartAccountId)}
@@ -184,18 +186,18 @@ export default function OutletPaymentMethodConfigSettings() {
 
                   {isManualQris && row.enabled ? (
                     <div className="space-y-3 border-t border-border pt-3">
-                      <h3 className="font-medium text-sm">Static QRIS</h3>
+                      <h3 className="font-medium text-sm">{t("settings.outletPayments.staticQris")}</h3>
                       {manualQris?.settings?.qr_image_url ? (
                         <img
                           src={String(manualQris.settings.qr_image_url)}
-                          alt="Static QRIS"
+                          alt={t("settings.outletPayments.staticQrisAlt")}
                           className="max-h-40 rounded-md border border-border"
                         />
                       ) : (
-                        <p className="text-xs text-muted-foreground">No QR image uploaded yet.</p>
+                        <p className="text-xs text-muted-foreground">{t("settings.outletPayments.noQrImage")}</p>
                       )}
                       <div>
-                        <Label htmlFor="static-qris-file">Upload QR image</Label>
+                        <Label htmlFor="static-qris-file">{t("settings.outletPayments.uploadQrImage")}</Label>
                         <Input
                           id="static-qris-file"
                           type="file"
@@ -209,15 +211,15 @@ export default function OutletPaymentMethodConfigSettings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="static-qris-instructions">Payment instructions</Label>
+                        <Label htmlFor="static-qris-instructions">{t("settings.outletPayments.paymentInstructions")}</Label>
                         <Input
                           id="static-qris-instructions"
                           value={draft}
                           onChange={(e) => setInstructions(e.target.value)}
-                          placeholder="e.g. Scan QRIS and send proof to cashier"
+                          placeholder={t("settings.outletPayments.instructionsPlaceholder")}
                         />
                         <Button type="button" size="sm" disabled={saving} onClick={() => void saveInstructions()}>
-                          Save instructions
+                          {t("settings.outletPayments.saveInstructions")}
                         </Button>
                       </div>
                     </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
 
 export default function Departments() {
+  const { t } = useErpTranslation();
   const { user } = useAuthStore();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outlets = user?.assignedOutlets ?? [];
@@ -39,7 +41,7 @@ export default function Departments() {
     try {
       setRows(await listDepartments(outletId));
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load departments");
+      toast.error(e instanceof ApiHttpError ? e.message : t("organization.departments.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function Departments() {
 
   const handleSave = async () => {
     if (!outletId || !form.code.trim() || !form.name.trim()) {
-      return toast.error("Code and name are required");
+      return toast.error(t("organization.departments.codeNameRequired"));
     }
     setSaving(true);
     try {
@@ -84,7 +86,7 @@ export default function Departments() {
           description: form.description || undefined,
           isActive: form.isActive,
         });
-        toast.success("Department updated");
+        toast.success(t("organization.departments.updated"));
       } else {
         await createDepartment({
           outletId,
@@ -93,26 +95,26 @@ export default function Departments() {
           description: form.description || undefined,
           isActive: form.isActive,
         });
-        toast.success("Department created");
+        toast.success(t("organization.departments.created"));
       }
       setOpen(false);
       await load();
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common:common.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   const columns: Column<DepartmentRow>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Name", sortable: true },
+    { key: "code", header: t("loyalty.form.code"), sortable: true },
+    { key: "name", header: t("common:common.name"), sortable: true },
     {
       key: "isActive",
-      header: "Status",
+      header: t("common:common.status"),
       render: (r) => (
         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${r.isActive ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
-          {r.isActive ? "Active" : "Inactive"}
+          {r.isActive ? t("common:common.active") : t("common:common.inactive")}
         </span>
       ),
     },
@@ -132,8 +134,8 @@ export default function Departments() {
             onClick={() => {
               void deleteDepartment(r.id)
                 .then(() => load())
-                .then(() => toast.success("Deleted"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Delete failed"));
+                .then(() => toast.success(t("organization.departments.deleted")))
+                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : t("common:common.deleteFailed")));
             }}
           >
             <Trash2 className="h-4 w-4" />
@@ -147,13 +149,13 @@ export default function Departments() {
     <div className="p-4 md:p-6 space-y-5 max-w-7xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Departments</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Organize teams by department per outlet.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("organization.departments.pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("organization.departments.pageSubtitle")}</p>
         </div>
         {outlets.length > 0 && (
           <Select value={outletId ? String(outletId) : ""} onValueChange={(v) => setOutletId(Number(v))}>
             <SelectTrigger className="w-48 rounded-xl">
-              <SelectValue placeholder="Outlet" />
+              <SelectValue placeholder={t("settings:settings.printers.outlet")} />
             </SelectTrigger>
             <SelectContent>
               {outlets.map((o) => (
@@ -171,13 +173,13 @@ export default function Departments() {
         columns={columns}
         rowKey={(r) => r.id}
         loading={loading}
-        searchPlaceholder="Search department..."
+        searchPlaceholder={t("organization.departments.searchPlaceholder")}
         searchKeys={["code", "name", "description"]}
-        emptyMessage="No departments yet"
-        emptyAction={{ label: "Add department", onClick: openNew }}
+        emptyMessage={t("organization.departments.empty")}
+        emptyAction={{ label: t("organization.departments.addDepartment"), onClick: openNew }}
         rightToolbar={
           <Button onClick={openNew} className="rounded-xl" disabled={!outletId}>
-            <Plus className="h-4 w-4 mr-1" /> Add department
+            <Plus className="h-4 w-4 mr-1" /> {t("organization.departments.addDepartment")}
           </Button>
         }
       />
@@ -185,32 +187,32 @@ export default function Departments() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className={`${dialogSize.md} ${dialogScroll} rounded-2xl`}>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit department" : "New department"}</DialogTitle>
+            <DialogTitle>{editing ? t("organization.departments.editDepartment") : t("organization.departments.newDepartment")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
-              <Label>Code *</Label>
+              <Label>{t("loyalty.form.code")} *</Label>
               <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             </div>
             <div>
-              <Label>Name *</Label>
+              <Label>{t("common:common.name")} *</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div>
-              <Label>Description</Label>
+              <Label>{t("organization.departments.description")}</Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
-              <Label>Active</Label>
+              <Label>{t("common:common.active")}</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
+              {t("common:common.cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={saving}>
-              Save
+              {t("common:common.saveShort")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -24,6 +24,14 @@
     "on": "on",
     "off": "off"
   },
+  "dataTable": {
+    "searchPlaceholder": "Search…",
+    "emptyMessage": "No data available",
+    "loadingLabel": "Loading table",
+    "rowsPerPage": "Rows per page",
+    "showingRange": "Showing {{from}}–{{to}} of {{total}}",
+    "pageInfo": "Page {{current}} / {{total}}"
+  },
   "language": {
     "label": "Language",
     "en": "English",
@@ -340,7 +348,17 @@
       "valueMin": "Value must be ≥ 0",
       "savedLocally": "Tax saved locally",
       "saved": "Tax saved",
-      "deleteConfirm": "Delete tax?"
+      "deleteConfirm": "Delete tax?",
+      "effective": "Effective",
+      "effectiveFrom": "Effective from",
+      "effectiveTo": "Effective to",
+      "alwaysEffective": "Always",
+      "effectiveRangeInvalid": "Effective to must be on or after effective from",
+      "outletAssignmentsTitle": "Outlet tax assignments",
+      "outletAssignmentsDesc": "Assign tax rules to outlets. POS shows a tax toggle only for outlets with assigned rules.",
+      "outletAssignmentsSaved": "Outlet tax assignments saved",
+      "outletAssignmentsSavedLocally": "Outlet tax assignments saved locally",
+      "noTaxRules": "No tax rules configured yet"
     },
     "printers": {
       "title": "Printer Setup",
@@ -379,7 +397,70 @@
       "testSent": "Test print sent to bridge",
       "testFailed": "Test print failed",
       "testing": "Sending...",
-      "deleteConfirm": "Delete printer?"
+      "deleteConfirm": "Delete printer?",
+      "receiptHistory": {
+        "title": "Receipt render history (Phase 14)",
+        "description": "Server-rendered thermal snapshots and invoice metadata. Printing stays on the backend queue — this panel is preview and reprint orchestration only.",
+        "outlet": "Outlet",
+        "selectOutlet": "Select outlet",
+        "loadHistory": "Load history",
+        "empty": "No rows loaded. Choose an outlet and load history.",
+        "preview": "Preview",
+        "columns": {
+          "id": "Id",
+          "kind": "Kind",
+          "source": "Source",
+          "invoice": "Invoice",
+          "flags": "Flags"
+        },
+        "deferred": "Deferred",
+        "reprintCount": "R{{count}}"
+      },
+      "receiptPreview": {
+        "title": "Receipt preview",
+        "loading": "Loading receipt",
+        "noSelection": "No receipt selected.",
+        "invoiceBadge": "Invoice {{number}}",
+        "pdfReady": "PDF ready",
+        "pdfUnavailable": "PDF n/a",
+        "deferredOffline": "Deferred / offline",
+        "printPathLive": "Print path live",
+        "reprints": "Reprints {{count}}",
+        "outletLogoAlt": "{{name}} logo",
+        "openPdf": "Open PDF",
+        "queueReprint": "Queue reprint",
+        "markDeferred": "Mark deferred replay",
+        "close": "Close"
+      },
+      "tableHeaders": {
+        "name": "Name",
+        "type": "Type",
+        "connection": "Connection",
+        "address": "Address",
+        "test": "Test"
+      }
+    },
+    "outletPayments": {
+      "title": "Outlet Payment Settings",
+      "subtitle": "Enable or disable accepted payment methods per outlet. Configure static QRIS and customer payment instructions.",
+      "outlet": "Outlet",
+      "selectOutlet": "Select outlet",
+      "selectOutletHint": "Select an outlet to configure payment methods.",
+      "glAccount": "GL Account",
+      "staticQris": "Static QRIS",
+      "noQrImage": "No QR image uploaded yet.",
+      "uploadQrImage": "Upload QR image",
+      "paymentInstructions": "Payment instructions",
+      "instructionsPlaceholder": "e.g. Scan QRIS and send proof to cashier",
+      "saveInstructions": "Save instructions",
+      "methodEnabled": "{{label}} enabled",
+      "methodDisabled": "{{label}} disabled",
+      "updateFailed": "Update failed",
+      "instructionsSaved": "Static QRIS instructions saved",
+      "glAccountUpdated": "GL account updated",
+      "imageUploaded": "Static QRIS image uploaded",
+      "uploadFailed": "Upload failed",
+      "staticQrisAlt": "Static QRIS"
     },
     "bridgePairing": {
       "title": "Outlet Print Computer",
@@ -471,6 +552,7 @@
       "bankName": "Bank Name",
       "accountName": "Account Name",
       "accountNumber": "Account Number",
+      "glAccount": "GL Account",
       "setDefaultAccount": "Set as default account",
       "required": "Bank name & account number required",
       "savedLocally": "Bank account saved locally",

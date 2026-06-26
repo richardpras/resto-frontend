@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -42,6 +43,7 @@ function diffIngredientChanges(current: RecipeVersion, previous: RecipeVersion) 
 }
 
 export default function RecipeCostComparison() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const { data: catalog = [] } = useMenuCostCatalog(activeOutletId);
   const [menuItemId, setMenuItemId] = useState<string>("");
@@ -100,12 +102,12 @@ export default function RecipeCostComparison() {
       <div className="space-y-2">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link to="/menu/costing">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back to dashboard
+            <ArrowLeft className="h-4 w-4 mr-1" /> {t("menuCost.comparison.backToDashboard")}
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold">Recipe Cost Comparison</h1>
+        <h1 className="text-2xl font-bold">{t("menuCost.comparison.pageTitle")}</h1>
         <p className="text-muted-foreground text-sm">
-          Compare the active recipe against the previous version and historical cost snapshots.
+          {t("menuCost.comparison.pageSubtitle")}
         </p>
       </div>
 
@@ -113,7 +115,7 @@ export default function RecipeCostComparison() {
         <div className="flex flex-wrap gap-3 items-center">
           <Select value={menuItemId} onValueChange={setMenuItemId}>
             <SelectTrigger className="w-full max-w-md">
-              <SelectValue placeholder="Select menu item" />
+              <SelectValue placeholder={t("menuCost.comparison.selectMenuItem")} />
             </SelectTrigger>
             <SelectContent>
               {catalog.map((row) => (
@@ -128,7 +130,7 @@ export default function RecipeCostComparison() {
 
       {!enabled && (
         <Card className="rounded-2xl border-dashed p-6 text-sm text-muted-foreground">
-          Select a menu item and outlet to compare recipe versions.
+          {t("menuCost.shared.selectItemOutlet")}
         </Card>
       )}
 
@@ -136,29 +138,29 @@ export default function RecipeCostComparison() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="rounded-2xl">
             <CardHeader>
-              <CardTitle className="text-base">Current Recipe</CardTitle>
+              <CardTitle className="text-base">{t("menuCost.comparison.currentRecipe")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {currentVersion ? (
                 <>
                   <p className="font-medium">{selectedName}</p>
                   <p className="text-muted-foreground">
-                    v{currentVersion.versionNumber} · {currentVersion.name ?? "Active"}
+                    v{currentVersion.versionNumber} · {currentVersion.name ?? t("menuCost.comparison.activeLabel")}
                   </p>
                   <p className="text-lg font-bold">{formatMoney(currentCost)}</p>
                   {currentMargin !== null && (
-                    <p className="text-muted-foreground">Margin {formatMoney(currentMargin)}</p>
+                    <p className="text-muted-foreground">{t("menuCost.comparison.margin", { amount: formatMoney(currentMargin) })}</p>
                   )}
                 </>
               ) : (
-                <p className="text-muted-foreground">No recipe version found.</p>
+                <p className="text-muted-foreground">{t("menuCost.comparison.noRecipeVersion")}</p>
               )}
             </CardContent>
           </Card>
 
           <Card className="rounded-2xl">
             <CardHeader>
-              <CardTitle className="text-base">Previous Version</CardTitle>
+              <CardTitle className="text-base">{t("menuCost.comparison.previousVersion")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {previousVersion ? (
@@ -171,28 +173,28 @@ export default function RecipeCostComparison() {
                     {previousCost !== null ? formatMoney(previousCost) : "—"}
                   </p>
                   {previousMargin !== null && (
-                    <p className="text-muted-foreground">Margin {formatMoney(previousMargin)}</p>
+                    <p className="text-muted-foreground">{t("menuCost.comparison.margin", { amount: formatMoney(previousMargin) })}</p>
                   )}
                 </>
               ) : (
-                <p className="text-muted-foreground">No previous version to compare.</p>
+                <p className="text-muted-foreground">{t("menuCost.comparison.noPreviousVersion")}</p>
               )}
             </CardContent>
           </Card>
 
           <Card className="rounded-2xl lg:col-span-2">
             <CardHeader>
-              <CardTitle className="text-base">Cost &amp; Margin Delta</CardTitle>
+              <CardTitle className="text-base">{t("menuCost.comparison.deltaTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
               <div className="rounded-xl border p-4">
-                <p className="text-muted-foreground">Cost Delta</p>
+                <p className="text-muted-foreground">{t("menuCost.comparison.costDelta")}</p>
                 <p className={`text-xl font-bold ${costDelta !== null && costDelta > 0 ? "text-destructive" : ""}`}>
                   {costDelta !== null ? formatMoney(costDelta) : "—"}
                 </p>
               </div>
               <div className="rounded-xl border p-4">
-                <p className="text-muted-foreground">Margin Delta</p>
+                <p className="text-muted-foreground">{t("menuCost.comparison.marginDelta")}</p>
                 <p className={`text-xl font-bold ${marginDelta !== null && marginDelta < 0 ? "text-destructive" : ""}`}>
                   {marginDelta !== null ? formatMoney(marginDelta) : "—"}
                 </p>
@@ -203,15 +205,15 @@ export default function RecipeCostComparison() {
           {ingredientChanges.length > 0 && (
             <Card className="rounded-2xl lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Ingredient Changes</CardTitle>
+                <CardTitle className="text-base">{t("menuCost.comparison.ingredientChanges")}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Ingredient</TableHead>
-                      <TableHead className="text-right">Previous Qty</TableHead>
-                      <TableHead className="text-right">Current Qty</TableHead>
+                      <TableHead>{t("menuCost.comparison.columns.ingredient")}</TableHead>
+                      <TableHead className="text-right">{t("menuCost.comparison.columns.previousQty")}</TableHead>
+                      <TableHead className="text-right">{t("menuCost.comparison.columns.currentQty")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

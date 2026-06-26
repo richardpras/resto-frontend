@@ -117,7 +117,7 @@ export default function ProcurementAnalytics() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           <KpiCard label={t("purchases.analytics.kpi.totalSpend")} value={fmt(summary.totalSpend)} />
           <KpiCard label={t("purchases.analytics.kpi.outstandingAp")} value={fmt(summary.outstandingPayables)} />
           <KpiCard label={t("purchases.analytics.kpi.overdueAp")} value={fmt(summary.overduePayables)} />
@@ -248,7 +248,7 @@ export default function ProcurementAnalytics() {
 
         <TabsContent value="posting">
           {posting && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               <KpiCard label={t("purchases.analytics.postingKpi.postedGrns")} value={posting.postedGrnCount} />
               <KpiCard label={t("purchases.analytics.postingKpi.unpostedGrns")} value={posting.unpostedGrnCount} />
               <KpiCard label={t("purchases.analytics.postingKpi.postedInvoices")} value={posting.postedInvoiceCount} />

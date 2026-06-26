@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/ScrollableTabsList";
 import { toast } from "sonner";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
@@ -98,13 +99,13 @@ export default function Accounting() {
         <p className="text-muted-foreground text-sm">{t("accounting.subtitle")}</p>
       </div>
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AccountingTabKey)}>
-        <TabsList className="flex-wrap h-auto">
+        <ScrollableTabsList>
           {visibleTabs.map((key) => (
-            <TabsTrigger key={key} value={key}>
+            <TabsTrigger key={key} value={key} className="shrink-0 px-4 min-h-10">
               {t(`accounting.tabs.${key}`)}
             </TabsTrigger>
           ))}
-        </TabsList>
+        </ScrollableTabsList>
         <TabsContent value="coa" className="mt-4"><ChartOfAccounts /></TabsContent>
         <TabsContent value="journal" className="mt-4"><JournalEntries /></TabsContent>
         <TabsContent value="periods" className="mt-4"><AccountingPeriods /></TabsContent>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Search, Inbox, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,29 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   rightToolbar?: React.ReactNode;
   filterToolbar?: React.ReactNode;
+  mobileCardRender?: (row: T) => React.ReactNode;
+}
+
+function DefaultMobileCard<T>({ row, columns }: { row: T; columns: Column<T>[] }) {
+  const visible = columns.filter((c) => c.key !== "actions").slice(0, 4);
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-background p-4 space-y-2">
+      {visible.map((col) => {
+        const value = col.render
+          ? col.render(row)
+          : col.accessor
+            ? col.accessor(row)
+            : (row as Record<string, unknown>)[col.key];
+        return (
+          <div key={col.key} className="flex items-start justify-between gap-3 text-sm">
+            <span className="text-muted-foreground shrink-0">{col.header}</span>
+            <span className="text-foreground text-right font-medium min-w-0 break-words">{value as React.ReactNode}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function useDebounced<T>(value: T, ms = 250): T {
@@ -43,11 +67,14 @@ function useDebounced<T>(value: T, ms = 250): T {
 }
 
 export function DataTable<T>({
-  data, columns, loading, searchable = true, searchPlaceholder = "Search...",
+  data, columns, loading, searchable = true, searchPlaceholder,
   searchKeys, pageSizeOptions = [10, 25, 50, 100, "All"], defaultPageSize = 10,
-  emptyMessage = "No data available", emptyAction, rowKey, onRowClick,
-  rightToolbar, filterToolbar,
+  emptyMessage, emptyAction, rowKey, onRowClick,
+  rightToolbar, filterToolbar, mobileCardRender,
 }: DataTableProps<T>) {
+  const { t } = useTranslation("common");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("dataTable.searchPlaceholder");
+  const resolvedEmptyMessage = emptyMessage ?? t("dataTable.emptyMessage");
   const [search, setSearch] = useState("");
   const debounced = useDebounced(search, 300);
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -97,14 +124,14 @@ export function DataTable<T>({
   };
 
   return (
-    <SkeletonBusyRegion busy={!!loading} className="bg-card rounded-2xl border border-border/50 pos-shadow-md overflow-hidden" label="Loading table">
+    <SkeletonBusyRegion busy={!!loading} className="bg-card rounded-2xl border border-border/50 pos-shadow-md overflow-hidden" label={t("dataTable.loadingLabel")}>
       {(searchable || filterToolbar || rightToolbar) && (
         <div className="p-4 flex flex-wrap items-center gap-3 border-b border-border/50">
           {searchable && (
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={searchPlaceholder}
+                placeholder={resolvedSearchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -116,7 +143,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className={cn("overflow-auto max-h-[calc(100vh-280px)]", loading && "min-h-[280px]")}>
+      <div className={cn("hidden lg:block overflow-auto max-h-[calc(100vh-280px)]", loading && "min-h-[280px]")}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
             <tr className="border-b">
@@ -155,7 +182,7 @@ export function DataTable<T>({
                     <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
                       <Inbox className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+                    <p className="text-sm text-muted-foreground">{resolvedEmptyMessage}</p>
                     {emptyAction && (
                       <Button onClick={emptyAction.onClick} size="sm" className="rounded-xl">
                         <Plus className="h-4 w-4 mr-1" />{emptyAction.label}
@@ -186,10 +213,55 @@ export function DataTable<T>({
         </table>
       </div>
 
+      <div className={cn("lg:hidden p-4 space-y-3", loading && "min-h-[200px]")}>
+        {loading ? (
+          <div className="space-y-3" aria-hidden>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-24 rounded-xl bg-muted/50 animate-pulse" />
+            ))}
+          </div>
+        ) : paginated.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
+              <Inbox className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">{resolvedEmptyMessage}</p>
+            {emptyAction ? (
+              <Button onClick={emptyAction.onClick} size="sm" className="rounded-xl">
+                <Plus className="h-4 w-4 mr-1" />
+                {emptyAction.label}
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          paginated.map((row) => (
+            <div
+              key={rowKey(row)}
+              onClick={() => onRowClick?.(row)}
+              className={cn(onRowClick && "cursor-pointer")}
+              role={onRowClick ? "button" : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              {mobileCardRender ? mobileCardRender(row) : <DefaultMobileCard row={row} columns={columns} />}
+            </div>
+          ))
+        )}
+      </div>
+
       {!loading && total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-border/50 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
-            <span>Rows per page:</span>
+            <span>{t("dataTable.rowsPerPage")}:</span>
             <select
               value={String(pageSize)}
               onChange={(e) => setPageSize(e.target.value === "All" ? "All" : Number(e.target.value))}
@@ -201,16 +273,18 @@ export function DataTable<T>({
             </select>
           </div>
           <div className="text-muted-foreground">
-            Showing <span className="font-medium text-foreground">{total === 0 ? 0 : start + 1}</span>–
-            <span className="font-medium text-foreground">{Math.min(start + size, total)}</span> of{" "}
-            <span className="font-medium text-foreground">{total}</span>
+            {t("dataTable.showingRange", {
+              from: total === 0 ? 0 : start + 1,
+              to: Math.min(start + size, total),
+              total,
+            })}
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} className="h-8 w-8">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="px-3 text-sm">
-              Page <span className="font-medium">{currentPage}</span> / {totalPages}
+              {t("dataTable.pageInfo", { current: currentPage, total: totalPages })}
             </span>
             <Button variant="ghost" size="icon" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)} className="h-8 w-8">
               <ChevronRight className="h-4 w-4" />

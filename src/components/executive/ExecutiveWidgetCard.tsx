@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import type { ReactNode } from "react";
 
 export type ExecutiveWidgetStatus = "loading" | "restricted" | "empty" | "success" | "error";
@@ -25,10 +26,12 @@ export function ExecutiveWidgetCard({
   status,
   permissionHint,
   openTo,
-  openLabel = "Open",
+  openLabel,
   errorMessage,
   children,
 }: Props) {
+  const { t } = useErpTranslation();
+
   return (
     <Card className={`h-full ${status === "restricted" ? "border-dashed opacity-80" : ""}`}>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
@@ -39,7 +42,7 @@ export function ExecutiveWidgetCard({
         {openTo && status === "success" ? (
           <Button variant="outline" size="sm" asChild className="shrink-0">
             <Link to={openTo}>
-              {openLabel}
+              {openLabel ?? t("executive.widgetCard.open")}
               <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
             </Link>
           </Button>
@@ -57,19 +60,21 @@ export function ExecutiveWidgetCard({
         {status === "restricted" ? (
           <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
             <Lock className="h-8 w-8 text-muted-foreground" />
-            <Badge variant="outline">Restricted</Badge>
+            <Badge variant="outline">{t("executive.widgetCard.restricted")}</Badge>
             <p className="text-sm text-muted-foreground">
-              {permissionHint ? `Requires ${permissionHint}` : "Additional permission required"}
+              {permissionHint
+                ? t("executive.widgetCard.requiresPermission", { permission: permissionHint })
+                : t("executive.widgetCard.permissionRequired")}
             </p>
           </div>
         ) : null}
 
         {status === "empty" ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">No data for the selected outlet.</p>
+          <p className="text-sm text-muted-foreground py-4 text-center">{t("executive.widgetCard.noData")}</p>
         ) : null}
 
         {status === "error" ? (
-          <p className="text-sm text-destructive py-4">{errorMessage ?? "Failed to load widget data."}</p>
+          <p className="text-sm text-destructive py-4">{errorMessage ?? t("executive.widgetCard.loadFailed")}</p>
         ) : null}
 
         {status === "success" ? children : null}

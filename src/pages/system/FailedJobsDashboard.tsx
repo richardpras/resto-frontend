@@ -15,16 +15,21 @@ import {
   type FailedJobSnapshot,
   type FailedJobSummary,
 } from "@/lib/api-integration/failedJobsEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
+import type { TFunction } from "i18next";
 
-function severityBadge(severity: string) {
-  if (severity === "critical") return <Badge variant="destructive">Critical</Badge>;
-  if (severity === "warning" || severity === "high") {
-    return <Badge className="bg-warning/15 text-warning border-warning/30">Warning</Badge>;
+function severityBadge(severity: string, t: TFunction) {
+  if (severity === "critical") {
+    return <Badge variant="destructive">{t("accounting.health.severityLabels.critical")}</Badge>;
   }
-  return <Badge variant="secondary">Info</Badge>;
+  if (severity === "warning" || severity === "high") {
+    return <Badge className="bg-warning/15 text-warning border-warning/30">{t("accounting.health.severityLabels.warning")}</Badge>;
+  }
+  return <Badge variant="secondary">{t("system.failedJobs.severityInfo")}</Badge>;
 }
 
 export default function FailedJobsDashboard() {
+  const { t } = useErpTranslation();
   const [summary, setSummary] = useState<FailedJobSummary | null>(null);
   const [rows, setRows] = useState<FailedJobRow[]>([]);
   const [trends, setTrends] = useState<FailedJobSnapshot[]>([]);
@@ -44,11 +49,11 @@ export default function FailedJobsDashboard() {
       setGroupedModule(listRes.grouped.byModule ?? []);
       setTrends(trendsRes);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load failed jobs dashboard");
+      toast.error(e instanceof Error ? e.message : t("system.failedJobs.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -58,18 +63,16 @@ export default function FailedJobsDashboard() {
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Failed Jobs</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Queue failure monitoring — background job reliability and exception previews.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.system-reliability.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.system-reliability.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t("ops:shared.refresh")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link to="/notifications">Notification Center</Link>
+            <Link to="/notifications">{t("common:nav.notificationCenter")}</Link>
           </Button>
         </div>
       </div>
@@ -80,22 +83,22 @@ export default function FailedJobsDashboard() {
         ) : (
           <>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Failed Jobs</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.failedJobs.metrics.failedJobs")}</CardTitle></CardHeader>
               <CardContent><p className="text-3xl font-bold">{summary.failedJobs}</p></CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Critical Failures</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.failedJobs.metrics.criticalFailures")}</CardTitle></CardHeader>
               <CardContent><p className="text-3xl font-bold">{summary.criticalFailures}</p></CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Repeat Failures</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.failedJobs.metrics.repeatFailures")}</CardTitle></CardHeader>
               <CardContent><p className="text-3xl font-bold">{summary.repeatFailures}</p></CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Health</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">{t("system.failedJobs.metrics.health")}</CardTitle></CardHeader>
               <CardContent className="space-y-1">
                 <p className="text-3xl font-bold">{summary.healthScore}</p>
-                {severityBadge(summary.healthStatus)}
+                {severityBadge(summary.healthStatus, t)}
               </CardContent>
             </Card>
           </>
@@ -105,22 +108,22 @@ export default function FailedJobsDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Failed Job List</CardTitle>
+            <CardTitle>{t("system.failedJobs.listTitle")}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-48 w-full" />
             ) : rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No failed jobs in queue.</p>
+              <p className="text-sm text-muted-foreground">{t("system.failedJobs.empty")}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Job</TableHead>
-                    <TableHead>Module</TableHead>
-                    <TableHead>Queue</TableHead>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Age</TableHead>
+                    <TableHead>{t("system.failedJobs.table.job")}</TableHead>
+                    <TableHead>{t("system.failedJobs.table.module")}</TableHead>
+                    <TableHead>{t("system.failedJobs.table.queue")}</TableHead>
+                    <TableHead>{t("system.failedJobs.table.severity")}</TableHead>
+                    <TableHead>{t("system.failedJobs.table.age")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -132,7 +135,7 @@ export default function FailedJobsDashboard() {
                       </TableCell>
                       <TableCell>{row.module}</TableCell>
                       <TableCell>{row.queue}</TableCell>
-                      <TableCell>{severityBadge(row.jobSeverity)}</TableCell>
+                      <TableCell>{severityBadge(row.jobSeverity, t)}</TableCell>
                       <TableCell>{row.ageMinutes}m</TableCell>
                     </TableRow>
                   ))}
@@ -144,15 +147,17 @@ export default function FailedJobsDashboard() {
 
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-base">By Module</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">{t("system.failedJobs.byModule")}</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {groupedModule.length === 0 ? (
-                <p className="text-muted-foreground">No grouped data.</p>
+                <p className="text-muted-foreground">{t("system.failedJobs.noGroupedData")}</p>
               ) : (
                 groupedModule.map((group) => (
                   <div key={group.module} className="flex justify-between gap-2">
                     <span className="capitalize">{group.module}</span>
-                    <span className="text-muted-foreground">{group.count} ({group.criticalCount} critical)</span>
+                    <span className="text-muted-foreground">
+                      {t("system.failedJobs.criticalCount", { count: group.count, critical: group.criticalCount })}
+                    </span>
                   </div>
                 ))
               )}
@@ -160,16 +165,16 @@ export default function FailedJobsDashboard() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">30-Day Trend</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">{t("system.failedJobs.trendTitle")}</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm max-h-64 overflow-auto">
               {trends.length === 0 ? (
-                <p className="text-muted-foreground">No snapshots yet.</p>
+                <p className="text-muted-foreground">{t("system.failedJobs.noSnapshots")}</p>
               ) : (
                 trends.map((point) => (
                   <div key={point.snapshotDate} className="flex justify-between gap-2">
                     <span>{point.snapshotDate}</span>
                     <span className="text-muted-foreground">
-                      {point.totalFailures} total / {point.criticalFailures} critical
+                      {t("system.failedJobs.trendRow", { total: point.totalFailures, critical: point.criticalFailures })}
                     </span>
                   </div>
                 ))

@@ -63,6 +63,12 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
   }
+
+  @media (max-width: 767px) {
+    html {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer utilities {
@@ -205,5 +211,9 @@
 
   .kds-display [data-testid="kitchen-connection-status"] {
     @apply bg-kds-card border-kds-card-border text-kds-fg text-sm;
+  }
+
+  .safe-area-pb {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }

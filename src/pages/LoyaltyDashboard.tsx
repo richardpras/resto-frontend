@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { useOutletStore } from "@/stores/outletStore";
 import { useLoyaltyStore } from "@/stores/loyaltyStore";
 import { useCrmDashboardStore } from "@/stores/crmDashboardStore";
@@ -9,6 +10,7 @@ import { LoyaltyTierListSkeleton } from "@/components/skeletons/list/LoyaltyTier
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 
 export default function LoyaltyDashboard() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const authUser = useAuthStore((s) => s.user);
   const capabilities = getUserCapabilities(authUser);
@@ -62,57 +64,67 @@ export default function LoyaltyDashboard() {
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Loyalty Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Realtime loyalty health, tiers, and redemption throughput.</p>
+        <h1 className="text-2xl font-bold text-foreground">{t("loyalty.dashboard.pageTitle")}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t("loyalty.dashboard.pageSubtitle")}</p>
       </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Active Loyalty Members</p>
+          <p className="text-xs text-muted-foreground">{t("loyalty.dashboard.metrics.activeMembers")}</p>
           <p className="text-2xl font-bold">{crmMetrics.activeLoyaltyMembers}</p>
         </div>
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Points Issued</p>
+          <p className="text-xs text-muted-foreground">{t("loyalty.dashboard.metrics.pointsIssued")}</p>
           <p className="text-2xl font-bold">{crmMetrics.pointsIssued}</p>
         </div>
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Points Redeemed</p>
+          <p className="text-xs text-muted-foreground">{t("loyalty.dashboard.metrics.pointsRedeemed")}</p>
           <p className="text-2xl font-bold">{crmMetrics.pointsRedeemed}</p>
         </div>
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Redemption Count</p>
+          <p className="text-xs text-muted-foreground">{t("loyalty.dashboard.metrics.redemptionCount")}</p>
           <p className="text-2xl font-bold">{crmMetrics.redemptionCount}</p>
         </div>
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <h3 className="text-sm font-semibold mb-2">Loyalty Tiers</h3>
-          <SkeletonBusyRegion busy={showTierSkeleton} label="Loading loyalty tiers" className="min-h-[120px]">
+          <h3 className="text-sm font-semibold mb-2">{t("loyalty.dashboard.tiersTitle")}</h3>
+          <SkeletonBusyRegion busy={showTierSkeleton} label={t("loyalty.dashboard.loadingTiers")} className="min-h-[120px]">
             {showTierSkeleton ? (
               <LoyaltyTierListSkeleton rows={4} />
             ) : (
               <div className="space-y-1">
                 {tiers.map((tier) => (
                   <div key={tier.id} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                    {tier.name} ({tier.code}) • min {tier.minPoints} pts • {tier.discountRate}% discount
+                    {t("loyalty.dashboard.tierLine", {
+                      name: tier.name,
+                      code: tier.code,
+                      minPoints: tier.minPoints,
+                      discountRate: tier.discountRate,
+                    })}
                   </div>
                 ))}
                 {tiers.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No tier configured.</p>
+                  <p className="text-sm text-muted-foreground">{t("loyalty.dashboard.noTier")}</p>
                 )}
               </div>
             )}
           </SkeletonBusyRegion>
         </div>
         <div className="rounded-2xl border border-border/50 bg-card p-4">
-          <h3 className="text-sm font-semibold mb-2">Latest Redemptions</h3>
+          <h3 className="text-sm font-semibold mb-2">{t("loyalty.dashboard.redemptionsTitle")}</h3>
           <div className="space-y-1 max-h-72 overflow-y-auto">
             {redemptions.map((redemption) => (
               <div key={redemption.id} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
                 <span>{redemption.status}</span>
-                <span>{redemption.pointsUsed} pts • Rp {redemption.amountValue.toLocaleString("id-ID")}</span>
+                <span>
+                  {t("loyalty.dashboard.redemptionLine", {
+                    points: redemption.pointsUsed,
+                    amount: `Rp ${redemption.amountValue.toLocaleString("id-ID")}`,
+                  })}
+                </span>
               </div>
             ))}
-            {redemptions.length === 0 && <p className="text-sm text-muted-foreground">No redemption data yet.</p>}
+            {redemptions.length === 0 && <p className="text-sm text-muted-foreground">{t("loyalty.dashboard.noRedemptions")}</p>}
           </div>
         </div>
       </div>

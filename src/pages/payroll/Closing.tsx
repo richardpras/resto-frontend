@@ -311,7 +311,7 @@ export default function Closing() {
 
           <section className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground">{t("payroll.shared.closingSummary")}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs text-muted-foreground">{t("payroll.shared.grossPayroll")}</CardTitle>

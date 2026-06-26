@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/ScrollableTabsList";
 import {
   Select,
   SelectContent,
@@ -149,7 +150,10 @@ export default function Payslips() {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const finalizedRuns = useMemo(() => runs.filter((r) => r.status === "finalized"), [runs]);
+  const runsNeedingPayslips = useMemo(
+    () => runs.filter((r) => ["finalized", "processing_payment", "paid", "closed"].includes(r.status)),
+    [runs],
+  );
 
   const payslipCountForRun = (runId: number) => payslips.filter((p) => p.payrollRunId === runId).length;
 
@@ -244,6 +248,12 @@ export default function Payslips() {
         render: (r) => {
           const gen = generationByRun[r.id];
           const busy = isGenerationActive(gen?.phase);
+          const isClosed = r.status === "closed";
+          if (isClosed) {
+            return (
+              <Badge variant="outline">{t("payroll.payslips.closedRunBadge")}</Badge>
+            );
+          }
           return (
             <Button size="sm" disabled={busy} onClick={() => void generateForRun(r.id)}>
               {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-1" />}
@@ -341,10 +351,10 @@ export default function Payslips() {
       </div>
 
       <Tabs defaultValue="runs">
-        <TabsList>
-          <TabsTrigger value="runs">{t("payroll.payslips.runsTab")}</TabsTrigger>
-          <TabsTrigger value="list">{t("payroll.payslips.listTab")}</TabsTrigger>
-        </TabsList>
+        <ScrollableTabsList>
+          <TabsTrigger value="runs" className="shrink-0 px-4 min-h-10">{t("payroll.payslips.runsTab")}</TabsTrigger>
+          <TabsTrigger value="list" className="shrink-0 px-4 min-h-10">{t("payroll.payslips.listTab")}</TabsTrigger>
+        </ScrollableTabsList>
 
         <TabsContent value="runs" className="mt-4 space-y-3">
           <Card className="p-4 text-sm text-muted-foreground">
@@ -352,7 +362,7 @@ export default function Payslips() {
             {t("payroll.payslips.finalizedHint")}
           </Card>
           <DataTable
-            data={finalizedRuns}
+            data={runsNeedingPayslips}
             columns={runColumns}
             rowKey={(r) => r.id}
             emptyMessage={loading ? t("payroll.shared.loading") : t("payroll.payslips.emptyRuns")}
@@ -361,7 +371,7 @@ export default function Payslips() {
         </TabsContent>
 
         <TabsContent value="list" className="mt-4 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">{t("payroll.shared.employee")}</Label>
               <Select

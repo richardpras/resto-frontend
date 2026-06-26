@@ -24,6 +24,7 @@ import { submitBugReport, type BugReportSeverity } from "@/lib/api-integration/b
 import { getDiagnosticsPayload } from "@/lib/diagnostics/diagnosticsBuffer";
 import { useOutletStore } from "@/stores/outletStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 type BugReportModalProps = {
   open: boolean;
@@ -49,6 +50,7 @@ export function BugReportModal({
   screenshotBlob,
   currentRoute,
 }: BugReportModalProps) {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
@@ -63,7 +65,7 @@ export function BugReportModal({
 
   const handleSubmit = async () => {
     if (!title.trim() || !message.trim()) {
-      toast.error("Title and message are required");
+      toast.error(t("system.bugReports.reportModal.requiredFields"));
       return;
     }
 
@@ -83,11 +85,11 @@ export function BugReportModal({
         diagnosticsJson: diagnostics,
         screenshot: screenshotBlob,
       });
-      toast.success("Bug report submitted. Thank you!");
+      toast.success(t("system.bugReports.reportModal.success"));
       reset();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to submit bug report");
+      toast.error(e instanceof ApiHttpError ? e.message : t("system.bugReports.reportModal.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -97,9 +99,9 @@ export function BugReportModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Report a Bug</DialogTitle>
+          <DialogTitle>{t("system.bugReports.reportModal.title")}</DialogTitle>
           <DialogDescription>
-            Describe what went wrong. A screenshot and diagnostic data are attached automatically.
+            {t("system.bugReports.reportModal.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -108,48 +110,48 @@ export function BugReportModal({
             <div className="rounded-lg border overflow-hidden bg-muted/30">
               <img
                 src={screenshotPreview}
-                alt="Page screenshot preview"
+                alt={t("system.bugReports.reportModal.screenshotAlt")}
                 className="w-full max-h-48 object-contain object-top"
               />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Screenshot capture unavailable for this page.</p>
+            <p className="text-sm text-muted-foreground">{t("system.bugReports.reportModal.screenshotUnavailable")}</p>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="bug-title">Title</Label>
+            <Label htmlFor="bug-title">{t("system.bugReports.reportModal.titleLabel")}</Label>
             <Input
               id="bug-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Brief summary of the issue"
+              placeholder={t("system.bugReports.reportModal.titlePlaceholder")}
               maxLength={200}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bug-message">Description</Label>
+            <Label htmlFor="bug-message">{t("system.bugReports.reportModal.descriptionLabel")}</Label>
             <Textarea
               id="bug-message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="What were you doing? What did you expect?"
+              placeholder={t("system.bugReports.reportModal.descriptionPlaceholder")}
               rows={4}
               maxLength={5000}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Severity (optional)</Label>
+            <Label>{t("system.bugReports.reportModal.severityLabel")}</Label>
             <Select value={severity} onValueChange={(v) => setSeverity(v as BugReportSeverity)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="low">{t("system.bugReports.reportModal.severityLow")}</SelectItem>
+                <SelectItem value="medium">{t("system.bugReports.reportModal.severityMedium")}</SelectItem>
+                <SelectItem value="high">{t("system.bugReports.reportModal.severityHigh")}</SelectItem>
+                <SelectItem value="critical">{t("system.bugReports.reportModal.severityCritical")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -157,11 +159,11 @@ export function BugReportModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t("system.bugReports.reportModal.cancel")}
           </Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Submit Report
+            {submitting ? t("system.bugReports.reportModal.submitting") : t("system.bugReports.reportModal.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

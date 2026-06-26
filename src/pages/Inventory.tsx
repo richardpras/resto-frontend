@@ -128,6 +128,8 @@ export default function Inventory() {
 
   const typeBadgeLabel = (type: InventoryItemType) => t(`inventory.filters.${type}`);
 
+  const formatMovementType = (type: StockMovement["type"]) => t(`inventory.movementTypes.${type}`);
+
   const tabButtons = useMemo(
     () => [
       { id: "items" as const, label: t("inventory.tabs.items") },
@@ -340,7 +342,7 @@ export default function Inventory() {
           {stockMovements.slice(0, 8).map((movement: StockMovement) => (
             <div key={movement.id} className="grid grid-cols-12 gap-2 px-4 py-2 text-sm border-b border-border/40 last:border-b-0">
               <span className="col-span-3 truncate">{movement.inventoryItemName ?? movement.inventoryItemId}</span>
-              <span className="col-span-2 capitalize">{movement.type}</span>
+              <span className="col-span-2">{formatMovementType(movement.type)}</span>
               <span className="col-span-2 text-right font-medium">{movement.quantity}</span>
               <span className="col-span-2 truncate">{movement.sourceType}</span>
               <span className="col-span-3 text-muted-foreground">{movement.createdAt ? new Date(movement.createdAt).toLocaleString() : "-"}</span>

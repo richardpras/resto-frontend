@@ -21,10 +21,12 @@ import {
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 const DEFAULT_FILTERS: ListAuditCenterParams = { limit: 25, page: 1 };
 
 export default function AuditCenterPage() {
+  const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canAccess = hasPermission("settings.manage");
@@ -65,15 +67,15 @@ export default function AuditCenterPage() {
       setSummary(summaryRes);
     } catch (e) {
       if (e instanceof ApiHttpError && (e.status === 401 || e.status === 403)) {
-        setError("You need settings.manage permission to view the Audit Center.");
+        setError(t("system.auditCenter.permissionDenied"));
       } else {
-        setError(e instanceof Error ? e.message : "Failed to load audit center");
-        toast.error("Failed to load audit center");
+        setError(e instanceof Error ? e.message : t("system.auditCenter.loadFailed"));
+        toast.error(t("system.auditCenter.loadFailed"));
       }
     } finally {
       setLoading(false);
     }
-  }, [canAccess, appliedFilters, activeOutletId, searchQuery]);
+  }, [canAccess, appliedFilters, activeOutletId, searchQuery, t]);
 
   useEffect(() => {
     void load();
@@ -100,13 +102,11 @@ export default function AuditCenterPage() {
   if (!canAccess) {
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
-        <h1 className="text-2xl font-bold">Audit Center</h1>
+        <h1 className="text-2xl font-bold">{t("reportsHub.cards.audit-center.title")}</h1>
         <Card>
           <CardContent className="py-8 text-center space-y-2">
             <ShieldAlert className="h-10 w-10 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Restricted — settings.manage permission is required to access the Audit Center.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("system.auditCenter.restricted")}</p>
           </CardContent>
         </Card>
       </div>
@@ -116,8 +116,8 @@ export default function AuditCenterPage() {
   if (typeof activeOutletId !== "number" || activeOutletId < 1) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Audit Center</h1>
-        <p className="text-sm text-muted-foreground mt-2">Select an outlet to load audit activity.</p>
+        <h1 className="text-2xl font-bold">{t("reportsHub.cards.audit-center.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("system.auditCenter.selectOutlet")}</p>
       </div>
     );
   }
@@ -126,18 +126,16 @@ export default function AuditCenterPage() {
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Audit Center</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Centralized compliance timeline — operational, financial, and forensic change history.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.audit-center.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.audit-center.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            {t("ops:shared.refresh")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link to="/notifications">Notification Center</Link>
+            <Link to="/notifications">{t("common:nav.notificationCenter")}</Link>
           </Button>
         </div>
       </div>
@@ -147,7 +145,7 @@ export default function AuditCenterPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top Actors</CardTitle>
+            <CardTitle className="text-sm">{t("system.auditCenter.topActors")}</CardTitle>
           </CardHeader>
           <CardContent>
             {summary?.topActors?.length ? (
@@ -160,13 +158,13 @@ export default function AuditCenterPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No activity today.</p>
+              <p className="text-sm text-muted-foreground">{t("system.auditCenter.noActivityToday")}</p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top Modules</CardTitle>
+            <CardTitle className="text-sm">{t("system.auditCenter.topModules")}</CardTitle>
           </CardHeader>
           <CardContent>
             {summary?.topModules?.length ? (
@@ -179,7 +177,7 @@ export default function AuditCenterPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No module activity today.</p>
+              <p className="text-sm text-muted-foreground">{t("system.auditCenter.noModuleActivity")}</p>
             )}
           </CardContent>
         </Card>
@@ -209,7 +207,7 @@ export default function AuditCenterPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Timeline</CardTitle>
+          <CardTitle>{t("system.auditCenter.timeline")}</CardTitle>
         </CardHeader>
         <CardContent>
           {error ? (

@@ -1,5 +1,6 @@
 import { computeKitchenDayMetrics, formatKitchenMetricValue } from "@/domain/kitchenMetrics";
 import type { KitchenTicket } from "@/domain/kitchenAdapters";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 type Props = {
   tickets: KitchenTicket[];
@@ -7,7 +8,9 @@ type Props = {
 };
 
 export function KitchenDayMetricsCard({ tickets, nowMs }: Props) {
+  const { t } = useOpsTranslation();
   const metrics = computeKitchenDayMetrics(tickets, nowMs);
+  const minSuffix = t("kitchen.metrics.minutesSuffix");
 
   return (
     <div
@@ -15,20 +18,20 @@ export function KitchenDayMetricsCard({ tickets, nowMs }: Props) {
       data-testid="kitchen-day-metrics"
     >
       <div className="rounded-2xl border border-border/50 bg-card p-4">
-        <p className="text-xs text-muted-foreground">Today&apos;s Kitchen</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">Completed Today</p>
+        <p className="text-xs text-muted-foreground">{t("kitchen.metrics.todayKitchen")}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">{t("kitchen.metrics.completedToday")}</p>
         <p className="text-2xl font-bold mt-1">{metrics.completedToday}</p>
       </div>
       <div className="rounded-2xl border border-border/50 bg-card p-4">
-        <p className="text-xs text-muted-foreground">Average Cook Time</p>
+        <p className="text-xs text-muted-foreground">{t("kitchen.metrics.avgCookTime")}</p>
         <p className="text-2xl font-bold mt-1">
-          {formatKitchenMetricValue(metrics.averageCookTimeMinutes, " min")}
+          {formatKitchenMetricValue(metrics.averageCookTimeMinutes, minSuffix)}
         </p>
       </div>
       <div className="rounded-2xl border border-border/50 bg-card p-4">
-        <p className="text-xs text-muted-foreground">Longest Waiting Ticket</p>
+        <p className="text-xs text-muted-foreground">{t("kitchen.metrics.longestWaitingTicket")}</p>
         <p className="text-2xl font-bold mt-1">
-          {formatKitchenMetricValue(metrics.longestWaitingMinutes, " min")}
+          {formatKitchenMetricValue(metrics.longestWaitingMinutes, minSuffix)}
         </p>
       </div>
     </div>

@@ -6,8 +6,10 @@ import { canReconcilePayments } from "@/domain/permissionGates";
 import { useAuthStore } from "@/stores/authStore";
 import { PaymentStatusCardSkeleton } from "@/components/skeletons/payment/PaymentStatusCardSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 export default function PaymentStatus() {
+  const { t } = useOpsTranslation();
   const [searchParams] = useSearchParams();
   const transactionId = getPaymentTransactionIdFromSearchParams(searchParams);
   const tx = usePaymentStore((s) => s.currentTransaction);
@@ -42,49 +44,58 @@ export default function PaymentStatus() {
         ? "bg-destructive/10 text-destructive"
         : "bg-muted text-muted-foreground";
 
+  const statusMessage =
+    status === "paid"
+      ? t("paymentStatus.statusPaid")
+      : status === "expired"
+        ? t("paymentStatus.statusExpired")
+        : status === "failed"
+          ? t("paymentStatus.statusFailed")
+          : status === "pending"
+            ? t("paymentStatus.statusPending")
+            : status === "cancelled"
+              ? t("paymentStatus.statusCancelled")
+              : null;
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h1 className="text-lg font-bold text-foreground">Payment Status</h1>
-        <p className="text-xs text-muted-foreground">Transaction: {transactionId || "-"}</p>
-        <SkeletonBusyRegion busy={!!isLoading && !error} label="Loading payment status">
+        <h1 className="text-lg font-bold text-foreground">{t("paymentStatus.pageTitle")}</h1>
+        <p className="text-xs text-muted-foreground">{t("paymentStatus.transaction", { id: transactionId || "-" })}</p>
+        <SkeletonBusyRegion busy={!!isLoading && !error} label={t("paymentStatus.loading")}>
           {isLoading && !error ? (
             <PaymentStatusCardSkeleton />
           ) : (
             <>
               {error && <p className="text-sm text-destructive">{error}</p>}
-              {status && (
+              {status && statusMessage && (
                 <div className={`rounded-xl px-3 py-2 text-sm font-semibold ${statusTone}`}>
-                  {status === "paid" && "Payment completed"}
-                  {status === "expired" && "Payment expired"}
-                  {status === "failed" && "Payment failed"}
-                  {status === "pending" && "Payment pending"}
-                  {status === "cancelled" && "Payment cancelled"}
+                  {statusMessage}
                 </div>
               )}
               <div className="space-y-2 text-sm">
                 <p>
-                  Status: <span className="font-semibold">{status ?? "-"}</span>
+                  {t("paymentStatus.statusLabel")} <span className="font-semibold">{status ?? "-"}</span>
                 </p>
-                <p>Method: {tx?.method ?? "-"}</p>
-                <p>Amount: {tx?.amount ?? 0}</p>
-                <p>Expires in: {expiryCountdown}s</p>
-                {tx?.vaNumber && <p>VA Number: {tx.vaNumber}</p>}
+                <p>{t("paymentStatus.method")} {tx?.method ?? "-"}</p>
+                <p>{t("paymentStatus.amount")} {tx?.amount ?? 0}</p>
+                <p>{t("paymentStatus.expiresIn")} {expiryCountdown}s</p>
+                {tx?.vaNumber && <p>{t("paymentStatus.vaNumber")} {tx.vaNumber}</p>}
                 {checkoutUrl && (
                   <a className="text-primary underline block" href={checkoutUrl} target="_blank" rel="noreferrer">
-                    Open Checkout URL
+                    {t("paymentStatus.openCheckout")}
                   </a>
                 )}
                 {deeplinkUrl && (
                   <a className="text-primary underline block" href={deeplinkUrl} target="_blank" rel="noreferrer">
-                    Open App
+                    {t("paymentStatus.openApp")}
                   </a>
                 )}
                 {qrString && (
                   <pre className="whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">{qrString}</pre>
                 )}
-                {status === "paid" && <p className="text-xs text-muted-foreground">Refreshing order status...</p>}
-                {lastSyncAt && <p className="text-xs text-muted-foreground">Last synced: {lastSyncAt}</p>}
+                {status === "paid" && <p className="text-xs text-muted-foreground">{t("paymentStatus.refreshingOrder")}</p>}
+                {lastSyncAt && <p className="text-xs text-muted-foreground">{t("paymentStatus.lastSynced", { at: lastSyncAt })}</p>}
               </div>
               <div className="flex gap-2 text-xs">
                 <button
@@ -93,7 +104,7 @@ export default function PaymentStatus() {
                   onClick={() => void retryPayment(transactionId)}
                   disabled={isSubmitting || !transactionId}
                 >
-                  Retry payment
+                  {t("paymentStatus.retryPayment")}
                 </button>
                 {showReconcile ? (
                   <button
@@ -102,7 +113,7 @@ export default function PaymentStatus() {
                     onClick={() => void reconcileTransaction(transactionId)}
                     disabled={isSubmitting || !transactionId}
                   >
-                    Reconcile
+                    {t("shared.reconcile")}
                   </button>
                 ) : null}
                 <button
@@ -111,7 +122,7 @@ export default function PaymentStatus() {
                   onClick={() => void expireTransaction(transactionId)}
                   disabled={isSubmitting || !transactionId || status === "paid"}
                 >
-                  Expire
+                  {t("shared.expire")}
                 </button>
               </div>
             </>

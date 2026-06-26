@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/ScrollableTabsList";
 import {
   Dialog,
   DialogContent,
@@ -339,15 +340,15 @@ export default function Preparation() {
       </Card>
 
       <Tabs defaultValue="periods">
-        <TabsList>
-          <TabsTrigger value="periods">{t("payroll.preparation.periods")}</TabsTrigger>
-          <TabsTrigger value="snapshot" disabled={!selectedPeriodId}>
+        <ScrollableTabsList>
+          <TabsTrigger value="periods" className="shrink-0 px-4 min-h-10">{t("payroll.preparation.periods")}</TabsTrigger>
+          <TabsTrigger value="snapshot" disabled={!selectedPeriodId} className="shrink-0 px-4 min-h-10">
             {t("payroll.preparation.snapshot")}
           </TabsTrigger>
-          <TabsTrigger value="summary" disabled={!selectedPeriodId}>
+          <TabsTrigger value="summary" disabled={!selectedPeriodId} className="shrink-0 px-4 min-h-10">
             {t("payroll.preparation.summary")}
           </TabsTrigger>
-        </TabsList>
+        </ScrollableTabsList>
 
         <TabsContent value="periods" className="mt-4 space-y-3">
           <div className="flex justify-end">
@@ -386,7 +387,7 @@ export default function Preparation() {
 
         <TabsContent value="summary" className="mt-4">
           {summary ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">{t("payroll.shared.employeesCount")}</CardTitle>

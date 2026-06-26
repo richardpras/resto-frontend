@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
-import { formatIDR } from "@/stores/accountingStore";
+import { formatIDR, useAccountingStore } from "@/stores/accountingStore";
 import { getCashFlowReport, type CashFlowReport } from "@/lib/api-integration/accountingEndpoints";
-import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { canViewFinancialStatements } from "@/domain/permissionGates";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
@@ -34,9 +35,7 @@ function Section({ title, rows, total, totalLabel }: { title: string; rows: [str
 }
 
 function cashFlowLineLabel(key: string, t: TFunction): string {
-  const translated = t(`accounting.reports.cashFlowLines.${key}`, { defaultValue: "" });
-  if (translated) return translated;
-  return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+  return t(`accounting.reports.cashFlowLines.${key}`);
 }
 
 function toRows(section: Record<string, number>, t: TFunction): [string, number][] {
@@ -49,20 +48,22 @@ export default function CashFlow() {
   const { t } = useErpTranslation();
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
-  const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const outlets = useAccountingStore((s) => s.outletOptions);
   const today = new Date();
   const [from, setFrom] = useState(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10));
   const [to, setTo] = useState(today.toISOString().slice(0, 10));
+  const [outletFilter, setOutletFilter] = useState("all");
   const [report, setReport] = useState<CashFlowReport | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
+      const outletId = outletFilter === "all" ? undefined : Number(outletFilter);
       const data = await getCashFlowReport({
         from,
         to,
-        ...(typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : {}),
+        ...(typeof outletId === "number" && outletId >= 1 ? { outletId } : {}),
       });
       setReport(data);
     } catch (e) {
@@ -75,7 +76,7 @@ export default function CashFlow() {
   useEffect(() => {
     if (!allowed) return;
     void load();
-  }, [activeOutletId, allowed]);
+  }, [outletFilter, allowed]);
 
   if (!allowed) {
     return (
@@ -87,31 +88,57 @@ export default function CashFlow() {
 
   return (
     <Card className="p-4 space-y-4">
-      <div className="flex flex-wrap gap-3 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div>
           <Label htmlFor="cf-from">{t("accounting.reports.from")}</Label>
-          <Input id="cf-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+          <Input id="cf-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
         <div>
           <Label htmlFor="cf-to">{t("accounting.reports.to")}</Label>
-          <Input id="cf-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+          <Input id="cf-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-        <Button onClick={() => void load()} disabled={loading}>
-          {loading ? t("common:common.loading") : t("common:common.refresh")}
-        </Button>
+        <div>
+          <Label>{t("accounting.reports.outlet")}</Label>
+          <Select value={outletFilter} onValueChange={setOutletFilter}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("accounting.reports.allOutlets")}</SelectItem>
+              {outlets.map((o) => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end">
+          <Button onClick={() => void load()} disabled={loading} className="w-full">
+            {loading ? t("common:common.loading") : t("common:common.refresh")}
+          </Button>
+        </div>
+        <div className="flex items-end">
+          <Button variant="outline" className="w-full" onClick={() => window.print()}>
+            <Download className="h-4 w-4 mr-1" /> {t("accounting.reports.export")}
+          </Button>
+        </div>
       </div>
-      {report && (
-        <div className="grid md:grid-cols-3 gap-6">
-          <Section title={t("accounting.reports.operatingActivities")} rows={toRows(report.operating, t)} total={report.operating.total} totalLabel={t("accounting.reports.total")} />
-          <Section title={t("accounting.reports.investingActivities")} rows={toRows(report.investing, t)} total={report.investing.total} totalLabel={t("accounting.reports.total")} />
-          <Section title={t("accounting.reports.financingActivities")} rows={toRows(report.financing, t)} total={report.financing.total} totalLabel={t("accounting.reports.total")} />
-        </div>
+
+      {!loading && !report && (
+        <p className="text-sm text-muted-foreground text-center py-8">{t("accounting.reports.cashFlowEmpty")}</p>
       )}
+
       {report && (
-        <div className="rounded-lg bg-muted/40 p-4 flex justify-between items-center">
-          <span className="font-semibold">{t("accounting.reports.netCashChange", { from: report.from, to: report.to })}</span>
-          <span className="text-lg font-mono font-bold">{formatIDR(report.netCashChange)}</span>
-        </div>
+        <>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold">{t("accounting.reports.cashFlowStatement")}</h2>
+            <div className="text-xs text-muted-foreground">{from} → {to}</div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            <Section title={t("accounting.reports.operatingActivities")} rows={toRows(report.operating, t)} total={report.operating.total} totalLabel={t("accounting.reports.total")} />
+            <Section title={t("accounting.reports.investingActivities")} rows={toRows(report.investing, t)} total={report.investing.total} totalLabel={t("accounting.reports.total")} />
+            <Section title={t("accounting.reports.financingActivities")} rows={toRows(report.financing, t)} total={report.financing.total} totalLabel={t("accounting.reports.total")} />
+          </div>
+          <div className="rounded-lg bg-muted/40 p-4 flex justify-between items-center">
+            <span className="font-semibold">{t("accounting.reports.netCashChange", { from: report.from, to: report.to })}</span>
+            <span className="text-lg font-mono font-bold">{formatIDR(report.netCashChange)}</span>
+          </div>
+        </>
       )}
     </Card>
   );

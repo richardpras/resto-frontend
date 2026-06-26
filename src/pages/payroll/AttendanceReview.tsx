@@ -352,7 +352,7 @@ export default function AttendanceReview() {
       </div>
 
       <Card className="p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {outlets.length > 1 && (
             <div className="space-y-1">
               <Label className="text-xs">{t("payroll.shared.outlet")}</Label>

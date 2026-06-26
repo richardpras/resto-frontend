@@ -282,7 +282,7 @@ export default function Loans() {
         <TabsContent value="installments" className="mt-4 space-y-4">
           {selectedLoan && (
             <Card className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">{t("payroll.shared.loan")}</span>
                   <p className="font-medium">{selectedLoan.loanNo}</p>

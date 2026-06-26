@@ -48,6 +48,7 @@ export function usePosBootstrap({ tenantId, outletId }: UsePosBootstrapOptions) 
 
   return {
     menuApiItems,
+    outletTaxRules: query.data?.outletTaxRules ?? [],
     menuLoading: query.isLoading,
     menuError: query.isError,
     refetchMenu: query.refetch,

@@ -349,6 +349,8 @@ export default function Scheduling() {
         </div>
       </div>
 
+      <p className="lg:hidden text-sm text-muted-foreground px-1">{t("payroll.scheduling.mobileScrollHint")}</p>
+
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[800px] text-sm">
           <thead>

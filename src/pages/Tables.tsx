@@ -341,7 +341,7 @@ export default function Tables() {
   }
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pb-6">
+    <div className="p-4 md:p-6 pb-24 lg:pb-6">
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Users className="h-6 w-6" /> {t("tables.title")}
@@ -435,7 +435,7 @@ export default function Tables() {
         <Button
           type="button"
           size="icon"
-          className="fixed bottom-6 right-4 h-14 w-14 rounded-full shadow-lg md:hidden z-30"
+          className="fixed bottom-6 right-4 h-14 w-14 rounded-full shadow-lg lg:hidden z-chrome"
           onClick={openCreate}
           aria-label={t("tables.addTable")}
         >

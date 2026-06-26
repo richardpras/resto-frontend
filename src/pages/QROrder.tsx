@@ -257,9 +257,8 @@ export default function QROrder() {
   };
 
   const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const tax = Math.round(subtotal * 0.1);
-  const baseTotal = subtotal + tax;
-  const total = baseTotal;
+  const tax = 0;
+  const total = subtotal;
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
 
   useEffect(() => {

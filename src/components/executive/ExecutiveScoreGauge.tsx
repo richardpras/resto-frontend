@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 type Props = {
   score: number;
@@ -14,14 +15,15 @@ function scoreColor(score: number): string {
   return "hsl(0 84% 60%)";
 }
 
-function scoreLabel(score: number): string {
-  if (score >= 80) return "Healthy";
-  if (score >= 60) return "Watch";
-  if (score >= 40) return "At Risk";
-  return "Critical";
+function scoreLabelKey(score: number): string {
+  if (score >= 80) return "executive.scoreGauge.labels.healthy";
+  if (score >= 60) return "executive.scoreGauge.labels.watch";
+  if (score >= 40) return "executive.scoreGauge.labels.atRisk";
+  return "executive.scoreGauge.labels.critical";
 }
 
 export function ExecutiveScoreGauge({ score, partial, pillarCount, loading }: Props) {
+  const { t } = useErpTranslation();
   const color = scoreColor(score);
   const circumference = 2 * Math.PI * 54;
   const offset = circumference - (score / 100) * circumference;
@@ -52,12 +54,12 @@ export function ExecutiveScoreGauge({ score, partial, pillarCount, loading }: Pr
       </div>
       <div className="text-center space-y-1">
         <p className="font-semibold" style={{ color: loading ? undefined : color }}>
-          {loading ? "Calculating…" : scoreLabel(score)}
+          {loading ? t("executive.scoreGauge.calculating") : t(scoreLabelKey(score))}
         </p>
-        <p className="text-xs text-muted-foreground">Owner executive score</p>
+        <p className="text-xs text-muted-foreground">{t("executive.scoreGauge.ownerScore")}</p>
         {partial && !loading ? (
           <Badge variant="secondary" className="text-xs">
-            Partial Score ({pillarCount}/4 pillars)
+            {t("executive.scoreGauge.partialScore", { count: pillarCount })}
           </Badge>
         ) : null}
       </div>

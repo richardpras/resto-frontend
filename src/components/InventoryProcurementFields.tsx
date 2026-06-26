@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { listProcurementSettings } from "@/lib/api-integration/procurementSettingsEndpoints";
 import { useSupplierStore } from "@/stores/supplierStore";
 
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export default function InventoryProcurementFields({ inventoryItemId, value, onChange }: Props) {
+  const { t } = useOpsTranslation();
   const { suppliers, fetchSuppliers } = useSupplierStore();
 
   useEffect(() => {
@@ -67,17 +69,17 @@ export default function InventoryProcurementFields({ inventoryItemId, value, onC
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">Procurement defaults for this item. Saved together with the item update.</p>
+      <p className="text-xs text-muted-foreground">{t("inventory.form.procurement.hint")}</p>
 
       <div className="space-y-2">
-        <Label>Preferred Supplier</Label>
+        <Label>{t("inventory.form.procurement.preferredSupplier")}</Label>
         <Select
           value={value.preferredSupplierId || "__none__"}
           onValueChange={(v) => setField("preferredSupplierId", v === "__none__" ? "" : v)}
         >
-          <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder={t("inventory.form.procurement.selectSupplier")} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">— None —</SelectItem>
+            <SelectItem value="__none__">{t("inventory.form.procurement.none")}</SelectItem>
             {suppliers.filter((s) => s.isActive).map((s) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
@@ -87,19 +89,19 @@ export default function InventoryProcurementFields({ inventoryItemId, value, onC
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label>Minimum Order Qty</Label>
+          <Label>{t("inventory.form.procurement.minOrderQty")}</Label>
           <Input type="number" min="0" value={value.minimumOrderQty} onChange={(e) => setField("minimumOrderQty", e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Reorder Qty</Label>
+          <Label>{t("inventory.form.procurement.reorderQty")}</Label>
           <Input type="number" min="0" value={value.reorderQty} onChange={(e) => setField("reorderQty", e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Lead Time (days)</Label>
+          <Label>{t("inventory.form.procurement.leadTimeDays")}</Label>
           <Input type="number" min="0" value={value.leadTimeDays} onChange={(e) => setField("leadTimeDays", e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Last Purchase Price</Label>
+          <Label>{t("inventory.form.procurement.lastPurchasePrice")}</Label>
           <Input type="number" min="0" value={value.lastPurchasePrice} onChange={(e) => setField("lastPurchasePrice", e.target.value)} />
         </div>
       </div>

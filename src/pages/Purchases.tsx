@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/ScrollableTabsList";
 import { FileText, Package, PackageCheck, Receipt, Wallet, ArrowRight, BarChart3 } from "lucide-react";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import PurchaseRequests from "./PurchaseRequests";
@@ -60,32 +61,32 @@ export default function Purchases() {
           });
         }}
       >
-        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
-          <TabsTrigger value="pr" className="gap-1.5 text-xs sm:text-sm">
+        <ScrollableTabsList>
+          <TabsTrigger value="pr" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <FileText className="h-3.5 w-3.5" /> {t("purchases.tabs.pr")}
           </TabsTrigger>
-          <TabsTrigger value="po" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="po" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <Package className="h-3.5 w-3.5" /> {t("purchases.tabs.po")}
           </TabsTrigger>
-          <TabsTrigger value="grn" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="grn" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <PackageCheck className="h-3.5 w-3.5" /> {t("purchases.tabs.grn")}
           </TabsTrigger>
-          <TabsTrigger value="inv" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="inv" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.inv")}
           </TabsTrigger>
-          <TabsTrigger value="match" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="match" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.match")}
           </TabsTrigger>
-          <TabsTrigger value="posting" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="posting" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <Receipt className="h-3.5 w-3.5" /> {t("purchases.tabs.posting")}
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="analytics" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <BarChart3 className="h-3.5 w-3.5" /> {t("purchases.tabs.analytics")}
           </TabsTrigger>
-          <TabsTrigger value="pay" className="gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="pay" className="gap-1.5 text-sm shrink-0 px-4 min-h-10">
             <Wallet className="h-3.5 w-3.5" /> {t("purchases.tabs.pay")}
           </TabsTrigger>
-        </TabsList>
+        </ScrollableTabsList>
         <TabsContent value="pr"><PurchaseRequests /></TabsContent>
         <TabsContent value="po"><PurchaseOrders /></TabsContent>
         <TabsContent value="grn"><GoodsReceipts /></TabsContent>

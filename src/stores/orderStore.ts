@@ -19,6 +19,7 @@ import {
   type ListOrdersMeta,
   type ListOrdersParams,
   type OrderApi,
+  type OrderTaxSnapshotLine,
   type OrderPaymentPayload,
   type OrderSplitPayload,
   type UpdateOrderPayload,
@@ -73,6 +74,8 @@ export type Order = {
   items: OrderItem[];
   subtotal: number;
   tax: number;
+  applyTax?: boolean;
+  taxSnapshot?: OrderTaxSnapshotLine[] | null;
   total: number;
   discountAmount?: number;
   balanceDue?: number;
@@ -183,6 +186,8 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
     })),
     subtotal: o.subtotal,
     tax: o.tax,
+    applyTax: o.applyTax ?? false,
+    taxSnapshot: o.taxSnapshot ?? null,
     total: o.total,
     discountAmount: o.discountAmount,
     balanceDue: o.balanceDue,

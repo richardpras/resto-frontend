@@ -37,6 +37,8 @@ export interface Tax {
   applyTakeaway: boolean;
   inclusive: boolean;
   status: "active" | "inactive";
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
 }
 
 export interface Printer {

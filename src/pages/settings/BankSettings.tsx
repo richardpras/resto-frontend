@@ -70,9 +70,12 @@ export default function BankSettings() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("settings.banks.bankName")}</TableHead><TableHead>{t("settings.banks.accountName")}</TableHead>              <TableHead>{t("settings.banks.accountNumber")}</TableHead>
-              <TableHead>GL Account</TableHead>
-              <TableHead>{t("common.default")}</TableHead><TableHead className="w-32"></TableHead>
+              <TableHead>{t("settings.banks.bankName")}</TableHead>
+              <TableHead>{t("settings.banks.accountName")}</TableHead>
+              <TableHead>{t("settings.banks.accountNumber")}</TableHead>
+              <TableHead>{t("settings.banks.glAccount")}</TableHead>
+              <TableHead>{t("common.default")}</TableHead>
+              <TableHead className="w-32" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -140,7 +143,7 @@ export default function BankSettings() {
                 {t("settings.banks.setDefaultAccount")}
               </label>
               <div className="space-y-2">
-                <Label>GL Account</Label>
+                <Label>{t("settings.banks.glAccount")}</Label>
                 <ChartAccountSelect
                   value={form.chartAccountId ?? null}
                   onChange={(chartAccountId) => setForm({ ...form, chartAccountId })}

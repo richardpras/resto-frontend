@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import type { InventoryItem } from "@/stores/inventoryStore";
 
 type MovementType = "waste" | "adjustment";
@@ -29,12 +30,13 @@ type Props = {
 };
 
 export function StockMovementModal({ open, onOpenChange, type, items, onSubmit }: Props) {
+  const { t } = useOpsTranslation();
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const title = type === "waste" ? "Record Waste" : "Stock Adjustment";
+  const title = type === "waste" ? t("inventory.stockMovement.recordWaste") : t("inventory.stockMovement.adjustment");
 
   const handleSubmit = async () => {
     const id = Number(itemId);
@@ -66,9 +68,9 @@ export function StockMovementModal({ open, onOpenChange, type, items, onSubmit }
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Ingredient</Label>
+            <Label>{t("inventory.stockMovement.ingredient")}</Label>
             <Select value={itemId} onValueChange={setItemId}>
-              <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("inventory.stockMovement.selectItem")} /></SelectTrigger>
               <SelectContent>
                 {items.filter((i) => i.type !== "asset").map((item) => (
                   <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
@@ -77,16 +79,16 @@ export function StockMovementModal({ open, onOpenChange, type, items, onSubmit }
             </Select>
           </div>
           <div>
-            <Label>Quantity</Label>
+            <Label>{t("inventory.stockMovement.quantity")}</Label>
             <Input type="number" min="0.01" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
           <div>
-            <Label>Reference / Note</Label>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+            <Label>{t("inventory.stockMovement.referenceNote")}</Label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("inventory.stockMovement.optional")} />
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => void handleSubmit()} disabled={busy || !itemId}>Save Movement</Button>
+          <Button onClick={() => void handleSubmit()} disabled={busy || !itemId}>{t("inventory.stockMovement.saveMovement")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

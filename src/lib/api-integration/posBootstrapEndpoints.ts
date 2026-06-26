@@ -1,7 +1,7 @@
 import { apiRequest as request } from "./client";
 import type { MenuItemApi } from "./endpoints";
 import type { PosSessionApi } from "./posSessionEndpoints";
-import type { Merchant, SystemPrefs } from "@/domain/settingsDomainTypes";
+import type { Merchant, SystemPrefs, Tax } from "@/domain/settingsDomainTypes";
 
 export type PosBootstrapMerchant = Pick<Merchant, "name" | "currency" | "timezone" | "language"> & {
   logo?: string;
@@ -12,6 +12,7 @@ export type PosBootstrapSystem = SystemPrefs;
 export type PosBootstrapResponse = {
   merchant: PosBootstrapMerchant;
   system: PosBootstrapSystem;
+  outletTaxRules: Tax[];
   menuItems: {
     data: MenuItemApi[];
     meta: {

@@ -1,7 +1,6 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AppOverlay } from "@/components/ui/AppOverlay";
 import { X, FileText, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
 import { ManagerRecoveryWizard } from "@/components/orders/recovery/ManagerRecoveryWizard";
 import {
@@ -20,8 +19,18 @@ import { useAuthStore } from "@/stores/authStore";
 import { getOrdersExplorerUiCaps } from "@/stores/ordersExplorerCapabilities";
 import { explorerDetailKey, useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
 import { useOutletStore } from "@/stores/outletStore";
-import type { OrderApi } from "@/lib/api-integration/endpoints";
+import type { OrderApi, OrderTaxSnapshotLine } from "@/lib/api-integration/endpoints";
 import { formatOrderSourceLabel } from "@/features/orders/orderSource";
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import type { TFunction } from "i18next";
+import { Badge } from "@/components/ui/badge";
+
+function taxLineLabel(line: OrderTaxSnapshotLine, t: TFunction): string {
+  if (line.type === "percentage") {
+    return t("ordersExplorer.detail.taxLinePercent", { name: line.name, rate: line.rate });
+  }
+  return line.name || t("ordersExplorer.detail.taxLineGeneric");
+}
 
 function orderChannelLabel(order: OrderApi): string {
   const source = formatOrderSourceLabel(order.orderSource ?? null);
@@ -30,8 +39,21 @@ function orderChannelLabel(order: OrderApi): string {
   return [source, ch, sm].filter((s) => s.length > 0).join(" · ");
 }
 
+function mapOrderStatus(status: string, t: TFunction): string {
+  return t(`ordersExplorer.detail.status.${status}`, { defaultValue: status });
+}
+
+function mapPaymentStatus(status: string, t: TFunction): string {
+  return t(`ordersExplorer.detail.paymentStatus.${status}`, { defaultValue: status });
+}
+
+function mapKitchenStatus(status: string | null | undefined, t: TFunction): string {
+  if (!status) return "—";
+  return t(`ordersExplorer.detail.kitchenStatus.${status}`, { defaultValue: status });
+}
+
 export function OrderExplorerDetailModal() {
-  const { t } = useTranslation("ops");
+  const { t } = useOpsTranslation();
   const user = useAuthStore((s) => s.user);
   const caps = useMemo(() => getOrdersExplorerUiCaps(user), [user]);
   const outletId = useOutletStore((s) => s.activeOutletId);
@@ -51,8 +73,10 @@ export function OrderExplorerDetailModal() {
   const [reprintingId, setReprintingId] = useState<number | null>(null);
 
   const receiptKindLabel = (kind: string, splitId: number | null) => {
-    if (kind === "customer_bill") return "Bill (proforma)";
-    if (kind === "customer_receipt" && splitId != null) return `Receipt · split #${splitId}`;
+    if (kind === "customer_bill") return t("ordersExplorer.detail.receiptKinds.customerBill");
+    if (kind === "customer_receipt" && splitId != null) {
+      return t("ordersExplorer.detail.receiptKinds.customerReceiptSplit", { splitId });
+    }
     return kind.replace(/_/g, " ");
   };
 
@@ -62,10 +86,10 @@ export function OrderExplorerDetailModal() {
     setPrintingBill(true);
     try {
       await postPrintCustomerBill(Number(order.id), outletId);
-      toast.success("Bill dicetak — bukan struk final");
+      toast.success(t("ordersExplorer.detail.toasts.billPrinted"));
       void ensureDetailLoaded(selectedOrderId!, { force: true });
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Gagal cetak bill.");
+      toast.error(error instanceof ApiHttpError ? error.message : t("ordersExplorer.detail.toasts.billPrintFailed"));
     } finally {
       setPrintingBill(false);
     }
@@ -75,9 +99,9 @@ export function OrderExplorerDetailModal() {
     setReprintingId(historyId);
     try {
       await postReceiptReprint(historyId);
-      toast.success("Reprint queued");
+      toast.success(t("ordersExplorer.detail.toasts.reprintQueued"));
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : "Reprint failed.");
+      toast.error(error instanceof ApiHttpError ? error.message : t("ordersExplorer.detail.toasts.reprintFailed"));
     } finally {
       setReprintingId(null);
     }
@@ -88,40 +112,37 @@ export function OrderExplorerDetailModal() {
   const order = bucket?.order;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        onClick={() => closeOrderDetail()}
+    <>
+      <AppOverlay
+        open={Boolean(selectedOrderId)}
+        onClose={() => closeOrderDetail()}
+        layer="modal"
         data-testid="order-explorer-detail-backdrop"
+        panelClassName="max-w-lg p-0"
       >
-        <motion.div
-          initial={{ scale: 0.96, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.96, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-card rounded-2xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-lg"
-        >
           <div className="sticky top-0 z-10 flex items-start justify-between gap-2 border-b border-border/60 bg-card/95 backdrop-blur px-4 py-3">
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-foreground truncate">{order?.code ?? "Order"}</h3>
+              <h3 className="text-base font-bold text-foreground truncate">{order?.code ?? t("ordersExplorer.detail.title")}</h3>
               <p className="text-[11px] text-muted-foreground truncate">
-                {order ? orderChannelLabel(order) : "Loading…"}
-                {order?.outletId != null ? ` · Outlet #${order.outletId}` : ""}
+                {order ? orderChannelLabel(order) : t("ordersExplorer.detail.loading")}
+                {order?.outletId != null ? t("ordersExplorer.detail.outlet", { id: order.outletId }) : ""}
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                aria-label="Refresh order detail"
+                aria-label={t("ordersExplorer.detail.refreshAria")}
                 className="p-1.5 rounded-xl hover:bg-muted text-muted-foreground"
                 onClick={() => void ensureDetailLoaded(selectedOrderId, { force: true })}
               >
                 <RefreshCw className={`h-4 w-4 ${bucket?.loading ? "animate-spin" : ""}`} />
               </button>
-              <button type="button" aria-label="Close" className="p-1.5 rounded-xl hover:bg-muted" onClick={() => closeOrderDetail()}>
+              <button
+                type="button"
+                aria-label={t("ordersExplorer.detail.closeAria")}
+                className="p-1.5 rounded-xl hover:bg-muted"
+                onClick={() => closeOrderDetail()}
+              >
                 <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
@@ -133,16 +154,16 @@ export function OrderExplorerDetailModal() {
             {caps.showOperationalCorrectionHint ? (
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-950 dark:text-amber-100">
                 {caps.canApproveItemRecovery ? (
-                  <p>{t("managerRecovery.hint.manager", "Use the recovery wizard below to review escalations, record settlement audit, and execute cash refunds.")}</p>
+                  <p>{t("managerRecovery.hint.manager")}</p>
                 ) : (
-                  <p>{t("managerRecovery.hint.readonly", "This screen is read-only for investigation.")}</p>
+                  <p>{t("managerRecovery.hint.readonly")}</p>
                 )}
               </div>
             ) : null}
 
             {bucket?.loading && !order ? (
               <p className="text-xs text-muted-foreground" data-testid="order-explorer-detail-loading">
-                Loading order…
+                {t("ordersExplorer.detail.loadingOrder")}
               </p>
             ) : null}
 
@@ -150,26 +171,28 @@ export function OrderExplorerDetailModal() {
               <>
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
-                    <p className="text-muted-foreground">Status</p>
-                    <p className="font-semibold text-foreground">{order.status}</p>
+                    <p className="text-muted-foreground">{t("ordersExplorer.detail.statusLabel")}</p>
+                    <p className="font-semibold text-foreground">{mapOrderStatus(order.status, t)}</p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
-                    <p className="text-muted-foreground">Payment</p>
-                    <p className="font-semibold text-foreground">{order.paymentStatus}</p>
+                    <p className="text-muted-foreground">{t("ordersExplorer.detail.paymentLabel")}</p>
+                    <p className="font-semibold text-foreground">{mapPaymentStatus(order.paymentStatus, t)}</p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
-                    <p className="text-muted-foreground">Kitchen</p>
-                    <p className="font-semibold text-foreground">{order.kitchenStatus ?? "—"}</p>
+                    <p className="text-muted-foreground">{t("ordersExplorer.detail.kitchenLabel")}</p>
+                    <p className="font-semibold text-foreground">{mapKitchenStatus(order.kitchenStatus, t)}</p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
-                    <p className="text-muted-foreground">Posted</p>
-                    <p className="font-semibold text-foreground">{order.isPosted ? "Yes" : "No"}</p>
+                    <p className="text-muted-foreground">{t("ordersExplorer.detail.postedLabel")}</p>
+                    <p className="font-semibold text-foreground">
+                      {order.isPosted ? t("ordersExplorer.detail.yes") : t("ordersExplorer.detail.no")}
+                    </p>
                   </div>
                 </div>
 
                 {order.memberId != null || order.memberName || order.memberNo ? (
                   <div className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px]">
-                    <p className="text-muted-foreground">Member</p>
+                    <p className="text-muted-foreground">{t("ordersExplorer.detail.memberLabel")}</p>
                     <p className="font-semibold text-foreground">
                       {order.memberName ?? "—"}
                       {order.memberNo ? ` · ${order.memberNo}` : ""}
@@ -177,9 +200,44 @@ export function OrderExplorerDetailModal() {
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap justify-between gap-2 text-sm border-b border-border/40 pb-2">
-                  <span className="text-muted-foreground">Total</span>
-                  <span className="font-bold text-foreground">{formatRp(order.total)}</span>
+                <div className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2.5 space-y-1.5 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-foreground">{t("ordersExplorer.detail.financialSummary")}</span>
+                    <Badge variant={order.applyTax ? "default" : "secondary"} className="text-[10px] shrink-0">
+                      {(order.applyTax ?? false)
+                        ? t("ordersExplorer.detail.taxApplied")
+                        : t("ordersExplorer.detail.taxNotApplied")}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between gap-2 text-[11px]">
+                    <span className="text-muted-foreground">{t("ordersExplorer.detail.subtotalLabel")}</span>
+                    <span className="text-foreground">{formatRp(order.subtotal)}</span>
+                  </div>
+                  {(order.discountAmount ?? 0) > 0 ? (
+                    <div className="flex justify-between gap-2 text-[11px]">
+                      <span className="text-muted-foreground">{t("ordersExplorer.detail.discountLabel")}</span>
+                      <span className="text-primary">-{formatRp(order.discountAmount ?? 0)}</span>
+                    </div>
+                  ) : null}
+                  {order.applyTax ?? false ? (
+                    (order.taxSnapshot?.length ?? 0) > 0
+                      ? order.taxSnapshot!.map((line) => (
+                        <div key={line.taxId} className="flex justify-between gap-2 text-[11px]">
+                          <span className="text-muted-foreground">{taxLineLabel(line, t)}</span>
+                          <span className="text-foreground">{formatRp(line.amount)}</span>
+                        </div>
+                      ))
+                      : (order.tax ?? 0) > 0 ? (
+                        <div className="flex justify-between gap-2 text-[11px]">
+                          <span className="text-muted-foreground">{t("ordersExplorer.detail.taxLineGeneric")}</span>
+                          <span className="text-foreground">{formatRp(order.tax)}</span>
+                        </div>
+                      ) : null
+                  ) : null}
+                  <div className="flex justify-between gap-2 pt-1 border-t border-border/40 font-bold text-foreground">
+                    <span>{t("ordersExplorer.detail.totalLabel")}</span>
+                    <span>{formatRp(order.total)}</span>
+                  </div>
                 </div>
 
                 {caps.canApproveItemRecovery && pendingRecoveryLines.length > 0 ? (
@@ -195,7 +253,7 @@ export function OrderExplorerDetailModal() {
                 ) : null}
 
                 <div>
-                  <p className="text-xs font-semibold text-foreground mb-2">Items</p>
+                  <p className="text-xs font-semibold text-foreground mb-2">{t("ordersExplorer.detail.itemsLabel")}</p>
                   <ul className="space-y-2">
                     {order.items.map((it) => (
                       <li key={String(it.orderItemId ?? it.id)} className="rounded-lg border border-border/60 bg-muted/15 px-2.5 py-2 text-[11px]">
@@ -215,12 +273,20 @@ export function OrderExplorerDetailModal() {
                               <span className="text-[9px] text-muted-foreground leading-tight">{it.recoveryReason}</span>
                             ) : null}
                             {it.recoveryApprovedAt ? (
-                              <span className="text-[9px] text-muted-foreground">Approved {formatWhen(it.recoveryApprovedAt)}</span>
+                              <span className="text-[9px] text-muted-foreground">
+                                {t("ordersExplorer.detail.approvedAt", { at: formatWhen(it.recoveryApprovedAt) })}
+                              </span>
                             ) : null}
                           </div>
                         ) : null}
-                        {it.notes ? <p className="text-[10px] text-primary/80 italic mt-0.5">Note: {it.notes}</p> : null}
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{formatRp(it.price)} each</p>
+                        {it.notes ? (
+                          <p className="text-[10px] text-primary/80 italic mt-0.5">
+                            {t("ordersExplorer.detail.notePrefix")} {it.notes}
+                          </p>
+                        ) : null}
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {t("ordersExplorer.detail.eachPrice", { price: formatRp(it.price) })}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -228,7 +294,7 @@ export function OrderExplorerDetailModal() {
 
                 {order.splits && order.splits.length > 0 ? (
                   <div>
-                    <p className="text-xs font-semibold text-foreground mb-2">Splits</p>
+                    <p className="text-xs font-semibold text-foreground mb-2">{t("ordersExplorer.detail.splitsLabel")}</p>
                     <ul className="space-y-1.5">
                       {order.splits.map((sp) => (
                         <li key={sp.id} className="rounded-lg border border-border/60 px-2 py-1.5 text-[11px] flex justify-between gap-2">
@@ -249,13 +315,16 @@ export function OrderExplorerDetailModal() {
                 {caps.canViewRecoveryTimeline ? (
                   <div data-testid="order-explorer-recovery-section">
                     <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-2">
-                      Item recovery
+                      {t("ordersExplorer.detail.itemRecovery")}
                       {bucket?.recoveryRefreshing ? (
-                        <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground shrink-0" aria-label="Refreshing recovery events" />
+                        <RefreshCw
+                          className="h-3 w-3 animate-spin text-muted-foreground shrink-0"
+                          aria-label={t("ordersExplorer.detail.refreshingRecovery")}
+                        />
                       ) : null}
                     </p>
                     {!((bucket?.recoveryEvents ?? []).length) ? (
-                      <p className="text-[11px] text-muted-foreground">No recovery events recorded for this order.</p>
+                      <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.noRecoveryEvents")}</p>
                     ) : (
                       <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {(bucket?.recoveryEvents ?? []).map((ev) => (
@@ -274,7 +343,7 @@ export function OrderExplorerDetailModal() {
 
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <p className="text-xs font-semibold text-foreground">Receipt / print history</p>
+                    <p className="text-xs font-semibold text-foreground">{t("ordersExplorer.detail.receiptHistory")}</p>
                     {caps.canUseReceiptActions && order && order.paymentStatus !== "paid" ? (
                       <Button
                         type="button"
@@ -284,7 +353,7 @@ export function OrderExplorerDetailModal() {
                         disabled={printingBill}
                         onClick={() => void handlePrintBill()}
                       >
-                        {printingBill ? "…" : "Cetak bill"}
+                        {printingBill ? t("ordersExplorer.detail.printing") : t("ordersExplorer.detail.printBill")}
                       </Button>
                     ) : null}
                     {caps.canUseReceiptActions && order ? (
@@ -295,14 +364,14 @@ export function OrderExplorerDetailModal() {
                         className="h-7 text-[10px]"
                         onClick={() => setShowKitchenReprint(true)}
                       >
-                        Reprint dapur
+                        {t("ordersExplorer.detail.kitchenReprint")}
                       </Button>
                     ) : null}
                   </div>
                   {!caps.canUseReceiptActions ? (
-                    <p className="text-[11px] text-muted-foreground">Receipt actions require POS access.</p>
+                    <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.receiptActionsRequirePos")}</p>
                   ) : (bucket?.receipts?.length ?? 0) === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">No receipt renders stored for this order.</p>
+                    <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.noReceipts")}</p>
                   ) : (
                     <ul className="space-y-1.5" data-testid="order-explorer-receipt-rows">
                       {(bucket?.receipts ?? []).map((r) => (
@@ -322,7 +391,7 @@ export function OrderExplorerDetailModal() {
                               disabled={!caps.canUseReceiptActions || reprintingId === r.id}
                               onClick={() => void handleDirectReprint(r.id)}
                             >
-                              <RefreshCw className="h-3 w-3 mr-1" /> Reprint
+                              <RefreshCw className="h-3 w-3 mr-1" /> {t("ordersExplorer.detail.reprint")}
                             </Button>
                             <Button
                               type="button"
@@ -332,7 +401,7 @@ export function OrderExplorerDetailModal() {
                               disabled={!caps.canUseReceiptActions}
                               onClick={() => void openPreview(r.id)}
                             >
-                              <FileText className="h-3 w-3 mr-1" /> View
+                              <FileText className="h-3 w-3 mr-1" /> {t("ordersExplorer.detail.view")}
                             </Button>
                           </div>
                         </li>
@@ -343,9 +412,9 @@ export function OrderExplorerDetailModal() {
 
                 {caps.canViewAuditTimeline ? (
                   <div data-testid="order-explorer-audit-section">
-                    <p className="text-xs font-semibold text-foreground mb-2">Audit timeline</p>
+                    <p className="text-xs font-semibold text-foreground mb-2">{t("ordersExplorer.detail.auditTimeline")}</p>
                     {!bucket?.events.length ? (
-                      <p className="text-[11px] text-muted-foreground">No POS events recorded for this order.</p>
+                      <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.noPosEvents")}</p>
                     ) : (
                       <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {bucket.events.map((ev) => (
@@ -356,7 +425,7 @@ export function OrderExplorerDetailModal() {
                             </div>
                             <p className="text-muted-foreground">
                               {ev.entityType} #{ev.entityId}
-                              {ev.actorUserId != null ? ` · actor ${ev.actorUserId}` : ""}
+                              {ev.actorUserId != null ? t("ordersExplorer.detail.actor", { id: ev.actorUserId }) : ""}
                             </p>
                           </li>
                         ))}
@@ -366,13 +435,15 @@ export function OrderExplorerDetailModal() {
                 ) : null}
 
                 <p className="text-[10px] text-muted-foreground border-t border-border/40 pt-2">
-                  Created {formatWhen(order.createdAt)} {order.confirmedAt ? `· Confirmed ${formatWhen(order.confirmedAt)}` : ""}
+                  {t("ordersExplorer.detail.createdAt", { at: formatWhen(order.createdAt) })}
+                  {order.confirmedAt
+                    ? ` ${t("ordersExplorer.detail.confirmedAt", { at: formatWhen(order.confirmedAt) })}`
+                    : ""}
                 </p>
               </>
             ) : null}
           </div>
-        </motion.div>
-      </motion.div>
+      </AppOverlay>
 
       {order ? (
         <KitchenReprintModal
@@ -386,6 +457,6 @@ export function OrderExplorerDetailModal() {
           onClose={() => setShowKitchenReprint(false)}
         />
       ) : null}
-    </AnimatePresence>
+    </>
   );
 }

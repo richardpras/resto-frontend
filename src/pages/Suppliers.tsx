@@ -11,8 +11,10 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { useSupplierStore, type Supplier, type SupplierStatus } from "@/stores/supplierStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 
 export default function Suppliers() {
+  const { t } = useErpTranslation();
   const { suppliers, loading, fetchSuppliers, addSupplier, updateSupplier, toggleStatus } = useSupplierStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -38,9 +40,9 @@ export default function Suppliers() {
 
   useEffect(() => {
     void fetchSuppliers().catch((e) =>
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to load suppliers"),
+      toast.error(e instanceof ApiHttpError ? e.message : t("suppliers.loadFailed")),
     );
-  }, [fetchSuppliers]);
+  }, [fetchSuppliers, t]);
 
   const filtered = statusFilter === "all" ? suppliers : suppliers.filter((s) => s.status === statusFilter);
 
@@ -76,11 +78,11 @@ export default function Suppliers() {
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
   };
   const handleSave = async () => {
-    if (!form.name.trim()) return toast.error("Name is required");
+    if (!form.name.trim()) return toast.error(t("suppliers.nameRequired"));
     const paymentTermDays = parseOptionalInt(form.paymentTermDays);
     const leadTimeDays = parseOptionalInt(form.leadTimeDays);
-    if (form.paymentTermDays.trim() && paymentTermDays === undefined) return toast.error("Payment terms must be a valid number");
-    if (form.leadTimeDays.trim() && leadTimeDays === undefined) return toast.error("Lead time must be a valid number");
+    if (form.paymentTermDays.trim() && paymentTermDays === undefined) return toast.error(t("suppliers.paymentTermsInvalid"));
+    if (form.leadTimeDays.trim() && leadTimeDays === undefined) return toast.error(t("suppliers.leadTimeInvalid"));
 
     const extended = {
       paymentTermDays: paymentTermDays ?? null,
@@ -105,7 +107,7 @@ export default function Suppliers() {
           status: form.status,
           ...extended,
         });
-        toast.success("Supplier updated");
+        toast.success(t("suppliers.updated"));
       } else {
         await addSupplier({
           name: form.name,
@@ -116,18 +118,18 @@ export default function Suppliers() {
           status: form.status,
           ...extended,
         });
-        toast.success("Supplier added");
+        toast.success(t("suppliers.added"));
       }
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiHttpError ? e.message : "Save failed");
+      toast.error(e instanceof ApiHttpError ? e.message : t("common:common.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   const columns: Column<Supplier>[] = [
-    { key: "name", header: "Name", sortable: true,
+    { key: "name", header: t("suppliers.columns.name"), sortable: true,
       render: (r) => (
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -136,7 +138,7 @@ export default function Suppliers() {
           <div><p className="font-medium text-foreground">{r.name}</p><p className="text-xs text-muted-foreground">{r.email}</p></div>
         </div>
       ) },
-    { key: "contact", header: "Contact", sortable: true,
+    { key: "contact", header: t("suppliers.columns.contact"), sortable: true,
       render: (r) => (
         <div>
           <p className="text-sm">{r.contactPerson || r.contact || "—"}</p>
@@ -145,14 +147,14 @@ export default function Suppliers() {
           )}
         </div>
       ) },
-    { key: "leadTimeDays", header: "Lead time", sortable: true,
-      render: (r) => (r.leadTimeDays != null ? `${r.leadTimeDays}d` : "—") },
-    { key: "address", header: "Address", className: "max-w-[280px] truncate" },
-    { key: "status", header: "Status", sortable: true,
+    { key: "leadTimeDays", header: t("suppliers.columns.leadTime"), sortable: true,
+      render: (r) => (r.leadTimeDays != null ? t("suppliers.leadTimeDays", { days: r.leadTimeDays }) : "—") },
+    { key: "address", header: t("suppliers.columns.address"), className: "max-w-[280px] truncate" },
+    { key: "status", header: t("suppliers.columns.status"), sortable: true,
       render: (r) => (
         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
           r.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
-        }`}>{r.status}</span>
+        }`}>{r.status === "active" ? t("common:common.active") : t("common:common.inactive")}</span>
       ) },
     { key: "actions", header: "", className: "w-28 text-right",
       render: (r) => (
@@ -163,8 +165,8 @@ export default function Suppliers() {
             size="icon"
             onClick={() => {
               void toggleStatus(r.id)
-                .then(() => toast.success("Status updated"))
-                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : "Update failed"));
+                .then(() => toast.success(t("suppliers.statusUpdated")))
+                .catch((e) => toast.error(e instanceof ApiHttpError ? e.message : t("suppliers.updateFailed")));
             }}
             className="h-8 w-8"
           >
@@ -178,74 +180,74 @@ export default function Suppliers() {
     <div className="p-4 md:p-6 space-y-5 max-w-7xl">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Suppliers</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage vendors used across purchase requests, orders and invoices.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("suppliers.pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("suppliers.pageSubtitle")}</p>
         </div>
       </div>
 
       <DataTable
         data={filtered} columns={columns} rowKey={(r) => r.id}
         loading={loading}
-        searchPlaceholder="Search supplier..."
+        searchPlaceholder={t("suppliers.searchPlaceholder")}
         searchKeys={["name", "contact", "email", "address"]}
-        emptyMessage="No suppliers yet"
-        emptyAction={{ label: "Add supplier", onClick: openNew }}
+        emptyMessage={t("suppliers.empty")}
+        emptyAction={{ label: t("suppliers.addSupplier"), onClick: openNew }}
         filterToolbar={
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | SupplierStatus)}>
             <SelectTrigger className="w-36 rounded-xl"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="all">{t("suppliers.allStatus")}</SelectItem>
+              <SelectItem value="active">{t("common:common.active")}</SelectItem>
+              <SelectItem value="inactive">{t("common:common.inactive")}</SelectItem>
             </SelectContent>
           </Select>
         }
         rightToolbar={
-          <Button onClick={openNew} className="rounded-xl"><Plus className="h-4 w-4 mr-1" /> Add supplier</Button>
+          <Button onClick={openNew} className="rounded-xl"><Plus className="h-4 w-4 mr-1" /> {t("suppliers.addSupplier")}</Button>
         }
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className={`${dialogSize.lg} ${dialogScroll} rounded-2xl`}>
-          <DialogHeader><DialogTitle>{editing ? "Edit supplier" : "New supplier"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("suppliers.editSupplier") : t("suppliers.newSupplier")}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
-            <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>{t("common:common.name")} *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Payment terms (days)</Label><Input type="number" min={0} value={form.paymentTermDays} onChange={(e) => setForm({ ...form, paymentTermDays: e.target.value })} placeholder="e.g. 30" /></div>
-              <div><Label>Lead time (days)</Label><Input type="number" min={0} value={form.leadTimeDays} onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })} placeholder="e.g. 7" /></div>
+              <div><Label>{t("suppliers.paymentTermsDays")}</Label><Input type="number" min={0} value={form.paymentTermDays} onChange={(e) => setForm({ ...form, paymentTermDays: e.target.value })} placeholder={t("suppliers.paymentTermsPlaceholder")} /></div>
+              <div><Label>{t("suppliers.leadTimeDaysLabel")}</Label><Input type="number" min={0} value={form.leadTimeDays} onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })} placeholder={t("suppliers.leadTimePlaceholder")} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Phone</Label><Input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></div>
-              <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+              <div><Label>{t("suppliers.phone")}</Label><Input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></div>
+              <div><Label>{t("suppliers.email")}</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
             </div>
-            <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-            <p className="text-xs font-medium text-muted-foreground pt-1">Tax information</p>
+            <div><Label>{t("suppliers.address")}</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <p className="text-xs font-medium text-muted-foreground pt-1">{t("suppliers.taxInfo")}</p>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Tax number (NPWP)</Label><Input value={form.taxNumber} onChange={(e) => setForm({ ...form, taxNumber: e.target.value })} /></div>
-              <div><Label>Tax name</Label><Input value={form.taxName} onChange={(e) => setForm({ ...form, taxName: e.target.value })} /></div>
+              <div><Label>{t("suppliers.taxNumber")}</Label><Input value={form.taxNumber} onChange={(e) => setForm({ ...form, taxNumber: e.target.value })} /></div>
+              <div><Label>{t("suppliers.taxName")}</Label><Input value={form.taxName} onChange={(e) => setForm({ ...form, taxName: e.target.value })} /></div>
             </div>
-            <div><Label>Tax address</Label><Textarea value={form.taxAddress} onChange={(e) => setForm({ ...form, taxAddress: e.target.value })} rows={2} /></div>
-            <p className="text-xs font-medium text-muted-foreground pt-1">Primary contact</p>
-            <div><Label>Contact person</Label><Input value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} /></div>
+            <div><Label>{t("suppliers.taxAddress")}</Label><Textarea value={form.taxAddress} onChange={(e) => setForm({ ...form, taxAddress: e.target.value })} rows={2} /></div>
+            <p className="text-xs font-medium text-muted-foreground pt-1">{t("suppliers.primaryContact")}</p>
+            <div><Label>{t("suppliers.contactPerson")}</Label><Input value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Contact phone</Label><Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} /></div>
-              <div><Label>Contact email</Label><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></div>
+              <div><Label>{t("suppliers.contactPhone")}</Label><Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} /></div>
+              <div><Label>{t("suppliers.contactEmail")}</Label><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></div>
             </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
-            <div><Label>Status</Label>
+            <div><Label>{t("suppliers.notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+            <div><Label>{t("common:common.status")}</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as SupplierStatus })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("common:common.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("common:common.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t("common:common.cancel")}</Button>
             <Button onClick={() => void handleSave()} disabled={saving}>
-              {saving ? "Saving…" : editing ? "Save changes" : "Create"}
+              {saving ? t("common:common.saving") : editing ? t("suppliers.saveChanges") : t("suppliers.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -38,6 +38,7 @@ vi.mock("@/components/ConnectivitySyncRibbon", () => ({
 
 import { useOperationalDashboardStore } from "@/stores/operationalDashboardStore";
 import { useDashboardSummaryStore } from "@/stores/dashboardSummaryStore";
+import { ensureEnglishLocale } from "@/test/i18nTestSetup";
 import Dashboard from "@/pages/Dashboard";
 
 const emptySummary = {
@@ -77,7 +78,8 @@ const emptySummary = {
 };
 
 describe("Dashboard monitoring mapping", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureEnglishLocale();
     mockStartMonitoring.mockReset();
     mockStopMonitoring.mockReset();
 

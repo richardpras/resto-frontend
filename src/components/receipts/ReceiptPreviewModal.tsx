@@ -6,8 +6,10 @@ import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { useReceiptDocumentStore } from "@/stores/receiptDocumentStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { resolveReceiptPreviewWidthCh } from "@/domain/receiptPreviewUtils";
+import { useTranslation } from "react-i18next";
 
 export function ReceiptPreviewModal() {
+  const { t } = useTranslation("common");
   const previewOpen = useReceiptDocumentStore((s) => s.previewOpen);
   const closePreview = useReceiptDocumentStore((s) => s.closePreview);
   const activeRender = useReceiptDocumentStore((s) => s.activeRender);
@@ -39,35 +41,43 @@ export function ReceiptPreviewModal() {
     >
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Receipt preview</DialogTitle>
+          <DialogTitle>{t("settings.printers.receiptPreview.title")}</DialogTitle>
           {activeRender ? (
             <p className="text-xs text-muted-foreground font-normal">
               #{activeRender.id} · {activeRender.kind} · {activeRender.sourceType}/{activeRender.sourceId}
             </p>
           ) : null}
         </DialogHeader>
-        <SkeletonBusyRegion busy={isLoadingDetail} label="Loading receipt" className="min-h-[120px]">
+        <SkeletonBusyRegion busy={isLoadingDetail} label={t("settings.printers.receiptPreview.loading")} className="min-h-[120px]">
           {isLoadingDetail ? (
             <ReceiptPreviewBodySkeleton />
           ) : activeRender ? (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2 items-center">
                 {activeRender.invoiceNumber ? (
-                  <Badge variant="secondary">Invoice {activeRender.invoiceNumber}</Badge>
+                  <Badge variant="secondary">
+                    {t("settings.printers.receiptPreview.invoiceBadge", { number: activeRender.invoiceNumber })}
+                  </Badge>
                 ) : null}
-                {activeRender.pdfAvailable ? <Badge variant="outline">PDF ready</Badge> : <Badge variant="outline">PDF n/a</Badge>}
-                {activeRender.deferredReplayPending ? (
-                  <Badge variant="destructive">Deferred / offline</Badge>
+                {activeRender.pdfAvailable ? (
+                  <Badge variant="outline">{t("settings.printers.receiptPreview.pdfReady")}</Badge>
                 ) : (
-                  <Badge variant="outline">Print path live</Badge>
+                  <Badge variant="outline">{t("settings.printers.receiptPreview.pdfUnavailable")}</Badge>
                 )}
-                <Badge variant="outline">Reprints {activeRender.reprintCount}</Badge>
+                {activeRender.deferredReplayPending ? (
+                  <Badge variant="destructive">{t("settings.printers.receiptPreview.deferredOffline")}</Badge>
+                ) : (
+                  <Badge variant="outline">{t("settings.printers.receiptPreview.printPathLive")}</Badge>
+                )}
+                <Badge variant="outline">
+                  {t("settings.printers.receiptPreview.reprints", { count: activeRender.reprintCount })}
+                </Badge>
               </div>
               <div className="space-y-2">
                 {showPreviewLogo ? (
                   <img
                     src={previewOutlet?.logoUrl}
-                    alt={`${previewOutlet?.name ?? "Outlet"} logo`}
+                    alt={t("settings.printers.receiptPreview.outletLogoAlt", { name: previewOutlet?.name ?? "Outlet" })}
                     className="mx-auto max-h-16 max-w-[70%] object-contain"
                   />
                 ) : null}
@@ -81,21 +91,21 @@ export function ReceiptPreviewModal() {
               {error ? <p className="text-sm text-destructive">{error}</p> : null}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No receipt selected.</p>
+            <p className="text-sm text-muted-foreground">{t("settings.printers.receiptPreview.noSelection")}</p>
           )}
         </SkeletonBusyRegion>
         <DialogFooter className="gap-2 sm:gap-2 flex-col sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={() => void openPdfInNewTab()} disabled={!activeRender?.pdfAvailable || isMutating}>
-            Open PDF
+            {t("settings.printers.receiptPreview.openPdf")}
           </Button>
           <Button type="button" variant="outline" onClick={() => void requestReprint("settings-ui")} disabled={!activeRender || isMutating}>
-            Queue reprint
+            {t("settings.printers.receiptPreview.queueReprint")}
           </Button>
           <Button type="button" variant="secondary" onClick={() => void markDeferred()} disabled={!activeRender || isMutating}>
-            Mark deferred replay
+            {t("settings.printers.receiptPreview.markDeferred")}
           </Button>
           <Button type="button" variant="ghost" onClick={closePreview}>
-            Close
+            {t("settings.printers.receiptPreview.close")}
           </Button>
         </DialogFooter>
       </DialogContent>

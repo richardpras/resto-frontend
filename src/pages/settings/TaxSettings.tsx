@@ -14,8 +14,9 @@ import { useSettingsStore, Tax, newId, removeTaxCascade } from "@/stores/setting
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchTax, postTax } from "@/lib/api-integration/settingsDomainEndpoints";
+import OutletTaxAssignmentSettings from "./OutletTaxAssignmentSettings";
 
-const empty: Tax = { id: "", name: "", type: "percentage", value: 0, applyDineIn: true, applyTakeaway: true, inclusive: false, status: "active" };
+const empty: Tax = { id: "", name: "", type: "percentage", value: 0, applyDineIn: true, applyTakeaway: true, inclusive: false, status: "active", effectiveFrom: null, effectiveTo: null };
 
 export default function TaxSettings() {
   const { t } = useTranslation("common");
@@ -29,6 +30,9 @@ export default function TaxSettings() {
   const save = async () => {
     if (!form.name.trim()) return toast.error(t("settings.taxes.nameRequired"));
     if (form.value < 0) return toast.error(t("settings.taxes.valueMin"));
+    if (form.effectiveFrom && form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
+      return toast.error(t("settings.taxes.effectiveRangeInvalid"));
+    }
     const wasInList = useSettingsStore.getState().taxes.some((row) => row.id === form.id);
     setSaving(true);
     try {
@@ -51,6 +55,7 @@ export default function TaxSettings() {
   };
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardContent className="p-6 space-y-4">
         <div className="flex justify-between items-center">
@@ -61,7 +66,7 @@ export default function TaxSettings() {
           <TableHeader>
             <TableRow>
               <TableHead>{t("common.name")}</TableHead><TableHead>{t("common.type")}</TableHead><TableHead>{t("settings.taxes.value")}</TableHead>
-              <TableHead>{t("settings.taxes.applyTo")}</TableHead><TableHead>{t("settings.taxes.mode")}</TableHead><TableHead>{t("common.status")}</TableHead><TableHead className="w-24"></TableHead>
+              <TableHead>{t("settings.taxes.applyTo")}</TableHead><TableHead>{t("settings.taxes.mode")}</TableHead><TableHead>{t("settings.taxes.effective")}</TableHead><TableHead>{t("common.status")}</TableHead><TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -74,6 +79,9 @@ export default function TaxSettings() {
                   {[tax.applyDineIn && t("settings.taxes.dineIn"), tax.applyTakeaway && t("settings.taxes.takeaway")].filter(Boolean).join(", ")}
                 </TableCell>
                 <TableCell>{tax.inclusive ? t("settings.taxes.inclusive") : t("settings.taxes.exclusive")}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {[tax.effectiveFrom, tax.effectiveTo].filter(Boolean).join(" – ") || t("settings.taxes.alwaysEffective")}
+                </TableCell>
                 <TableCell><Badge variant={tax.status === "active" ? "default" : "secondary"}>{tax.status === "active" ? t("common.active") : t("common.inactive")}</Badge></TableCell>
                 <TableCell>
                   <div className="flex gap-1">
@@ -136,6 +144,16 @@ export default function TaxSettings() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>{t("settings.taxes.effectiveFrom")}</Label>
+                  <Input type="date" value={form.effectiveFrom ?? ""} onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value || null })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("settings.taxes.effectiveTo")}</Label>
+                  <Input type="date" value={form.effectiveTo ?? ""} onChange={(e) => setForm({ ...form, effectiveTo: e.target.value || null })} />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>{t("common.status")}</Label>
                 <Select value={form.status} onValueChange={(v: "active" | "inactive") => setForm({ ...form, status: v })}>
@@ -155,5 +173,7 @@ export default function TaxSettings() {
         </Dialog>
       </CardContent>
     </Card>
+    <OutletTaxAssignmentSettings />
+    </div>
   );
 }

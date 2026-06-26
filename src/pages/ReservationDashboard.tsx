@@ -9,16 +9,7 @@ import {
 } from "@/lib/api-integration/reservationEndpoints";
 import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useOutletStore } from "@/stores/outletStore";
-
-const statusLabel: Record<ReservationApi["status"], string> = {
-  draft: "Draft",
-  confirmed: "Confirmed",
-  checked_in: "Checked in",
-  seated: "Seated",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  no_show: "No show",
-};
+import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -29,7 +20,19 @@ function formatDateTime(iso: string | null): string {
   }
 }
 
-function ReservationMiniList({ title, rows }: { title: ReactNode; rows: ReservationApi[] }) {
+function ReservationMiniList({
+  title,
+  rows,
+  statusLabel,
+  emptyList,
+  guestPax,
+}: {
+  title: ReactNode;
+  rows: ReservationApi[];
+  statusLabel: (status: ReservationApi["status"]) => string;
+  emptyList: string;
+  guestPax: (n: number) => string;
+}) {
   return (
     <div className="rounded-2xl border border-border/50 bg-card p-4">
       <h3 className="text-sm font-semibold mb-2">{title}</h3>
@@ -41,14 +44,14 @@ function ReservationMiniList({ title, rows }: { title: ReactNode; rows: Reservat
             className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm hover:bg-muted/50"
           >
             <span>
-              {row.customerName} · {row.partySize} pax
+              {row.customerName} · {guestPax(row.partySize)}
             </span>
             <span className="text-muted-foreground">
-              {formatDateTime(row.reservationAt)} · {statusLabel[row.status]}
+              {formatDateTime(row.reservationAt)} · {statusLabel(row.status)}
             </span>
           </Link>
         ))}
-        {rows.length === 0 && <p className="text-sm text-muted-foreground">No reservations in this list.</p>}
+        {rows.length === 0 && <p className="text-sm text-muted-foreground">{emptyList}</p>}
       </div>
     </div>
   );
@@ -67,12 +70,15 @@ function MetricCard({ label, value, suffix }: { label: string; value: string | n
 }
 
 export default function ReservationDashboard() {
+  const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const authed = Boolean(getApiAccessToken());
   const today = new Date().toISOString().slice(0, 10);
   const [rangeFrom] = useState(today);
   const [rangeTo] = useState(today);
+
+  const statusLabel = (status: ReservationApi["status"]) => t(`reservations.status.${status}`);
 
   const { data, isLoading, refetch } = useQuery<ReservationDashboardApi>({
     queryKey: ["reservation-dashboard", activeOutletId, rangeFrom, rangeTo],
@@ -94,47 +100,47 @@ export default function ReservationDashboard() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <BarChart3 className="h-6 w-6" /> Reservation Operations
+            <BarChart3 className="h-6 w-6" /> {t("reservations.dashboard.pageTitle")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Today&apos;s arrivals, active guests, no-shows, and delay metrics. Manage bookings on the{" "}
+            {t("reservations.dashboard.pageSubtitleBefore")}
             <Link to="/reservations" className="text-primary underline-offset-2 hover:underline">
-              Reservations
-            </Link>{" "}
-            page.
+              {t("reservations.dashboard.manageLink")}
+            </Link>
+            {t("reservations.dashboard.pageSubtitleAfter")}
           </p>
         </div>
       </div>
 
       {!outletReady && (
-        <p className="text-sm text-muted-foreground">Select an outlet to load reservation operations.</p>
+        <p className="text-sm text-muted-foreground">{t("reservations.dashboard.selectOutlet")}</p>
       )}
 
       {outletReady && (
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <MetricCard label="Today's reservations" value={isLoading ? "…" : todayTotal} />
-            <MetricCard label="No-show today" value={isLoading ? "…" : (data?.noShowToday ?? 0)} />
+            <MetricCard label={t("reservations.dashboard.metrics.todayReservations")} value={isLoading ? "…" : todayTotal} />
+            <MetricCard label={t("reservations.dashboard.metrics.noShowToday")} value={isLoading ? "…" : (data?.noShowToday ?? 0)} />
             <MetricCard
-              label="No-show rate"
+              label={t("reservations.dashboard.metrics.noShowRate")}
               value={isLoading ? "…" : (metrics?.noShowRate ?? 0)}
-              suffix="%"
+              suffix={t("reservations.dashboard.suffixPercent")}
             />
             <MetricCard
-              label="Avg check-in delay"
+              label={t("reservations.dashboard.metrics.avgCheckinDelay")}
               value={isLoading ? "…" : (metrics?.averageCheckinDelayMinutes ?? 0)}
-              suffix="min"
+              suffix={t("reservations.dashboard.suffixMin")}
             />
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <MetricCard label="Confirmed" value={isLoading ? "…" : (metrics?.confirmed ?? 0)} />
-            <MetricCard label="Checked in" value={isLoading ? "…" : (metrics?.checkedIn ?? 0)} />
-            <MetricCard label="Seated" value={isLoading ? "…" : (metrics?.seated ?? 0)} />
+            <MetricCard label={t("reservations.dashboard.metrics.confirmed")} value={isLoading ? "…" : (metrics?.confirmed ?? 0)} />
+            <MetricCard label={t("reservations.dashboard.metrics.checkedIn")} value={isLoading ? "…" : (metrics?.checkedIn ?? 0)} />
+            <MetricCard label={t("reservations.dashboard.metrics.seated")} value={isLoading ? "…" : (metrics?.seated ?? 0)} />
             <MetricCard
-              label="Avg seating delay"
+              label={t("reservations.dashboard.metrics.avgSeatingDelay")}
               value={isLoading ? "…" : (metrics?.averageSeatingDelayMinutes ?? 0)}
-              suffix="min"
+              suffix={t("reservations.dashboard.suffixMin")}
             />
           </div>
 
@@ -142,18 +148,24 @@ export default function ReservationDashboard() {
             <ReservationMiniList
               title={
                 <span className="inline-flex items-center gap-1">
-                  <CalendarClock className="h-4 w-4" /> Upcoming arrivals
+                  <CalendarClock className="h-4 w-4" /> {t("reservations.dashboard.upcomingArrivals")}
                 </span>
               }
               rows={data?.upcomingReservations ?? []}
+              statusLabel={statusLabel}
+              emptyList={t("reservations.dashboard.emptyList")}
+              guestPax={(n) => t("reservations.dashboard.guestPax", { n })}
             />
             <ReservationMiniList
               title={
                 <span className="inline-flex items-center gap-1">
-                  <Users className="h-4 w-4" /> Active guests
+                  <Users className="h-4 w-4" /> {t("reservations.dashboard.activeGuests")}
                 </span>
               }
               rows={data?.activeReservations ?? []}
+              statusLabel={statusLabel}
+              emptyList={t("reservations.dashboard.emptyList")}
+              guestPax={(n) => t("reservations.dashboard.guestPax", { n })}
             />
           </div>
         </>

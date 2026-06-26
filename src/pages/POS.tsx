@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Plus, Minus, Trash2, X,
-  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, CreditCard, Undo2, CalendarDays, Ticket,
+  SplitSquareHorizontal, Printer, MessageSquare, CheckCircle2, ChefHat, Users, User, Phone, CreditCard, Undo2, CalendarDays, Ticket, ShoppingCart,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { AppOverlay } from "@/components/ui/AppOverlay";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
@@ -24,6 +26,7 @@ import {
 } from "@/lib/api-integration/endpoints";
 import { useReservationTableProjectionSync } from "@/hooks/useReservationTableProjectionSync";
 import { usePosBootstrap } from "@/hooks/pos/usePosBootstrap";
+import { computeOrderTax, formatTaxRulesLabel } from "@/features/pos/computeOrderTax";
 import { usePosLazyFloorTables } from "@/hooks/pos/usePosLazyFloorTables";
 import { usePosLazyMembers } from "@/hooks/pos/usePosLazyMembers";
 import { useConsumePosBridge } from "@/hooks/pos/useConsumePosBridge";
@@ -41,13 +44,13 @@ import { POS_AUTO_ORDER_CODE } from "@/features/pos/posOrderCode";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
+import { PosCartPanel, type PosCartPanelProps } from "@/components/pos/PosCartPanel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { canReconcilePayments } from "@/domain/permissionGates";
 import { PosMenuGridSkeleton } from "@/components/skeletons/card/PosMenuGridSkeleton";
 import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
-import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
-import { PosOrderRecoveryPanel } from "@/components/pos/PosOrderRecoveryPanel";
 import { QrisPaymentModal } from "@/components/payments/QrisPaymentModal";
 import { StaticQrisPaymentModal } from "@/components/payments/StaticQrisPaymentModal";
 import {
@@ -155,9 +158,10 @@ function buildCartPayload(
   customerPhone: string,
   selectedTable: string,
   memberId?: number | null,
+  applyTax = false,
 ): Pick<
   CreateOrderPayload,
-  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableId" | "discountAmount" | "memberId"
+  "items" | "subtotal" | "tax" | "total" | "customerName" | "customerPhone" | "tableId" | "discountAmount" | "memberId" | "applyTax"
 > {
   return {
     items: cart.map((c) => ({
@@ -171,6 +175,7 @@ function buildCartPayload(
     subtotal,
     tax,
     total,
+    applyTax,
     ...(discount > 0 ? { discountAmount: discount } : {}),
     ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
     ...(customerPhone.trim() ? { customerPhone: customerPhone.trim() } : {}),
@@ -235,8 +240,10 @@ export default function POS() {
   const [showStaticQrisModal, setShowStaticQrisModal] = useState(false);
   const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [showSplit, setShowSplit] = useState(false);
+  const [applyTax, setApplyTax] = useState(false);
   const [showConfirmSent, setShowConfirmSent] = useState(false);
   const [showConfirmOrderDialog, setShowConfirmOrderDialog] = useState(false);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [selectedCheckoutCode, setSelectedCheckoutCode] = useState<string | null>(null);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [pendingGatewayPayments, setPendingGatewayPayments] = useState<OrderPaymentPayload[]>([]);
@@ -342,6 +349,14 @@ export default function POS() {
     }
   }, [currentOpenOrder?.id, currentOpenOrder?.memberId, currentOpenOrder?.customerName, currentOpenOrder?.customerPhone, activeOutletId, fetchMembers, selectedMember?.id]);
 
+  useEffect(() => {
+    if (currentOpenOrder) {
+      setApplyTax(currentOpenOrder.applyTax ?? false);
+      return;
+    }
+    setApplyTax(false);
+  }, [currentOpenOrder?.id, currentOpenOrder?.applyTax]);
+
   useConsumePosBridge({
     activeOutletId,
     setQrOrderContext,
@@ -376,6 +391,12 @@ export default function POS() {
       setShowQrisModal(true);
     }
   }, [showPayment, paymentTransaction, selectedCheckoutMethod, qrisModalSuppressedTxId]);
+
+  useEffect(() => {
+    if (showPayment || showSplit || showDiscountModal || showConfirmSent || showMemberPicker) {
+      setMobileCartOpen(false);
+    }
+  }, [showPayment, showSplit, showDiscountModal, showConfirmSent, showMemberPicker]);
 
   // Prevent outlet context leaks (cart, split/payment modal state) across outlet switch.
   useEffect(() => {
@@ -413,7 +434,7 @@ export default function POS() {
     };
   }, [paymentResetAsync]);
 
-  const { menuApiItems, menuLoading, menuError, refetchMenu } = usePosBootstrap({
+  const { menuApiItems, outletTaxRules, menuLoading, menuError, refetchMenu } = usePosBootstrap({
     tenantId: POS_TENANT_ID,
     outletId: activeOutletId,
   });
@@ -475,7 +496,22 @@ export default function POS() {
     ? appliedPromotionDiscount
     : (currentOrderId ? appliedPromotionDiscount : evaluatedPromotionDiscount);
   const checkoutDiscount = voucherDiscount > 0 ? voucherDiscount : promotionDiscount;
-  const taxableBase = Math.max(0, subtotal - checkoutDiscount);
+  const hasOutletTaxRules = outletTaxRules.length > 0;
+  const serviceModeForTax = orderType === "Takeaway" || orderType === "Online" ? "takeaway" : "dine_in";
+  const clientTaxResult = useMemo(
+    () => computeOrderTax({
+      rules: outletTaxRules,
+      orderType,
+      serviceMode: serviceModeForTax,
+      subtotal,
+      discount: checkoutDiscount,
+      applyTax: hasOutletTaxRules && applyTax,
+    }),
+    [outletTaxRules, orderType, serviceModeForTax, subtotal, checkoutDiscount, hasOutletTaxRules, applyTax],
+  );
+  const tax = clientTaxResult.tax;
+  const clientBaseTotal = clientTaxResult.total;
+  const taxLabel = formatTaxRulesLabel(outletTaxRules);
 
   useEffect(() => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1 || cart.length === 0) {
@@ -509,8 +545,6 @@ export default function POS() {
     currentOpenOrder?.voucher,
   ]);
 
-  const tax = Math.round(taxableBase * 0.1);
-  const clientBaseTotal = taxableBase + tax;
   const appliedGiftCard = appliedGiftCardAmount(appliedGiftCardState);
   const appliedPointsValue = Math.round(appliedPoints / 10);
 
@@ -754,7 +788,7 @@ export default function POS() {
   const memberIdForPayload = selectedMember ? Number(selectedMember.id) : undefined;
 
   const buildOpenBillCartUpdate = () =>
-    buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload);
+    buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax);
 
   const qrOrderPayloadFields = useMemo((): Pick<CreateOrderPayload, "qrOrderRequestId" | "orderChannel" | "serviceMode"> => {
     if (!qrOrderContext) return {};
@@ -838,7 +872,7 @@ export default function POS() {
     confirmedAt: new Date().toISOString(),
     ...qrOrderPayloadFields,
     idempotencyKey: `pos-discount-draft-${Date.now()}`,
-    ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+    ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
   });
 
   async function ensureDraftOrderForDiscount(): Promise<string> {
@@ -922,7 +956,7 @@ export default function POS() {
         payments: [],
         confirmedAt: new Date().toISOString(),
         ...qrOrderPayloadFields,
-        ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+        ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
       };
       const { order: storedOrder } = await createOrderRemote(payload);
       setCurrentOrderId(storedOrder.id);
@@ -963,10 +997,12 @@ export default function POS() {
     }
     if (currentOrderId && isUnpaidOpenBill(currentOpenOrder)) {
       beginOrderPaymentAttempt(currentOrderId);
+      setMobileCartOpen(false);
       setShowPayment(true);
       return;
     }
     beginCheckoutAttempt("pay-now");
+    setMobileCartOpen(false);
     setShowPayment(true);
   };
 
@@ -1123,7 +1159,7 @@ export default function POS() {
           idempotencyKey: recoveryOrderId
             ? openBillCheckoutIdempotencyKey(recoveryOrderId)
             : idempotencyKey,
-          ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+          ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
         };
         const createResult = await createOrderRemote(payload);
         storedOrder = createResult.order;
@@ -1416,6 +1452,7 @@ export default function POS() {
       return;
     }
     setShowPayment(false);
+    setMobileCartOpen(false);
     setShowSplit(true);
     setSplitMethod("equal");
     setSplitCount(2);
@@ -1520,7 +1557,7 @@ export default function POS() {
       idempotencyKey: checkoutAttemptIdRef.current ?? beginCheckoutAttempt("split-bill"),
       splitBill: { method: splitMethod === "equal" ? "equal" : "by-item", persons: splitPersons },
       ...qrOrderPayloadFields,
-      ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload),
+      ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
     });
     setCurrentOrderId(created.id);
     if (qrOrderContext) {
@@ -1565,7 +1602,7 @@ export default function POS() {
       }
       const syncedPerson = persons[idx];
       if (!syncedPerson?.serverSplitId) {
-        toast.error("Split sync failed — try again.");
+        toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
       const fresh = await fetchOrderRemote(orderId);
@@ -1625,7 +1662,7 @@ export default function POS() {
       }
       if (!orderId) return;
       await postPrintCustomerBill(Number(orderId), activeOutletId);
-      toast.success("Bill dicetak — bukan struk final");
+      toast.success(t("pos.toasts.billPrinted"));
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -1787,6 +1824,78 @@ export default function POS() {
     return tx;
   };
 
+  const cartPanelProps: PosCartPanelProps = {
+    t,
+    formatRp,
+    orderType,
+    orderTypeLabel,
+    totalItems,
+    currentOrderId,
+    activeOutletId,
+    currentOpenOrder,
+    operationalChannelFromOrder,
+    customerName,
+    setCustomerName,
+    customerPhone,
+    setCustomerPhone,
+    setShowReservationPicker,
+    submitting,
+    activeReservationId,
+    activeReservationLabel,
+    setActiveReservationId,
+    setActiveReservationLabel,
+    selectedMember,
+    setSelectedMember,
+    attachMemberToOpenOrder,
+    setShowMemberPicker,
+    cart,
+    setShowDiscountModal,
+    promotionDiscount,
+    voucherDiscount,
+    appliedGiftCardState,
+    availablePoints,
+    redeemPointsInput,
+    setRedeemPointsInput,
+    applyPointsRedemption,
+    appliedPoints,
+    selectedTable,
+    setSelectedTable,
+    requestTables,
+    tablesLoading,
+    selectableTables,
+    updateQty,
+    notesItem,
+    setNotesItem,
+    updateNotes,
+    paymentStockError,
+    clearCheckoutRecoveryState,
+    checkoutAttemptIdRef,
+    openBillRecoveryCode,
+    fetchOrderRemote,
+    displaySubtotal,
+    displayDiscount,
+    appliedGiftCard,
+    displayTax,
+    taxLabel,
+    hasOutletTaxRules,
+    applyTax,
+    setApplyTax,
+    total,
+    setShowConfirmOrderDialog,
+    checkoutReady,
+    menuLoading,
+    menuError,
+    handlePayNow,
+    paymentAckRequired,
+    handlePrintCustomerBill,
+    printingBill,
+    setShowKitchenReprint,
+  };
+
+  const showMobileCartBar =
+    (totalItems > 0 || !!currentOrderId) && !showPayment && !showSplit && !showDiscountModal;
+  const isPhoneViewport = useIsMobile();
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       <ConnectivitySyncRibbon outletId={activeOutletId} terminalRegistrationReady={!menuLoading} />
@@ -1801,7 +1910,7 @@ export default function POS() {
           <span>
             {t("pos.qrOrder", { code: qrOrderContext.requestCode })}{qrOrderContext.tableName ? t("pos.qrOrderTable", { name: qrOrderContext.tableName }) : ""}
           </span>
-          <span className="text-[10px] font-medium uppercase text-primary/80" data-testid="pos-stock-mode-badge">
+          <span className="text-xs font-medium uppercase text-primary/80 sm:text-sm" data-testid="pos-stock-mode-badge">
             {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
           </span>
         </div>
@@ -1811,14 +1920,14 @@ export default function POS() {
           data-testid="pos-direct-source-badge"
         >
           <span>{t("pos.directPos")}</span>
-          <span className="text-[10px] font-medium uppercase" data-testid="pos-stock-mode-badge">
+          <span className="text-xs font-medium uppercase sm:text-sm" data-testid="pos-stock-mode-badge">
             {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
           </span>
         </div>
       )}
       <div className="flex flex-1 min-h-0">
       {/* Menu Panel */}
-      <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5">
+      <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5 pb-24 lg:pb-5">
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1831,7 +1940,7 @@ export default function POS() {
           <div className="flex gap-1.5 bg-card rounded-xl p-1 border border-border">
             {orderTypes.map((type) => (
               <button key={type} onClick={() => setOrderType(type)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${orderType === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${orderType === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >{orderTypeLabel(type)}</button>
             ))}
           </div>
@@ -1840,7 +1949,7 @@ export default function POS() {
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
           {categories.map((c) => (
             <button key={c} onClick={() => setActiveCat(c)}
-              className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${activeCat === c ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}
+              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${activeCat === c ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}
             >{categoryLabel(c)}</button>
           ))}
         </div>
@@ -1899,343 +2008,41 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Cart Panel */}
-      <div className="w-[340px] lg:w-[380px] bg-card border-l flex flex-col shrink-0 hidden md:flex">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-foreground">{t("pos.currentOrder")}</h2>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-lg">{t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}</span>
-          </div>
-          {currentOrderId && typeof activeOutletId === "number" && activeOutletId >= 1 ? (
-            <div className="mb-3">
-              <OrderPaymentHistoryPanel
-                outletId={activeOutletId}
-                orderId={currentOrderId}
-                orderChannelLabel={operationalChannelFromOrder(currentOpenOrder)}
-              />
-              <PosOrderRecoveryPanel order={currentOpenOrder} />
-            </div>
-          ) : null}
-          {/* Customer Info */}
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input type="text" placeholder={t("pos.customerName")} value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
-              </div>
-              <div className="relative flex-1">
-                <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <input type="text" placeholder={t("pos.phone")} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20" />
-              </div>
-            </div>
-            {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
-              <button
-                type="button"
-                onClick={() => setShowReservationPicker(true)}
-                disabled={submitting}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="pos-select-reservation-btn"
-              >
-                {t("pos.selectReservation")}
-              </button>
-            ) : null}
-            {activeReservationId && activeReservationLabel ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border/60">
-                <CalendarDays className="h-3.5 w-3.5 text-primary shrink-0" />
-                <p className="text-xs text-foreground truncate flex-1">
-                  {t("pos.reservationActive")} · {activeReservationLabel}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveReservationId(null);
-                    setActiveReservationLabel(null);
-                  }}
-                  className="text-xs text-muted-foreground hover:text-destructive shrink-0"
-                  aria-label={t("shared.cancel")}
-                >
-                  ×
-                </button>
-              </div>
-            ) : null}
-            {/* Member selector */}
-            {selectedMember ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
-                <Star className="h-3.5 w-3.5 text-primary fill-primary" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground truncate">{selectedMember.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {selectedMember.memberNo ?? selectedMember.phone}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedMember(null);
-                    void attachMemberToOpenOrder(null);
-                  }}
-                  className="text-xs text-muted-foreground hover:text-destructive"
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowMemberPicker(true)}
-                disabled={typeof activeOutletId !== "number" || activeOutletId < 1}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {t("pos.selectMember")}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                if (cart.length === 0) {
-                  toast.error(t("pos.discountModal.emptyCart"));
-                  return;
-                }
-                setShowDiscountModal(true);
-              }}
-              disabled={cart.length === 0 || currentOpenOrder?.paymentStatus === "paid"}
-              className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-sm font-semibold text-primary hover:bg-primary/15 transition-colors disabled:opacity-50"
-              data-testid="pos-discount-modal-open"
-            >
-              <Ticket className="h-4 w-4" />
-              {t("pos.discountModal.openButton")}
-            </button>
-            {(currentOpenOrder?.promotion || currentOpenOrder?.voucher || appliedGiftCardState) && (
-              <div className="flex flex-wrap gap-1.5">
-                {currentOpenOrder?.promotion ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscountModal(true)}
-                    className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-[10px] font-medium text-amber-800 dark:text-amber-200"
-                  >
-                    {t("pos.discountModal.chipPromo", { amount: formatRp(promotionDiscount) })}
-                  </button>
-                ) : null}
-                {currentOpenOrder?.voucher ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscountModal(true)}
-                    className="rounded-full bg-primary/10 border border-primary/30 px-2.5 py-1 text-[10px] font-medium text-primary"
-                  >
-                    {t("pos.discountModal.chipVoucher", { amount: formatRp(voucherDiscount) })}
-                  </button>
-                ) : null}
-                {appliedGiftCardState ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscountModal(true)}
-                    className="rounded-full bg-muted border border-border px-2.5 py-1 text-[10px] font-medium text-foreground"
-                  >
-                    {t("pos.discountModal.chipGiftCard", { amount: formatRp(appliedGiftCardState.appliedAmount) })}
-                  </button>
-                ) : null}
-              </div>
-            )}
-            {selectedMember && (
-              <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
-                <p className="text-[11px] text-muted-foreground">
-                  {t("pos.points")}: <span className="font-semibold text-foreground">{availablePoints}</span>
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    value={redeemPointsInput}
-                    onChange={(e) => setRedeemPointsInput(e.target.value)}
-                    placeholder={t("pos.redeemPoints")}
-                    className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-xs"
-                  />
-                  <button onClick={applyPointsRedemption} className="rounded-lg bg-muted px-2 py-1.5 text-xs font-medium">
-                    {t("pos.apply")}
-                  </button>
-                </div>
-              </div>
-            )}
-            {orderType === "Dine-in" && (
-              <select
-                value={selectedTable}
-                onChange={(e) => setSelectedTable(e.target.value)}
-                onFocus={requestTables}
-                onMouseDown={requestTables}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground"
-              >
-                <option value="">{tablesLoading ? t("pos.loadingMenu") : t("pos.selectTable")}</option>
-                {selectableTables.map((table) => (
-                  <option key={table.id} value={table.id}>
-                    {table.name} {t("pos.seats", { n: table.seats })}
-                    {table.status === "reserved" ? t("pos.tableReserved") : ""}
-                    {table.signals?.hasReservation && table.status !== "reserved" ? t("pos.tableReservation") : ""}
-                    {((table.signals?.openBillCount ?? 0) > 0 || table.status === "occupied") ? t("pos.tableOpenBill") : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          <AnimatePresence>
-            {cart.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                <ShoppingCartEmpty />
-                <p className="text-sm mt-3">{t("pos.noItemsYet")}</p>
-                <p className="text-xs">{t("pos.tapToAdd")}</p>
-              </div>
-            ) : (
-              cart.map((item) => (
-                <motion.div key={item.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
-                  className="bg-background rounded-xl p-3 border border-border/50">
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">{item.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatRp(item.price)}</p>
-                      {item.notes && <p className="text-xs text-info mt-1 italic">📝 {item.notes}</p>}
-                    </div>
-                    <p className="text-sm font-bold text-foreground">{formatRp(item.price * item.qty)}</p>
-                  </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => updateQty(item.id, -1)} className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
-                        {item.qty === 1 ? <Trash2 className="h-3.5 w-3.5 text-destructive" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground" />}
-                      </button>
-                      <span className="w-8 text-center text-sm font-semibold text-foreground">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
-                        <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                      </button>
-                    </div>
-                    <button onClick={() => setNotesItem(notesItem === item.id ? null : item.id)} className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors">
-                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
-                  {notesItem === item.id && (
-                    <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} className="mt-2 overflow-hidden">
-                      <textarea
-                        rows={1}
-                        value={item.notes}
-                        onChange={(e) => updateNotes(item.id, e.target.value)}
-                        placeholder={t("pos.addNotes")}
-                        className="w-full resize-y min-h-9 max-h-28 text-xs px-3 py-2 rounded-lg bg-muted border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 leading-snug [field-sizing:content]"
-                      />
-                    </motion.div>
-                  )}
-                </motion.div>
-              ))
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="p-4 border-t space-y-3">
-          {paymentStockError ? (
-            <PosPaymentStockErrorAlert
-              error={paymentStockError}
-              onDismiss={() => {
-                clearCheckoutRecoveryState();
-                checkoutAttemptIdRef.current = null;
-              }}
-            />
-          ) : null}
-          {openBillRecoveryCode ? (
-            <PosOpenBillRecoveryBanner
-              orderCode={openBillRecoveryCode}
-              onOpenBill={() => {
-                if (currentOrderId) {
-                  void fetchOrderRemote(currentOrderId);
-                }
-                clearCheckoutRecoveryState();
-              }}
-            />
-          ) : null}
-          <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-muted-foreground"><span>{t("shared.subtotal")}</span><span>{formatRp(displaySubtotal)}</span></div>
-            {currentOpenOrder?.voucher && displayDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>{t("pos.voucherDiscount")}</span>
-                <span>-{formatRp(displayDiscount)}</span>
-              </div>
-            )}
-            {currentOpenOrder?.promotion && !currentOpenOrder?.voucher && displayDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>{t("pos.promotionDiscount")}</span>
-                <span>-{formatRp(displayDiscount)}</span>
-              </div>
-            )}
-            {!currentOpenOrder?.voucher && !currentOpenOrder?.promotion && voucherDiscount > 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>{t("pos.voucherDiscount")}</span>
-                <span>-{formatRp(voucherDiscount)}</span>
-              </div>
-            )}
-            {!currentOpenOrder?.voucher && !currentOpenOrder?.promotion && promotionDiscount > 0 && voucherDiscount <= 0 && (
-              <div className="flex justify-between text-emerald-600 font-medium">
-                <span>{t("pos.promotionDiscount")}</span>
-                <span>-{formatRp(promotionDiscount)}</span>
-              </div>
-            )}
-            {appliedPoints > 0 && (
-              <div className="flex justify-between text-primary font-medium"><span>{t("pos.loyaltyRedemption")}</span><span>-{formatRp(Math.round(appliedPoints / 10))}</span></div>
-            )}
-            {appliedGiftCard > 0 && (
-              <div className="flex justify-between text-primary font-medium">
-                <span>{t("pos.giftCardCredit")}{appliedGiftCardState?.code ? ` (${appliedGiftCardState.code})` : ""}</span>
-                <span>-{formatRp(appliedGiftCard)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-muted-foreground"><span>{t("pos.taxPercent")}</span><span>{formatRp(displayTax)}</span></div>
-            <div className="flex justify-between font-bold text-foreground text-base pt-1 border-t border-border/50">
-              <span>{t("pos.estimatedTotal")}</span>
-              <span>{formatRp(total)}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            {orderType === "Dine-in" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmOrderDialog(true)}
-                  disabled={cart.length === 0 || submitting || menuLoading || !!menuError || !checkoutReady}
-                  className="flex-1 py-3 rounded-xl bg-accent text-accent-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                >
-                  <ChefHat className="h-4 w-4" /> {t("pos.confirmOrder")}
-                </button>
-                <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
-                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-                  <CreditCard className="h-4 w-4" /> {t("pos.payNow")}
-                </button>
-              </>
-            ) : (
-              <button onClick={() => void handlePayNow()} disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
-                {t("pos.payAmount", { amount: formatRp(total) })}
-              </button>
-            )}
-          </div>
-          {(cart.length > 0 || currentOrderId) && (
-            <div className="flex gap-2 mt-2">
-              <button
-                type="button"
-                onClick={() => void handlePrintCustomerBill()}
-                disabled={printingBill || submitting}
-                className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted"
-              >
-                {printingBill ? "…" : "Cetak bill"}
-              </button>
-              {currentOrderId ? (
-                <button
-                  type="button"
-                  onClick={() => setShowKitchenReprint(true)}
-                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
-                >
-                  Reprint dapur
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
+      {/* Cart Panel — desktop */}
+      <div className="w-[340px] lg:w-[380px] bg-card border-l flex flex-col shrink-0 hidden lg:flex">
+        <PosCartPanel {...cartPanelProps} />
       </div>
+
+      {/* Mobile cart bottom bar */}
+      {showMobileCartBar ? (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-chrome bg-card border-t border-border p-4 safe-area-pb">
+          <button
+            type="button"
+            onClick={() => setMobileCartOpen(true)}
+            className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-3 min-h-11"
+            aria-label={t("pos.openCartAria")}
+            data-testid="pos-mobile-cart-bar"
+          >
+            <ShoppingCart className="h-5 w-5" />
+            {t("pos.viewCart", { n: totalItems, total: formatRp(total) })}
+          </button>
+        </div>
+      ) : null}
+
+      <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
+        <SheetContent
+          side="bottom"
+          className="lg:hidden p-0 max-h-[90vh] flex flex-col overflow-hidden"
+          data-testid="pos-mobile-cart-sheet"
+        >
+          <SheetHeader className="px-4 pt-4 pb-2 text-left border-b shrink-0">
+            <SheetTitle>{t("pos.currentOrder")}</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+            <PosCartPanel {...cartPanelProps} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         open={showConfirmOrderDialog}
@@ -2284,38 +2091,36 @@ export default function POS() {
       </Dialog>
 
       {/* Confirm Sent Modal */}
-      <AnimatePresence>
-        {showConfirmSent && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => startNewPosOrder()}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-8 max-w-sm w-full text-center pos-shadow-md">
-              <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-                <ChefHat className="h-8 w-8 text-success" />
-              </div>
-              <h3 className="text-lg font-bold text-foreground mb-1">{t("pos.orderSentTitle")}</h3>
-              <p className="text-sm text-muted-foreground mb-4">{t("pos.orderSentSubtitle")}</p>
-              <button onClick={() => startNewPosOrder()} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm">
-                {t("pos.newOrder")}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AppOverlay
+        open={showConfirmSent}
+        onClose={() => startNewPosOrder()}
+        layer="modal"
+        panelClassName="p-8 max-w-sm text-center"
+      >
+        <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
+          <ChefHat className="h-8 w-8 text-success" />
+        </div>
+        <h3 className="text-lg font-bold text-foreground mb-1">{t("pos.orderSentTitle")}</h3>
+        <p className="text-sm text-muted-foreground mb-4">{t("pos.orderSentSubtitle")}</p>
+        <button onClick={() => startNewPosOrder()} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm">
+          {t("pos.newOrder")}
+        </button>
+      </AppOverlay>
 
       {/* Payment Modal */}
-      <AnimatePresence>
-        {showPayment && !showSplit && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => {
-              if (submitting || paymentIsSubmitting || paymentAckRequired) return;
-              setShowQrisModal(false);
-              setShowPayment(false);
-            }}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto pos-shadow-md">
+      <AppOverlay
+        open={showPayment && !showSplit}
+        layer="modal"
+        align={isPhoneViewport ? "bottom" : "center"}
+        dismissible={!submitting && !paymentIsSubmitting && !paymentAckRequired}
+        data-testid="pos-payment-overlay"
+        onClose={() => {
+          if (submitting || paymentIsSubmitting || paymentAckRequired) return;
+          setShowQrisModal(false);
+          setShowPayment(false);
+        }}
+        panelClassName="p-4 sm:p-6"
+      >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">{t("shared.payment")}</h3>
                 <button
@@ -2385,7 +2190,7 @@ export default function POS() {
                 </span>
               </button>
               {currentOrderId ? (
-                <p className="mb-3 text-[11px] text-muted-foreground text-center">
+                <p className="mb-3 text-sm text-muted-foreground text-center">
                   {t("shared.checkoutOrder", { code: currentOpenOrder?.code ?? currentOrderId ?? "" })}{gatewayCheckoutPending ? t("shared.qrPaymentPending") : ""}
                 </p>
               ) : null}
@@ -2440,10 +2245,7 @@ export default function POS() {
                 </div>
               )}
               <PosPrintStatusBar outletId={printStatusOutletId} />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AppOverlay>
       <QrisPaymentModal
         open={showPayment && showQrisModal && !!paymentTransaction?.qrString}
         qrString={paymentTransaction?.qrString ?? ""}
@@ -2507,13 +2309,14 @@ export default function POS() {
       />
 
       {/* Split Bill Modal */}
-      <AnimatePresence>
-        {showSplit && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowSplit(false)}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()} className="bg-card rounded-2xl p-6 w-full max-w-lg pos-shadow-md max-h-[85vh] overflow-y-auto">
+      <AppOverlay
+        open={showSplit}
+        onClose={() => setShowSplit(false)}
+        layer="modal"
+        align={isPhoneViewport ? "bottom" : "center"}
+        panelClassName="p-6 max-w-lg"
+        data-testid="pos-split-overlay"
+      >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground">{t("shared.splitBill")}</h3>
                 <button onClick={() => setShowSplit(false)} className="p-1 rounded-lg hover:bg-muted"><X className="h-5 w-5 text-muted-foreground" /></button>
@@ -2734,20 +2537,15 @@ export default function POS() {
                           total: splitPersons.length,
                         })}
               </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AppOverlay>
 
       {/* Member picker */}
-      <AnimatePresence>
-        {showMemberPicker && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-            onClick={() => setShowMemberPicker(false)}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
-              className="bg-card rounded-2xl w-full max-w-md p-5 pos-shadow-md"
-              onClick={(e) => e.stopPropagation()}>
+      <AppOverlay
+        open={showMemberPicker}
+        onClose={() => setShowMemberPicker(false)}
+        layer="modal"
+        panelClassName="p-5"
+      >
               <h3 className="font-semibold mb-3">{t("pos.selectMemberTitle")}</h3>
               <input
                 autoFocus value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
@@ -2811,7 +2609,7 @@ export default function POS() {
                         <p className="text-xs text-muted-foreground">{m.phone}</p>
                       </div>
                       {m.memberNo ? (
-                        <span className="text-[10px] font-medium text-muted-foreground">{m.memberNo}</span>
+                        <span className="text-xs font-medium text-muted-foreground">{m.memberNo}</span>
                       ) : null}
                     </button>
                   ))}
@@ -2820,10 +2618,7 @@ export default function POS() {
                 className="mt-3 w-full py-2 rounded-xl bg-muted text-sm font-medium hover:bg-accent">
                 {t("shared.cancel")}
               </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </AppOverlay>
 
       {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
         <>
@@ -2867,16 +2662,6 @@ export default function POS() {
         />
       ) : null}
       </div>
-    </div>
-  );
-}
-
-function ShoppingCartEmpty() {
-  return (
-    <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center">
-      <svg className="h-8 w-8 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
-      </svg>
     </div>
   );
 }

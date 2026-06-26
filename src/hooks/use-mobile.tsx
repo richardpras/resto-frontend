@@ -2,6 +2,7 @@ import * as React from "react";
 
 const MOBILE_BREAKPOINT = 768;
 
+/** Strict phone viewport (< 768px). */
 export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
 
@@ -16,4 +17,21 @@ export function useIsMobile() {
   }, []);
 
   return !!isMobile;
+}
+
+/** Sidebar drawer mode: mobile + tablet (< 1024px). */
+export function useIsSidebarDrawer() {
+  const [isDrawer, setIsDrawer] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: 1023px)`);
+    const onChange = () => {
+      setIsDrawer(window.innerWidth < 1024);
+    };
+    mql.addEventListener("change", onChange);
+    setIsDrawer(window.innerWidth < 1024);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return !!isDrawer;
 }

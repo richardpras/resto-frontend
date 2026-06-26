@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollableTabsList } from "@/components/ui/ScrollableTabsList";
 import MerchantSettings from "./settings/MerchantSettings";
 import OutletsSettings from "./settings/OutletsSettings";
 import TaxSettings from "./settings/TaxSettings";
@@ -13,6 +14,7 @@ import NumberingSettings from "./settings/NumberingSettings";
 import BankSettings from "./settings/BankSettings";
 import ReceiptSettings from "./settings/ReceiptsSettings";
 import WarehouseSettings from "./settings/WarehouseSettings";
+import { AdminPageShell } from "@/components/layout/AdminPageShell";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
@@ -155,7 +157,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <AdminPageShell className="space-y-6" maxWidth="7xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{t("settings.pageTitle")}</h1>
@@ -201,19 +203,19 @@ export default function Settings() {
         }}
         className="w-full"
       >
-        <TabsList className="flex flex-wrap h-auto justify-start">
-          {visibleTabs.includes("merchant") ? <TabsTrigger value="merchant">{t("settings.tabs.merchant")}</TabsTrigger> : null}
-          {visibleTabs.includes("outlets") ? <TabsTrigger value="outlets">{t("settings.tabs.outlets")}</TabsTrigger> : null}
-          {visibleTabs.includes("taxes") ? <TabsTrigger value="taxes">{t("settings.tabs.taxes")}</TabsTrigger> : null}
-          {visibleTabs.includes("printers") ? <TabsTrigger value="printers">{t("settings.tabs.printers")}</TabsTrigger> : null}
-          {visibleTabs.includes("numbering") ? <TabsTrigger value="numbering">{t("settings.tabs.numbering")}</TabsTrigger> : null}
-          {visibleTabs.includes("receipt") ? <TabsTrigger value="receipt">{t("settings.tabs.receipt")}</TabsTrigger> : null}
-          {visibleTabs.includes("warehouses") ? <TabsTrigger value="warehouses">{t("settings.tabs.warehouses")}</TabsTrigger> : null}
-          {visibleTabs.includes("banks") ? <TabsTrigger value="banks">{t("settings.tabs.banks")}</TabsTrigger> : null}
-          {visibleTabs.includes("payments") ? <TabsTrigger value="payments">{t("settings.tabs.payments")}</TabsTrigger> : null}
-          {visibleTabs.includes("system") ? <TabsTrigger value="system">{t("settings.tabs.system")}</TabsTrigger> : null}
-          {visibleTabs.includes("integration") ? <TabsTrigger value="integration">{t("settings.tabs.integration")}</TabsTrigger> : null}
-        </TabsList>
+        <ScrollableTabsList>
+          {visibleTabs.includes("merchant") ? <TabsTrigger value="merchant" className="shrink-0 px-4 min-h-10">{t("settings.tabs.merchant")}</TabsTrigger> : null}
+          {visibleTabs.includes("outlets") ? <TabsTrigger value="outlets" className="shrink-0 px-4 min-h-10">{t("settings.tabs.outlets")}</TabsTrigger> : null}
+          {visibleTabs.includes("taxes") ? <TabsTrigger value="taxes" className="shrink-0 px-4 min-h-10">{t("settings.tabs.taxes")}</TabsTrigger> : null}
+          {visibleTabs.includes("printers") ? <TabsTrigger value="printers" className="shrink-0 px-4 min-h-10">{t("settings.tabs.printers")}</TabsTrigger> : null}
+          {visibleTabs.includes("numbering") ? <TabsTrigger value="numbering" className="shrink-0 px-4 min-h-10">{t("settings.tabs.numbering")}</TabsTrigger> : null}
+          {visibleTabs.includes("receipt") ? <TabsTrigger value="receipt" className="shrink-0 px-4 min-h-10">{t("settings.tabs.receipt")}</TabsTrigger> : null}
+          {visibleTabs.includes("warehouses") ? <TabsTrigger value="warehouses" className="shrink-0 px-4 min-h-10">{t("settings.tabs.warehouses")}</TabsTrigger> : null}
+          {visibleTabs.includes("banks") ? <TabsTrigger value="banks" className="shrink-0 px-4 min-h-10">{t("settings.tabs.banks")}</TabsTrigger> : null}
+          {visibleTabs.includes("payments") ? <TabsTrigger value="payments" className="shrink-0 px-4 min-h-10">{t("settings.tabs.payments")}</TabsTrigger> : null}
+          {visibleTabs.includes("system") ? <TabsTrigger value="system" className="shrink-0 px-4 min-h-10">{t("settings.tabs.system")}</TabsTrigger> : null}
+          {visibleTabs.includes("integration") ? <TabsTrigger value="integration" className="shrink-0 px-4 min-h-10">{t("settings.tabs.integration")}</TabsTrigger> : null}
+        </ScrollableTabsList>
         <TabsContent value="merchant" className="mt-4">{activeTab === "merchant" ? <MerchantSettings /> : null}</TabsContent>
         <TabsContent value="outlets" className="mt-4">{activeTab === "outlets" ? <OutletsSettings /> : null}</TabsContent>
         <TabsContent value="taxes" className="mt-4">{activeTab === "taxes" ? <TaxSettings /> : null}</TabsContent>
@@ -228,6 +230,6 @@ export default function Settings() {
         <TabsContent value="receipt" className="mt-4">{activeTab === "receipt" ? <ReceiptSettings /> : null}</TabsContent>
         <TabsContent value="warehouses" className="mt-4">{activeTab === "warehouses" ? <WarehouseSettings /> : null}</TabsContent>
       </Tabs>
-    </div>
+    </AdminPageShell>
   );
 }

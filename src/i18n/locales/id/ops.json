@@ -133,16 +133,145 @@
   "ordersExplorer": {
     "title": "Pesanan",
     "subtitle": "Riwayat operasional pesanan, pembayaran, struk, dan audit.",
+    "selectOutlet": "Pilih outlet di header untuk memuat riwayat pesanan lokasi tersebut.",
+    "filters": {
+      "status": "Status",
+      "payment": "Pembayaran",
+      "source": "Sumber",
+      "voidedPayment": "Pembayaran void",
+      "hasVoid": "Ada void",
+      "from": "Dari",
+      "to": "Sampai",
+      "invoiceCode": "Invoice / kode",
+      "searchPlaceholder": "Cari kode atau sumber QRO…",
+      "allStatuses": "Semua status",
+      "allPayments": "Semua pembayaran",
+      "allSources": "Semua sumber",
+      "statusPending": "Tertunda",
+      "statusConfirmed": "Dikonfirmasi",
+      "statusCooking": "Memasak",
+      "statusReady": "Siap",
+      "statusCompleted": "Selesai",
+      "statusCancelled": "Dibatalkan",
+      "paymentUnpaid": "Belum bayar",
+      "paymentPartial": "Sebagian",
+      "paymentPaid": "Lunas",
+      "sourcePos": "POS",
+      "sourceQr": "QR"
+    },
+    "table": {
+      "code": "Kode",
+      "source": "Sumber",
+      "status": "Status",
+      "pay": "Bayar",
+      "total": "Total",
+      "detail": "Detail",
+      "view": "Lihat",
+      "loading": "Memuat pesanan",
+      "emptyFiltered": "Tidak ada pesanan untuk filter saat ini.",
+      "loadMore": "Muat lebih banyak",
+      "pageInfo": "Halaman {{current}} dari {{last}} · {{total}} pesanan"
+    },
     "recoveryQueue": {
       "tabAll": "Semua pesanan",
       "tabPending": "Menunggu refund",
       "pendingShort": "pending",
       "empty": "Tidak ada pesanan yang menunggu review refund manager.",
-      "dashboardTitle": "Recovery refund",
-      "pending": "Pending",
+      "dashboardTitle": "Pemulihan refund",
+      "pending": "Menunggu",
       "refundedToday": "Refund hari ini",
       "avgResolution": "Rata-rata penyelesaian",
       "openQueue": "Buka antrian pending refund"
+    },
+    "detail": {
+      "title": "Pesanan",
+      "loading": "Memuat…",
+      "loadingOrder": "Memuat pesanan…",
+      "refreshAria": "Muat ulang detail pesanan",
+      "closeAria": "Tutup",
+      "statusLabel": "Status",
+      "paymentLabel": "Pembayaran",
+      "kitchenLabel": "Dapur",
+      "postedLabel": "Diposting",
+      "yes": "Ya",
+      "no": "Tidak",
+      "memberLabel": "Member",
+      "financialSummary": "Ringkasan finansial",
+      "subtotalLabel": "Subtotal",
+      "discountLabel": "Diskon",
+      "taxApplied": "Pakai pajak",
+      "taxNotApplied": "Tanpa pajak",
+      "taxLinePercent": "{{name}} ({{rate}}%)",
+      "taxLineGeneric": "Pajak",
+      "totalLabel": "Total",
+      "itemsLabel": "Item",
+      "splitsLabel": "Split",
+      "itemRecovery": "Pemulihan item",
+      "refreshingRecovery": "Memuat ulang peristiwa recovery",
+      "noRecoveryEvents": "Tidak ada peristiwa recovery untuk pesanan ini.",
+      "approvedAt": "Disetujui {{at}}",
+      "notePrefix": "Catatan:",
+      "eachPrice": "{{price}} per item",
+      "receiptHistory": "Riwayat struk / cetak",
+      "printBill": "Cetak bill",
+      "printing": "…",
+      "kitchenReprint": "Cetak ulang dapur",
+      "receiptActionsRequirePos": "Aksi struk memerlukan akses POS.",
+      "noReceipts": "Tidak ada render struk tersimpan untuk pesanan ini.",
+      "reprint": "Cetak ulang",
+      "view": "Lihat",
+      "auditTimeline": "Linimasa audit",
+      "noPosEvents": "Tidak ada peristiwa POS untuk pesanan ini.",
+      "createdAt": "Dibuat {{at}}",
+      "confirmedAt": "· Dikonfirmasi {{at}}",
+      "outlet": "· Outlet #{{id}}",
+      "actor": "· aktor {{id}}",
+      "status": {
+        "pending": "Tertunda",
+        "confirmed": "Dikonfirmasi",
+        "cooking": "Memasak",
+        "ready": "Siap",
+        "completed": "Selesai",
+        "cancelled": "Dibatalkan"
+      },
+      "paymentStatus": {
+        "unpaid": "Belum bayar",
+        "partial": "Sebagian",
+        "paid": "Lunas"
+      },
+      "kitchenStatus": {
+        "queued": "Antrian",
+        "in_progress": "Diproses",
+        "ready": "Siap",
+        "served": "Sudah diantar",
+        "cancelled": "Dibatalkan",
+        "pending_confirmation": "Menunggu konfirmasi"
+      },
+      "receiptKinds": {
+        "customerBill": "Bill (proforma)",
+        "customerReceiptSplit": "Struk · split #{{splitId}}"
+      },
+      "toasts": {
+        "billPrinted": "Bill dicetak — bukan struk final",
+        "billPrintFailed": "Gagal cetak bill.",
+        "reprintQueued": "Cetak ulang diantrekan",
+        "reprintFailed": "Cetak ulang gagal."
+      }
+    },
+    "kitchenReprint": {
+      "title": "Cetak ulang dapur / bar",
+      "selectAll": "Pilih semua",
+      "clearAll": "Kosongkan",
+      "qty": "Qty {{qty}}",
+      "submitting": "Mengirim…",
+      "printButton": "Cetak ulang ({{count}} item)",
+      "printButton_other": "Cetak ulang ({{count}} item)",
+      "toasts": {
+        "selectAtLeastOne": "Pilih minimal satu item.",
+        "queued": "Cetak ulang dapur diantrekan ({{count}} job)",
+        "queued_other": "Cetak ulang dapur diantrekan ({{count}} job)",
+        "failed": "Cetak ulang dapur gagal."
+      }
     }
   },
   "managerRecovery": {
@@ -324,6 +453,14 @@
       "takeaway": "Bawa Pulang",
       "delivery": "Antar",
       "qr": "Pesanan QR"
+    },
+    "metrics": {
+      "completedToday": "Selesai Hari Ini",
+      "avgCookTime": "Rata-rata Waktu Masak",
+      "longestWaiting": "Tunggu Terlama",
+      "longestWaitingTicket": "Tiket Tunggu Terlama",
+      "todayKitchen": "Dapur Hari Ini",
+      "minutesSuffix": " mnt"
     }
   },
   "tables": {
@@ -528,7 +665,100 @@
     "noMovements": "Tidak ada pergerakan untuk cakupan outlet ini.",
     "loadingValuations": "Memuat valuasi…",
     "noValuations": "Tidak ada baris valuasi untuk outlet ini.",
-    "loading": "Memuat inventori"
+    "loading": "Memuat inventori",
+    "posting": {
+      "title": "Konsumsi Inventori Tertunda",
+      "subtitle": "Penjualan tertunda menunggu tutup shift atau posting inventori manual.",
+      "refresh": "Muat Ulang",
+      "retryPosting": "Ulangi Posting",
+      "loadingQueue": "Memuat antrean…",
+      "noRows": "Tidak ada baris konsumsi tertunda untuk outlet ini.",
+      "columns": {
+        "date": "Tanggal",
+        "order": "Pesanan",
+        "status": "Status",
+        "total": "Total",
+        "notes": "Catatan"
+      },
+      "status": {
+        "posted": "Diposting",
+        "review": "Tinjau",
+        "failed": "Gagal",
+        "pending": "Tertunda"
+      },
+      "varianceReview": "Varians — perlu ditinjau",
+      "completedTitle": "Posting inventori selesai",
+      "completedDesc": "Diproses {{processed}}, perlu tinjau {{reviewRequired}}, gagal {{failed}}.",
+      "failedTitle": "Posting gagal"
+    },
+    "form": {
+      "editTitle": "Ubah Item Inventori",
+      "addTitle": "Tambah Item Inventori",
+      "tabs": {
+        "details": "Detail",
+        "procurement": "Pengadaan"
+      },
+      "types": {
+        "ingredient": "Bahan",
+        "atk": "ATK (Kantor)",
+        "asset": "Aset"
+      },
+      "typeRequired": "Tipe *",
+      "itemName": "Nama Item *",
+      "namePlaceholder": "mis. Beras, Kertas Thermal, Blender",
+      "detailsLabel": "Detail {{type}}",
+      "unit": "Satuan",
+      "unitRequired": "Satuan *",
+      "quantity": "Jumlah",
+      "initialStock": "Stok Awal",
+      "minStock": "Stok Minimum",
+      "purchasePrice": "Harga Beli (Rp)",
+      "notes": "Catatan",
+      "notesPlaceholder": "Deskripsi, nomor seri, lokasi...",
+      "cancel": "Batal",
+      "saving": "Menyimpan...",
+      "updateItem": "Perbarui Item",
+      "saveItem": "Simpan Item",
+      "validation": {
+        "nameRequired": "Nama wajib diisi",
+        "typeRequired": "Tipe wajib dipilih",
+        "unitRequired": "Satuan wajib dipilih",
+        "invalidNumber": "Angka tidak valid"
+      },
+      "toast": {
+        "updated": "Item diperbarui",
+        "created": "Item dibuat",
+        "updatedDesc": "{{name}} telah diperbarui.",
+        "createdDesc": "{{name}} telah ditambahkan ke inventori.",
+        "saveFailed": "Gagal menyimpan"
+      },
+      "procurement": {
+        "hint": "Default pengadaan untuk item ini. Disimpan bersama pembaruan item.",
+        "preferredSupplier": "Supplier Pilihan",
+        "selectSupplier": "Pilih supplier",
+        "none": "— Tidak ada —",
+        "minOrderQty": "Jumlah Pesanan Minimum",
+        "reorderQty": "Jumlah Reorder",
+        "leadTimeDays": "Lead Time (hari)",
+        "lastPurchasePrice": "Harga Beli Terakhir"
+      }
+    },
+    "stockMovement": {
+      "recordWaste": "Catat Waste",
+      "adjustment": "Penyesuaian Stok",
+      "ingredient": "Bahan",
+      "selectItem": "Pilih item",
+      "quantity": "Jumlah",
+      "referenceNote": "Referensi / Catatan",
+      "optional": "Opsional",
+      "saveMovement": "Simpan Pergerakan"
+    },
+    "movementTypes": {
+      "purchase": "Pembelian",
+      "sale": "Penjualan",
+      "adjustment": "Penyesuaian",
+      "waste": "Waste"
+    }
   },
   "reservations": {
     "title": "Reservasi",
@@ -600,7 +830,50 @@
     "empty": "Tidak ada reservasi untuk outlet ini.",
     "actionFailed": "{{action}} gagal",
     "removeTableAria": "Hapus meja",
-    "tableFallback": "Meja {{id}}"
+    "tableFallback": "Meja {{id}}",
+    "dashboard": {
+      "pageTitle": "Operasi Reservasi",
+      "pageSubtitleBefore": "Kedatangan hari ini, tamu aktif, no-show, dan metrik keterlambatan. Kelola booking di halaman ",
+      "pageSubtitleAfter": ".",
+      "manageLink": "Reservasi",
+      "selectOutlet": "Pilih outlet untuk memuat operasi reservasi.",
+      "metrics": {
+        "todayReservations": "Reservasi hari ini",
+        "noShowToday": "No-show hari ini",
+        "noShowRate": "Tingkat no-show",
+        "avgCheckinDelay": "Rata-rata keterlambatan check-in",
+        "confirmed": "Dikonfirmasi",
+        "checkedIn": "Check-in",
+        "seated": "Duduk",
+        "avgSeatingDelay": "Rata-rata keterlambatan duduk"
+      },
+      "suffixPercent": "%",
+      "suffixMin": "mnt",
+      "upcomingArrivals": "Kedatangan mendatang",
+      "activeGuests": "Tamu aktif",
+      "emptyList": "Tidak ada reservasi dalam daftar ini.",
+      "guestPax": "{{n}} pax"
+    }
+  },
+  "paymentStatus": {
+    "pageTitle": "Status Pembayaran",
+    "transaction": "Transaksi: {{id}}",
+    "loading": "Memuat status pembayaran",
+    "statusPaid": "Pembayaran selesai",
+    "statusExpired": "Pembayaran kedaluwarsa",
+    "statusFailed": "Pembayaran gagal",
+    "statusPending": "Pembayaran tertunda",
+    "statusCancelled": "Pembayaran dibatalkan",
+    "statusLabel": "Status:",
+    "method": "Metode:",
+    "amount": "Jumlah:",
+    "expiresIn": "Kedaluwarsa dalam:",
+    "vaNumber": "Nomor VA:",
+    "openCheckout": "Buka URL Checkout",
+    "openApp": "Buka Aplikasi",
+    "refreshingOrder": "Memperbarui status pesanan...",
+    "lastSynced": "Terakhir disinkronkan: {{at}}",
+    "retryPayment": "Coba ulang pembayaran"
   },
   "qrStaff": {
     "title": "Pesanan QR",
@@ -723,6 +996,9 @@
     "notePlaceholder": "mis. Tidak pedas, saus extra…",
     "subtotal": "Subtotal",
     "taxPercent": "Pajak (10%)",
+    "applyTax": "Terapkan pajak",
+    "tax": "Pajak",
+    "taxLine": "Pajak ({{label}})",
     "resumeTitle": "Lanjutkan Pesanan",
     "resumeTable": "Meja {{n}} · {{code}}",
     "resumeHint": "Item baru akan ditambahkan ke {{code}}.",
@@ -888,6 +1164,9 @@
     "loyaltyRedemption": "Penukaran Loyalitas",
     "giftCardCredit": "Gift Card / Store Credit",
     "taxPercent": "Pajak (10%)",
+    "applyTax": "Terapkan pajak",
+    "tax": "Pajak",
+    "taxLine": "Pajak ({{label}})",
     "estimatedTotal": "Estimasi Total",
     "items": "Item",
     "confirmOrder": "Konfirmasi Pesanan",
@@ -904,6 +1183,8 @@
     "noMenuItems": "Tidak ada item menu untuk outlet ini (cek Menu → Pengaturan Outlet).",
     "noItemsYet": "Belum ada item",
     "tapToAdd": "Ketuk item menu untuk menambah",
+    "viewCart": "Lihat Keranjang ({{n}}) · {{total}}",
+    "openCartAria": "Buka keranjang",
     "loadMenuOutlet": "Pilih outlet di header untuk memuat menu lokasi tersebut.",
     "loadingMenu": "Memuat menu",
     "orderTypes": {
@@ -982,6 +1263,15 @@
       "chipPromo": "Promo {{amount}}",
       "chipVoucher": "Voucher {{amount}}",
       "chipGiftCard": "Gift card {{amount}}"
+    },
+    "printBill": "Cetak bill",
+    "reprintKitchen": "Cetak ulang dapur",
+    "toasts": {
+      "splitSyncFailed": "Sinkronisasi split gagal — coba lagi.",
+      "billPrinted": "Bill dicetak — bukan struk final",
+      "billPrintFailed": "Gagal cetak bill.",
+      "splitDraftsCleared": "Draft pembayaran split dihapus — penugasan item berubah.",
+      "paymentChoiceCleared": "{{label}}: pilihan pembayaran dihapus — pilih metode lagi."
     }
   },
   "members": {
@@ -1074,6 +1364,87 @@
       "description": "Deskripsi",
       "descriptionPlaceholder": "mis. Penukaran ulang tahun",
       "redeem": "Tukar"
+    }
+  },
+  "dashboard": {
+    "title": "Dasbor",
+    "subtitle": "Ringkasan operasional hari ini",
+    "liveBadge": "Langsung",
+    "kpis": {
+      "revenueToday": "Pendapatan Hari Ini",
+      "totalOrders": "Total Pesanan",
+      "avgOrderValue": "Rata-rata Nilai Pesanan",
+      "customers": "Pelanggan"
+    },
+    "monitoring": {
+      "title": "Pemantauan Operasional",
+      "transport": "Transport: {{transport}}",
+      "updated": "• Diperbarui {{time}}",
+      "loadingMetrics": "Memuat metrik operasional",
+      "kitchenCounters": "Counter Dapur",
+      "kitchenSummary": "Antrian {{queued}} • Diproses {{inProgress}} • Siap {{ready}}",
+      "pendingPayments": "Pembayaran Tertunda",
+      "activeSessions": "Sesi Aktif",
+      "qrQueueTitle": "Antrian QR Realtime",
+      "qrQueueDetail": "Menunggu konfirmasi {{pending}} · Kedaluwarsa {{expired}}",
+      "printerQueueTitle": "Antrian Printer",
+      "printerQueueSummary": "Tertunda {{pending}} • Mencetak {{printing}} • Gagal {{failed}}",
+      "reconciliationTitle": "Peringatan Rekonsiliasi",
+      "reconciliationCount": "{{count}} peringatan",
+      "hardwareBridgeTitle": "Hardware Bridge",
+      "hardwareBridgeSummary": "Dead letter {{deadLetters}} • Stale {{staleBridges}}",
+      "offlineSyncTitle": "Kegagalan Sinkronisasi Offline",
+      "offlineSyncConflicts": "Konflik {{conflicts}}"
+    },
+    "crm": {
+      "title": "Ringkasan CRM",
+      "subtitle": "Gift card + loyalitas",
+      "customers": "Pelanggan",
+      "repeatVisitRate": "Tingkat Kunjungan Ulang",
+      "pointsIssued": "Poin Diterbitkan",
+      "pointsRedeemed": "Poin Ditukar"
+    },
+    "offlineResilience": {
+      "title": "Ketahanan offline & terminal",
+      "replayApplied": "Replay diterapkan (jendela)",
+      "replayFailures": "Kegagalan replay",
+      "staleReplayRejections": "Penolakan replay kedaluwarsa",
+      "serverConflictsLogged": "Konflik server tercatat",
+      "duplicateReplayHits": "Hit replay duplikat",
+      "conflictAuditEvents": "Peristiwa audit konflik",
+      "registeredTerminals": "Terminal terdaftar",
+      "staleTerminals": "Terminal stale (heartbeat)"
+    },
+    "charts": {
+      "peakHours": "Jam Sibuk",
+      "bestSellers": "Terlaris",
+      "crossOutletBestsellers": "Terlaris di Outlet Lain",
+      "sold": "{{qty}} terjual",
+      "soldWithOutlet": "{{outletName}} • {{qty}} terjual"
+    },
+    "recentTransactions": {
+      "title": "Transaksi Terbaru",
+      "headers": {
+        "order": "Pesanan",
+        "type": "Tipe",
+        "total": "Total",
+        "status": "Status",
+        "time": "Waktu"
+      }
+    },
+    "empty": {
+      "topMenus": "Belum ada data menu terlaris.",
+      "crossOutlet": "Belum ada data terlaris lintas outlet.",
+      "recentTransactions": "Belum ada transaksi terbaru."
+    },
+    "status": {
+      "paid": "Lunas",
+      "pending": "Tertunda"
+    },
+    "trend": {
+      "up": "naik",
+      "down": "turun",
+      "flat": "stabil"
     }
   }
 }

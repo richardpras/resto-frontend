@@ -28,6 +28,7 @@ import {
   fetchExecutiveSalesReport,
   type ExecutiveSalesReport,
 } from "@/lib/api-integration/reportingEndpoints";
+import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { toast } from "sonner";
 
 const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))", "hsl(var(--chart-1))", "hsl(var(--chart-2))"];
@@ -63,6 +64,7 @@ function paymentLabel(method: string): string {
 }
 
 export default function ExecutiveSalesReport() {
+  const { t } = useErpTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const hasAccounting = useAuthStore((s) => s.hasPermission(PERMISSIONS.ACCOUNTING));
 
@@ -96,12 +98,12 @@ export default function ExecutiveSalesReport() {
       });
       setReport(data);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load executive sales report");
+      toast.error(e instanceof Error ? e.message : t("executive.salesReport.loadFailed"));
       setReport(null);
     } finally {
       setLoading(false);
     }
-  }, [scope, fromDate, toDate, comparison]);
+  }, [scope, fromDate, toDate, comparison, t]);
 
   useEffect(() => {
     void load();
@@ -116,36 +118,34 @@ export default function ExecutiveSalesReport() {
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-bold">Executive Sales Report</h1>
+            <h1 className="text-2xl font-bold">{t("reportsHub.cards.executive-sales-report.title")}</h1>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Authoritative management view for gross sales, net sales, discounts, refunds, and tender mix.
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.executive-sales-report.description")}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
+          {loading ? t("ops:shared.loading") : t("ops:shared.refresh")}
         </Button>
       </div>
 
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <Label htmlFor="fromDate">Start date</Label>
+            <Label htmlFor="fromDate">{t("executive.salesReport.startDate")}</Label>
             <Input id="fromDate" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="toDate">End date</Label>
+            <Label htmlFor="toDate">{t("executive.salesReport.endDate")}</Label>
             <Input id="toDate" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Comparison</Label>
+            <Label>{t("executive.salesReport.comparison")}</Label>
             <Select value={comparison} onValueChange={(v) => setComparison(v as "none" | "previous_period")}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="previous_period">Previous period</SelectItem>
+                <SelectItem value="none">{t("executive.salesReport.comparisonNone")}</SelectItem>
+                <SelectItem value="previous_period">{t("executive.salesReport.comparisonPreviousPeriod")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -155,12 +155,16 @@ export default function ExecutiveSalesReport() {
       {summary && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-            <KpiCard label="Gross Sales" value={formatRp(summary.grossSales)} />
-            <KpiCard label="Net Sales" value={formatRp(summary.netSales)} />
-            <KpiCard label="Refunds" value={formatRp(summary.refundAmount)} sub={`${summary.refundCount} refund(s)`} />
-            <KpiCard label="Final Revenue" value={formatRp(summary.finalRevenue)} />
-            <KpiCard label="Orders" value={`${summary.orderCount}`} />
-            <KpiCard label="AOV" value={formatRp(summary.averageOrderValue)} />
+            <KpiCard label={t("executive.salesReport.kpis.grossSales")} value={formatRp(summary.grossSales)} />
+            <KpiCard label={t("executive.salesReport.kpis.netSales")} value={formatRp(summary.netSales)} />
+            <KpiCard
+              label={t("executive.salesReport.kpis.refunds")}
+              value={formatRp(summary.refundAmount)}
+              sub={t("executive.salesReport.kpis.refundCount", { count: summary.refundCount })}
+            />
+            <KpiCard label={t("executive.salesReport.kpis.finalRevenue")} value={formatRp(summary.finalRevenue)} />
+            <KpiCard label={t("executive.salesReport.kpis.orders")} value={`${summary.orderCount}`} />
+            <KpiCard label={t("executive.salesReport.kpis.aov")} value={formatRp(summary.averageOrderValue)} />
           </div>
 
           {summary.comparison && (
@@ -168,10 +172,10 @@ export default function ExecutiveSalesReport() {
               <CardContent className="p-4 flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-primary" />
-                  <span>Revenue growth: {summary.comparison.growth.revenueGrowthPercent}%</span>
+                  <span>{t("executive.salesReport.growth.revenue", { percent: summary.comparison.growth.revenueGrowthPercent })}</span>
                 </div>
-                <span>Order growth: {summary.comparison.growth.orderGrowthPercent}%</span>
-                <span>AOV growth: {summary.comparison.growth.averageOrderValueGrowthPercent}%</span>
+                <span>{t("executive.salesReport.growth.orders", { percent: summary.comparison.growth.orderGrowthPercent })}</span>
+                <span>{t("executive.salesReport.growth.aov", { percent: summary.comparison.growth.averageOrderValueGrowthPercent })}</span>
               </CardContent>
             </Card>
           )}
@@ -180,17 +184,21 @@ export default function ExecutiveSalesReport() {
             <Card className={recon.status === "variance" ? "border-amber-500/50" : ""}>
               <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium">Accounting reconciliation</p>
+                  <p className="text-sm font-medium">{t("executive.salesReport.reconciliation.title")}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Accounting revenue {formatRp(recon.accountingRevenue)} · Executive revenue {formatRp(recon.executiveRevenue)} · Difference {formatRp(recon.difference)}
+                    {t("executive.salesReport.reconciliation.detail", {
+                      accounting: formatRp(recon.accountingRevenue),
+                      executive: formatRp(recon.executiveRevenue),
+                      difference: formatRp(recon.difference),
+                    })}
                   </p>
                 </div>
                 {recon.status === "variance" ? (
                   <Badge variant="outline" className="bg-amber-500/15 text-amber-800">
-                    <AlertTriangle className="h-3 w-3 mr-1" /> Variance
+                    <AlertTriangle className="h-3 w-3 mr-1" /> {t("executive.salesReport.reconciliation.variance")}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700">Balanced</Badge>
+                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700">{t("executive.salesReport.reconciliation.balanced")}</Badge>
                 )}
               </CardContent>
             </Card>
@@ -199,7 +207,7 @@ export default function ExecutiveSalesReport() {
           <div className="grid lg:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4">
-                <h2 className="text-sm font-semibold mb-3">Sales trend</h2>
+                <h2 className="text-sm font-semibold mb-3">{t("executive.salesReport.charts.salesTrend")}</h2>
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={report.trends}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -207,9 +215,9 @@ export default function ExecutiveSalesReport() {
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: number) => formatRp(v)} />
                     <Legend />
-                    <Line type="monotone" dataKey="grossSales" name="Gross" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="netSales" name="Net" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="refunds" name="Refunds" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="grossSales" name={t("executive.salesReport.charts.gross")} stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="netSales" name={t("executive.salesReport.charts.net")} stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="refunds" name={t("executive.salesReport.charts.refunds")} stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -217,7 +225,7 @@ export default function ExecutiveSalesReport() {
 
             <Card>
               <CardContent className="p-4">
-                <h2 className="text-sm font-semibold mb-3">Payment mix</h2>
+                <h2 className="text-sm font-semibold mb-3">{t("executive.salesReport.charts.paymentMix")}</h2>
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie data={report.payments} dataKey="amount" nameKey="method" cx="50%" cy="50%" outerRadius={90} label={(e) => paymentLabel(String(e.method))}>
@@ -235,7 +243,7 @@ export default function ExecutiveSalesReport() {
           <div className="grid lg:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4">
-                <h2 className="text-sm font-semibold mb-3">Discount breakdown</h2>
+                <h2 className="text-sm font-semibold mb-3">{t("executive.salesReport.charts.discountBreakdown")}</h2>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={report.discounts}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -245,22 +253,22 @@ export default function ExecutiveSalesReport() {
                     <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-                <p className="text-xs text-muted-foreground mt-2">Gift card rows are informational tender, not revenue discounts.</p>
+                <p className="text-xs text-muted-foreground mt-2">{t("executive.salesReport.charts.discountNote")}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardContent className="p-0">
                 <div className="p-4 border-b">
-                  <h2 className="text-sm font-semibold">Channel breakdown</h2>
+                  <h2 className="text-sm font-semibold">{t("executive.salesReport.charts.channelBreakdown")}</h2>
                 </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Channel</TableHead>
-                      <TableHead>Sales</TableHead>
-                      <TableHead>Orders</TableHead>
-                      <TableHead>AOV</TableHead>
+                      <TableHead>{t("executive.salesReport.table.channel")}</TableHead>
+                      <TableHead>{t("executive.salesReport.table.sales")}</TableHead>
+                      <TableHead>{t("executive.salesReport.table.orders")}</TableHead>
+                      <TableHead>{t("executive.salesReport.table.aov")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -281,21 +289,21 @@ export default function ExecutiveSalesReport() {
           <Card>
             <CardContent className="p-0">
               <div className="p-4 border-b">
-                <h2 className="text-sm font-semibold">Top products</h2>
+                <h2 className="text-sm font-semibold">{t("executive.salesReport.charts.topProducts")}</h2>
               </div>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Gross</TableHead>
-                    <TableHead>Net</TableHead>
+                    <TableHead>{t("executive.salesReport.table.product")}</TableHead>
+                    <TableHead>{t("executive.salesReport.table.qty")}</TableHead>
+                    <TableHead>{t("executive.salesReport.table.gross")}</TableHead>
+                    <TableHead>{t("executive.salesReport.table.net")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {report.topProducts.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No product sales in range.</TableCell>
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">{t("executive.salesReport.table.noProductSales")}</TableCell>
                     </TableRow>
                   )}
                   {report.topProducts.map((row) => (
@@ -311,17 +319,17 @@ export default function ExecutiveSalesReport() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <KpiCard label="Gift Card Settled" value={formatRp(summary.giftCardSalesSettled)} />
-            <KpiCard label="Store Credit Settled" value={formatRp(summary.storeCreditSettled)} />
-            <KpiCard label="Voucher Discounts" value={formatRp(summary.voucherDiscount)} />
-            <KpiCard label="Manual Discounts" value={formatRp(summary.manualDiscount)} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            <KpiCard label={t("executive.salesReport.kpis.giftCardSettled")} value={formatRp(summary.giftCardSalesSettled)} />
+            <KpiCard label={t("executive.salesReport.kpis.storeCreditSettled")} value={formatRp(summary.storeCreditSettled)} />
+            <KpiCard label={t("executive.salesReport.kpis.voucherDiscounts")} value={formatRp(summary.voucherDiscount)} />
+            <KpiCard label={t("executive.salesReport.kpis.manualDiscounts")} value={formatRp(summary.manualDiscount)} />
           </div>
         </>
       )}
 
       {!scope && (
-        <p className="text-sm text-muted-foreground">Select an outlet to load the executive sales report.</p>
+        <p className="text-sm text-muted-foreground">{t("executive.salesReport.selectOutlet")}</p>
       )}
     </div>
   );

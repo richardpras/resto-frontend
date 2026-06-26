@@ -17,6 +17,47 @@ import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
+type OutletRow = { id: number; code?: string | null; name: string };
+
+function OutletSelector({
+  outlets,
+  activeOutletId,
+  onSelect,
+  triggerClassName,
+}: {
+  outlets: OutletRow[];
+  activeOutletId: number | null;
+  onSelect: (id: number, code: string | null) => void;
+  triggerClassName?: string;
+}) {
+  const { t } = useTranslation("common");
+
+  return (
+    <Select
+      value={typeof activeOutletId === "number" && activeOutletId >= 1 ? String(activeOutletId) : ""}
+      onValueChange={(v) => {
+        const id = Number(v);
+        const row = outlets.find((o) => o.id === id);
+        if (row) onSelect(row.id, row.code ?? null);
+      }}
+    >
+      <SelectTrigger className={triggerClassName} aria-label={t("header.activeOutlet")}>
+        <SelectValue placeholder={t("header.outletPlaceholder")} />
+      </SelectTrigger>
+      <SelectContent>
+        {outlets.map((o) => (
+          <SelectItem key={o.id} value={String(o.id)}>
+            <span className="flex flex-col items-start gap-0">
+              <span>{o.name}</span>
+              {o.code ? <span className="text-xs text-muted-foreground font-mono">{o.code}</span> : null}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation("common");
   const [online] = useState(true);
@@ -77,37 +118,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <header
             data-app-chrome
-            className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-30"
+            className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-chrome"
           >
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <SidebarTrigger aria-label={t("header.toggleSidebar")} />
               {(selectorOutlets?.length ?? 0) > 0 && (
-                <div className="hidden sm:flex items-center gap-2 min-w-[200px] max-w-[min(360px,40vw)]">
-                  <Select
-                    value={typeof activeOutletId === "number" && activeOutletId >= 1 ? String(activeOutletId) : ""}
-                    onValueChange={(v) => {
-                      const id = Number(v);
-                      const row = selectorOutlets?.find((o) => o.id === id);
-                      if (row) setActiveOutletContext(row.id, row.code ?? null);
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-xs" aria-label={t("header.activeOutlet")}>
-                      <SelectValue placeholder={t("header.outletPlaceholder")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(selectorOutlets ?? []).map((o) => (
-                        <SelectItem key={o.id} value={String(o.id)}>
-                          <span className="flex flex-col items-start gap-0">
-                            <span>{o.name}</span>
-                            {o.code ? (
-                              <span className="text-[10px] text-muted-foreground font-mono">{o.code}</span>
-                            ) : null}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="hidden sm:flex items-center gap-2 min-w-[200px] max-w-[min(360px,40vw)]">
+                    <OutletSelector
+                      outlets={selectorOutlets ?? []}
+                      activeOutletId={activeOutletId}
+                      onSelect={(id, code) => setActiveOutletContext(id, code)}
+                      triggerClassName="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="flex sm:hidden items-center gap-2 min-w-0 flex-1 max-w-[min(220px,50vw)]">
+                    <OutletSelector
+                      outlets={selectorOutlets ?? []}
+                      activeOutletId={activeOutletId}
+                      onSelect={(id, code) => setActiveOutletContext(id, code)}
+                      triggerClassName="h-9 text-sm min-h-11"
+                    />
+                  </div>
+                </>
               )}
             </div>
             <div className="flex items-center gap-3">
