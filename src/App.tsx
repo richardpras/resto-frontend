@@ -17,6 +17,7 @@ import {
   canAccessDashboard,
   canAccessNotifications,
   canAccessSettingsPage,
+  canAccessUserManagement,
   canAccessUsersAdmin,
   canManagePlatformSettings,
   canUpdateOperationalSettings,
@@ -276,7 +277,7 @@ const App = () => (
             <Route path="/gift-cards" element={guarded(PERMISSIONS.MEMBERS, <GiftCards />)} />
             <Route path="/purchases" element={guarded(PERMISSIONS.PURCHASE, <Purchases />)} />
             <Route path="/payroll" element={<LegacyPayrollRedirect />} />
-            <Route path="/users" element={accessGuarded((user) => canAccessUsersAdmin(user), <Users />)} />
+            <Route path="/users" element={accessGuarded((user) => canAccessUserManagement(user), <Users />)} />
             <Route path="/employees" element={<Navigate to="/hr/employees" replace />} />
             <Route path="/departments" element={<Navigate to="/hr/departments" replace />} />
             <Route path="/positions" element={<Navigate to="/hr/positions" replace />} />

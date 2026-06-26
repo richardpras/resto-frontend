@@ -31,6 +31,9 @@ const WR_WB_OWNER_CODES = [
   "qr_orders.view",
   "settings.view",
   "settings.update",
+  "users.view",
+  "users.create",
+  "users.assign_roles",
 ] as const;
 
 const WR_WB_MANAGER_CODES = [
@@ -53,6 +56,9 @@ const WR_WB_MANAGER_CODES = [
   "attendance.view",
   "settings.view",
   "settings.update",
+  "users.view",
+  "users.create",
+  "users.assign_roles",
 ] as const;
 
 const WR_WB_KASIR_CODES = [
@@ -104,25 +110,27 @@ describe("WR WB sidebar matrix", () => {
     expect(hrefs).toContain("/settings");
   });
 
-  it("owner sees business menus but not users or system tools", () => {
+  it("owner sees business menus and scoped user management but not system tools", () => {
     const owner = wrWbUser("Owner", WR_WB_OWNER_CODES);
     const hrefs = collectHrefs(owner);
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/reports");
     expect(hrefs.some((href) => href.startsWith("/accounting"))).toBe(true);
     expect(hrefs).toContain("/settings");
-    expect(hrefs).not.toContain("/users");
+    expect(hrefs).toContain("/users");
     expect(hrefs).not.toContain("/system/health");
     expect(hrefs).not.toContain("/system/audit");
+    expect(hrefs).not.toContain("/hr/departments");
   });
 
-  it("manager sees dashboard and settings without system admin", () => {
+  it("manager sees dashboard, settings, and scoped user management without system admin", () => {
     const manager = wrWbUser("Manager", WR_WB_MANAGER_CODES);
     const hrefs = collectHrefs(manager);
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/settings");
-    expect(hrefs).not.toContain("/users");
+    expect(hrefs).toContain("/users");
     expect(hrefs).not.toContain("/system/health");
+    expect(hrefs).not.toContain("/hr/departments");
   });
 
   it("kasir sees POS and shift close but not dashboard or settings", () => {

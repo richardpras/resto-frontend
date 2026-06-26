@@ -13,6 +13,7 @@ import {
   canAccessDashboard,
   canAccessSettingsPage,
   canManagePlatformSettings,
+  canAccessUserManagement,
   canAccessUsersAdmin,
   canViewFoodCost,
   type PayrollTabKey,
@@ -180,7 +181,7 @@ export function buildSidebarSections(user: AuthUser | null): SidebarNavSection[]
   ];
 
   const hr: SidebarNavItem[] = [
-    nav("nav.usersRoles", { href: "/users", icon: UserCog, accessCheck: (user) => canAccessUsersAdmin(user) }),
+    nav("nav.usersRoles", { href: "/users", icon: UserCog, accessCheck: (user) => canAccessUserManagement(user) }),
     ...hrNavGroups,
   ];
 

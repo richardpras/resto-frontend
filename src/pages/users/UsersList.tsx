@@ -13,11 +13,16 @@ import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { listUsers, listRoles } from "@/lib/api-integration/userManagementEndpoints";
 import type { UserApiRow } from "@/lib/api-integration/userManagementEndpoints";
 import { UserFormModal } from "@/components/UserFormModal";
+import { canAssignUserRoles, canCreateUsers } from "@/domain/permissionGates";
+import { useAuthStore } from "@/stores/authStore";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
 export default function UsersList() {
   const { t } = useTranslation("common");
+  const authUser = useAuthStore((s) => s.user);
+  const canCreate = canCreateUsers(authUser);
+  const canAssign = canAssignUserRoles(authUser);
   const qc = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const qr = useQuery({ queryKey: ["roles"], queryFn: listRoles });
 
@@ -77,12 +82,14 @@ export default function UsersList() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            onClick={() => { setEditing(null); setOpen(true); }}
-            disabled={roles.length === 0}
-          >
-            <Plus className="h-4 w-4" /> {t("usersManagement.users.addUser")}
-          </Button>
+          {canCreate ? (
+            <Button
+              onClick={() => { setEditing(null); setOpen(true); }}
+              disabled={roles.length === 0}
+            >
+              <Plus className="h-4 w-4" /> {t("usersManagement.users.addUser")}
+            </Button>
+          ) : null}
         </div>
       </Card>
 
@@ -118,9 +125,11 @@ export default function UsersList() {
                     </TableCell>
                     <TableCell>{roleBadges(u)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => { setEditing(u); setOpen(true); }}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      {canAssign ? (
+                        <Button size="icon" variant="ghost" onClick={() => { setEditing(u); setOpen(true); }}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

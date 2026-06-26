@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
 import {
   canViewSettingsTab,
-  canAccessUsersAdmin,
+  canAccessUserManagement,
   type SettingsTabKey,
 } from "@/domain/permissionGates";
 
@@ -47,12 +47,14 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [syncing, setSyncing] = useState(false);
   const requestedTab = normalizeSettingsTabKey(searchParams.get("tab"));
-  const initialTab =
-    requestedTab && (SETTINGS_TAB_KEYS as readonly string[]).includes(requestedTab) ? requestedTab : "merchant";
-  const [activeTab, setActiveTab] = useState(initialTab);
   const authUser = useAuthStore((s) => s.user);
   const visibleTabs = SETTINGS_TAB_KEYS.filter((tab) => canViewSettingsTab(tab, authUser));
-  const showUsersLink = canAccessUsersAdmin(authUser);
+  const initialTab =
+    requestedTab && visibleTabs.includes(requestedTab as SettingsTabKey)
+      ? requestedTab
+      : (visibleTabs[0] ?? "outlets");
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const showUsersLink = canAccessUserManagement(authUser);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;

@@ -47,6 +47,31 @@ export function canAccessUsersAdmin(user?: AuthUser | null): boolean {
   return hasPermissionCode(u, "users.manage");
 }
 
+export function canAccessUserManagement(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["users.manage", "users.view"]);
+}
+
+export function canManageRolesAndPermissions(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasPermissionCode(u, "users.manage");
+}
+
+export function canCreateUsers(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["users.manage", "users.create"]);
+}
+
+export function canAssignUserRoles(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["users.manage", "users.assign_roles"]);
+}
+
+export function canManageMerchantSettings(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["merchant.manage", "settings.manage"]);
+}
+
 export function canViewFoodCost(user?: AuthUser | null): boolean {
   const u = user ?? useAuthStore.getState().user;
   return hasAnyPermissionCode(u, ["foodcost.view", "recipe.view"]);
@@ -86,6 +111,7 @@ export function canViewSettingsTab(tab: SettingsTabKey, user?: AuthUser | null):
     case "payments":
       return operational;
     case "merchant":
+      return canManageMerchantSettings(u);
     case "outlets":
       return readSettings;
     case "numbering":
@@ -165,7 +191,7 @@ export function canAccessStaffRoute(user: AuthUser | null, pathname: string): bo
   if (path === "/shift-close" || path.startsWith("/shift-close/")) {
     return hasAnyPermission(user, [PERMISSIONS.FINANCE_SHIFT_CLOSE]);
   }
-  if (path === "/users" || path.startsWith("/users/")) return canAccessUsersAdmin(user);
+  if (path === "/users" || path.startsWith("/users/")) return canAccessUserManagement(user);
   if (path.startsWith("/hr/")) {
     return canAccessPayrollModule(user) || canViewEmployees(user) || canAccessUsersAdmin(user);
   }

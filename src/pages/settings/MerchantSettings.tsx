@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
-import { canManagePlatformSettings } from "@/domain/permissionGates";
+import { canManageMerchantSettings } from "@/domain/permissionGates";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchMerchantSettings } from "@/lib/api-integration/settingsDomainEndpoints";
 import { applyAppLocale, normalizeAppLocale } from "@/i18n";
@@ -19,7 +19,7 @@ export default function MerchantSettings() {
   const { t } = useTranslation("common");
   const { merchant, updateMerchant } = useSettingsStore();
   const authUser = useAuthStore((s) => s.user);
-  const canEditMerchant = canManagePlatformSettings(authUser);
+  const canEditMerchant = canManageMerchantSettings(authUser);
   const [form, setForm] = useState(merchant);
   const [saving, setSaving] = useState(false);
 
