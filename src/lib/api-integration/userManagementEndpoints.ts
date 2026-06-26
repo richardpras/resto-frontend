@@ -165,6 +165,17 @@ export async function createUser(payload: {
   return res.data;
 }
 
+export async function updateUser(
+  userId: number | string,
+  payload: { name?: string; email?: string; password?: string },
+): Promise<UserApiRow> {
+  const res = await request<{ message: string; data: UserApiRow }>(`/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
 export async function adminSetUserScreenPin(userId: number | string, pin: string): Promise<UserApiRow> {
   const res = await request<{ message: string; data: UserApiRow }>(`/users/${userId}/screen-pin`, {
     method: "PUT",

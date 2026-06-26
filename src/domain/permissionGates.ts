@@ -62,6 +62,11 @@ export function canCreateUsers(user?: AuthUser | null): boolean {
   return hasAnyPermissionCode(u, ["users.manage", "users.create"]);
 }
 
+export function canUpdateUsers(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, ["users.manage", "users.update"]);
+}
+
 export function canAssignUserRoles(user?: AuthUser | null): boolean {
   const u = user ?? useAuthStore.getState().user;
   return hasAnyPermissionCode(u, ["users.manage", "users.assign_roles"]);

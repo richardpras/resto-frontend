@@ -34,6 +34,7 @@ const WR_WB_OWNER_CODES = [
   "users.view",
   "users.create",
   "users.assign_roles",
+  "users.update",
 ] as const;
 
 const WR_WB_MANAGER_CODES = [
@@ -59,6 +60,7 @@ const WR_WB_MANAGER_CODES = [
   "users.view",
   "users.create",
   "users.assign_roles",
+  "users.update",
 ] as const;
 
 const WR_WB_KASIR_CODES = [

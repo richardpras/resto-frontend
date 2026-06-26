@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { dialogScroll, dialogSize } from "@/lib/ui/dialogSizes";
@@ -10,11 +11,13 @@ import {
   adminClearUserScreenPin,
   adminSetUserScreenPin,
   createUser,
+  updateUser,
   assignUserRoles,
   type UserApiRow,
   type RoleApiRow,
 } from "@/lib/api-integration/userManagementEndpoints";
 import { ApiHttpError } from "@/lib/api-integration/client";
+import { canAssignUserRoles, canUpdateUsers } from "@/domain/permissionGates";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 
@@ -32,7 +35,11 @@ function sanitizePinInput(v: string): string {
 type PinEditAction = "none" | "clear" | "keep" | "set";
 
 export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
+  const { t } = useTranslation("common");
   const queryClient = useQueryClient();
+  const authUser = useAuthStore((s) => s.user);
+  const canEditProfile = canUpdateUsers(authUser);
+  const canAssign = canAssignUserRoles(authUser);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,17 +71,16 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
     const b = screenPinConfirm.trim();
     if (a === "" && b === "") return { valid: true };
     if (a.length !== 4 || !/^[0-9]{4}$/.test(a) || b.length !== 4 || !/^[0-9]{4}$/.test(b)) {
-      toast.error("PIN must be exactly 4 digits in both fields, or leave both blank.");
+      toast.error(t("usersManagement.form.pinDigitsError"));
       return { valid: false };
     }
     if (a !== b) {
-      toast.error("PIN and confirmation do not match.");
+      toast.error(t("usersManagement.form.pinMismatch"));
       return { valid: false };
     }
     return { valid: true, pin: a };
   };
 
-  /** How to update PIN on the server for edit mode (after roles are saved). */
   const resolveEditPinAction = (): { action: PinEditAction; pin?: string; ok: boolean } => {
     if (!editing) return { action: "none", ok: true };
     if (!useScreenPin) {
@@ -84,7 +90,7 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
     if (!parsed.valid) return { action: "none", ok: false };
     if (parsed.pin !== undefined) return { action: "set", pin: parsed.pin, ok: true };
     if (editing.pinSet) return { action: "keep", ok: true };
-    toast.error("User belum punya PIN. Isi PIN dan konfirmasi, atau matikan opsi kunci layar.");
+    toast.error(t("usersManagement.form.pinRequiredWhenEnabled"));
     return { action: "none", ok: false };
   };
 
@@ -111,48 +117,72 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
     },
     onSuccess: async (row) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success("User created");
+      toast.success(t("usersManagement.form.userCreated"));
       await maybeRefreshSession(row.id);
       onOpenChange(false);
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to create user");
+      toast.error(e instanceof ApiHttpError ? e.message : t("usersManagement.form.createFailed"));
     },
   });
 
   const updateMu = useMutation({
     mutationFn: async (pinPart: { action: PinEditAction; pin?: string }) => {
       if (!editing) return null;
-      await assignUserRoles(editing.id, selectedRoleIds);
-      if (pinPart.action === "clear") {
-        await adminClearUserScreenPin(editing.id);
-      } else if (pinPart.action === "set" && pinPart.pin !== undefined) {
-        await adminSetUserScreenPin(editing.id, pinPart.pin);
+
+      if (canEditProfile) {
+        const profilePayload: { name: string; email: string; password?: string } = {
+          name: name.trim(),
+          email: email.trim(),
+        };
+        const nextPassword = password.trim();
+        if (nextPassword !== "") {
+          profilePayload.password = nextPassword;
+        }
+        await updateUser(editing.id, profilePayload);
       }
+
+      if (canAssign) {
+        await assignUserRoles(editing.id, selectedRoleIds);
+        if (pinPart.action === "clear") {
+          await adminClearUserScreenPin(editing.id);
+        } else if (pinPart.action === "set" && pinPart.pin !== undefined) {
+          await adminSetUserScreenPin(editing.id, pinPart.pin);
+        }
+      }
+
       return editing.id;
     },
     onSuccess: async (uid) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success("User updated");
+      toast.success(t("usersManagement.form.userUpdated"));
       if (uid !== null) await maybeRefreshSession(uid);
       onOpenChange(false);
     },
     onError: (e: unknown) => {
-      toast.error(e instanceof ApiHttpError ? e.message : "Failed to save user");
+      toast.error(e instanceof ApiHttpError ? e.message : t("usersManagement.form.updateFailed"));
     },
   });
 
   const submit = () => {
     if (!name.trim() || !email.trim()) {
-      toast.error("Name and email are required");
+      toast.error(t("usersManagement.form.nameEmailRequired"));
       return;
     }
     if (!editing && !password.trim()) {
-      toast.error("Password is required for new users");
+      toast.error(t("usersManagement.form.passwordRequired"));
       return;
     }
-    if (selectedRoleIds.length === 0) {
-      toast.error("Select at least one role");
+    if (!editing && password.trim().length < 6) {
+      toast.error(t("usersManagement.form.passwordMinLength"));
+      return;
+    }
+    if (editing && password.trim() !== "" && password.trim().length < 6) {
+      toast.error(t("usersManagement.form.passwordMinLength"));
+      return;
+    }
+    if (canAssign && selectedRoleIds.length === 0) {
+      toast.error(t("usersManagement.form.roleRequired"));
       return;
     }
 
@@ -164,7 +194,7 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
       const parsed = parsePinPair();
       if (!parsed.valid) return;
       if (parsed.pin === undefined) {
-        toast.error("Aktifkan PIN hanya jika sudah mengisi PIN 4 digit.");
+        toast.error(t("usersManagement.form.pinRequiredWhenEnabled"));
         return;
       }
       createMu.mutate({ pin: parsed.pin });
@@ -177,35 +207,58 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
   };
 
   const pending = createMu.isPending || updateMu.isPending;
+  const profileReadOnly = Boolean(editing) && !canEditProfile;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${dialogSize.xl} ${dialogScroll}`}>
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit user roles" : "Add User"}</DialogTitle>
+          <DialogTitle>
+            {editing ? t("usersManagement.form.editTitle") : t("usersManagement.form.addTitle")}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" disabled={!!editing} />
+              <Label>{t("usersManagement.users.columns.name")}</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("usersManagement.form.namePlaceholder")}
+                disabled={profileReadOnly || pending}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@email.com" disabled={!!editing} />
+              <Label>{t("usersManagement.users.columns.email")}</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t("usersManagement.form.emailPlaceholder")}
+                disabled={profileReadOnly || pending}
+              />
             </div>
-            {!editing && (
-              <div className="space-y-1.5 col-span-2">
-                <Label>Password</Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
-              </div>
-            )}
+            <div className="space-y-1.5 col-span-2">
+              <Label>
+                {editing ? t("usersManagement.form.newPasswordOptional") : t("usersManagement.form.password")}
+              </Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={editing ? t("usersManagement.form.passwordLeaveBlank") : t("usersManagement.form.password")}
+                disabled={profileReadOnly || pending}
+              />
+              {editing ? (
+                <p className="text-xs text-muted-foreground">{t("usersManagement.form.passwordEditHint")}</p>
+              ) : null}
+            </div>
           </div>
 
           <div>
             <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
-              Screen PIN (POS unlock)
+              {t("usersManagement.form.screenPinSection")}
             </h3>
             <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent/50">
               <Checkbox
@@ -219,12 +272,11 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
                   }
                 }}
                 className="mt-0.5"
+                disabled={!canAssign || pending}
               />
               <div className="space-y-0.5">
-                <span className="text-sm font-medium">Gunakan PIN untuk kunci layar POS</span>
-                <p className="text-xs text-muted-foreground">
-                  Jika mati, pengguna ini tidak memakai PIN — kunci otomatis dan tombol Kunci tidak aktif saat login sebagai user ini.
-                </p>
+                <span className="text-sm font-medium">{t("usersManagement.form.useScreenPin")}</span>
+                <p className="text-xs text-muted-foreground">{t("usersManagement.form.useScreenPinHint")}</p>
               </div>
             </label>
             {useScreenPin ? (
@@ -232,13 +284,13 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
                 <p className="text-xs text-muted-foreground mt-3 mb-2">
                   {editing
                     ? editing.pinSet
-                      ? "Kosongkan kedua field untuk mempertahankan PIN saat ini; isi untuk mengganti."
-                      : "Wajib isi PIN baru 4 digit untuk akun ini."
-                    : "Centang opsi di atas lalu isi PIN (wajib 4 digit saat opsi menyala). Tanpa centang, akun tanpa PIN."}
+                      ? t("usersManagement.form.pinEditKeepHint")
+                      : t("usersManagement.form.pinEditNewHint")
+                    : t("usersManagement.form.pinCreateHint")}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>PIN</Label>
+                    <Label>{t("usersManagement.form.pin")}</Label>
                     <Input
                       type="password"
                       inputMode="numeric"
@@ -248,11 +300,11 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
                       placeholder="····"
                       className="tracking-widest"
                       autoComplete="new-password"
-                      disabled={pending}
+                      disabled={!canAssign || pending}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Confirm PIN</Label>
+                    <Label>{t("usersManagement.form.confirmPin")}</Label>
                     <Input
                       type="password"
                       inputMode="numeric"
@@ -262,7 +314,7 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
                       placeholder="····"
                       className="tracking-widest"
                       autoComplete="new-password"
-                      disabled={pending}
+                      disabled={!canAssign || pending}
                     />
                   </div>
                 </div>
@@ -270,30 +322,38 @@ export function UserFormModal({ open, onOpenChange, editing, roles }: Props) {
             ) : null}
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Roles</h3>
-            <div className="rounded-lg border divide-y max-h-[240px] overflow-y-auto">
-              {roles.map((r) => (
-                <label key={r.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-accent">
-                  <Checkbox checked={selectedRoleIds.includes(r.id)} onCheckedChange={() => toggleRole(r.id)} />
-                  <div>
-                    <span className="text-sm font-medium">{r.name}</span>
-                    {r.description ? (
-                      <p className="text-xs text-muted-foreground">{r.description}</p>
-                    ) : null}
-                  </div>
-                </label>
-              ))}
+          {canAssign ? (
+            <div>
+              <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+                {t("usersManagement.users.columns.roles")}
+              </h3>
+              <div className="rounded-lg border divide-y max-h-[240px] overflow-y-auto">
+                {roles.map((r) => (
+                  <label key={r.id} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-accent">
+                    <Checkbox
+                      checked={selectedRoleIds.includes(r.id)}
+                      onCheckedChange={() => toggleRole(r.id)}
+                      disabled={pending}
+                    />
+                    <div>
+                      <span className="text-sm font-medium">{r.name}</span>
+                      {r.description ? (
+                        <p className="text-xs text-muted-foreground">{r.description}</p>
+                      ) : null}
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
+            {t("usersManagement.roles.cancel")}
           </Button>
           <Button onClick={() => void submit()} disabled={pending}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? t("usersManagement.roles.saving") : t("usersManagement.roles.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

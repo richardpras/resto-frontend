@@ -30,6 +30,7 @@ import { toast } from "sonner";
 
 const ACTION_OPTIONS = [
   "user.created",
+  "user.updated",
   "role_permission_changed",
   "user.pin_set",
   "user.pin_cleared",
