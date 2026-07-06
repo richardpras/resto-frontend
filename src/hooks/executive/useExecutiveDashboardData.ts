@@ -32,6 +32,8 @@ import {
   type ExecutiveScoreResult,
 } from "@/lib/executive/executiveScore";
 import { executiveQueryKeys } from "@/hooks/executive/executiveQueryKeys";
+import { createReportDateRange, type ReportDateRange } from "@/lib/reporting/dateRangePresets";
+import { toDateFromDateToParams } from "@/lib/reporting/dateRangeApiParams";
 
 const STALE_TIME_MS = 60_000;
 
@@ -42,20 +44,6 @@ export type ExecutiveWidgetState<T> = {
   errorMessage?: string;
 };
 
-function todayRange(): { startDate: string; endDate: string } {
-  const today = new Date().toISOString().slice(0, 10);
-  return { startDate: today, endDate: today };
-}
-
-function last30DaysRange(): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 30);
-  return {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
-  };
-}
 
 function isForbidden(error: unknown): boolean {
   return error instanceof ApiHttpError && (error.status === 403 || error.status === 401);
@@ -114,10 +102,11 @@ export type ExecutiveDashboardData = {
 export function useExecutiveDashboardData(
   outletId: number | null | undefined,
   hasPermission: (perm: string) => boolean,
+  dateRange: Pick<ReportDateRange, "startDate" | "endDate"> = createReportDateRange("30d"),
 ): ExecutiveDashboardData {
   const scopedOutletId = typeof outletId === "number" && outletId >= 1 ? outletId : null;
-  const today = todayRange();
-  const loyaltyRange = last30DaysRange();
+  const { startDate, endDate } = dateRange;
+  const monitoringDates = toDateFromDateToParams(dateRange);
 
   const user = useAuthStore((s) => s.user);
   const canSales = hasPermission(PERMISSIONS.REPORTS);
@@ -134,12 +123,12 @@ export function useExecutiveDashboardData(
   const queries = useQueries({
     queries: [
       {
-        queryKey: executiveQueryKeys.executiveSales(scopedOutletId, today.startDate, today.endDate),
+        queryKey: executiveQueryKeys.executiveSales(scopedOutletId, startDate, endDate),
         queryFn: () =>
           fetchExecutiveSalesReport({
             outletId: scopedOutletId ?? undefined,
-            startDate: today.startDate,
-            endDate: today.endDate,
+            startDate,
+            endDate,
           }),
         enabled: canSales && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
@@ -167,19 +156,19 @@ export function useExecutiveDashboardData(
         retry: false,
       },
       {
-        queryKey: executiveQueryKeys.operationalMetrics(scopedOutletId),
-        queryFn: () => getOperationalMetrics(scopedOutletId),
+        queryKey: executiveQueryKeys.operationalMetrics(scopedOutletId, startDate, endDate),
+        queryFn: () => getOperationalMetrics(scopedOutletId, monitoringDates),
         enabled: canMonitoring && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,
         retry: false,
       },
       {
-        queryKey: executiveQueryKeys.loyaltyDashboard(scopedOutletId, loyaltyRange.startDate, loyaltyRange.endDate),
+        queryKey: executiveQueryKeys.loyaltyDashboard(scopedOutletId, startDate, endDate),
         queryFn: () =>
           fetchLoyaltyAnalyticsDashboard({
             outletId: scopedOutletId!,
-            fromDate: loyaltyRange.startDate,
-            toDate: loyaltyRange.endDate,
+            fromDate: startDate,
+            toDate: endDate,
           }),
         enabled: canLoyalty && scopedOutletId !== null,
         staleTime: STALE_TIME_MS,

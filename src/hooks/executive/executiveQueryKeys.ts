@@ -4,7 +4,8 @@ export const executiveQueryKeys = {
   giftCardReconciliation: (outletId: number | null) => ["gift-card-reconciliation", outletId] as const,
   executiveSales: (outletId: number | null, startDate: string, endDate: string) =>
     ["executive-sales", outletId, startDate, endDate] as const,
-  operationalMetrics: (outletId: number | null) => ["operational-metrics", outletId] as const,
+  operationalMetrics: (outletId: number | null, startDate?: string, endDate?: string) =>
+    ["operational-metrics", outletId, startDate, endDate] as const,
   loyaltyDashboard: (outletId: number | null, startDate: string, endDate: string) =>
     ["loyalty-dashboard", outletId, startDate, endDate] as const,
   menuDashboardSummary: (outletId: number | null) => ["menu-dashboard-summary", outletId] as const,

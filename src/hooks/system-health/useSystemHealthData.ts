@@ -44,20 +44,11 @@ import {
 } from "@/lib/system-health/systemHealthScore";
 import { buildSystemIncidentTimeline, type SystemIncidentItem } from "@/lib/system-health/systemHealthIncidents";
 import { buildSystemPriorityQueue, type SystemPriorityAction } from "@/lib/system-health/systemHealthPriorityQueue";
+import { createReportDateRange, type ReportDateRange } from "@/lib/reporting/dateRangePresets";
 
 const STALE_TIME_MS = 60_000;
 
 export type SystemHealthWidgetStatus = "loading" | "restricted" | "success" | "error";
-
-function last30Days(): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 30);
-  return {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
-  };
-}
 
 function isForbidden(error: unknown): boolean {
   return error instanceof ApiHttpError && (error.status === 403 || error.status === 401);
@@ -98,9 +89,10 @@ export type SystemHealthData = {
 export function useSystemHealthData(
   outletId: number | null | undefined,
   hasPermission: (perm: string) => boolean,
+  dateRange: Pick<ReportDateRange, "startDate" | "endDate"> = createReportDateRange("30d"),
 ): SystemHealthData {
   const scopedOutletId = typeof outletId === "number" && outletId >= 1 ? outletId : null;
-  const range = last30Days();
+  const range = dateRange;
 
   const canSettings = hasPermission(PERMISSIONS.SETTINGS);
   const canAccounting = hasPermission(PERMISSIONS.ACCOUNTING);

@@ -33,6 +33,9 @@ import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import type { TFunction } from "i18next";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
+import { toCreatedFromToParams } from "@/lib/reporting/dateRangeApiParams";
 
 const STATUSES: BugReportStatus[] = ["open", "triaged", "investigating", "fixed", "closed", "wont_fix"];
 const SEVERITIES: BugReportSeverity[] = ["low", "medium", "high", "critical"];
@@ -297,6 +300,8 @@ export default function BugReportsPage() {
   const [selected, setSelected] = useState<BugReportRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
+  const createdDateParams = toCreatedFromToParams(dateRange);
 
   const load = useCallback(async () => {
     if (!canAccess) {
@@ -310,6 +315,7 @@ export default function BugReportsPage() {
         status: statusFilter !== "all" ? (statusFilter as BugReportStatus) : undefined,
         severity: severityFilter !== "all" ? (severityFilter as BugReportSeverity) : undefined,
         search: search.trim() || undefined,
+        ...createdDateParams,
         limit: 50,
       });
       setRows(res.data);
@@ -318,7 +324,7 @@ export default function BugReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canAccess, activeOutletId, statusFilter, severityFilter, search, t]);
+  }, [canAccess, activeOutletId, statusFilter, severityFilter, search, createdDateParams.createdFrom, createdDateParams.createdTo, t]);
 
   useEffect(() => {
     void load();
@@ -362,7 +368,8 @@ export default function BugReportsPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.bug-reports.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.bug-reports.description")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <ReportDateRangeFilter range={dateRange} compact />
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             {t("ops:shared.refresh")}

@@ -13,6 +13,8 @@ import { SystemIncidentTimeline } from "@/components/system-health/SystemInciden
 import { SystemPriorityQueue } from "@/components/system-health/SystemPriorityQueue";
 import { SystemHealthTrendChart } from "@/components/system-health/SystemHealthTrendChart";
 import { useSystemHealthData } from "@/hooks/system-health/useSystemHealthData";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
@@ -31,7 +33,8 @@ export default function SystemHealthCenterPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canAccess = hasPermission("settings.manage");
-  const health = useSystemHealthData(activeOutletId, hasPermission);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
+  const health = useSystemHealthData(activeOutletId, hasPermission, dateRange);
   const inventoryPostingQ = useQuery({
     queryKey: ["system-health", "inventory-posting", activeOutletId],
     queryFn: () => getInventoryPostingHealth(activeOutletId!),
@@ -76,7 +79,8 @@ export default function SystemHealthCenterPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.system-health-center.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.system-health-center.description")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <ReportDateRangeFilter range={dateRange} compact />
           <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
             {t("ops:shared.refresh")}

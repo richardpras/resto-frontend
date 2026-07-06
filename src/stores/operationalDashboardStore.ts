@@ -31,10 +31,19 @@ type OperationalDashboardStore = {
   lastRealtimeSeq: number;
   realtimeUnsubscribe: (() => void) | null;
   realtimeConnectionUnsubscribe: (() => void) | null;
-  fetchMetrics: (mode?: "initial" | "outlet-switch" | "background" | "realtime", outletId?: number | null) => Promise<void>;
+  metricsDateRange: { dateFrom: string; dateTo: string } | null;
+  fetchMetrics: (
+    mode?: "initial" | "outlet-switch" | "background" | "realtime",
+    outletId?: number | null,
+    dateRange?: { dateFrom: string; dateTo: string },
+  ) => Promise<void>;
   startRealtime: () => void;
   stopRealtime: () => void;
-  startMonitoring: (intervalMs?: number, outletId?: number | null) => Promise<void>;
+  startMonitoring: (
+    intervalMs?: number,
+    outletId?: number | null,
+    dateRange?: { dateFrom: string; dateTo: string },
+  ) => Promise<void>;
   stopMonitoring: () => void;
   reset: () => void;
 };
@@ -63,8 +72,9 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
   lastRealtimeSeq: 0,
   realtimeUnsubscribe: null,
   realtimeConnectionUnsubscribe: null,
+  metricsDateRange: null,
 
-  fetchMetrics: async (mode = "background", outletId) => {
+  fetchMetrics: async (mode = "background", outletId, dateRange) => {
     if (!selectUserCapabilities().monitoring) return;
     if (get().isFetchInFlight && mode !== "realtime") return;
     const requestId = get().activeRequestId + 1;
@@ -83,7 +93,8 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
       isLoading: isInitial || isOutletSwitch,
     }));
     try {
-      const metrics = await getOperationalMetrics(targetOutletId);
+      const effectiveRange = dateRange ?? get().metricsDateRange ?? undefined;
+      const metrics = await getOperationalMetrics(targetOutletId, effectiveRange);
       set((state) => {
         if (state.activeRequestId !== requestId) return state;
         return {
@@ -165,12 +176,12 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
     });
   },
 
-  startMonitoring: async (intervalMs = 5000, outletId = null) => {
+  startMonitoring: async (intervalMs = 5000, outletId = null, dateRange) => {
     if (!selectUserCapabilities().monitoring) return;
     get().stopMonitoring();
-    set({ activeOutletId: outletId });
+    set({ activeOutletId: outletId, metricsDateRange: dateRange ?? null });
     get().startRealtime();
-    await get().fetchMetrics(get().lastSuccessfulSyncAt ? "outlet-switch" : "initial", outletId);
+    await get().fetchMetrics(get().lastSuccessfulSyncAt ? "outlet-switch" : "initial", outletId, dateRange);
     const timer = setInterval(() => {
       void get().fetchMetrics("background", get().activeOutletId);
     }, intervalMs);
@@ -205,6 +216,7 @@ export const useOperationalDashboardStore = create<OperationalDashboardStore>((s
       lastRealtimeSeq: 0,
       realtimeUnsubscribe: null,
       realtimeConnectionUnsubscribe: null,
+      metricsDateRange: null,
     });
   },
 }));

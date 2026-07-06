@@ -16,9 +16,9 @@ import {
 } from "recharts";
 import { BarChart3, Gift, TrendingUp, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { DataTable, type Column } from "@/components/DataTable";
 import {
   fetchLoyaltyAnalyticsDashboard,
@@ -28,40 +28,10 @@ import {
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { toast } from "sonner";
 
-type DatePreset = "today" | "7d" | "30d" | "90d" | "custom";
-
 const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
 function formatRp(value: number): string {
   return `Rp ${Math.round(value).toLocaleString("id-ID")}`;
-}
-
-function presetRange(preset: DatePreset): { fromDate: string; toDate: string } {
-  const to = new Date();
-  const from = new Date();
-  to.setHours(0, 0, 0, 0);
-  from.setHours(0, 0, 0, 0);
-
-  switch (preset) {
-    case "today":
-      break;
-    case "7d":
-      from.setDate(from.getDate() - 6);
-      break;
-    case "30d":
-      from.setDate(from.getDate() - 29);
-      break;
-    case "90d":
-      from.setDate(from.getDate() - 89);
-      break;
-    default:
-      from.setDate(from.getDate() - 29);
-  }
-
-  return {
-    fromDate: from.toISOString().slice(0, 10),
-    toDate: to.toISOString().slice(0, 10),
-  };
 }
 
 type Props = {
@@ -69,9 +39,7 @@ type Props = {
 };
 
 export function LoyaltyAnalyticsDashboard({ outletId }: Props) {
-  const [preset, setPreset] = useState<DatePreset>("30d");
-  const [fromDate, setFromDate] = useState(() => presetRange("30d").fromDate);
-  const [toDate, setToDate] = useState(() => presetRange("30d").toDate);
+  const dateRange = useReportDateRange({ defaultPreset: "30d" });
   const [loading, setLoading] = useState(false);
   const [dashboard, setDashboard] = useState<LoyaltyAnalyticsDashboard | null>(null);
   const [growthView, setGrowthView] = useState<"daily" | "weekly" | "monthly">("daily");
@@ -81,8 +49,8 @@ export function LoyaltyAnalyticsDashboard({ outletId }: Props) {
     try {
       const data = await fetchLoyaltyAnalyticsDashboard({
         outletId,
-        fromDate,
-        toDate,
+        fromDate: dateRange.startDate,
+        toDate: dateRange.endDate,
       });
       setDashboard(data);
     } catch (e) {
@@ -91,20 +59,11 @@ export function LoyaltyAnalyticsDashboard({ outletId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [outletId, fromDate, toDate]);
+  }, [outletId, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
-
-  const applyPreset = (next: DatePreset) => {
-    setPreset(next);
-    if (next !== "custom") {
-      const range = presetRange(next);
-      setFromDate(range.fromDate);
-      setToDate(range.toDate);
-    }
-  };
 
   const executive = dashboard?.executiveSummary;
   const growthData = useMemo(() => {
@@ -137,33 +96,7 @@ export function LoyaltyAnalyticsDashboard({ outletId }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
-        <div className="space-y-1">
-          <Label>Date range</Label>
-          <Select value={preset} onValueChange={(v) => applyPreset(v as DatePreset)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="custom">Custom range</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {preset === "custom" && (
-          <>
-            <div className="space-y-1">
-              <Label>From</Label>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>To</Label>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-          </>
-        )}
+        <ReportDateRangeFilter range={dateRange} extraPresets={["90d"]} />
         <Button variant="outline" onClick={() => void loadDashboard()} disabled={loading}>
           Refresh
         </Button>

@@ -31,16 +31,34 @@ function mergeOfflineResilience(raw: unknown): OfflineResilienceMetrics {
   return { ...EMPTY_OFFLINE_RESILIENCE, ...(raw as OfflineResilienceMetrics) };
 }
 
-export async function getOperationalMetrics(outletId?: number | null): Promise<OperationalMetricsViewModel> {
-  const query = typeof outletId === "number" && outletId >= 1 ? `?outletId=${outletId}` : "";
+export async function getOperationalMetrics(
+  outletId?: number | null,
+  dateRange?: { dateFrom?: string; dateTo?: string },
+): Promise<OperationalMetricsViewModel> {
+  const params = new URLSearchParams();
+  if (typeof outletId === "number" && outletId >= 1) {
+    params.set("outletId", String(outletId));
+  }
+  if (dateRange?.dateFrom) params.set("dateFrom", dateRange.dateFrom);
+  if (dateRange?.dateTo) params.set("dateTo", dateRange.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : "";
   const res = await request<MonitoringApiBody>(`/monitoring/metrics${query}`);
   return mapMonitoringMetrics(res.data ?? {});
 }
 
 export { emptyOperationalMetricsViewModel, mapMonitoringMetrics };
 
-export async function getDashboardSummary(outletId?: number | null): Promise<DashboardSummary> {
-  const query = typeof outletId === "number" && outletId >= 1 ? `?outletId=${outletId}` : "";
+export async function getDashboardSummary(
+  outletId?: number | null,
+  dateRange?: { startDate?: string; endDate?: string },
+): Promise<DashboardSummary> {
+  const params = new URLSearchParams();
+  if (typeof outletId === "number" && outletId >= 1) {
+    params.set("outletId", String(outletId));
+  }
+  if (dateRange?.startDate) params.set("startDate", dateRange.startDate);
+  if (dateRange?.endDate) params.set("endDate", dateRange.endDate);
+  const query = params.toString() ? `?${params.toString()}` : "";
   const res = await request<MonitoringApiBody>(`/dashboard/summary${query}`);
   const data = (res.data ?? {}) as Record<string, unknown>;
   const kpis = (data.kpis ?? {}) as Record<string, unknown>;

@@ -19,6 +19,9 @@ import AccountingHealth from "./accounting/AccountingHealth";
 import AccountingPostingMappings from "./accounting/AccountingPostingMappings";
 import CashFlow from "./accounting/CashFlow";
 import AccountingReconciliation from "./accounting/AccountingReconciliation";
+import { AccountingReportDateRangeProvider } from "@/contexts/AccountingReportDateRangeContext";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useOptionalAccountingReportDateRange } from "@/contexts/AccountingReportDateRangeContext";
 
 type AccountingTabKey =
   | "coa"
@@ -58,6 +61,8 @@ const ACCOUNTING_TAB_KEYS: AccountingTabKey[] = [
   "recon",
 ];
 
+const RANGE_FILTER_TABS: AccountingTabKey[] = ["ledger", "tb", "pl", "cf"];
+
 export default function Accounting() {
   const { t } = useErpTranslation();
   const [searchParams] = useSearchParams();
@@ -93,10 +98,41 @@ export default function Accounting() {
   }, [refreshFromApi, t]);
 
   return (
+    <AccountingReportDateRangeProvider>
+      <AccountingPageContent
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        visibleTabs={visibleTabs}
+        showFinancialStatements={showFinancialStatements}
+      />
+    </AccountingReportDateRangeProvider>
+  );
+}
+
+function AccountingPageContent({
+  activeTab,
+  setActiveTab,
+  visibleTabs,
+  showFinancialStatements,
+}: {
+  activeTab: AccountingTabKey;
+  setActiveTab: (tab: AccountingTabKey) => void;
+  visibleTabs: AccountingTabKey[];
+  showFinancialStatements: boolean;
+}) {
+  const { t } = useErpTranslation();
+  const dateRange = useOptionalAccountingReportDateRange();
+
+  return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t("accounting.title")}</h1>
-        <p className="text-muted-foreground text-sm">{t("accounting.subtitle")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">{t("accounting.title")}</h1>
+          <p className="text-muted-foreground text-sm">{t("accounting.subtitle")}</p>
+        </div>
+        {dateRange && RANGE_FILTER_TABS.includes(activeTab) ? (
+          <ReportDateRangeFilter range={dateRange} compact />
+        ) : null}
       </div>
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AccountingTabKey)}>
         <ScrollableTabsList>

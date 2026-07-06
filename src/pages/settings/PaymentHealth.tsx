@@ -20,6 +20,8 @@ import {
 } from "@/lib/api-integration/paymentEndpoints";
 import { useOutletStore } from "@/stores/outletStore";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -46,6 +48,7 @@ export default function PaymentHealth() {
   const [reliability, setReliability] = useState<PaymentReliabilityRow[]>([]);
   const [incidents, setIncidents] = useState<PaymentIncidentRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
 
   const severityLabel = (severity?: PaymentHealthSeverity): string => {
     if (!severity) return t("accounting.health.severityLabels.unknown");
@@ -67,14 +70,9 @@ export default function PaymentHealth() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - 30);
-      const startDate = start.toISOString().slice(0, 10);
-      const endDate = end.toISOString().slice(0, 10);
       const [h, trendData, r, i] = await Promise.all([
         getPaymentHealth(scope),
-        getPaymentHealthTrends({ ...scope, startDate, endDate }),
+        getPaymentHealthTrends({ ...scope, startDate: dateRange.startDate, endDate: dateRange.endDate }),
         getPaymentReliabilityReport(scope),
         listPaymentIncidents(scope),
       ]);
@@ -87,7 +85,7 @@ export default function PaymentHealth() {
     } finally {
       setLoading(false);
     }
-  }, [scope, t]);
+  }, [scope, dateRange.startDate, dateRange.endDate, t]);
 
   useEffect(() => {
     void load();
@@ -115,7 +113,8 @@ export default function PaymentHealth() {
             <Badge variant={severityBadgeVariant(health.healthSeverity)}>{severityLabel(health.healthSeverity)}</Badge>
           ) : null}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <ReportDateRangeFilter range={dateRange} compact />
           <Button variant="outline" size="sm" asChild>
             <Link to="/settings?tab=integration">{t("settings.paymentHealth.integrationSettings")}</Link>
           </Button>

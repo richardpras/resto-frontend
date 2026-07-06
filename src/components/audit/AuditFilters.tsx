@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import type { ListAuditCenterParams } from "@/lib/api-integration/auditCenterEndpoints";
 
 const MODULE_OPTIONS = [
@@ -33,8 +36,24 @@ type AuditFiltersProps = {
 };
 
 export function AuditFilters({ filters, onChange, onApply, onReset }: AuditFiltersProps) {
+  const dateRange = useReportDateRange({
+    defaultPreset: "30d",
+  });
+
+  useEffect(() => {
+    onChange({
+      ...filters,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+    });
+    // Only sync when the committed range changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.startDate, dateRange.endDate, dateRange.preset]);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4 border rounded-xl bg-muted/30">
+    <div className="space-y-3 p-4 border rounded-xl bg-muted/30">
+      <ReportDateRangeFilter range={dateRange} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
       <div className="space-y-1">
         <Label htmlFor="audit-module">Module</Label>
         <Select
@@ -76,31 +95,12 @@ export function AuditFilters({ filters, onChange, onApply, onReset }: AuditFilte
         />
       </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="audit-start">Start date</Label>
-        <Input
-          id="audit-start"
-          type="date"
-          value={filters.startDate?.slice(0, 10) ?? ""}
-          onChange={(e) => onChange({ ...filters, startDate: e.target.value || undefined })}
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="audit-end">End date</Label>
-        <Input
-          id="audit-end"
-          type="date"
-          value={filters.endDate?.slice(0, 10) ?? ""}
-          onChange={(e) => onChange({ ...filters, endDate: e.target.value || undefined })}
-        />
-      </div>
-
-      <div className="flex items-end gap-2 md:col-span-3">
+      <div className="flex items-end gap-2 md:col-span-1">
         <Button onClick={onApply}>Apply filters</Button>
         <Button variant="outline" onClick={onReset}>
           Reset
         </Button>
+      </div>
       </div>
     </div>
   );

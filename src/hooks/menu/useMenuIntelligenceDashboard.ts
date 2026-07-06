@@ -1,10 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { dateRangeLastDays } from "@/lib/menu-dashboard/aggregations";
 import { getMenuIntelligenceBundle } from "@/lib/api-integration/menuDashboardEndpoints";
 import { menuQueryKeys } from "@/hooks/menu/menuQueryKeys";
-
-const RANGE = dateRangeLastDays(30);
+import { createReportDateRange } from "@/lib/reporting/dateRangePresets";
 
 const emptyDashboardData = {
   summary: undefined,
@@ -27,14 +25,18 @@ const emptyDashboardData = {
   stockRisk: null,
 };
 
-export function useMenuIntelligenceDashboard(outletId: number | null) {
+export function useMenuIntelligenceDashboard(
+  outletId: number | null,
+  startDate: string = createReportDateRange("30d").startDate,
+  endDate: string = createReportDateRange("30d").endDate,
+) {
   const queryClient = useQueryClient();
   const enabled = typeof outletId === "number" && outletId >= 1;
   const oid = outletId ?? 0;
 
   const bundle = useQuery({
-    queryKey: menuQueryKeys.intelligenceBundle(oid, RANGE.fromDate, RANGE.toDate),
-    queryFn: () => getMenuIntelligenceBundle(oid, RANGE.fromDate, RANGE.toDate),
+    queryKey: menuQueryKeys.intelligenceBundle(oid, startDate, endDate),
+    queryFn: () => getMenuIntelligenceBundle(oid, startDate, endDate),
     enabled,
     staleTime: 60_000,
   });
@@ -48,11 +50,11 @@ export function useMenuIntelligenceDashboard(outletId: number | null) {
     queryClient.setQueryData(menuQueryKeys.snapshots(oid), bundle.data.snapshots);
     if (bundle.data.matrix) {
       queryClient.setQueryData(
-        menuQueryKeys.engineeringMatrix(oid, RANGE.fromDate, RANGE.toDate),
+        menuQueryKeys.engineeringMatrix(oid, startDate, endDate),
         bundle.data.matrix,
       );
     }
-  }, [bundle.data, enabled, oid, queryClient]);
+  }, [bundle.data, enabled, oid, queryClient, startDate, endDate]);
 
   const data = bundle.data ?? emptyDashboardData;
 
