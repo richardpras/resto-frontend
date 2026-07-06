@@ -5,6 +5,7 @@ import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS, isSessionRestoreReady } from "@/stores/authStore";
 import { hasStaffAppAccess, resolvePostLoginPath } from "@/domain/permissionGates";
+import { isNativePosShell } from "@/mobile/platform";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +63,7 @@ export default function Login() {
           useAuthStore.getState().logout();
           return;
         }
-        navigate(resolvePostLoginPath(nextUser, from), { replace: true });
+        navigate(resolvePostLoginPath(nextUser, isNativePosShell() ? "/pos" : from), { replace: true });
       }
     } finally {
       setIsLoading(false);

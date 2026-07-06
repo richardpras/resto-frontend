@@ -9,7 +9,7 @@ import { RoutePageSkeleton } from "@/components/skeletons/route/RoutePageSkeleto
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
-import { LocaleSync } from "@/hooks/useLocaleSync";
+import { NativePosShell } from "@/mobile/NativePosShell";
 import { PwaRouteController } from "@/pwa/useStaffPwa";
 import { PublicGuestStandaloneGuard } from "@/components/pwa/PublicGuestStandaloneGuard";
 import { PERMISSIONS } from "@/stores/authStore";
@@ -152,6 +152,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <LocaleSync />
+        <NativePosShell />
         <PwaRouteController />
         <Routes>
           <Route

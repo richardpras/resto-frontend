@@ -1482,5 +1482,32 @@
       "down": "down",
       "flat": "flat"
     }
+  },
+  "mobile": {
+    "online": "Online",
+    "offline": "Offline",
+    "queue": "Queue",
+    "conflicts": "Conflicts",
+    "staleOps": "Stale",
+    "syncNow": "Sync now",
+    "offlineBootstrapReady": "Offline data ready for this outlet.",
+    "connectToBootstrap": "Connect to the internet once to prepare offline shift.",
+    "offlineBlockerTitle": "Offline shift not ready",
+    "offlineBlockerBody": "Connect to the internet once to download menu, tables, and payment settings for this outlet.",
+    "prepareOffline": "Prepare offline data",
+    "gatewayBlockedOffline": "This payment method requires an internet connection.",
+    "pendingOrderSync": "Order not synced yet. Reconnect to apply queued order.",
+    "bluetoothSetupRequired": "Pair a Bluetooth thermal printer for receipts.",
+    "bluetoothSetup": "Set up printer",
+    "bluetoothChange": "Change printer",
+    "bluetoothSetupTitle": "Bluetooth thermal printer",
+    "bluetoothSetupBody": "Choose a paired ESC/POS printer. Pair the device in Android Settings first.",
+    "bluetoothLoading": "Loading paired devices…",
+    "bluetoothRefresh": "Refresh",
+    "bluetoothSave": "Save",
+    "bluetoothReady": "BT printer: {{address}}",
+    "bluetoothPermissionDenied": "Bluetooth permission is required to print.",
+    "bluetoothNoPaired": "No paired printers found. Pair your printer in Android Bluetooth settings.",
+    "bluetoothLoadFailed": "Could not load Bluetooth devices."
   }
 }

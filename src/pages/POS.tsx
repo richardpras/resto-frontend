@@ -44,6 +44,11 @@ import { POS_AUTO_ORDER_CODE } from "@/features/pos/posOrderCode";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
+import { BluetoothPrinterSetup } from "@/mobile/print/BluetoothPrinterSetup";
+import { useOfflinePos } from "@/hooks/useOfflinePos";
+import { useNativePrint } from "@/hooks/useNativePrint";
+import { OfflineShiftBlocker } from "@/mobile/OfflineShiftBlocker";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos/PosCartPanel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
@@ -283,14 +288,53 @@ export default function POS() {
     tableName?: string | null;
     linkedOrderId?: string | null;
   } | null>(null);
-  const { data: checkoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
-    enabled: showPayment || showSplit,
+
+  const { menuApiItems, outletTaxRules, menuLoading, menuError, refetchMenu } = usePosBootstrap({
+    tenantId: POS_TENANT_ID,
+    outletId: activeOutletId,
   });
+
+  const offlinePos = useOfflinePos({
+    outletId: activeOutletId,
+    tenantId: POS_TENANT_ID,
+    createOrderRemote,
+    addOrderPaymentsRemote,
+    fetchOrderRemote,
+  });
+
+  const { printCustomerReceipt, printKitchenChit, isNativePrint } = useNativePrint(
+    offlinePos.bootstrap,
+    activeOutletId,
+  );
+
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+
+  useEffect(() => {
+    if (!offlinePos.isNativeShell || !isOnline || !activeOutletId) return;
+    if (!offlinePos.bootstrapReady && !offlinePos.bootstrapLoading) {
+      void offlinePos.performBootstrap();
+    }
+  }, [
+    activeOutletId,
+    isOnline,
+    offlinePos.bootstrapLoading,
+    offlinePos.bootstrapReady,
+    offlinePos.isNativeShell,
+    offlinePos.performBootstrap,
+  ]);
+
+  const { data: onlineCheckoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
+    enabled: (showPayment || showSplit) && !offlinePos.isOfflineMode,
+  });
+  const checkoutMethods = offlinePos.isOfflineMode
+    ? (offlinePos.offlineCheckoutMethods as typeof onlineCheckoutMethods)
+    : onlineCheckoutMethods;
   const checkoutTiles = useMemo(
     () => checkoutMethods.map((method) => ({ method, icon: iconForCheckoutMethod(method) })),
     [checkoutMethods],
   );
   const selectedCheckoutMethod = findCheckoutMethod(checkoutMethods, selectedCheckoutCode);
+
   const paymentIsSubmitting = usePaymentStore((s) => s.isSubmitting);
   const paymentError = usePaymentStore((s) => s.error);
   const paymentTransaction = usePaymentStore((s) => s.currentTransaction);
@@ -434,13 +478,18 @@ export default function POS() {
     };
   }, [paymentResetAsync]);
 
-  const { menuApiItems, outletTaxRules, menuLoading, menuError, refetchMenu } = usePosBootstrap({
-    tenantId: POS_TENANT_ID,
-    outletId: activeOutletId,
-  });
+  const effectiveMenuApiItems =
+    offlinePos.isOfflineMode && offlinePos.bootstrap
+      ? (offlinePos.bootstrap.menuItems.data as typeof menuApiItems)
+      : menuApiItems;
+
+  const effectiveOutletTaxRules =
+    offlinePos.isOfflineMode && offlinePos.bootstrap
+      ? (offlinePos.bootstrap.outletTaxRules as typeof outletTaxRules)
+      : outletTaxRules;
 
   const menuItems: MenuItem[] = useMemo(() => {
-    return menuApiItems
+    return effectiveMenuApiItems
       .filter((m) => m.available !== false)
       .map((m) => ({
         id: String(m.id),
@@ -454,7 +503,7 @@ export default function POS() {
         imageUrl: m.imageUrl ?? null,
         imageVersion: m.imageVersion,
       }));
-  }, [menuApiItems]);
+  }, [effectiveMenuApiItems]);
 
   const categories = useMemo(() => {
     const unique = new Map<string, number>();
@@ -496,22 +545,22 @@ export default function POS() {
     ? appliedPromotionDiscount
     : (currentOrderId ? appliedPromotionDiscount : evaluatedPromotionDiscount);
   const checkoutDiscount = voucherDiscount > 0 ? voucherDiscount : promotionDiscount;
-  const hasOutletTaxRules = outletTaxRules.length > 0;
+  const hasOutletTaxRules = effectiveOutletTaxRules.length > 0;
   const serviceModeForTax = orderType === "Takeaway" || orderType === "Online" ? "takeaway" : "dine_in";
   const clientTaxResult = useMemo(
     () => computeOrderTax({
-      rules: outletTaxRules,
+      rules: effectiveOutletTaxRules,
       orderType,
       serviceMode: serviceModeForTax,
       subtotal,
       discount: checkoutDiscount,
       applyTax: hasOutletTaxRules && applyTax,
     }),
-    [outletTaxRules, orderType, serviceModeForTax, subtotal, checkoutDiscount, hasOutletTaxRules, applyTax],
+    [effectiveOutletTaxRules, orderType, serviceModeForTax, subtotal, checkoutDiscount, hasOutletTaxRules, applyTax],
   );
   const tax = clientTaxResult.tax;
   const clientBaseTotal = clientTaxResult.total;
-  const taxLabel = formatTaxRulesLabel(outletTaxRules);
+  const taxLabel = formatTaxRulesLabel(effectiveOutletTaxRules);
 
   useEffect(() => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1 || cart.length === 0) {
@@ -958,11 +1007,14 @@ export default function POS() {
         ...qrOrderPayloadFields,
         ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
       };
-      const { order: storedOrder } = await createOrderRemote(payload);
+      const { order: storedOrder } = await offlinePos.createOrderWithOffline(payload);
       setCurrentOrderId(storedOrder.id);
       resetCart();
       clearQrOrderContext();
       setShowConfirmSent(true);
+      if (isNativePrint) {
+        void printKitchenChit(storedOrder);
+      }
       toast.success(t("pos.orderSentKitchen", { code: storedOrder.code }), { icon: "🍳" });
     } catch (e) {
       toastApiError(e);
@@ -1161,7 +1213,7 @@ export default function POS() {
             : idempotencyKey,
           ...buildCartPayload(cart, subtotal, tax, total, 0, customerName, customerPhone, selectedTable, memberIdForPayload, hasOutletTaxRules && applyTax),
         };
-        const createResult = await createOrderRemote(payload);
+        const createResult = await offlinePos.createOrderWithOffline(payload);
         storedOrder = createResult.order;
         setCurrentOrderId(storedOrder.id);
         if (createResult.resumed && qrOrderContext) {
@@ -1543,7 +1595,7 @@ export default function POS() {
       return { orderId: currentOrderId, order: fresh };
     }
     const code = POS_AUTO_ORDER_CODE;
-    const { order: created } = await createOrderRemote({
+    const { order: created } = await offlinePos.createOrderWithOffline({
       tenantId: POS_TENANT_ID,
       ...outletOrderFields,
       ...posSessionOrderFields,
@@ -1597,7 +1649,7 @@ export default function POS() {
       const { orderId, order: serverOrder } = await ensureSplitOrderOnServer();
       let persons = splitPersons;
       if (!persons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
-        persons = await syncSplitPersonsToServer(orderId, serverOrder, persons, splitMethod);
+        persons = await offlinePos.syncSplitsWithOffline(orderId, serverOrder, persons, splitMethod);
         setSplitPersons(persons);
       }
       const syncedPerson = persons[idx];
@@ -1608,6 +1660,11 @@ export default function POS() {
       const fresh = await fetchOrderRemote(orderId);
       const paidAt = new Date().toISOString();
       const payment = buildSplitPaymentForPerson(syncedPerson, method, remaining, fresh, splitMethod, paidAt);
+
+      if (offlinePos.isGatewayBlockedOffline(payment.method, checkoutMethods)) {
+        toast.error(t("mobile.gatewayBlockedOffline", { defaultValue: "This payment method requires an internet connection." }));
+        return;
+      }
 
       if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
         const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
@@ -1631,7 +1688,7 @@ export default function POS() {
       }
 
       const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
-      await addOrderPaymentsRemote(orderId, [payment], paymentExtras);
+      await offlinePos.addPaymentsWithOffline(orderId, [payment], paymentExtras);
       await settleGiftCardAfterDirectPayment(orderId, giftCardSettlementIds);
 
       const nextPersons = persons.map((p, i) =>
@@ -1661,7 +1718,13 @@ export default function POS() {
         orderId = created.orderId;
       }
       if (!orderId) return;
-      await postPrintCustomerBill(Number(orderId), activeOutletId);
+      const order = orders.find((o) => o.id === orderId) ?? (await fetchOrderRemote(orderId));
+      if (isNativePrint) {
+        const result = await printCustomerReceipt(order);
+        if (!result.ok) throw new Error(result.error);
+      } else {
+        await postPrintCustomerBill(Number(orderId), activeOutletId);
+      }
       toast.success(t("pos.toasts.billPrinted"));
     } catch (e) {
       toastApiError(e);
@@ -1898,7 +1961,17 @@ export default function POS() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      <ConnectivitySyncRibbon outletId={activeOutletId} terminalRegistrationReady={!menuLoading} />
+      <ConnectivitySyncRibbon
+        outletId={activeOutletId}
+        terminalRegistrationReady={!menuLoading}
+        onManualSync={offlinePos.isNativeShell ? () => void offlinePos.manualSync() : undefined}
+        showNativeControls={offlinePos.isNativeShell}
+      />
+      <BluetoothPrinterSetup outletId={activeOutletId} />
+      {offlinePos.showOfflineBlocker ? (
+        <OfflineShiftBlocker onBootstrap={() => void offlinePos.performBootstrap()} loading={offlinePos.bootstrapLoading} />
+      ) : (
+      <>
       <div className="px-4 py-1 border-b border-border/40 bg-card/30">
         <PosSessionPanel outletId={activeOutletId} />
       </div>
@@ -2043,6 +2116,7 @@ export default function POS() {
           </div>
         </SheetContent>
       </Sheet>
+      </div>
 
       <Dialog
         open={showConfirmOrderDialog}
@@ -2661,7 +2735,8 @@ export default function POS() {
           onClose={() => setShowKitchenReprint(false)}
         />
       ) : null}
-      </div>
+      </>
+      )}
     </div>
   );
 }

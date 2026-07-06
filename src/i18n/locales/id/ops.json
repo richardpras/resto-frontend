@@ -1491,5 +1491,32 @@
       "down": "turun",
       "flat": "stabil"
     }
+  },
+  "mobile": {
+    "online": "Online",
+    "offline": "Offline",
+    "queue": "Antrian",
+    "conflicts": "Konflik",
+    "staleOps": "Kedaluwarsa",
+    "syncNow": "Sync sekarang",
+    "offlineBootstrapReady": "Data offline siap untuk outlet ini.",
+    "connectToBootstrap": "Hubungkan internet sekali untuk menyiapkan shift offline.",
+    "offlineBlockerTitle": "Shift offline belum siap",
+    "offlineBlockerBody": "Hubungkan internet sekali untuk mengunduh menu, meja, dan pengaturan pembayaran outlet.",
+    "prepareOffline": "Siapkan data offline",
+    "gatewayBlockedOffline": "Metode pembayaran ini membutuhkan koneksi internet.",
+    "pendingOrderSync": "Pesanan belum tersinkron. Sambungkan internet untuk menerapkan antrian.",
+    "bluetoothSetupRequired": "Pasangkan printer thermal Bluetooth untuk struk.",
+    "bluetoothSetup": "Atur printer",
+    "bluetoothChange": "Ganti printer",
+    "bluetoothSetupTitle": "Printer thermal Bluetooth",
+    "bluetoothSetupBody": "Pilih printer ESC/POS yang sudah dipasangkan. Pair dulu di Pengaturan Bluetooth Android.",
+    "bluetoothLoading": "Memuat perangkat yang dipasangkan…",
+    "bluetoothRefresh": "Muat ulang",
+    "bluetoothSave": "Simpan",
+    "bluetoothReady": "Printer BT: {{address}}",
+    "bluetoothPermissionDenied": "Izin Bluetooth diperlukan untuk mencetak.",
+    "bluetoothNoPaired": "Tidak ada printer yang dipasangkan. Pair printer di pengaturan Bluetooth Android.",
+    "bluetoothLoadFailed": "Gagal memuat perangkat Bluetooth."
   }
 }
