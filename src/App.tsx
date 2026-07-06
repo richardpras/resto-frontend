@@ -44,6 +44,7 @@ const QROrder = lazy(() => import("./pages/QROrder"));
 const QrOrderDetail = lazy(() => import("./pages/QrOrderDetail"));
 const QROrdersList = lazy(() => import("./pages/QROrdersList"));
 const Tables = lazy(() => import("./pages/Tables"));
+const PublicReservation = lazy(() => import("./pages/public/PublicReservation"));
 const Reservations = lazy(() => import("./pages/Reservations"));
 const ReservationDashboard = lazy(() => import("./pages/ReservationDashboard"));
 const Purchases = lazy(() => import("./pages/Purchases"));
@@ -231,6 +232,26 @@ const App = () => (
               <Suspense fallback={routeFallback}>
                 <PublicGuestStandaloneGuard>
                   <PaymentStatus />
+                </PublicGuestStandaloneGuard>
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reserve/:outletSlug"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PublicGuestStandaloneGuard>
+                  <PublicReservation />
+                </PublicGuestStandaloneGuard>
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reserve/:outletSlug/:reservationCode"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PublicGuestStandaloneGuard>
+                  <PublicReservation />
                 </PublicGuestStandaloneGuard>
               </Suspense>
             }

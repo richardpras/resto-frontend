@@ -15,6 +15,7 @@ import { useSettingsStore, Outlet } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { getApiAccessToken } from "@/lib/api-integration/client";
 import { deleteOutletLogo, postOutletLogo } from "@/lib/api-integration/settingsDomainEndpoints";
+import OutletReservationSettingsDialog from "./OutletReservationSettingsDialog";
 import { toast } from "sonner";
 
 const empty: Outlet = {
@@ -49,6 +50,7 @@ export default function OutletsSettings() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoRemoving, setLogoRemoving] = useState(false);
+  const [reservationSettingsOutlet, setReservationSettingsOutlet] = useState<Outlet | null>(null);
 
   const isEditingExisting = form.id > 0 && outlets.some((outlet) => outlet.id === form.id);
   const logoBusy = logoUploading || logoRemoving;
@@ -190,6 +192,14 @@ export default function OutletsSettings() {
                   <div className="flex gap-1">
                     {canManageOutletSettings(outlet.id) && (
                       <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReservationSettingsOutlet(outlet)}
+                        >
+                          {t("settings.outletReservation.shortAction")}
+                        </Button>
                         <Button type="button" size="icon" variant="ghost" onClick={() => openEdit(outlet)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -336,6 +346,16 @@ export default function OutletsSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {reservationSettingsOutlet ? (
+          <OutletReservationSettingsDialog
+            outletId={reservationSettingsOutlet.id}
+            outletName={reservationSettingsOutlet.name}
+            open={reservationSettingsOutlet !== null}
+            onOpenChange={(next) => {
+              if (!next) setReservationSettingsOutlet(null);
+            }}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

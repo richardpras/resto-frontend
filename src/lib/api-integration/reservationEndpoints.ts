@@ -1,4 +1,4 @@
-import { apiRequest as request } from "./client";
+import { apiRequest as request, API_BASE_URL, getApiAccessToken } from "./client";
 
 type Envelope<T> = { data: T };
 type MessageEnvelope<T> = { message: string; data: T };
@@ -23,7 +23,29 @@ export type ReservationApi = {
   noShowAt: string | null;
   linkedOrderId: number | null;
   serviceStartedAt: string | null;
-  status: "draft" | "confirmed" | "checked_in" | "seated" | "completed" | "cancelled" | "no_show";
+  status: "draft" | "pending_deposit" | "deposit_submitted" | "confirmed" | "checked_in" | "seated" | "completed" | "cancelled" | "no_show";
+  source?: "staff" | "public";
+  requiredDepositAmount?: number | null;
+  approvedDepositAmount?: number | null;
+  depositRejectionReason?: string | null;
+  depositProofs?: Array<{
+    id: number;
+    reservationId: number;
+    originalFilename: string;
+    uploadedAt: string | null;
+    status: string;
+  }>;
+  linkedOrder?: {
+    id: number;
+    code: string;
+    subtotal: number;
+    tax: number;
+    total: number;
+    paidTotal: number;
+    balanceDue: number;
+    paymentStatus: string;
+    items: Array<{ id: number; name: string; qty: number; price: number }>;
+  } | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -239,4 +261,48 @@ export async function getReservationTimeline(
     `/reservations/${encodeURIComponent(String(reservationId))}/timeline`,
   );
   return res.data;
+}
+
+export async function listPendingDeposits(outletId: number): Promise<ReservationApi[]> {
+  const res = await request<{ data: ReservationApi[] }>(
+    `/reservations/pending-deposits?outletId=${encodeURIComponent(String(outletId))}`,
+  );
+  return res.data;
+}
+
+export async function approveReservationDeposit(reservationId: number): Promise<ReservationApi> {
+  const res = await request<MessageEnvelope<ReservationApi>>(
+    `/reservations/${encodeURIComponent(String(reservationId))}/approve-deposit`,
+    { method: "POST" },
+  );
+  return res.data;
+}
+
+export async function rejectReservationDeposit(
+  reservationId: number,
+  reason?: string,
+): Promise<ReservationApi> {
+  const res = await request<MessageEnvelope<ReservationApi>>(
+    `/reservations/${encodeURIComponent(String(reservationId))}/reject-deposit`,
+    { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
+  );
+  return res.data;
+}
+
+export function reservationDepositProofFileUrl(reservationId: number, proofId: number): string {
+  return `${API_BASE_URL}/reservations/${reservationId}/deposit-proofs/${proofId}/file`;
+}
+
+export async function openReservationDepositProof(reservationId: number, proofId: number): Promise<void> {
+  const token = getApiAccessToken();
+  const response = await fetch(reservationDepositProofFileUrl(reservationId, proofId), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load proof (${response.status})`);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }

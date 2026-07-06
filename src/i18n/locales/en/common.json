@@ -306,6 +306,22 @@
       "logoUploaded": "Outlet logo uploaded",
       "logoRemoved": "Outlet logo removed"
     },
+    "outletReservation": {
+      "shortAction": "Reservation",
+      "title": "Public reservation — {{name}}",
+      "publicEnabled": "Enable public booking",
+      "publicSlug": "Public URL slug",
+      "publicUrl": "Guest link: {{path}}",
+      "depositMode": "Deposit mode",
+      "modePercent": "Percentage of pre-order total",
+      "modeFlat": "Flat nominal amount",
+      "depositPercent": "Deposit percent (%)",
+      "depositFlatAmount": "Flat deposit amount",
+      "preorderRequired": "Require pre-order menu",
+      "depositInstructions": "Transfer instructions",
+      "saved": "Reservation settings saved",
+      "loadFailed": "Could not load reservation settings"
+    },
     "warehouses": {
       "title": "Warehouses",
       "subtitle": "Receiving locations per outlet for purchase orders and goods receipts.",

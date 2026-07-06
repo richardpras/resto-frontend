@@ -306,6 +306,22 @@
       "logoUploaded": "Logo outlet diunggah",
       "logoRemoved": "Logo outlet dihapus"
     },
+    "outletReservation": {
+      "shortAction": "Reservasi",
+      "title": "Reservasi publik — {{name}}",
+      "publicEnabled": "Aktifkan booking publik",
+      "publicSlug": "Slug URL publik",
+      "publicUrl": "Link tamu: {{path}}",
+      "depositMode": "Mode DP",
+      "modePercent": "Persentase dari total pre-order",
+      "modeFlat": "Nominal tetap",
+      "depositPercent": "Persentase DP (%)",
+      "depositFlatAmount": "Nominal DP tetap",
+      "preorderRequired": "Wajib pre-order menu",
+      "depositInstructions": "Instruksi transfer",
+      "saved": "Pengaturan reservasi disimpan",
+      "loadFailed": "Gagal memuat pengaturan reservasi"
+    },
     "warehouses": {
       "title": "Gudang",
       "subtitle": "Lokasi penerimaan per outlet untuk purchase order dan penerimaan barang.",
