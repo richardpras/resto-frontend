@@ -13,6 +13,9 @@ import { useAuthStore } from "@/stores/authStore";
 import { getUserCapabilities } from "@/domain/accessControl";
 import { RecoveryDashboardWidget } from "@/components/orders/RecoveryDashboardWidget";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
+import { toDateFromDateToParams, toStartEndParams } from "@/lib/reporting/dateRangeApiParams";
 
 function formatRp(value: number): string {
   return `Rp ${Math.round(value).toLocaleString("id-ID")}`;
@@ -42,23 +45,47 @@ export default function Dashboard() {
   const summaryLastSyncAt = useDashboardSummaryStore((s) => s.lastSuccessfulSyncAt);
   const summaryHasLoadedOnce = useDashboardSummaryStore((s) => s.hasLoadedOnce);
   const refreshSummary = useDashboardSummaryStore((s) => s.refresh);
+  const dateRange = useReportDateRange({ defaultPreset: "today", syncUrl: true });
+  const summaryDateParams = toStartEndParams(dateRange);
+  const metricsDateParams = toDateFromDateToParams(dateRange);
 
   useEffect(() => {
     if (!capabilities.monitoring) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
-    void startMonitoring(5000, activeOutletId);
-    void refreshSummary(activeOutletId, summaryHasLoadedOnce ? "outlet-switch" : "initial");
+    void startMonitoring(5000, activeOutletId, metricsDateParams);
+    void refreshSummary(activeOutletId, summaryHasLoadedOnce ? "outlet-switch" : "initial", summaryDateParams);
     return () => stopMonitoring();
-  }, [activeOutletId, refreshSummary, startMonitoring, stopMonitoring, summaryHasLoadedOnce, capabilities.monitoring]);
+  }, [
+    activeOutletId,
+    dateRange.startDate,
+    dateRange.endDate,
+    metricsDateParams.dateFrom,
+    metricsDateParams.dateTo,
+    summaryDateParams.startDate,
+    summaryDateParams.endDate,
+    refreshSummary,
+    startMonitoring,
+    stopMonitoring,
+    summaryHasLoadedOnce,
+    capabilities.monitoring,
+  ]);
 
   useEffect(() => {
     if (!capabilities.monitoring) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
     const timer = setInterval(() => {
-      void refreshSummary(activeOutletId, "background");
+      void refreshSummary(activeOutletId, "background", summaryDateParams);
     }, 15000);
     return () => clearInterval(timer);
-  }, [activeOutletId, refreshSummary, capabilities.monitoring]);
+  }, [
+    activeOutletId,
+    dateRange.startDate,
+    dateRange.endDate,
+    summaryDateParams.startDate,
+    summaryDateParams.endDate,
+    refreshSummary,
+    capabilities.monitoring,
+  ]);
 
   const resilient = metrics.offlineResilience ?? EMPTY_OFFLINE_RESILIENCE;
 
@@ -76,9 +103,12 @@ export default function Dashboard() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl">
       <ConnectivitySyncRibbon outletId={activeOutletId} />
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("dashboard.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{t("dashboard.subtitle")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t("dashboard.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("dashboard.subtitle")}</p>
+        </div>
+        {capabilities.monitoring ? <ReportDateRangeFilter range={dateRange} compact /> : null}
       </div>
 
       <RecoveryDashboardWidget />

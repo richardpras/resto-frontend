@@ -1626,6 +1626,20 @@
       "addItem": "Add Item"
     }
   },
+  "reports": {
+    "dateRange": {
+      "label": "Period",
+      "today": "Today",
+      "7d": "Last 7 days",
+      "14d": "Last 14 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days",
+      "custom": "Custom range",
+      "from": "From",
+      "to": "To",
+      "apply": "Apply"
+    }
+  },
   "reportsHub": {
     "title": "Reports Hub",
     "subtitle": "Executive reporting entry point. Each card opens an existing module — no duplicate report engines.",

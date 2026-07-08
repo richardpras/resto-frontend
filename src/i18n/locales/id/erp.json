@@ -1625,6 +1625,20 @@
       "addItem": "Tambah Item"
     }
   },
+  "reports": {
+    "dateRange": {
+      "label": "Periode",
+      "today": "Hari ini",
+      "7d": "7 hari terakhir",
+      "14d": "14 hari terakhir",
+      "30d": "30 hari terakhir",
+      "90d": "90 hari terakhir",
+      "custom": "Rentang kustom",
+      "from": "Dari",
+      "to": "Sampai",
+      "apply": "Terapkan"
+    }
+  },
   "reportsHub": {
     "title": "Pusat Laporan",
     "subtitle": "Titik masuk laporan eksekutif. Setiap kartu membuka modul yang sudah ada — tanpa mesin laporan duplikat.",

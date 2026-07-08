@@ -64,6 +64,8 @@ export type ListBugReportsParams = {
   status?: BugReportStatus;
   severity?: BugReportSeverity;
   search?: string;
+  createdFrom?: string;
+  createdTo?: string;
   page?: number;
   limit?: number;
 };
@@ -119,6 +121,8 @@ export async function listBugReports(params: ListBugReportsParams = {}): Promise
   if (params.status) qs.set("status", params.status);
   if (params.severity) qs.set("severity", params.severity);
   if (params.search) qs.set("search", params.search);
+  if (params.createdFrom) qs.set("createdFrom", params.createdFrom);
+  if (params.createdTo) qs.set("createdTo", params.createdTo);
   if (params.page) qs.set("page", String(params.page));
   if (params.limit) qs.set("limit", String(params.limit));
   const suffix = qs.toString() ? `?${qs.toString()}` : "";

@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { canViewFinancialStatements } from "@/domain/permissionGates";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import { useAccountingReportDateRange } from "@/contexts/AccountingReportDateRangeContext";
 
 export default function GeneralLedger() {
   const { t } = useErpTranslation();
@@ -21,10 +22,9 @@ export default function GeneralLedger() {
   const outlets = useAccountingStore((s) => s.outletOptions);
   const ledger = useAccountingStore((s) => s.ledgerReport);
   const fetchLedgerReport = useAccountingStore((s) => s.fetchLedgerReport);
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
-  const [from, setFrom] = useState(monthAgo.toISOString().slice(0, 10));
-  const [to, setTo] = useState(today);
+  const dateRange = useAccountingReportDateRange();
+  const from = dateRange.startDate;
+  const to = dateRange.endDate;
   const [outletFilter, setOutletFilter] = useState("all");
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
 
@@ -74,7 +74,7 @@ export default function GeneralLedger() {
 
   return (
     <Card className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <Label>{t("accounting.ledger.account")}</Label>
           <Select value={accountId} onValueChange={setAccountId}>
@@ -84,8 +84,6 @@ export default function GeneralLedger() {
             </SelectContent>
           </Select>
         </div>
-        <div><Label>{t("accounting.ledger.from")}</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-        <div><Label>{t("accounting.ledger.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div>
           <Label>{t("accounting.ledger.outlet")}</Label>
           <Select value={outletFilter} onValueChange={setOutletFilter}>

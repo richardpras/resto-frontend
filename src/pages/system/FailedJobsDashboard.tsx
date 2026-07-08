@@ -16,6 +16,8 @@ import {
   type FailedJobSummary,
 } from "@/lib/api-integration/failedJobsEndpoints";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import type { TFunction } from "i18next";
 
 function severityBadge(severity: string, t: TFunction) {
@@ -35,6 +37,7 @@ export default function FailedJobsDashboard() {
   const [trends, setTrends] = useState<FailedJobSnapshot[]>([]);
   const [groupedModule, setGroupedModule] = useState<Array<{ module: string; count: number; criticalCount: number }>>([]);
   const [loading, setLoading] = useState(true);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,7 +45,7 @@ export default function FailedJobsDashboard() {
       const [summaryRes, listRes, trendsRes] = await Promise.all([
         getFailedJobsSummary(),
         listFailedJobs({ limit: 50 }),
-        getFailedJobsTrends(),
+        getFailedJobsTrends({ startDate: dateRange.startDate, endDate: dateRange.endDate }),
       ]);
       setSummary(summaryRes);
       setRows(listRes.data);
@@ -53,7 +56,7 @@ export default function FailedJobsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [dateRange.startDate, dateRange.endDate, t]);
 
   useEffect(() => {
     void load();
@@ -66,7 +69,8 @@ export default function FailedJobsDashboard() {
           <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.system-reliability.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.system-reliability.description")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <ReportDateRangeFilter range={dateRange} compact />
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             {t("ops:shared.refresh")}

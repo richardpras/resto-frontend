@@ -51,7 +51,11 @@ type DashboardSummaryStore = {
   error: string | null;
   lastSuccessfulSyncAt: string | null;
   inFlightRequestId: number;
-  refresh: (outletId?: number | null, mode?: "initial" | "outlet-switch" | "background" | "realtime") => Promise<void>;
+  refresh: (
+    outletId?: number | null,
+    mode?: "initial" | "outlet-switch" | "background" | "realtime",
+    dateRange?: { startDate: string; endDate: string },
+  ) => Promise<void>;
   markRealtimeRefreshing: (active: boolean) => void;
   reset: () => void;
 };
@@ -69,7 +73,7 @@ export const useDashboardSummaryStore = create<DashboardSummaryStore>((set, get)
   lastSuccessfulSyncAt: null,
   inFlightRequestId: 0,
 
-  refresh: async (outletId, mode = "background") => {
+  refresh: async (outletId, mode = "background", dateRange) => {
     if (!selectUserCapabilities().monitoring) return;
     const requestId = get().inFlightRequestId + 1;
     const targetOutlet = typeof outletId === "number" && outletId >= 1 ? outletId : null;
@@ -86,7 +90,7 @@ export const useDashboardSummaryStore = create<DashboardSummaryStore>((set, get)
       isLoading: isInitial || isOutletSwitch,
     }));
     try {
-      const summary = await getDashboardSummary(targetOutlet);
+      const summary = await getDashboardSummary(targetOutlet, dateRange);
       set((state) => {
         if (state.inFlightRequestId !== requestId) return state;
         return {

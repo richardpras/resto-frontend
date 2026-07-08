@@ -23,6 +23,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { HealthGauge } from "@/components/menu-dashboard/HealthGauge";
 import { TrendCharts } from "@/components/menu-dashboard/TrendCharts";
 import { useMenuIntelligenceDashboard, useInvalidateMenuDashboard } from "@/hooks/menu/useMenuIntelligenceDashboard";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { formatMoney, formatPercent } from "@/lib/format/currency";
@@ -67,7 +69,8 @@ export default function MenuIntelligenceDashboard() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const canResolveAlerts = useAuthStore((s) => s.hasPermission("automation.manage"));
   const invalidate = useInvalidateMenuDashboard();
-  const data = useMenuIntelligenceDashboard(activeOutletId);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
+  const data = useMenuIntelligenceDashboard(activeOutletId, dateRange.startDate, dateRange.endDate);
   const [alertTab, setAlertTab] = useState("open");
 
   const resolveMutation = useMutation({
@@ -129,15 +132,18 @@ export default function MenuIntelligenceDashboard() {
             {t("menuIntelligence.subtitle")}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={noOutlet || data.isRefetching}
-          onClick={() => data.refetchAlerts()}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${data.isRefetching ? "animate-spin" : ""}`} />
-          {t("menuIntelligence.refresh")}
-        </Button>
+        <div className="flex flex-wrap items-end gap-3">
+          <ReportDateRangeFilter range={dateRange} compact />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={noOutlet || data.isRefetching}
+            onClick={() => data.refetchAlerts()}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${data.isRefetching ? "animate-spin" : ""}`} />
+            {t("menuIntelligence.refresh")}
+          </Button>
+        </div>
       </div>
 
       {noOutlet && (

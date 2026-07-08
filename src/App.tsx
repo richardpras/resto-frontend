@@ -9,7 +9,7 @@ import { RoutePageSkeleton } from "@/components/skeletons/route/RoutePageSkeleto
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
-import { LocaleSync } from "@/hooks/useLocaleSync";
+import { NativePosShell } from "@/mobile/NativePosShell";
 import { PwaRouteController } from "@/pwa/useStaffPwa";
 import { PublicGuestStandaloneGuard } from "@/components/pwa/PublicGuestStandaloneGuard";
 import { PERMISSIONS } from "@/stores/authStore";
@@ -44,6 +44,7 @@ const QROrder = lazy(() => import("./pages/QROrder"));
 const QrOrderDetail = lazy(() => import("./pages/QrOrderDetail"));
 const QROrdersList = lazy(() => import("./pages/QROrdersList"));
 const Tables = lazy(() => import("./pages/Tables"));
+const PublicReservation = lazy(() => import("./pages/public/PublicReservation"));
 const Reservations = lazy(() => import("./pages/Reservations"));
 const ReservationDashboard = lazy(() => import("./pages/ReservationDashboard"));
 const Purchases = lazy(() => import("./pages/Purchases"));
@@ -151,6 +152,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <LocaleSync />
+        <NativePosShell />
         <PwaRouteController />
         <Routes>
           <Route
@@ -231,6 +233,26 @@ const App = () => (
               <Suspense fallback={routeFallback}>
                 <PublicGuestStandaloneGuard>
                   <PaymentStatus />
+                </PublicGuestStandaloneGuard>
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reserve/:outletSlug"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PublicGuestStandaloneGuard>
+                  <PublicReservation />
+                </PublicGuestStandaloneGuard>
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reserve/:outletSlug/:reservationCode"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PublicGuestStandaloneGuard>
+                  <PublicReservation />
                 </PublicGuestStandaloneGuard>
               </Suspense>
             }

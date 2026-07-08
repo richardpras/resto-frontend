@@ -7,7 +7,8 @@ export function isPublicGuestPath(pathname: string): boolean {
   return (
     normalized.startsWith("/qr/") ||
     normalized === "/qr-order" ||
-    normalized.startsWith("/payment-status")
+    normalized.startsWith("/payment-status") ||
+    normalized.startsWith("/reserve/")
   );
 }
 

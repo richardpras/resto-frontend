@@ -1,4 +1,5 @@
 import type { EngineeringMatrixItem } from "@/lib/api-integration/menuDashboardEndpoints";
+import { resolvePresetRange } from "@/lib/reporting/dateRangePresets";
 
 export type QuadrantKey = "STAR" | "PUZZLE" | "PLOWHORSE" | "DOG";
 
@@ -60,11 +61,15 @@ export function healthBandColor(band: string): string {
 }
 
 export function dateRangeLastDays(days: number): { fromDate: string; toDate: string } {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - (days - 1));
-  return {
-    fromDate: from.toISOString().slice(0, 10),
-    toDate: to.toISOString().slice(0, 10),
-  };
+  const preset = days === 7 ? "7d" : days === 14 ? "14d" : days === 30 ? "30d" : days === 1 ? "today" : "30d";
+  const range =
+    preset === "30d" && days !== 30
+      ? (() => {
+          const to = new Date();
+          const from = new Date();
+          from.setDate(from.getDate() - (days - 1));
+          return { startDate: from.toISOString().slice(0, 10), endDate: to.toISOString().slice(0, 10) };
+        })()
+      : resolvePresetRange(preset);
+  return { fromDate: range.startDate, toDate: range.endDate };
 }

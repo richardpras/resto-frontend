@@ -11,6 +11,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { canViewFinancialStatements } from "@/domain/permissionGates";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import { useAccountingReportDateRange } from "@/contexts/AccountingReportDateRangeContext";
 
 export default function TrialBalance() {
   const { t } = useErpTranslation();
@@ -20,10 +21,9 @@ export default function TrialBalance() {
   const trialBalanceRows = useAccountingStore((s) => s.trialBalanceRows);
   const trialBalanceSummary = useAccountingStore((s) => s.trialBalanceSummary);
   const fetchTrialBalanceReport = useAccountingStore((s) => s.fetchTrialBalanceReport);
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const [from, setFrom] = useState(monthStart);
-  const [to, setTo] = useState(today);
+  const dateRange = useAccountingReportDateRange();
+  const from = dateRange.startDate;
+  const to = dateRange.endDate;
   const [outletFilter, setOutletFilter] = useState("all");
 
   useEffect(() => {
@@ -52,9 +52,7 @@ export default function TrialBalance() {
 
   return (
     <Card className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div><Label>{t("accounting.reports.from")}</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-        <div><Label>{t("accounting.reports.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <Label>{t("accounting.reports.outlet")}</Label>
           <Select value={outletFilter} onValueChange={setOutletFilter}>

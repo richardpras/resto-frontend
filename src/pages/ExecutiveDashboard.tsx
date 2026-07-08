@@ -12,6 +12,8 @@ import { ExecutiveShiftCloseWidget } from "@/components/executive/ExecutiveShift
 import { useExecutiveDashboardData } from "@/hooks/executive/useExecutiveDashboardData";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { formatMoney, formatPercent } from "@/lib/format/currency";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import type { TFunction } from "i18next";
@@ -84,7 +86,8 @@ export default function ExecutiveDashboard() {
   const { t } = useErpTranslation();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
-  const data = useExecutiveDashboardData(activeOutletId, hasPermission);
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
+  const data = useExecutiveDashboardData(activeOutletId, hasPermission, dateRange);
 
   const criticalCount = data.criticalNotifications.data?.length ?? 0;
   const warningCount = data.warningNotifications.data?.length ?? 0;
@@ -130,10 +133,13 @@ export default function ExecutiveDashboard() {
           <h1 className="text-2xl font-bold tracking-tight">{t("reportsHub.cards.executive-dashboard.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("reportsHub.cards.executive-dashboard.description")}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => data.refetchAll()}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          {t("ops:shared.refresh")}
-        </Button>
+        <div className="flex flex-wrap items-end gap-3">
+          <ReportDateRangeFilter range={dateRange} compact />
+          <Button variant="outline" size="sm" onClick={() => data.refetchAll()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {t("ops:shared.refresh")}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">

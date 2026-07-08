@@ -1,3 +1,5 @@
+import { getOrCreateDeviceKeyAsync, getOrCreateDeviceKeySync } from "@/mobile/offline/deviceKey";
+import { isCapacitorNative } from "@/mobile/platform";
 import { create } from "zustand";
 import { getApiAccessToken } from "@/lib/api-integration/client";
 import { heartbeatTerminal, registerTerminal } from "@/lib/api-integration/terminalEndpoints";
@@ -7,6 +9,7 @@ import {
   queueOfflineOperationDraft,
   removeQueuedOperationsByFingerprints,
 } from "@/lib/offline/offlineOperationQueue";
+import { saveLocalOrderMapping } from "@/mobile/offline/offlineIdMapping";
 
 const DEVICE_KEY_PREFIX = "resto.terminal.device.";
 
@@ -16,16 +19,14 @@ function storageDeviceKey(outletId: number): string {
 
 /** Stable per-outlet device identity for terminal registration (browser localStorage). */
 export function getOrCreateDeviceKey(outletId: number): string {
-  if (typeof localStorage === "undefined") {
-    return `ephemeral-${outletId}`;
+  return getOrCreateDeviceKeySync(outletId);
+}
+
+async function resolveDeviceKey(outletId: number): Promise<string> {
+  if (isCapacitorNative()) {
+    return getOrCreateDeviceKeyAsync(outletId);
   }
-  const key = storageDeviceKey(outletId);
-  let existing = localStorage.getItem(key);
-  if (!existing) {
-    existing = crypto.randomUUID();
-    localStorage.setItem(key, existing);
-  }
-  return existing;
+  return getOrCreateDeviceKeySync(outletId);
 }
 
 type OfflineSyncStore = {
@@ -34,6 +35,7 @@ type OfflineSyncStore = {
   syncPhase: "idle" | "syncing";
   lastSyncError: string | null;
   lastBatchConflictCount: number;
+  lastRejectedStaleCount: number;
   listenersAttached: boolean;
   initConnectivityListeners: () => void;
   refreshQueueCounts: (outletId: number | null) => Promise<void>;
@@ -51,6 +53,7 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
   syncPhase: "idle",
   lastSyncError: null,
   lastBatchConflictCount: 0,
+  lastRejectedStaleCount: 0,
   listenersAttached: false,
 
   initConnectivityListeners: () => {
@@ -73,10 +76,14 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
 
   ensureTerminalPresence: async (outletId) => {
     if (outletId === null || outletId < 1 || !getApiAccessToken() || !get().isOnline) return;
-    const deviceKey = getOrCreateDeviceKey(outletId);
+    const deviceKey = await resolveDeviceKey(outletId);
     try {
-      await registerTerminal({ outletId, deviceKey });
-      await heartbeatTerminal({ outletId, deviceKey, sessionMetadata: { surface: "web-client" } });
+      await registerTerminal({ outletId, deviceKey, displayLabel: isCapacitorNative() ? "Android POS" : undefined });
+      await heartbeatTerminal({
+        outletId,
+        deviceKey,
+        sessionMetadata: { surface: isCapacitorNative() ? "android-pos" : "web-client" },
+      });
     } catch {
       /* registration is best-effort; sync batch will still reject unknown devices if required */
     }
@@ -105,12 +112,12 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
     if (!get().isOnline || outletId < 1 || !getApiAccessToken()) return;
     const rows = await listQueuedOperationsForOutlet(outletId);
     if (rows.length === 0) {
-      set({ pendingQueueCount: 0, lastBatchConflictCount: 0 });
+      set({ pendingQueueCount: 0, lastBatchConflictCount: 0, lastRejectedStaleCount: 0 });
       return;
     }
 
     set({ syncPhase: "syncing", lastSyncError: null });
-    const deviceKey = getOrCreateDeviceKey(outletId);
+    const deviceKey = await resolveDeviceKey(outletId);
     try {
       await get().ensureTerminalPresence(outletId);
       const operations: TerminalSyncBatchOperation[] = rows.map((r) => ({
@@ -123,20 +130,39 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
 
       const toDrop = new Set<string>();
       let conflicts = 0;
+      let rejectedStale = 0;
       for (const r of response.results) {
         if (r.status === "applied" || r.status === "duplicate") {
           toDrop.add(r.fingerprint);
+          const summary = r.outcomeSummary ?? {};
+          if (summary.entity === "order" && typeof summary.orderId === "number") {
+            const op = operations.find((item) => item.fingerprint === r.fingerprint);
+            const clientLocalRef = String(op?.payload?.clientLocalRef ?? summary.clientLocalRef ?? "");
+            if (clientLocalRef.startsWith("local:")) {
+              const code = String(op?.payload?.code ?? "");
+              const items = Array.isArray(summary.items) ? summary.items : [];
+              const itemMap: Record<string, number> = {};
+              for (const row of items) {
+                if (row && typeof row === "object") {
+                  const clientItemId = String((row as { clientItemId?: string }).clientItemId ?? "");
+                  const orderItemId = Number((row as { orderItemId?: number }).orderItemId);
+                  if (clientItemId && Number.isFinite(orderItemId)) {
+                    itemMap[clientItemId] = orderItemId;
+                  }
+                }
+              }
+              await saveLocalOrderMapping(clientLocalRef, code, summary.orderId as number, itemMap).catch(() => undefined);
+            }
+          }
         }
         if (r.status === "conflict") conflicts += 1;
-        if (r.status === "rejected_stale") {
-          /* keep for operator review */
-        }
+        if (r.status === "rejected_stale") rejectedStale += 1;
       }
       if (toDrop.size > 0) {
         await removeQueuedOperationsByFingerprints(outletId, toDrop);
       }
       await get().refreshQueueCounts(outletId);
-      set({ lastBatchConflictCount: conflicts, syncPhase: "idle" });
+      set({ lastBatchConflictCount: conflicts, lastRejectedStaleCount: rejectedStale, syncPhase: "idle" });
     } catch (error) {
       set({
         syncPhase: "idle",
@@ -145,3 +171,6 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
     }
   },
 }));
+
+// Preserve legacy export for tests referencing storage key helper
+export { storageDeviceKey };

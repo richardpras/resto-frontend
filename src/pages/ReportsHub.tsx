@@ -135,7 +135,7 @@ const HUB_CARD_DEFS: HubCardStaticDef[] = [
   },
   {
     id: "reservation-analytics",
-    to: "/reservations",
+    to: "/reservations/operations",
     icon: CalendarDays,
     permissionHint: "pos.use",
     isVisible: (user) => hasAnyPermission(user, [PERMISSIONS.POS]),

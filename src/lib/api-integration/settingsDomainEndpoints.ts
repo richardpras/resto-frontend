@@ -335,3 +335,46 @@ export async function patchOutletReceiptSetting(
   );
   return res.data;
 }
+
+export type OutletReservationSettingRow = {
+  outletId: number;
+  publicEnabled: boolean;
+  publicSlug: string;
+  depositMode: "percent" | "flat";
+  depositPercent: number | null;
+  depositFlatAmount: number | null;
+  preorderRequired: boolean;
+  depositInstructions: string | null;
+  depositReviewTimeoutHours: number | null;
+  publicUrlPath: string;
+};
+
+export async function getOutletReservationSettings(outletId: number): Promise<OutletReservationSettingRow> {
+  const res = await request<Envelope<OutletReservationSettingRow>>(
+    `/outlets/${encodeURIComponent(String(outletId))}/reservation-settings`,
+  );
+  return res.data;
+}
+
+export async function patchOutletReservationSettings(
+  outletId: number,
+  body: Partial<
+    Pick<
+      OutletReservationSettingRow,
+      | "publicEnabled"
+      | "publicSlug"
+      | "depositMode"
+      | "depositPercent"
+      | "depositFlatAmount"
+      | "preorderRequired"
+      | "depositInstructions"
+      | "depositReviewTimeoutHours"
+    >
+  >,
+): Promise<OutletReservationSettingRow> {
+  const res = await request<MessageEnvelope<OutletReservationSettingRow>>(
+    `/outlets/${encodeURIComponent(String(outletId))}/reservation-settings`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+  return res.data;
+}

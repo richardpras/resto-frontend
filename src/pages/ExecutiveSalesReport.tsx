@@ -18,10 +18,11 @@ import { AlertTriangle, BarChart3, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore, PERMISSIONS } from "@/stores/authStore";
 import {
@@ -70,12 +71,7 @@ export default function ExecutiveSalesReport() {
 
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ExecutiveSalesReport | null>(null);
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const dateRange = useReportDateRange({ defaultPreset: "30d", syncUrl: true });
   const [comparison, setComparison] = useState<"none" | "previous_period">("none");
 
   const scope = useMemo(
@@ -92,8 +88,8 @@ export default function ExecutiveSalesReport() {
     try {
       const data = await fetchExecutiveSalesReport({
         ...scope,
-        startDate: fromDate,
-        endDate: toDate,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         comparisonPeriod: comparison === "previous_period" ? "previous_period" : undefined,
       });
       setReport(data);
@@ -103,7 +99,7 @@ export default function ExecutiveSalesReport() {
     } finally {
       setLoading(false);
     }
-  }, [scope, fromDate, toDate, comparison, t]);
+  }, [scope, dateRange.startDate, dateRange.endDate, comparison, t]);
 
   useEffect(() => {
     void load();
@@ -128,19 +124,12 @@ export default function ExecutiveSalesReport() {
       </div>
 
       <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="fromDate">{t("executive.salesReport.startDate")}</Label>
-            <Input id="fromDate" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="toDate">{t("executive.salesReport.endDate")}</Label>
-            <Input id="toDate" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </div>
+        <CardContent className="p-4 flex flex-wrap items-end gap-4">
+          <ReportDateRangeFilter range={dateRange} />
           <div className="space-y-1">
             <Label>{t("executive.salesReport.comparison")}</Label>
             <Select value={comparison} onValueChange={(v) => setComparison(v as "none" | "previous_period")}>
-              <SelectTrigger>
+              <SelectTrigger className="w-[200px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

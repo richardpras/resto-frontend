@@ -4,6 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
 import { BarChart3, TrendingUp, Users, Wallet, FileCheck, LineChart } from "lucide-react";
 import {
   getProcurementAnalyticsSummary,
@@ -50,8 +52,7 @@ export default function ProcurementAnalytics() {
   const [posting, setPosting] = useState<ProcurementPostingAnalytics | null>(null);
 
   const [supplierFilter, setSupplierFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const dateRange = useReportDateRange({ defaultPreset: "30d" });
 
   const scope = useMemo(
     () => (typeof activeOutletId === "number" && activeOutletId >= 1 ? { outletId: activeOutletId } : undefined),
@@ -73,8 +74,8 @@ export default function ProcurementAnalytics() {
       const spendParams = {
         ...scope,
         ...(supplierFilter ? { supplierId: Number(supplierFilter) } : {}),
-        ...(fromDate ? { fromDate } : {}),
-        ...(toDate ? { toDate } : {}),
+        ...(dateRange.startDate ? { fromDate: dateRange.startDate } : {}),
+        ...(dateRange.endDate ? { toDate: dateRange.endDate } : {}),
       };
       const [sum, sup, sp, pay, tr, post] = await Promise.all([
         getProcurementAnalyticsSummary(scope),
@@ -95,7 +96,7 @@ export default function ProcurementAnalytics() {
     } finally {
       setLoading(false);
     }
-  }, [scope, supplierFilter, fromDate, toDate]);
+  }, [scope, supplierFilter, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     void fetchSuppliers();
@@ -110,10 +111,13 @@ export default function ProcurementAnalytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <BarChart3 className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-semibold">{t("purchases.analytics.title")}</h2>
-        {loading && <span className="text-xs text-muted-foreground">{t("purchases.analytics.loading")}</span>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">{t("purchases.analytics.title")}</h2>
+          {loading && <span className="text-xs text-muted-foreground">{t("purchases.analytics.loading")}</span>}
+        </div>
+        <ReportDateRangeFilter range={dateRange} compact />
       </div>
 
       {summary && (
@@ -202,8 +206,6 @@ export default function ProcurementAnalytics() {
                 {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-40" />
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-40" />
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             <Card>

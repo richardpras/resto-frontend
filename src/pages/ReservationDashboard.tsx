@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, CalendarClock, Users } from "lucide-react";
@@ -10,6 +10,9 @@ import {
 import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useOutletStore } from "@/stores/outletStore";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { ReportDateRangeFilter } from "@/components/reporting/ReportDateRangeFilter";
+import { useReportDateRange } from "@/hooks/useReportDateRange";
+import { toFromToParams } from "@/lib/reporting/dateRangeApiParams";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -74,9 +77,8 @@ export default function ReservationDashboard() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const outletReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const authed = Boolean(getApiAccessToken());
-  const today = new Date().toISOString().slice(0, 10);
-  const [rangeFrom] = useState(today);
-  const [rangeTo] = useState(today);
+  const dateRange = useReportDateRange({ defaultPreset: "today", syncUrl: true });
+  const { from: rangeFrom, to: rangeTo } = toFromToParams(dateRange);
 
   const statusLabel = (status: ReservationApi["status"]) => t(`reservations.status.${status}`);
 
@@ -110,6 +112,7 @@ export default function ReservationDashboard() {
             {t("reservations.dashboard.pageSubtitleAfter")}
           </p>
         </div>
+        {outletReady ? <ReportDateRangeFilter range={dateRange} compact /> : null}
       </div>
 
       {!outletReady && (

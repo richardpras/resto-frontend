@@ -7,6 +7,7 @@ import { openReservationInPosFlow } from "@/components/reservations/openReservat
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import {
   allocateReservationTable,
+  approveReservationDeposit,
   cancelReservation,
   checkInReservation,
   completeReservation,
@@ -14,7 +15,10 @@ import {
   createReservation,
   getReservation,
   listAllocatedTables,
+  listPendingDeposits,
   markNoShowReservation,
+  rejectReservationDeposit,
+  openReservationDepositProof,
   unallocateReservationTable,
   type ReservationApi,
   type ReservationTableAllocationApi,
@@ -35,6 +39,8 @@ import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
 const statusBadgeClass: Record<ReservationApi["status"], string> = {
   draft: "bg-muted text-muted-foreground",
+  pending_deposit: "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  deposit_submitted: "bg-purple-500/10 text-purple-700 dark:text-purple-300",
   confirmed: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
   checked_in: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   seated: "bg-info/10 text-info",
@@ -118,6 +124,13 @@ export default function Reservations() {
     enabled: outletReady && authed && selectedId !== null,
   });
 
+  const { data: pendingDeposits = [], refetch: refetchPendingDeposits } = useQuery({
+    queryKey: ["reservation-pending-deposits", activeOutletId ?? 0],
+    queryFn: () => listPendingDeposits(activeOutletId!),
+    enabled: outletReady && authed,
+    refetchInterval: 30000,
+  });
+
   const allocatedTableIds = useMemo(
     () => new Set(allocations.map((a) => a.tableId)),
     [allocations],
@@ -132,6 +145,7 @@ export default function Reservations() {
     void revalidateReservations();
     void queryClient.invalidateQueries({ queryKey: ["reservation"] });
     void queryClient.invalidateQueries({ queryKey: ["reservation-allocations"] });
+    void queryClient.invalidateQueries({ queryKey: ["reservation-pending-deposits"] });
   }, [queryClient, revalidateReservations]);
 
   useEffect(() => {
@@ -214,6 +228,23 @@ export default function Reservations() {
     await runLifecycleAction("reservations.noShowToast", () => markNoShowReservation(id));
   };
 
+  const onApproveDeposit = async (id: number) => {
+    await runLifecycleAction("reservations.depositApproved", () => approveReservationDeposit(id));
+    void refetchPendingDeposits();
+  };
+
+  const onRejectDeposit = async (id: number) => {
+    const reason = window.prompt(t("reservations.depositRejectReason"));
+    try {
+      await rejectReservationDeposit(id, reason ?? undefined);
+      invalidateList();
+      void refetchPendingDeposits();
+      toast.success(t("reservations.depositRejected"));
+    } catch (e) {
+      toast.error(e instanceof ApiHttpError ? e.message : t("shared.somethingWrong"));
+    }
+  };
+
   const onOpenInPos = async (id: number) => {
     setOpeningPos(true);
     try {
@@ -280,6 +311,19 @@ export default function Reservations() {
         </Button>
       </div>
 
+      {pendingDeposits.length > 0 ? (
+        <div className="mb-6 rounded-xl border border-purple-500/30 bg-purple-500/5 p-4">
+          <h2 className="font-semibold mb-2">{t("reservations.pendingDepositsTitle", { n: pendingDeposits.length })}</h2>
+          <div className="flex flex-wrap gap-2">
+            {pendingDeposits.map((row) => (
+              <Button key={row.id} type="button" size="sm" variant="outline" onClick={() => setSelectedId(row.id)}>
+                {row.customerName} · {statusLabel(row.status)}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("reservations.loading")}</p>
       ) : rows.length === 0 ? (
@@ -335,7 +379,41 @@ export default function Reservations() {
                 </div>
               </div>
 
+              {(activeDetail.requiredDepositAmount ?? 0) > 0 ? (
+                <div className="rounded-lg border p-3 space-y-1">
+                  <div className="font-medium">{t("reservations.depositSection")}</div>
+                  <div>{t("reservations.requiredDeposit", { amount: activeDetail.requiredDepositAmount })}</div>
+                  {activeDetail.approvedDepositAmount != null ? (
+                    <div>{t("reservations.approvedDeposit", { amount: activeDetail.approvedDepositAmount })}</div>
+                  ) : null}
+                  {activeDetail.depositProofs?.map((proof) => (
+                    <button
+                      key={proof.id}
+                      type="button"
+                      className="text-sm text-primary hover:underline block text-left"
+                      onClick={() => {
+                        void openReservationDepositProof(activeDetail.id, proof.id).catch((error: unknown) => {
+                          toast.error(error instanceof Error ? error.message : t("reservations.proofOpenFailed"));
+                        });
+                      }}
+                    >
+                      {proof.originalFilename}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap gap-2">
+                {activeDetail.status === "deposit_submitted" && (
+                  <>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => onApproveDeposit(activeDetail.id)}>
+                      {t("reservations.approveDeposit")}
+                    </Button>
+                    <Button type="button" size="sm" variant="destructive" onClick={() => onRejectDeposit(activeDetail.id)}>
+                      {t("reservations.rejectDeposit")}
+                    </Button>
+                  </>
+                )}
                 {activeDetail.status === "draft" && (
                   <>
                     <Button type="button" size="sm" variant="secondary" onClick={() => onConfirm(activeDetail.id)}>

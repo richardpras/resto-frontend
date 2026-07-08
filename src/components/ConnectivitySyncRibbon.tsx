@@ -1,6 +1,8 @@
 import { useEffect } from "react";
-import { CloudOff, Radio, WifiOff } from "lucide-react";
+import { CloudOff, Radio, RefreshCw, WifiOff } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { useOperationalDashboardStore } from "@/stores/operationalDashboardStore";
 
@@ -10,19 +12,25 @@ type Props = {
   enableReplay?: boolean;
   /** When false, defers terminal register/sync until POS critical data is ready. */
   terminalRegistrationReady?: boolean;
+  showNativeControls?: boolean;
+  onManualSync?: () => void;
 };
 
 export function ConnectivitySyncRibbon({
   outletId,
   enableReplay = true,
   terminalRegistrationReady = true,
+  showNativeControls = false,
+  onManualSync,
 }: Props) {
+  const { t } = useTranslation("ops");
   const initConnectivityListeners = useOfflineSyncStore((s) => s.initConnectivityListeners);
   const isOnline = useOfflineSyncStore((s) => s.isOnline);
   const pendingQueueCount = useOfflineSyncStore((s) => s.pendingQueueCount);
   const syncPhase = useOfflineSyncStore((s) => s.syncPhase);
   const lastSyncError = useOfflineSyncStore((s) => s.lastSyncError);
   const lastConflict = useOfflineSyncStore((s) => s.lastBatchConflictCount);
+  const lastRejectedStale = useOfflineSyncStore((s) => s.lastRejectedStaleCount);
   const refreshQueueCounts = useOfflineSyncStore((s) => s.refreshQueueCounts);
   const ensureTerminalPresence = useOfflineSyncStore((s) => s.ensureTerminalPresence);
   const flushQueueForOutlet = useOfflineSyncStore((s) => s.flushQueueForOutlet);
@@ -58,7 +66,7 @@ export function ConnectivitySyncRibbon({
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border/60 bg-muted/30 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
         {isOnline ? <Radio className="h-3.5 w-3.5 text-emerald-500" /> : <WifiOff className="h-3.5 w-3.5 text-amber-500" />}
-        {isOnline ? "Online" : "Offline"}
+        {isOnline ? t("mobile.online", { defaultValue: "Online" }) : t("mobile.offline", { defaultValue: "Offline" })}
       </span>
       <span className="opacity-70">Realtime: {realtimeTransport}</span>
       {resilient && (
@@ -66,7 +74,7 @@ export function ConnectivitySyncRibbon({
           {pendingQueueCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-200 px-2 py-0.5">
               <CloudOff className="h-3 w-3" />
-              Queue {pendingQueueCount}
+              {t("mobile.queue", { defaultValue: "Queue" })} {pendingQueueCount}
             </span>
           )}
           {syncPhase === "syncing" && (
@@ -78,10 +86,21 @@ export function ConnectivitySyncRibbon({
           )}
           {lastConflict > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 text-orange-800 dark:text-orange-200 px-2 py-0.5">
-              Conflicts {lastConflict}
+              {t("mobile.conflicts", { defaultValue: "Conflicts" })} {lastConflict}
+            </span>
+          )}
+          {lastRejectedStale > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 text-red-800 dark:text-red-200 px-2 py-0.5">
+              {t("mobile.staleOps", { defaultValue: "Stale" })} {lastRejectedStale}
             </span>
           )}
           {lastSyncError && <span className="text-destructive">Replay: {lastSyncError}</span>}
+          {showNativeControls && onManualSync && isOnline && pendingQueueCount > 0 && (
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={onManualSync}>
+              <RefreshCw className="h-3 w-3 mr-1" />
+              {t("mobile.syncNow", { defaultValue: "Sync now" })}
+            </Button>
+          )}
         </>
       )}
     </div>

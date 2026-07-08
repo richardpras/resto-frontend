@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { canViewFinancialStatements } from "@/domain/permissionGates";
 import { useErpTranslation } from "@/i18n/useErpTranslation";
 import { formatApiErrorMessage } from "@/i18n/apiErrorMessage";
+import { useAccountingReportDateRange } from "@/contexts/AccountingReportDateRangeContext";
 import type { TFunction } from "i18next";
 
 function Section({ title, rows, total, totalLabel }: { title: string; rows: [string, number][]; total?: number; totalLabel: string }) {
@@ -49,9 +50,9 @@ export default function CashFlow() {
   const user = useAuthStore((s) => s.user);
   const allowed = canViewFinancialStatements(user);
   const outlets = useAccountingStore((s) => s.outletOptions);
-  const today = new Date();
-  const [from, setFrom] = useState(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(today.toISOString().slice(0, 10));
+  const dateRange = useAccountingReportDateRange();
+  const from = dateRange.startDate;
+  const to = dateRange.endDate;
   const [outletFilter, setOutletFilter] = useState("all");
   const [report, setReport] = useState<CashFlowReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,7 +77,7 @@ export default function CashFlow() {
   useEffect(() => {
     if (!allowed) return;
     void load();
-  }, [outletFilter, allowed]);
+  }, [outletFilter, allowed, from, to]);
 
   if (!allowed) {
     return (
@@ -88,15 +89,7 @@ export default function CashFlow() {
 
   return (
     <Card className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        <div>
-          <Label htmlFor="cf-from">{t("accounting.reports.from")}</Label>
-          <Input id="cf-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="cf-to">{t("accounting.reports.to")}</Label>
-          <Input id="cf-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <Label>{t("accounting.reports.outlet")}</Label>
           <Select value={outletFilter} onValueChange={setOutletFilter}>
