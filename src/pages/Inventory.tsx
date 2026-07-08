@@ -2,6 +2,7 @@ import { Package, AlertTriangle, TrendingDown, Search, Plus, Pencil, Trash2, Pap
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PendingInventoryConsumptionPanel } from "@/components/inventory/PendingInventoryConsumptionPanel";
+import { DailyStocktakePanel } from "@/components/inventory/DailyStocktakePanel";
 import { StockMovementModal } from "@/components/inventory/StockMovementModal";
 import { useOutletStore } from "@/stores/outletStore";
 import { useInventoryStore, type InventoryItemType } from "@/stores/inventoryStore";
@@ -13,6 +14,7 @@ import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import { type InventoryItem, type InventoryPayload, type StockMovement } from "@/stores/inventoryStore";
 import { toast } from "@/hooks/use-toast";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -31,7 +33,11 @@ const typeBadgeClass: Record<InventoryItemType, string> = {
 export default function Inventory() {
   const { t } = useOpsTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") === "posting" ? "posting" : "items";
+  const activeTab = searchParams.get("tab") === "posting"
+    ? "posting"
+    : searchParams.get("tab") === "stocktake"
+      ? "stocktake"
+      : "items";
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const ingredients = useInventoryStore((s) => s.ingredients);
   const stockMovements = useInventoryStore((s) => s.stockMovements);
@@ -45,6 +51,12 @@ export default function Inventory() {
   const valuationsLoading = useInventoryStore((s) => s.valuationsLoading);
   const fetchValuations = useInventoryStore((s) => s.fetchValuations);
   const recalculateValuations = useInventoryStore((s) => s.recalculateValuations);
+  const inventoryCostingMethod = useSettingsStore((s) => s.system.inventoryCostingMethod ?? "moving_average");
+  const deferredConsumptionTrigger = useSettingsStore((s) => s.system.deferredConsumptionTrigger ?? "shift_close");
+  const stockEnforcementMode = useSettingsStore((s) => s.system.stockEnforcementMode ?? "deferred");
+  const isFifoCosting = inventoryCostingMethod === "fifo";
+  const costingMethodLabel = isFifoCosting ? t("inventory.costingMethodFifo") : t("inventory.costingMethodMovingAverage");
+  const avgCostColumnLabel = isFifoCosting ? t("inventory.columns.avgCostDisplay") : t("inventory.columns.avgCost");
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<InventoryItemType | "all">("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -52,6 +64,10 @@ export default function Inventory() {
   const [wasteOpen, setWasteOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const createStockMovementRemote = useInventoryStore((s) => s.createStockMovementRemote);
+
+  useEffect(() => {
+    void useSettingsStore.getState().ensureSectionsLoaded(["system"]);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -133,6 +149,7 @@ export default function Inventory() {
   const tabButtons = useMemo(
     () => [
       { id: "items" as const, label: t("inventory.tabs.items") },
+      { id: "stocktake" as const, label: t("inventory.tabs.stocktake") },
       { id: "posting" as const, label: t("inventory.tabs.pending") },
     ],
     [t],
@@ -161,6 +178,20 @@ export default function Inventory() {
           </button>
         ))}
       </div>
+
+      {stockEnforcementMode === "deferred" && deferredConsumptionTrigger === "daily_stocktake" ? (
+        <div className="mb-4 p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 text-sm text-blue-900 dark:text-blue-100">
+          {t("inventory.stocktake.modeBanner")}
+        </div>
+      ) : null}
+
+      {activeTab === "stocktake" ? (
+        typeof activeOutletId === "number" && activeOutletId >= 1 ? (
+          <DailyStocktakePanel outletId={activeOutletId} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("inventory.selectOutletPending")}</p>
+        )
+      ) : null}
 
       {activeTab === "posting" ? (
         typeof activeOutletId === "number" && activeOutletId >= 1 ? (
@@ -355,15 +386,20 @@ export default function Inventory() {
       </div>
 
       <div className="mt-6">
-        <div className="mb-3">
-          <h2 className="text-lg font-semibold text-foreground">{t("inventory.valuationTitle")}</h2>
-          <p className="text-xs text-muted-foreground">{t("inventory.valuationSubtitle")}</p>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{t("inventory.valuationTitle")}</h2>
+            <p className="text-xs text-muted-foreground">{t("inventory.valuationSubtitle")}</p>
+          </div>
+          <Badge variant="outline" className="ml-auto">
+            {t("inventory.costingMethodBadge", { method: costingMethodLabel })}
+          </Badge>
         </div>
         <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
           <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border/60">
             <span className="col-span-4">{t("inventory.columns.item")}</span>
             <span className="col-span-2 text-right">{t("inventory.columns.qty")}</span>
-            <span className="col-span-2 text-right">{t("inventory.columns.avgCost")}</span>
+            <span className="col-span-2 text-right">{avgCostColumnLabel}</span>
             <span className="col-span-2 text-right">{t("inventory.columns.value")}</span>
             <span className="col-span-2">{t("inventory.columns.updated")}</span>
           </div>

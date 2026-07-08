@@ -623,9 +623,13 @@
     "ledgerTitle": "Buku Gerak Stok",
     "ledgerSubtitle": "Pergerakan stok terbaru untuk cakupan saat ini",
     "valuationTitle": "Valuasi Inventori",
-    "valuationSubtitle": "Valuasi rata-rata bergerak per bahan (cakupan outlet)",
+    "valuationSubtitle": "Valuasi per bahan (cakupan outlet)",
+    "costingMethodBadge": "Metode: {{method}}",
+    "costingMethodMovingAverage": "Moving Average",
+    "costingMethodFifo": "FIFO",
     "tabs": {
       "items": "Item",
+      "stocktake": "Stocktake Harian",
       "pending": "Konsumsi Tertunda"
     },
     "filters": {
@@ -650,6 +654,7 @@
       "source": "Sumber",
       "created": "Dibuat",
       "avgCost": "Biaya Rata-rata",
+      "avgCostDisplay": "Rata-rata (tampilan)",
       "value": "Nilai",
       "updated": "Diperbarui"
     },
@@ -668,7 +673,7 @@
     "loading": "Memuat inventori",
     "posting": {
       "title": "Konsumsi Inventori Tertunda",
-      "subtitle": "Penjualan tertunda menunggu tutup shift atau posting inventori manual.",
+      "subtitle": "Penjualan tertunda menunggu tutup shift, persetujuan stocktake harian, atau posting inventori manual.",
       "refresh": "Muat Ulang",
       "retryPosting": "Ulangi Posting",
       "loadingQueue": "Memuat antrean…",
@@ -690,6 +695,54 @@
       "completedTitle": "Posting inventori selesai",
       "completedDesc": "Diproses {{processed}}, perlu tinjau {{reviewRequired}}, gagal {{failed}}.",
       "failedTitle": "Posting gagal"
+    },
+    "stocktake": {
+      "title": "Stocktake Harian",
+      "subtitle": "Catat stok awal dan akhir, pratinjau varians, lalu setujui untuk posting konsumsi dan waste.",
+      "modeBanner": "Mode deferred memakai stocktake harian untuk posting inventori. Selesaikan dan setujui stocktake hari ini sebelum tutup shift.",
+      "refresh": "Muat ulang",
+      "openSession": "Buka sesi",
+      "sessionOpened": "Sesi stocktake dibuka",
+      "loadFailed": "Gagal membuka sesi stocktake",
+      "loading": "Memuat stocktake…",
+      "businessDate": "Tanggal bisnis: {{date}}",
+      "saveOpening": "Simpan stok awal",
+      "saveClosing": "Simpan stok akhir",
+      "submitForApproval": "Kirim untuk persetujuan",
+      "approveAndPost": "Setujui & posting",
+      "approveConfirm": "Posting waste semalam, konsumsi penjualan, dan varians operasional untuk tanggal bisnis ini?",
+      "cancel": "Batalkan sesi",
+      "openingSaved": "Stok awal disimpan",
+      "closingSaved": "Stok akhir disimpan",
+      "submitted": "Dikirim untuk persetujuan manajer",
+      "approved": "Stocktake disetujui dan diposting",
+      "cancelled": "Sesi stocktake dibatalkan",
+      "openingFailed": "Gagal menyimpan stok awal",
+      "closingFailed": "Gagal menyimpan stok akhir",
+      "submitFailed": "Gagal mengirim stocktake",
+      "approveFailed": "Gagal menyetujui stocktake",
+      "cancelFailed": "Gagal membatalkan stocktake",
+      "status": {
+        "draft": "Draf",
+        "pendingApproval": "Menunggu persetujuan",
+        "posted": "Diposting",
+        "cancelled": "Dibatalkan"
+      },
+      "columns": {
+        "ingredient": "Bahan",
+        "prevClosing": "Stok akhir H-1",
+        "opening": "Stok awal",
+        "purchases": "Pembelian",
+        "closing": "Stok akhir",
+        "theoretical": "Teoritis",
+        "overnight": "Semalam",
+        "operational": "Operasional"
+      },
+      "summary": {
+        "overnight": "Waste semalam (qty)",
+        "operationalWaste": "Waste operasional (qty)",
+        "operationalSurplus": "Surplus operasional (qty)"
+      }
     },
     "form": {
       "editTitle": "Ubah Item Inventori",

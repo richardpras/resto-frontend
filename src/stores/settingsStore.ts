@@ -69,6 +69,8 @@ const EMPTY_SYSTEM: SystemPrefs = {
   enforceStockOnSale: false,
   stockEnforcementMode: "deferred",
   allowNegativeStock: true,
+  inventoryCostingMethod: "moving_average",
+  deferredConsumptionTrigger: "shift_close",
 };
 
 const EMPTY_NUMBERING: NumberingSettings = {

@@ -4,12 +4,13 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import type { StockEnforcementMode } from "@/domain/settingsDomainTypes";
+import type { StockEnforcementMode, InventoryCostingMethod, DeferredConsumptionTrigger } from "@/domain/settingsDomainTypes";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 import { ApiHttpError, getApiAccessToken } from "@/lib/api-integration/client";
 import { patchSystemSettings } from "@/lib/api-integration/settingsDomainEndpoints";
+import { recalculateInventoryValuations } from "@/lib/api-integration/inventoryEndpoints";
 import { SoundAlertSettings } from "@/components/sound/SoundAlertSettings";
 import CustomerAppUrlSettings from "./CustomerAppUrlSettings";
 
@@ -20,18 +21,47 @@ export default function SystemSettings() {
   const { user, autoLock, idleMinutes, setAutoLock, setIdleMinutes, lock } = useAuthStore();
   const pinLock = user?.pinSet === true;
 
-  const persistSystem = async (next: typeof system, message: string) => {
+  const persistSystem = async (
+    next: typeof system,
+    message: string,
+    options?: { forceRecalculateOnMethodChange?: boolean },
+  ) => {
     if (!getApiAccessToken()) {
       toast.success(message);
       return;
     }
     try {
-      await patchSystemSettings(next);
+      await patchSystemSettings({
+        ...next,
+        forceRecalculateOnMethodChange: options?.forceRecalculateOnMethodChange,
+      });
       toast.success(message);
     } catch (e) {
       toast.error(e instanceof ApiHttpError ? e.message : t("settings.system.saveFailed"));
       await useSettingsStore.getState().ensureSectionsLoaded(["system"], { force: true, staleMs: 0 }).catch(() => {});
     }
+  };
+
+  const handleCostingMethodChange = (value: InventoryCostingMethod) => {
+    if (value === (system.inventoryCostingMethod ?? "moving_average")) {
+      return;
+    }
+    const confirmed = window.confirm(t("settings.system.costingMethodChangeConfirm"));
+    if (!confirmed) {
+      return;
+    }
+    const next = { ...system, inventoryCostingMethod: value };
+    updateSystem(next);
+    void (async () => {
+      await persistSystem(next, t("settings.system.costingMethodSet", { method: value }), {
+        forceRecalculateOnMethodChange: true,
+      });
+      try {
+        await recalculateInventoryValuations();
+      } catch {
+        toast.error(t("settings.system.costingMethodRecalcFailed"));
+      }
+    })();
   };
 
   const Row = ({ k, labelKey, descKey }: { k: keyof typeof system; labelKey: string; descKey: string }) => {
@@ -150,6 +180,59 @@ export default function SystemSettings() {
             labelKey="settings.system.allowNegativeStock"
             descKey="settings.system.allowNegativeStockDesc"
           />
+          <div className="space-y-1 pt-2 border-t">
+            <Label className="text-sm font-medium">{t("settings.system.costingMethod")}</Label>
+            <p className="text-xs text-muted-foreground">{t("settings.system.costingMethodDesc")}</p>
+          </div>
+          <RadioGroup
+            value={system.inventoryCostingMethod ?? "moving_average"}
+            onValueChange={(value) => handleCostingMethodChange(value as InventoryCostingMethod)}
+            className="space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="moving_average" id="costing-moving-average" />
+              <Label htmlFor="costing-moving-average" className="font-normal">
+                {t("settings.system.costingMovingAverage")}
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="fifo" id="costing-fifo" />
+              <Label htmlFor="costing-fifo" className="font-normal">
+                {t("settings.system.costingFifo")}
+              </Label>
+            </div>
+          </RadioGroup>
+          {(system.stockEnforcementMode ?? (system.enforceStockOnSale ? "strict" : "deferred")) === "deferred" ? (
+            <>
+              <div className="space-y-1 pt-2 border-t">
+                <Label className="text-sm font-medium">{t("settings.system.deferredPostingTrigger")}</Label>
+                <p className="text-xs text-muted-foreground">{t("settings.system.deferredPostingTriggerDesc")}</p>
+              </div>
+              <RadioGroup
+                value={system.deferredConsumptionTrigger ?? "shift_close"}
+                onValueChange={(value) => {
+                  const trigger = value as DeferredConsumptionTrigger;
+                  const next = { ...system, deferredConsumptionTrigger: trigger };
+                  updateSystem(next);
+                  void persistSystem(next, t("settings.system.deferredPostingTriggerSet", { trigger }));
+                }}
+                className="space-y-2"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="shift_close" id="deferred-trigger-shift-close" />
+                  <Label htmlFor="deferred-trigger-shift-close" className="font-normal">
+                    {t("settings.system.deferredTriggerShiftClose")}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="daily_stocktake" id="deferred-trigger-stocktake" />
+                  <Label htmlFor="deferred-trigger-stocktake" className="font-normal">
+                    {t("settings.system.deferredTriggerDailyStocktake")}
+                  </Label>
+                </div>
+              </RadioGroup>
+            </>
+          ) : null}
         </CardContent>
       </Card>
 

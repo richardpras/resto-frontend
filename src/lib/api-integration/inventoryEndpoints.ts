@@ -1,4 +1,4 @@
-import { apiRequest as request } from "./client";
+import type { InventoryCostingMethod } from "@/domain/settingsDomainTypes";
 
 type ApiListResponse<T> = {
   data: T[];
@@ -150,6 +150,7 @@ export type InventoryValuationApi = {
   stockQuantity: number;
   inventoryValue: number;
   averageCost: number;
+  costingMethod?: InventoryCostingMethod | string;
   lastPurchaseCost: number;
   lastGrnId?: number | null;
   lastUpdatedAt?: string | null;

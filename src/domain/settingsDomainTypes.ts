@@ -72,6 +72,10 @@ export interface PaymentMethod {
 
 export type StockEnforcementMode = "strict" | "warning" | "deferred";
 
+export type InventoryCostingMethod = "moving_average" | "fifo";
+
+export type DeferredConsumptionTrigger = "shift_close" | "daily_stocktake";
+
 export interface SystemPrefs {
   enableSplitBill: boolean;
   enableMultiPayment: boolean;
@@ -84,6 +88,8 @@ export interface SystemPrefs {
   enforceStockOnSale: boolean;
   stockEnforcementMode: StockEnforcementMode;
   allowNegativeStock: boolean;
+  inventoryCostingMethod: InventoryCostingMethod;
+  deferredConsumptionTrigger?: DeferredConsumptionTrigger;
 }
 
 export interface IntegrationSettings {

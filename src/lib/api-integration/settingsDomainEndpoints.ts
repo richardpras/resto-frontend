@@ -282,7 +282,9 @@ export async function getSystemSettings(): Promise<SystemPrefs> {
   return res.data;
 }
 
-export async function patchSystemSettings(body: SystemPrefs): Promise<SystemPrefs> {
+export async function patchSystemSettings(
+  body: SystemPrefs & { forceRecalculateOnMethodChange?: boolean },
+): Promise<SystemPrefs> {
   const res = await request<MessageEnvelope<SystemPrefs>>("/system-settings", {
     method: "PATCH",
     body: JSON.stringify(body),

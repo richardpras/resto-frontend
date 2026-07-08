@@ -614,9 +614,13 @@
     "ledgerTitle": "Movement Ledger",
     "ledgerSubtitle": "Recent stock movements for current scope",
     "valuationTitle": "Inventory Valuations",
-    "valuationSubtitle": "Moving-average valuation per ingredient (outlet scope)",
+    "valuationSubtitle": "Valuation per ingredient (outlet scope)",
+    "costingMethodBadge": "Costing: {{method}}",
+    "costingMethodMovingAverage": "Moving Average",
+    "costingMethodFifo": "FIFO",
     "tabs": {
       "items": "Items",
+      "stocktake": "Daily Stocktake",
       "pending": "Pending Consumption"
     },
     "filters": {
@@ -641,6 +645,7 @@
       "source": "Source",
       "created": "Created",
       "avgCost": "Avg Cost",
+      "avgCostDisplay": "Avg (display)",
       "value": "Value",
       "updated": "Updated"
     },
@@ -659,7 +664,7 @@
     "loading": "Loading inventory",
     "posting": {
       "title": "Pending Inventory Consumption",
-      "subtitle": "Deferred sales waiting for shift close or manual inventory posting.",
+      "subtitle": "Deferred sales waiting for shift close, daily stocktake approval, or manual inventory posting.",
       "refresh": "Refresh",
       "retryPosting": "Retry Posting",
       "loadingQueue": "Loading queue…",
@@ -681,6 +686,54 @@
       "completedTitle": "Inventory posting completed",
       "completedDesc": "Processed {{processed}}, review required {{reviewRequired}}, failed {{failed}}.",
       "failedTitle": "Posting failed"
+    },
+    "stocktake": {
+      "title": "Daily Stocktake",
+      "subtitle": "Record opening and closing counts, preview variance, then approve to post consumption and waste.",
+      "modeBanner": "Deferred mode uses daily stocktake for inventory posting. Complete and approve today's stocktake before shift close.",
+      "refresh": "Refresh",
+      "openSession": "Open session",
+      "sessionOpened": "Stocktake session opened",
+      "loadFailed": "Failed to open stocktake session",
+      "loading": "Loading stocktake…",
+      "businessDate": "Business date: {{date}}",
+      "saveOpening": "Save opening",
+      "saveClosing": "Save closing",
+      "submitForApproval": "Submit for approval",
+      "approveAndPost": "Approve & post",
+      "approveConfirm": "Post overnight waste, sales consumption, and operational variance for this business date?",
+      "cancel": "Cancel session",
+      "openingSaved": "Opening counts saved",
+      "closingSaved": "Closing counts saved",
+      "submitted": "Submitted for manager approval",
+      "approved": "Stocktake approved and posted",
+      "cancelled": "Stocktake session cancelled",
+      "openingFailed": "Failed to save opening counts",
+      "closingFailed": "Failed to save closing counts",
+      "submitFailed": "Failed to submit stocktake",
+      "approveFailed": "Failed to approve stocktake",
+      "cancelFailed": "Failed to cancel stocktake",
+      "status": {
+        "draft": "Draft",
+        "pendingApproval": "Pending approval",
+        "posted": "Posted",
+        "cancelled": "Cancelled"
+      },
+      "columns": {
+        "ingredient": "Ingredient",
+        "prevClosing": "Prev closing",
+        "opening": "Opening",
+        "purchases": "Purchases",
+        "closing": "Closing",
+        "theoretical": "Theoretical",
+        "overnight": "Overnight",
+        "operational": "Operational"
+      },
+      "summary": {
+        "overnight": "Overnight waste (qty)",
+        "operationalWaste": "Operational waste (qty)",
+        "operationalSurplus": "Operational surplus (qty)"
+      }
     },
     "form": {
       "editTitle": "Edit Inventory Item",
