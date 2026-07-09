@@ -26,6 +26,7 @@ import {
   canViewEmployees,
 } from "@/domain/permissionGates";
 import type { HrBootstrapKey } from "@/hooks/useHrPayrollBootstrap";
+import { LocaleSync } from "@/hooks/useLocaleSync";
 import { LegacyPayrollRedirect } from "./pages/hr/LegacyPayrollRedirect";
 import { wrapHrPage } from "./pages/hr/wrapHrPage";
 

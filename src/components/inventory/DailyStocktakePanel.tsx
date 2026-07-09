@@ -34,8 +34,12 @@ function statusBadge(status: string, t: (key: string) => string) {
 function toDraft(lines: DailyStocktakeLine[] | undefined): CountDraft {
   const draft: CountDraft = {};
   for (const line of lines ?? []) {
+    const defaultOpening =
+      line.openingQty !== null && line.openingQty !== undefined
+        ? String(line.openingQty)
+        : String(line.previousClosingQty);
     draft[line.ingredientId] = {
-      openingQty: line.openingQty !== null && line.openingQty !== undefined ? String(line.openingQty) : "",
+      openingQty: defaultOpening,
       closingQty: line.closingQty !== null && line.closingQty !== undefined ? String(line.closingQty) : "",
     };
   }

@@ -1342,8 +1342,9 @@ export default function Cashier() {
         </div>
       </div>
 
+      {paymentModalOrder ? (
       <AppOverlay
-        open={Boolean(showPaymentModal && paymentModalOrder)}
+        open={showPaymentModal}
         onClose={() => closePaymentModal()}
         layer="modal"
         align={isPhoneViewport ? "bottom" : "center"}
@@ -1494,6 +1495,7 @@ export default function Cashier() {
               )}
               <PosPrintStatusBar outletId={printStatusOutletId} />
       </AppOverlay>
+      ) : null}
       <QrisPaymentModal
         open={showPaymentModal && showQrisModal && !!paymentTransaction?.qrString}
         qrString={paymentTransaction?.qrString ?? ""}
@@ -1552,8 +1554,9 @@ export default function Cashier() {
         onConfirmPaid={() => void confirmCashierStaticQrisPayment()}
       />
 
+      {splitSourceOrder ? (
       <AppOverlay
-        open={Boolean(showSplitModal && splitSourceOrder)}
+        open={showSplitModal}
         onClose={() => closeSplitModal()}
         layer="modal"
         align={isPhoneViewport ? "bottom" : "center"}
@@ -1812,6 +1815,7 @@ export default function Cashier() {
                         })}
               </p>
       </AppOverlay>
+      ) : null}
 
       {selectedOrder ? (
         <KitchenReprintModal

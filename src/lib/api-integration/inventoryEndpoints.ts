@@ -1,4 +1,5 @@
 import type { InventoryCostingMethod } from "@/domain/settingsDomainTypes";
+import { apiRequest as request } from "./client";
 
 type ApiListResponse<T> = {
   data: T[];
