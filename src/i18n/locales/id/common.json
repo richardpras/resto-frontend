@@ -257,6 +257,74 @@
       "receipt": "Struk",
       "warehouses": "Gudang"
     },
+    "masterImport": {
+      "navLink": "Impor Master",
+      "title": "Impor Master",
+      "subtitle": "Muat data master dari template ZIP atau XLSX. Fase 1: operasional, Fase 2: CRM & keuangan, Fase 3: HR & loyalty, Fase 4: profil gaji.",
+      "backToSettings": "Kembali ke Pengaturan",
+      "phase1Tab": "Fase 1",
+      "phase2Tab": "Fase 2",
+      "phase1Title": "Fase 1 — Operasional",
+      "phase1Desc": "Bahan baku, stok awal, menu, resep, supplier, dan meja.",
+      "phase2Title": "Fase 2 — CRM & Keuangan",
+      "phase2Desc": "Chart of accounts, saldo awal, pelanggan, member, dan metode pembayaran outlet.",
+      "phase3Tab": "Fase 3",
+      "phase3Title": "Fase 3 — HR & Loyalty",
+      "phase3Desc": "Departemen, posisi, karyawan, dan poin loyalty awal.",
+      "phase4Tab": "Fase 4",
+      "phase4Title": "Fase 4 — Profil Gaji",
+      "phase4Desc": "Profil gaji karyawan untuk payroll (ZIP atau XLSX). Membutuhkan karyawan Fase 3.",
+      "outlet": "Outlet",
+      "selectOutlet": "Pilih outlet",
+      "zipFile": "File ZIP",
+      "bundleFile": "File ZIP atau XLSX",
+      "downloadTemplate": "Unduh template ZIP",
+      "downloadXlsxTemplate": "Unduh template XLSX",
+      "preview": "Pratinjau",
+      "commit": "Commit impor",
+      "templateDownloaded": "Template berhasil diunduh.",
+      "templateFailed": "Gagal mengunduh template.",
+      "missingFile": "Pilih outlet dan file ZIP terlebih dahulu.",
+      "previewDone": "Pratinjau: {{created}} buat, {{updated}} ubah, {{errors}} error.",
+      "commitDone": "Impor selesai: {{created}} dibuat, {{updated}} diubah.",
+      "importFailed": "Impor gagal.",
+      "resultTitle": "Hasil impor",
+      "previewMode": "Hanya pratinjau — data belum ditulis.",
+      "commitMode": "Sudah disimpan ke database.",
+      "created": "{{count}} dibuat",
+      "updated": "{{count}} diubah",
+      "skipped": "{{count}} dilewati",
+      "errors": "{{count}} error",
+      "sectionSummary": "{{created}} buat · {{updated}} ubah · {{skipped}} lewati · {{errors}} error",
+      "rowError": "Baris {{row}}: {{message}}",
+      "sections": {
+        "phase1": {
+          "ingredients": "Bahan baku",
+          "opening_stock": "Stok awal",
+          "menu_categories": "Kategori menu",
+          "menu_items": "Item menu",
+          "recipes": "Resep (BOM)",
+          "suppliers": "Supplier",
+          "tables": "Meja"
+        },
+        "phase2": {
+          "chart_of_accounts": "Chart of accounts",
+          "opening_balances": "Saldo awal",
+          "customers": "Pelanggan",
+          "members": "Member",
+          "outlet_payment_methods": "Metode pembayaran outlet"
+        },
+        "phase3": {
+          "departments": "Departemen",
+          "positions": "Posisi",
+          "employees": "Karyawan",
+          "opening_loyalty_points": "Poin loyalty awal"
+        },
+        "phase4": {
+          "employee_salary_profiles": "Profil gaji karyawan"
+        }
+      }
+    },
     "merchant": {
       "title": "Profil Merchant",
       "merchantName": "Nama Merchant",

@@ -37,6 +37,19 @@ export function canManagePlatformSettings(user?: AuthUser | null): boolean {
   return hasPermissionCode(u, "settings.manage");
 }
 
+export function canAccessMasterImport(user?: AuthUser | null): boolean {
+  const u = user ?? useAuthStore.getState().user;
+  return hasAnyPermissionCode(u, [
+    "settings.manage",
+    "inventory.manage",
+    "menu.manage",
+    "members.manage",
+    "accounting.manage",
+    "employees.manage",
+    "payroll.manage",
+  ]);
+}
+
 export function canUpdateOperationalSettings(user?: AuthUser | null): boolean {
   const u = user ?? useAuthStore.getState().user;
   return hasAnyPermissionCode(u, ["settings.update", "settings.manage"]);
@@ -209,6 +222,7 @@ export function canAccessStaffRoute(user: AuthUser | null, pathname: string): bo
   if (path.startsWith("/settings")) {
     if (path.startsWith("/settings/payments/health")) return canManagePlatformSettings(user);
     if (path.startsWith("/settings/production-stations")) return canUpdateOperationalSettings(user);
+    if (path.startsWith("/settings/master-import")) return canAccessMasterImport(user);
     return canAccessSettingsPage(user);
   }
   if (path.startsWith("/system/")) return canManagePlatformSettings(user);

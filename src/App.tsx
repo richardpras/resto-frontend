@@ -20,6 +20,7 @@ import {
   canAccessUserManagement,
   canAccessUsersAdmin,
   canManagePlatformSettings,
+  canAccessMasterImport,
   canUpdateOperationalSettings,
   canViewFoodCost,
   canAccessPayrollModule,
@@ -75,6 +76,7 @@ const Departments = lazy(() => import("./pages/Departments"));
 const Positions = lazy(() => import("./pages/Positions"));
 const Accounting = lazy(() => import("./pages/Accounting"));
 const Settings = lazy(() => import("./pages/Settings"));
+const MasterImportPage = lazy(() => import("./pages/settings/MasterImportPage"));
 const PaymentHealth = lazy(() => import("./pages/settings/PaymentHealth"));
 const ProductionStationsSettings = lazy(() => import("./pages/settings/ProductionStationsSettings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -331,6 +333,7 @@ const App = () => (
             <Route path="/executive-dashboard" element={guarded(PERMISSIONS.REPORTS, <ExecutiveDashboard />)} />
             <Route path="/reports/executive-sales" element={guarded(PERMISSIONS.REPORTS, <ExecutiveSalesReport />)} />
             <Route path="/settings" element={accessGuarded((user) => canAccessSettingsPage(user), <Settings />)} />
+            <Route path="/settings/master-import" element={accessGuarded((user) => canAccessMasterImport(user), <MasterImportPage />)} />
             <Route path="/settings/payments/health" element={accessGuarded((user) => canManagePlatformSettings(user), <PaymentHealth />)} />
             <Route path="/settings/production-stations" element={accessGuarded((user) => canUpdateOperationalSettings(user), <ProductionStationsSettings />)} />
             <Route path="/system/failed-jobs" element={accessGuarded((user) => canManagePlatformSettings(user), <FailedJobsDashboard />)} />

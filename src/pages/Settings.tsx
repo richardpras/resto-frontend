@@ -25,6 +25,7 @@ import { useAuthStore } from "@/stores/authStore";
 import {
   canViewSettingsTab,
   canAccessUserManagement,
+  canAccessMasterImport,
   type SettingsTabKey,
 } from "@/domain/permissionGates";
 
@@ -55,6 +56,7 @@ export default function Settings() {
       : (visibleTabs[0] ?? "outlets");
   const [activeTab, setActiveTab] = useState(initialTab);
   const showUsersLink = canAccessUserManagement(authUser);
+  const showMasterImportLink = canAccessMasterImport(authUser);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -177,6 +179,11 @@ export default function Settings() {
             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2 hidden sm:inline">{t("settings.reloadFromServer")}</span>
           </Button>
+          {showMasterImportLink ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/settings/master-import">{t("settings.masterImport.navLink")}</Link>
+            </Button>
+          ) : null}
           {showUsersLink ? (
             <Button asChild variant="outline" size="sm">
               <Link to="/users"><ExternalLink className="h-4 w-4 mr-2" />{t("settings.usersPermissions")}</Link>

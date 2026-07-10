@@ -257,6 +257,74 @@
       "receipt": "Receipts",
       "warehouses": "Warehouses"
     },
+    "masterImport": {
+      "navLink": "Master Import",
+      "title": "Master Import",
+      "subtitle": "Bulk load master data from ZIP or XLSX templates. Phase 1: operations, Phase 2: CRM & finance, Phase 3: HR & loyalty, Phase 4: payroll profiles.",
+      "backToSettings": "Back to Settings",
+      "phase1Tab": "Phase 1",
+      "phase2Tab": "Phase 2",
+      "phase1Title": "Phase 1 — Operations",
+      "phase1Desc": "Ingredients, opening stock, menu, recipes, suppliers, and tables.",
+      "phase2Title": "Phase 2 — CRM & Finance",
+      "phase2Desc": "Chart of accounts, opening balances, customers, members, and outlet payment methods.",
+      "phase3Tab": "Phase 3",
+      "phase3Title": "Phase 3 — HR & Loyalty",
+      "phase3Desc": "Departments, positions, employees, and opening loyalty points.",
+      "phase4Tab": "Phase 4",
+      "phase4Title": "Phase 4 — Payroll Profiles",
+      "phase4Desc": "Employee salary profiles for payroll (ZIP or XLSX). Requires Phase 3 employees.",
+      "outlet": "Outlet",
+      "selectOutlet": "Select outlet",
+      "zipFile": "ZIP file",
+      "bundleFile": "ZIP or XLSX file",
+      "downloadTemplate": "Download ZIP template",
+      "downloadXlsxTemplate": "Download XLSX template",
+      "preview": "Preview",
+      "commit": "Commit import",
+      "templateDownloaded": "Template downloaded.",
+      "templateFailed": "Could not download template.",
+      "missingFile": "Select an outlet and ZIP file first.",
+      "previewDone": "Preview: {{created}} create, {{updated}} update, {{errors}} errors.",
+      "commitDone": "Import committed: {{created}} created, {{updated}} updated.",
+      "importFailed": "Import failed.",
+      "resultTitle": "Import result",
+      "previewMode": "Preview only — no data was written.",
+      "commitMode": "Committed to database.",
+      "created": "{{count}} created",
+      "updated": "{{count}} updated",
+      "skipped": "{{count}} skipped",
+      "errors": "{{count}} errors",
+      "sectionSummary": "{{created}} create · {{updated}} update · {{skipped}} skip · {{errors}} errors",
+      "rowError": "Row {{row}}: {{message}}",
+      "sections": {
+        "phase1": {
+          "ingredients": "Ingredients",
+          "opening_stock": "Opening stock",
+          "menu_categories": "Menu categories",
+          "menu_items": "Menu items",
+          "recipes": "Recipes (BOM)",
+          "suppliers": "Suppliers",
+          "tables": "Tables"
+        },
+        "phase2": {
+          "chart_of_accounts": "Chart of accounts",
+          "opening_balances": "Opening balances",
+          "customers": "Customers",
+          "members": "Members",
+          "outlet_payment_methods": "Outlet payment methods"
+        },
+        "phase3": {
+          "departments": "Departments",
+          "positions": "Positions",
+          "employees": "Employees",
+          "opening_loyalty_points": "Opening loyalty points"
+        },
+        "phase4": {
+          "employee_salary_profiles": "Employee salary profiles"
+        }
+      }
+    },
     "merchant": {
       "title": "Merchant Profile",
       "merchantName": "Merchant Name",
