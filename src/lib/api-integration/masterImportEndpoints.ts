@@ -20,8 +20,16 @@ export type MasterImportResult = {
 };
 
 export async function downloadMasterImportPhase1Template(): Promise<Blob> {
+  return downloadMasterImportTemplate("/imports/phase1/template");
+}
+
+export async function downloadMasterImportPhase1TemplateXlsx(outletId: number): Promise<Blob> {
+  return downloadMasterImportTemplate(`/imports/phase1/template-xlsx?outletId=${outletId}`);
+}
+
+async function downloadMasterImportTemplate(path: string): Promise<Blob> {
   const token = getApiAccessToken();
-  const response = await fetch(`${API_BASE_URL}/imports/phase1/template`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) {
@@ -79,14 +87,11 @@ export async function importMasterImportPhase1Type(payload: {
 }
 
 export async function downloadMasterImportPhase2Template(): Promise<Blob> {
-  const token = getApiAccessToken();
-  const response = await fetch(`${API_BASE_URL}/imports/phase2/template`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    throw new Error("Failed to download phase 2 import template.");
-  }
-  return response.blob();
+  return downloadMasterImportTemplate("/imports/phase2/template");
+}
+
+export async function downloadMasterImportPhase2TemplateXlsx(outletId: number): Promise<Blob> {
+  return downloadMasterImportTemplate(`/imports/phase2/template-xlsx?outletId=${outletId}`);
 }
 
 export async function importMasterImportPhase2Bundle(payload: {
@@ -117,14 +122,11 @@ export async function importMasterImportPhase2Bundle(payload: {
 }
 
 export async function downloadMasterImportPhase3Template(): Promise<Blob> {
-  const token = getApiAccessToken();
-  const response = await fetch(`${API_BASE_URL}/imports/phase3/template`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    throw new Error("Failed to download phase 3 import template.");
-  }
-  return response.blob();
+  return downloadMasterImportTemplate("/imports/phase3/template");
+}
+
+export async function downloadMasterImportPhase3TemplateXlsx(outletId: number): Promise<Blob> {
+  return downloadMasterImportTemplate(`/imports/phase3/template-xlsx?outletId=${outletId}`);
 }
 
 export async function importMasterImportPhase3Bundle(payload: {
@@ -155,25 +157,11 @@ export async function importMasterImportPhase3Bundle(payload: {
 }
 
 export async function downloadMasterImportPhase4Template(): Promise<Blob> {
-  const token = getApiAccessToken();
-  const response = await fetch(`${API_BASE_URL}/imports/phase4/template`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    throw new Error("Failed to download phase 4 import template.");
-  }
-  return response.blob();
+  return downloadMasterImportTemplate("/imports/phase4/template");
 }
 
-export async function downloadMasterImportPhase4TemplateXlsx(): Promise<Blob> {
-  const token = getApiAccessToken();
-  const response = await fetch(`${API_BASE_URL}/imports/phase4/template-xlsx`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    throw new Error("Failed to download phase 4 XLSX template.");
-  }
-  return response.blob();
+export async function downloadMasterImportPhase4TemplateXlsx(outletId: number): Promise<Blob> {
+  return downloadMasterImportTemplate(`/imports/phase4/template-xlsx?outletId=${outletId}`);
 }
 
 export async function importMasterImportPhase4Bundle(payload: {

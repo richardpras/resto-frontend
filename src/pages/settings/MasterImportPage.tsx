@@ -9,8 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   downloadMasterImportPhase1Template,
+  downloadMasterImportPhase1TemplateXlsx,
   downloadMasterImportPhase2Template,
+  downloadMasterImportPhase2TemplateXlsx,
   downloadMasterImportPhase3Template,
+  downloadMasterImportPhase3TemplateXlsx,
   downloadMasterImportPhase4Template,
   downloadMasterImportPhase4TemplateXlsx,
   importMasterImportPhase1Bundle,
@@ -154,31 +157,35 @@ export default function MasterImportPage() {
   };
 
   const downloadTemplate = async (format: "zip" | "xlsx" = "zip") => {
+    if (format === "xlsx" && !outletId) {
+      toast.error(t("settings.masterImport.missingOutletForXlsx"));
+      return;
+    }
     setBusy(true);
     try {
       const blob =
-        phase === "phase1"
-          ? await downloadMasterImportPhase1Template()
-          : phase === "phase2"
-            ? await downloadMasterImportPhase2Template()
-            : phase === "phase3"
-              ? await downloadMasterImportPhase3Template()
-              : format === "xlsx"
-                ? await downloadMasterImportPhase4TemplateXlsx()
+        format === "xlsx"
+          ? phase === "phase1"
+            ? await downloadMasterImportPhase1TemplateXlsx(outletId!)
+            : phase === "phase2"
+              ? await downloadMasterImportPhase2TemplateXlsx(outletId!)
+              : phase === "phase3"
+                ? await downloadMasterImportPhase3TemplateXlsx(outletId!)
+                : await downloadMasterImportPhase4TemplateXlsx(outletId!)
+          : phase === "phase1"
+            ? await downloadMasterImportPhase1Template()
+            : phase === "phase2"
+              ? await downloadMasterImportPhase2Template()
+              : phase === "phase3"
+                ? await downloadMasterImportPhase3Template()
                 : await downloadMasterImportPhase4Template();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download =
-        phase === "phase1"
-          ? "master-import-phase1-template.zip"
-          : phase === "phase2"
-            ? "master-import-phase2-template.zip"
-            : phase === "phase3"
-              ? "master-import-phase3-template.zip"
-              : format === "xlsx"
-                ? "master-import-phase4-template.xlsx"
-                : "master-import-phase4-template.zip";
+        format === "xlsx"
+          ? `master-import-${phase}-template.xlsx`
+          : `master-import-${phase}-template.zip`;
       anchor.click();
       URL.revokeObjectURL(url);
       toast.success(t("settings.masterImport.templateDownloaded"));
@@ -295,7 +302,10 @@ export default function MasterImportPage() {
           <Card>
             <CardHeader>
               <CardTitle>{phaseLabel}</CardTitle>
-              <CardDescription>{phaseDesc}</CardDescription>
+              <CardDescription>
+                {phaseDesc}
+                <span className="mt-1 block text-xs">{t("settings.masterImport.recommendXlsx")}</span>
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -315,19 +325,11 @@ export default function MasterImportPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="master-import-file">
-                    {phase === "phase4"
-                      ? t("settings.masterImport.bundleFile")
-                      : t("settings.masterImport.zipFile")}
-                  </Label>
+                  <Label htmlFor="master-import-file">{t("settings.masterImport.bundleFile")}</Label>
                   <input
                     id="master-import-file"
                     type="file"
-                    accept={
-                      phase === "phase4"
-                        ? ".zip,application/zip,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        : ".zip,application/zip,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    }
+                    accept=".zip,application/zip,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="block w-full text-sm"
                     onChange={(e) => {
                       setFile(e.target.files?.[0] ?? null);
@@ -338,16 +340,18 @@ export default function MasterImportPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  disabled={busy || !outletId}
+                  onClick={() => void downloadTemplate("xlsx")}
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  <span className="ml-2">{t("settings.masterImport.downloadXlsxTemplate")}</span>
+                </Button>
                 <Button type="button" variant="outline" disabled={busy} onClick={() => void downloadTemplate("zip")}>
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  <span className="ml-2">{t("settings.masterImport.downloadTemplate")}</span>
+                  <span className="ml-2">{t("settings.masterImport.downloadZipTemplate")}</span>
                 </Button>
-                {phase === "phase4" ? (
-                  <Button type="button" variant="outline" disabled={busy} onClick={() => void downloadTemplate("xlsx")}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    <span className="ml-2">{t("settings.masterImport.downloadXlsxTemplate")}</span>
-                  </Button>
-                ) : null}
                 <Button type="button" variant="secondary" disabled={busy || !file} onClick={() => void runImport(true)}>
                   <FileUp className="h-4 w-4" />
                   <span className="ml-2">{t("settings.masterImport.preview")}</span>
