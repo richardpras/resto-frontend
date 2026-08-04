@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useOutletStore } from "@/stores/outletStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import { MenuImageUploadField } from "@/components/menu/MenuImageUploadField";
@@ -15,6 +16,8 @@ import { SkeletonBusyRegion } from "@/components/skeletons/SkeletonBusyRegion";
 import type { Outlet } from "@/domain/settingsDomainTypes";
 import { mapAssignedOutletsToSettingsOutlets } from "@/domain/outletAdapters";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { patchBootstrapMenuAvailability } from "@/mobile/offline/offlineBootstrapDb";
+import { isNativePosShell } from "@/mobile/platform";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -157,10 +160,43 @@ export default function MenuManagement() {
     const current = items.find((i) => i.id === id);
     if (!current) return;
 
-    try {
-      const updated = await updateMenuItem(id, { available: !current.available });
+    const nextAvailable = !current.available;
+    const applyLocal = (updated: typeof current) => {
       setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
       setAllOutletItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    };
+
+    try {
+      const isOfflineNative =
+        isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
+      if (isOfflineNative) {
+        const outletId = activeOutletId ?? Number(current.outletId ?? 0);
+        if (!outletId || outletId < 1) {
+          toast.error(t("menu.updateFailed"));
+          return;
+        }
+        const optimistic = { ...current, available: nextAvailable };
+        applyLocal(optimistic);
+        const fp = await crypto.subtle
+          .digest("SHA-256", new TextEncoder().encode(`menu.item.availability|${id}|${nextAvailable}`))
+          .then((buf) =>
+            Array.from(new Uint8Array(buf))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(""),
+          )
+          .catch(() => `menu-avail-${id}-${nextAvailable}`);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "menu.item.availability",
+          payload: { menuItemId: Number(id), available: nextAvailable, outletId },
+        });
+        await patchBootstrapMenuAvailability(outletId, id, nextAvailable);
+        return;
+      }
+
+      const updated = await updateMenuItem(id, { available: nextAvailable });
+      applyLocal(updated);
       await queryClient.invalidateQueries({ queryKey: ["menu-items"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("menu.updateFailed"));

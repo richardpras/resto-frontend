@@ -20,7 +20,33 @@ import {
   mapInventoryItemApiToStore,
   mapStockMovementApiToStore,
 } from "@/domain/inventoryAdapters";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { useOutletStore } from "@/stores/outletStore";
+import { toast } from "sonner";
+import i18n from "@/i18n";
 export type { InventoryPayload } from "@/lib/api-integration/inventoryEndpoints";
+
+function shouldQueueOffline(): boolean {
+  return isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
+}
+
+function resolveActiveOutletId(explicit?: number | null): number {
+  if (typeof explicit === "number" && explicit >= 1) return explicit;
+  const active = useOutletStore.getState().activeOutletId;
+  return typeof active === "number" && active >= 1 ? active : 0;
+}
+
+async function shaFingerprint(parts: string[]): Promise<string> {
+  const raw = parts.join("|");
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return `fp-${raw}`;
+}
 
 export type InventoryItemType = "ingredient" | "atk" | "asset";
 
@@ -190,6 +216,33 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   createItemRemote: async (payload) => {
     set({ isSubmitting: true, error: null });
     try {
+      if (shouldQueueOffline()) {
+        const outletId = resolveActiveOutletId(payload.outletId);
+        if (outletId < 1) throw new Error("Outlet is required for offline inventory create");
+        const localId = `local-inv:${crypto.randomUUID()}`;
+        const created: InventoryItem = {
+          id: localId,
+          name: payload.name,
+          type: payload.type as InventoryItemType,
+          stock: Number(payload.stock ?? 0),
+          min: Number(payload.min ?? 0),
+          unit: String(payload.unit ?? "pcs"),
+          price: payload.price,
+          notes: payload.notes,
+        };
+        const fp = await shaFingerprint(["inventory.item.upsert", localId, payload.name]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "inventory.item.upsert",
+          payload: { ...payload, outletId, clientLocalRef: localId },
+        });
+        set((state) => ({
+          ingredients: [created, ...state.ingredients],
+          lastSyncAt: new Date().toISOString(),
+        }));
+        return created;
+      }
       const created = mapInventoryItemApiToStore(await apiCreateInventoryItem(payload));
       set((state) => ({
         ingredients: [created, ...state.ingredients],
@@ -207,6 +260,35 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   updateItemRemote: async (id, payload) => {
     set({ isSubmitting: true, error: null });
     try {
+      if (shouldQueueOffline()) {
+        const resolvedOutlet = resolveActiveOutletId((payload as { outletId?: number }).outletId);
+        if (resolvedOutlet < 1) {
+          throw new Error("Outlet is required for offline inventory update");
+        }
+        const fp = await shaFingerprint(["inventory.item.upsert", id, JSON.stringify(payload)]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId: resolvedOutlet,
+          fingerprint: fp,
+          operationType: "inventory.item.upsert",
+          payload: { id: Number(id), attributes: payload, outletId: resolvedOutlet },
+        });
+        const existing = get().ingredients.find((i) => i.id === id);
+        const updated: InventoryItem = {
+          id,
+          name: payload.name ?? existing?.name ?? "",
+          type: (payload.type as InventoryItemType | undefined) ?? existing?.type ?? "ingredient",
+          stock: Number(payload.stock ?? existing?.stock ?? 0),
+          min: Number(payload.min ?? existing?.min ?? 0),
+          unit: String(payload.unit ?? existing?.unit ?? "pcs"),
+          price: payload.price ?? existing?.price,
+          notes: payload.notes ?? existing?.notes,
+        };
+        set((state) => ({
+          ingredients: state.ingredients.map((item) => (item.id === id ? updated : item)),
+          lastSyncAt: new Date().toISOString(),
+        }));
+        return updated;
+      }
       const updated = mapInventoryItemApiToStore(await apiUpdateInventoryItem(id, payload));
       set((state) => ({
         ingredients: state.ingredients.map((item) => (item.id === id ? updated : item)),
@@ -222,6 +304,14 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   },
 
   deleteItemRemote: async (id) => {
+    if (shouldQueueOffline()) {
+      toast.info(
+        i18n.t("ops:mobile.requiresInternet", {
+          defaultValue: "This menu requires an internet connection.",
+        }),
+      );
+      throw new Error("Delete requires internet");
+    }
     set({ isSubmitting: true, error: null });
     try {
       await apiDeleteInventoryItem(id);
@@ -240,6 +330,46 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   createStockMovementRemote: async (payload) => {
     set({ isSubmitting: true, error: null });
     try {
+      if (shouldQueueOffline()) {
+        const outletId = resolveActiveOutletId((payload as { outlet_id?: number }).outlet_id);
+        if (outletId < 1) throw new Error("Outlet is required for offline stock movement");
+        const fp = await shaFingerprint([
+          "inventory.stock_movement.create",
+          String(payload.inventory_item_id),
+          payload.type,
+          String(payload.quantity),
+          String(Date.now()),
+        ]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "inventory.stock_movement.create",
+          payload: {
+            inventory_item_id: payload.inventory_item_id,
+            outlet_id: outletId,
+            type: payload.type,
+            quantity: payload.quantity,
+            source_type: payload.source_type,
+            source_id: payload.source_id ?? null,
+          },
+        });
+        const created: StockMovement = {
+          id: `local-mv:${crypto.randomUUID()}`,
+          inventoryItemId: String(payload.inventory_item_id),
+          outletId,
+          inventoryItemName: null,
+          type: payload.type,
+          quantity: payload.quantity,
+          sourceType: payload.source_type,
+          sourceId: payload.source_id ?? null,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          stockMovements: [created, ...state.stockMovements],
+          lastSyncAt: new Date().toISOString(),
+        }));
+        return created;
+      }
       const created = mapStockMovementApiToStore(await apiCreateStockMovement(payload));
       set((state) => ({
         stockMovements: [created, ...state.stockMovements],
@@ -273,13 +403,19 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   },
 
   recalculateValuations: async (outletId) => {
+    if (shouldQueueOffline()) {
+      toast.info(
+        i18n.t("ops:mobile.requiresInternet", {
+          defaultValue: "This menu requires an internet connection.",
+        }),
+      );
+      throw new Error("Valuation recalculate requires internet");
+    }
     if (!outletId || outletId < 1) return [];
     set({ valuationsLoading: true, error: null });
     try {
       await apiRecalculateInventoryValuations({ outletId });
-      const rows = await apiListInventoryValuations({ outletId });
-      set({ valuations: rows });
-      return rows;
+      return await get().fetchValuations(outletId);
     } catch (error) {
       set({ error: mapApiError(error) });
       throw error;

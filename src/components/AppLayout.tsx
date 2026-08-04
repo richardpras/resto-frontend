@@ -2,20 +2,20 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Wifi, WifiOff, Lock } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { LockScreen } from "@/components/auth/LockScreen";
 import { IdleTracker } from "@/components/auth/ProtectedRoute";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getApiAccessToken } from "@/lib/api-integration/client";
 import { useOutletStore } from "@/stores/outletStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
 import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
 import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
-import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { cn } from "@/lib/utils";
 
 type OutletRow = { id: number; code?: string | null; name: string };
 
@@ -60,7 +60,9 @@ function OutletSelector({
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation("common");
-  const [online] = useState(true);
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+  const apiUnreachable = useOfflineSyncStore((s) => s.apiUnreachable);
+  const initConnectivityListeners = useOfflineSyncStore((s) => s.initConnectivityListeners);
   const { user, locked, lock } = useAuthStore();
   const location = useLocation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
@@ -68,6 +70,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const setActiveOutletContext = useOutletStore((s) => s.setActiveOutletContext);
 
   const selectorOutlets = user?.assignedOutlets;
+
+  useEffect(() => {
+    initConnectivityListeners();
+  }, [initConnectivityListeners]);
 
   useEffect(() => {
     if (!user) return;
@@ -104,13 +110,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) return <>{children}</>;
 
+  const connectivityTitle = isOnline
+    ? t("header.online")
+    : apiUnreachable
+      ? t("header.apiUnreachable", { defaultValue: "API unreachable" })
+      : t("header.offline");
+
   return (
     <SidebarProvider>
       <IdleTracker />
       {locked && user?.pinSet ? <LockScreen /> : null}
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <SoundAlertsProvider />
           <div data-app-chrome>
             <StaffInstallPrompt />
@@ -118,10 +130,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <header
             data-app-chrome
-            className="h-14 flex items-center justify-between border-b bg-card/50 backdrop-blur-sm px-4 sticky top-0 z-chrome"
+            className="min-h-14 h-14 flex items-center justify-between gap-2 border-b bg-card/50 backdrop-blur-sm px-2 sm:px-4 sticky top-0 z-chrome pt-[env(safe-area-inset-top)]"
           >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <SidebarTrigger aria-label={t("header.toggleSidebar")} />
+            <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
+              <SidebarTrigger aria-label={t("header.toggleSidebar")} className="shrink-0" />
               {(selectorOutlets?.length ?? 0) > 0 && (
                 <>
                   <div className="hidden sm:flex items-center gap-2 min-w-[200px] max-w-[min(360px,40vw)]">
@@ -132,39 +144,44 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       triggerClassName="h-9 text-xs"
                     />
                   </div>
-                  <div className="flex sm:hidden items-center gap-2 min-w-0 flex-1 max-w-[min(220px,50vw)]">
+                  <div className="flex sm:hidden items-center min-w-0 flex-1 max-w-[min(48vw,11.5rem)]">
                     <OutletSelector
                       outlets={selectorOutlets ?? []}
                       activeOutletId={activeOutletId}
                       onSelect={(id, code) => setActiveOutletContext(id, code)}
-                      triggerClassName="h-9 text-sm min-h-11"
+                      triggerClassName="h-9 text-xs min-w-0 w-full truncate [&>span]:truncate"
                     />
                   </div>
                 </>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <LanguageSwitcher variant="header" />
-              {online ? (
-                <div className="flex items-center gap-1.5 text-success text-xs font-medium">
-                  <Wifi className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t("header.online")}</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-warning text-xs font-medium animate-pulse-soft">
-                  <WifiOff className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t("header.offline")}</span>
-                </div>
-              )}
+            <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
+              <div
+                className={cn(
+                  "flex items-center justify-center p-2 rounded-lg",
+                  isOnline ? "text-success" : "text-warning animate-pulse-soft",
+                )}
+                title={connectivityTitle}
+                aria-label={connectivityTitle}
+              >
+                {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                <span className="hidden md:inline ml-1.5 text-xs font-medium">{connectivityTitle}</span>
+              </div>
               {user.pinSet ? (
-                <button type="button" onClick={() => lock()} className="p-2 rounded-lg hover:bg-muted transition-colors" title={t("header.lockScreen")}>
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  className="p-2 rounded-lg hover:bg-muted transition-colors"
+                  title={t("header.lockScreen")}
+                  aria-label={t("header.lockScreen")}
+                >
                   <Lock className="h-4 w-4 text-muted-foreground" />
                 </button>
               ) : null}
               <NotificationBell />
             </div>
           </header>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main className="flex-1 overflow-auto min-h-0">{children}</main>
           <BugReportButton />
         </div>
       </div>

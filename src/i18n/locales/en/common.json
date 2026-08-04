@@ -757,6 +757,7 @@
   "header": {
     "online": "Online",
     "offline": "Offline",
+    "apiUnreachable": "API unreachable",
     "lockScreen": "Lock screen",
     "activeOutlet": "Active outlet",
     "toggleSidebar": "Toggle sidebar",

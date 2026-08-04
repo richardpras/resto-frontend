@@ -366,6 +366,8 @@ export default function POS() {
     orders,
     replaceFloorTables,
     orderType,
+    isOfflineMode: offlinePos.isOfflineMode,
+    offlineTables: offlinePos.offlineTables,
   });
 
   useEffect(() => {
@@ -1960,7 +1962,7 @@ export default function POS() {
   const isPhoneViewport = useIsMobile();
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+    <div className="flex flex-col h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))] min-h-0">
       <ConnectivitySyncRibbon
         outletId={activeOutletId}
         terminalRegistrationReady={!menuLoading}

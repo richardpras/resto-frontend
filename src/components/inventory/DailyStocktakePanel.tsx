@@ -17,12 +17,30 @@ import {
   type DailyStocktakeLine,
   type DailyStocktakeSession,
 } from "@/lib/api-integration/dailyStocktakeEndpoints";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { loadStocktakeDraft, saveStocktakeDraft } from "@/mobile/offline/offlineStocktakeDraftDb";
 
 type Props = {
   outletId: number;
 };
 
 type CountDraft = Record<string, { openingQty: string; closingQty: string }>;
+
+function shouldQueueOffline(): boolean {
+  return isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
+}
+
+async function shaFingerprint(parts: string[]): Promise<string> {
+  const raw = parts.join("|");
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return `fp-${raw}`;
+}
 
 function statusBadge(status: string, t: (key: string) => string) {
   if (status === "posted") return <Badge variant="outline">{t("inventory.stocktake.status.posted")}</Badge>;
@@ -61,23 +79,42 @@ export function DailyStocktakePanel({ outletId }: Props) {
   const [businessDate, setBusinessDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [draft, setDraft] = useState<CountDraft>({});
+  const offline = shouldQueueOffline();
 
   const sessionQ = useQuery({
     queryKey: ["daily-stocktake-session", sessionId],
     queryFn: () => getDailyStocktakeSession(sessionId!),
-    enabled: sessionId !== null,
+    enabled: sessionId !== null && !offline,
   });
 
   const session = sessionQ.data;
   const lines = session?.lines ?? [];
-  const isEditable = session?.status === "draft";
-  const canApprove = session?.status === "pending_approval";
+  const isEditable = offline ? true : session?.status === "draft";
+  const canApprove = !offline && session?.status === "pending_approval";
 
   useEffect(() => {
     if (session?.lines) {
       setDraft(toDraft(session.lines));
     }
   }, [session?.id, session?.status]);
+
+  useEffect(() => {
+    void loadStocktakeDraft(outletId, businessDate).then((row) => {
+      if (!row) return;
+      if (row.sessionId) setSessionId(row.sessionId);
+      setDraft(row.draft);
+    });
+  }, [outletId, businessDate]);
+
+  useEffect(() => {
+    void saveStocktakeDraft({
+      outletId,
+      businessDate,
+      sessionId,
+      draft,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [outletId, businessDate, sessionId, draft]);
 
   const createMutation = useMutation({
     mutationFn: () => createDailyStocktakeSession(outletId, businessDate),
@@ -89,31 +126,94 @@ export function DailyStocktakePanel({ outletId }: Props) {
   });
 
   const openingMutation = useMutation({
-    mutationFn: () => saveDailyStocktakeOpening(sessionId!, linesFromDraft(draft, "openingQty")),
+    mutationFn: async () => {
+      if (offline) {
+        const fp = await shaFingerprint([
+          "inventory.stocktake.save_opening",
+          String(outletId),
+          businessDate,
+          JSON.stringify(linesFromDraft(draft, "openingQty")),
+        ]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "inventory.stocktake.save_opening",
+          payload: {
+            outletId,
+            businessDate,
+            sessionId: sessionId ?? 0,
+            lines: linesFromDraft(draft, "openingQty"),
+          },
+        });
+        return { id: sessionId ?? 0 } as DailyStocktakeSession;
+      }
+      return saveDailyStocktakeOpening(sessionId!, linesFromDraft(draft, "openingQty"));
+    },
     onSuccess: (data) => {
-      void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
+      if (data.id) void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
       toast({ title: t("inventory.stocktake.openingSaved") });
     },
   });
 
   const closingMutation = useMutation({
-    mutationFn: () => saveDailyStocktakeClosing(sessionId!, linesFromDraft(draft, "closingQty")),
+    mutationFn: async () => {
+      if (offline) {
+        const fp = await shaFingerprint([
+          "inventory.stocktake.save_closing",
+          String(outletId),
+          businessDate,
+          JSON.stringify(linesFromDraft(draft, "closingQty")),
+        ]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "inventory.stocktake.save_closing",
+          payload: {
+            outletId,
+            businessDate,
+            sessionId: sessionId ?? 0,
+            lines: linesFromDraft(draft, "closingQty"),
+          },
+        });
+        return { id: sessionId ?? 0 } as DailyStocktakeSession;
+      }
+      return saveDailyStocktakeClosing(sessionId!, linesFromDraft(draft, "closingQty"));
+    },
     onSuccess: (data) => {
-      void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
+      if (data.id) void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
       toast({ title: t("inventory.stocktake.closingSaved") });
     },
   });
 
   const submitMutation = useMutation({
-    mutationFn: () => submitDailyStocktake(sessionId!),
+    mutationFn: async () => {
+      if (offline) {
+        const fp = await shaFingerprint(["inventory.stocktake.submit", String(outletId), businessDate]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "inventory.stocktake.submit",
+          payload: { outletId, businessDate, sessionId: sessionId ?? 0 },
+        });
+        return { id: sessionId ?? 0, status: "pending_approval" } as DailyStocktakeSession;
+      }
+      return submitDailyStocktake(sessionId!);
+    },
     onSuccess: (data) => {
-      void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
+      if (data.id) void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
       toast({ title: t("inventory.stocktake.submitted") });
     },
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => approveDailyStocktake(sessionId!),
+    mutationFn: () => {
+      if (offline) {
+        throw new Error(
+          t("mobile.requiresInternet", { defaultValue: "This menu requires an internet connection." }),
+        );
+      }
+      return approveDailyStocktake(sessionId!);
+    },
     onSuccess: (data) => {
       void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
       toast({ title: t("inventory.stocktake.approved") });
@@ -121,7 +221,14 @@ export function DailyStocktakePanel({ outletId }: Props) {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => cancelDailyStocktake(sessionId!),
+    mutationFn: () => {
+      if (offline) {
+        throw new Error(
+          t("mobile.requiresInternet", { defaultValue: "This menu requires an internet connection." }),
+        );
+      }
+      return cancelDailyStocktake(sessionId!);
+    },
     onSuccess: (data) => {
       void queryClient.setQueryData(["daily-stocktake-session", data.id], data);
       toast({ title: t("inventory.stocktake.cancelled") });
@@ -137,6 +244,11 @@ export function DailyStocktakePanel({ outletId }: Props) {
 
   async function handleOpenSession() {
     try {
+      if (offline) {
+        setSessionId(null);
+        toast({ title: t("inventory.stocktake.sessionOpened") });
+        return;
+      }
       await createMutation.mutateAsync();
       toast({ title: t("inventory.stocktake.sessionOpened") });
     } catch (error) {
@@ -189,6 +301,40 @@ export function DailyStocktakePanel({ outletId }: Props) {
           ) : null}
         </div>
       </div>
+
+      {offline ? (
+        <p className="text-sm text-amber-700 dark:text-amber-300">
+          {t("mobile.apiUnreachable", { defaultValue: "API unreachable" })} — draft counts queue until sync. Approve stays online-only.
+        </p>
+      ) : null}
+
+      {offline ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={openingMutation.isPending}
+            onClick={() => void runMutation(() => openingMutation.mutateAsync(), t("inventory.stocktake.openingFailed"))}
+          >
+            {t("inventory.stocktake.saveOpening")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={closingMutation.isPending}
+            onClick={() => void runMutation(() => closingMutation.mutateAsync(), t("inventory.stocktake.closingFailed"))}
+          >
+            {t("inventory.stocktake.saveClosing")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={submitMutation.isPending}
+            onClick={() => void runMutation(() => submitMutation.mutateAsync(), t("inventory.stocktake.submitFailed"))}
+          >
+            {t("inventory.stocktake.submitForApproval")}
+          </Button>
+        </div>
+      ) : null}
 
       {session ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">

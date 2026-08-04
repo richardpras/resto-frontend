@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
 import { useLocation } from "react-router-dom";
 import html2canvas from "html2canvas";
-import { Bug } from "lucide-react";
+import { Bug, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { BugReportModal } from "@/components/bug-report/BugReportModal";
+import { useIsSidebarDrawer } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 const HIDDEN_ROUTES = ["/login", "/payment-status", "/qr-order"];
 
@@ -54,6 +55,7 @@ async function captureViewportScreenshot(): Promise<{ preview: string; blob: Blo
 
 export function BugReportButton() {
   const location = useLocation();
+  const isCompactChrome = useIsSidebarDrawer();
   const [open, setOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -85,7 +87,12 @@ export function BugReportButton() {
       <button
         type="button"
         data-app-chrome
-        className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2 rounded-l-lg border border-r-0 border-red-700/30 bg-red-600 px-2.5 py-4 text-white shadow-lg transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-80"
+        className={cn(
+          "z-40 flex items-center justify-center border border-red-700/30 bg-red-600 text-white shadow-lg transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-80",
+          isCompactChrome
+            ? "fixed bottom-20 right-4 h-12 w-12 rounded-full safe-area-pb sm:bottom-6"
+            : "fixed right-0 top-1/2 -translate-y-1/2 flex-col gap-2 rounded-l-lg border-r-0 px-2.5 py-4",
+        )}
         onClick={() => void handleOpen()}
         disabled={capturing}
         aria-label="Report bug"
@@ -96,13 +103,15 @@ export function BugReportButton() {
         ) : (
           <Bug className="h-5 w-5 shrink-0" aria-hidden />
         )}
-        <span
-          className="text-[11px] font-bold uppercase tracking-[0.18em]"
-          style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
-          aria-hidden
-        >
-          {capturing ? "…" : "Report"}
-        </span>
+        {!isCompactChrome ? (
+          <span
+            className="text-[11px] font-bold uppercase tracking-[0.18em]"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+            aria-hidden
+          >
+            {capturing ? "…" : "Report"}
+          </span>
+        ) : null}
       </button>
 
       <BugReportModal

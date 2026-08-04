@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { NavLink } from "@/components/NavLink";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -14,6 +16,9 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { isPathAllowedOffline } from "@/mobile/offline/offlineCapability";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { isNavBranchActive, isNavItemActive } from "./sidebarNavUtils";
 import type { SidebarNavItem } from "./sidebarNavTypes";
 
@@ -32,6 +37,27 @@ function findFirstLeafHref(item: SidebarNavItem): string | undefined {
   return undefined;
 }
 
+function useOfflineNavGuard() {
+  const { t } = useTranslation("ops");
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+  const navigate = useNavigate();
+
+  const guardNavigate = (href: string, event?: { preventDefault: () => void }) => {
+    if (!isNativePosShell() || isOnline || isPathAllowedOffline(href)) {
+      return false;
+    }
+    event?.preventDefault();
+    toast.info(
+      t("mobile.requiresInternet", {
+        defaultValue: "This menu requires an internet connection.",
+      }),
+    );
+    return true;
+  };
+
+  return { guardNavigate, isOnline, navigate };
+}
+
 function NavLeaf({
   item,
   collapsed,
@@ -46,6 +72,9 @@ function NavLeaf({
   const Icon = item.icon;
   const showNotifBadge = item.href === "/notifications" && (unreadCount ?? 0) > 0;
   const showItemBadge = item.badge != null && Number(item.badge) > 0;
+  const { guardNavigate, isOnline } = useOfflineNavGuard();
+  const blocked =
+    isNativePosShell() && !isOnline && item.href ? !isPathAllowedOffline(item.href) : false;
 
   return (
     <SidebarMenuItem>
@@ -53,7 +82,13 @@ function NavLeaf({
         <NavLink
           to={item.href!}
           end={item.href === "/"}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          onClick={(e) => {
+            if (item.href && guardNavigate(item.href, e)) return;
+          }}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
+            blocked && "opacity-50",
+          )}
           activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
         >
           {Icon ? <Icon className="h-[18px] w-[18px] shrink-0" /> : null}
@@ -85,6 +120,7 @@ function NavSubTree({
   depth?: number;
 }) {
   const location = useLocation();
+  const { guardNavigate, isOnline } = useOfflineNavGuard();
 
   return (
     <>
@@ -111,10 +147,20 @@ function NavSubTree({
         if (!child.href) return null;
 
         const childActive = isNavItemActive(location, child);
+        const blocked =
+          isNativePosShell() && !isOnline && !isPathAllowedOffline(child.href);
         return (
           <SidebarMenuSubItem key={child.href ?? child.titleKey ?? child.title}>
             <SidebarMenuSubButton asChild isActive={childActive} size="sm">
-              <Link to={child.href}>{child.title}</Link>
+              <Link
+                to={child.href}
+                className={cn(blocked && "opacity-50")}
+                onClick={(e) => {
+                  if (guardNavigate(child.href!, e)) return;
+                }}
+              >
+                {child.title}
+              </Link>
             </SidebarMenuSubButton>
           </SidebarMenuSubItem>
         );
@@ -165,6 +211,7 @@ function NavParent({
   const branchActive = isNavBranchActive(location, item);
   const [open, setOpen] = useState(branchActive);
   const Icon = item.icon;
+  const { guardNavigate } = useOfflineNavGuard();
 
   useEffect(() => {
     if (branchActive) setOpen(true);
@@ -178,6 +225,9 @@ function NavParent({
           {firstChildHref ? (
             <Link
               to={firstChildHref}
+              onClick={(e) => {
+                if (guardNavigate(firstChildHref, e)) return;
+              }}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             >
               {Icon ? <Icon className="h-[18px] w-[18px] shrink-0" /> : null}

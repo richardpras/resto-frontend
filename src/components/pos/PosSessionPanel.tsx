@@ -111,20 +111,20 @@ export function PosSessionPanel({ outletId }: Props) {
   const isOpen = currentSession?.status === "open";
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <Banknote className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs min-w-0">
+      <Banknote className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <span className="text-muted-foreground min-w-0 truncate">
         {t("posSession.label")}: {isOpen ? t("posSession.openLabel", { id: currentSession.id }) : t("posSession.none")}
         {isOpen && currentSession.openingCash != null
           ? ` · ${t("posSession.openingCashShort", { amount: formatMoney(currentSession.openingCash) })}`
           : ""}
       </span>
       {!isOpen ? (
-        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setOpenDialog(true)}>
+        <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setOpenDialog(true)}>
           {t("posSession.openShift")}
         </Button>
       ) : (
-        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCloseDialog(true)}>
+        <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setCloseDialog(true)}>
           {t("posSession.closeShift")}
         </Button>
       )}

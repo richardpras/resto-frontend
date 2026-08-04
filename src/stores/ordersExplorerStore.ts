@@ -28,6 +28,11 @@ import type { ReceiptRenderHistoryRow } from "@/domain/receiptDocumentTypes";
 import { useOrderPaymentHistoryStore } from "./orderPaymentHistoryStore";
 import { useOutletStore } from "./outletStore";
 import { useAuthStore } from "./authStore";
+import { useOfflineSyncStore } from "./offlineSyncStore";
+import { isNativePosShell } from "@/mobile/platform";
+import { toast } from "sonner";
+import i18n from "@/i18n";
+import { loadCachedOpenOrders, saveCachedOpenOrders } from "@/mobile/offline/offlineOrdersCache";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -205,10 +210,51 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
     };
 
     try {
+      if (isNativePosShell() && !useOfflineSyncStore.getState().isOnline) {
+        if (typeof outletId !== "number" || outletId < 1) {
+          set({ orders: [], meta: null, initialLoading: false, backgroundRefreshing: false });
+          return;
+        }
+        if (append || params.search || params.dateFrom || params.dateTo || params.hasRecoveryPending) {
+          toast.info(
+            i18n.t("ops:mobile.requiresInternet", {
+              defaultValue: "This menu requires an internet connection.",
+            }),
+          );
+        }
+        let rows = await loadCachedOpenOrders(outletId);
+        if (params.paymentStatus) {
+          rows = rows.filter((r) => r.paymentStatus === params.paymentStatus);
+        }
+        if (params.status) {
+          rows = rows.filter((r) => r.status === params.status);
+        }
+        set({
+          orders: rows as unknown as OrderApi[],
+          meta: {
+            currentPage: 1,
+            lastPage: 1,
+            perPage: rows.length,
+            total: rows.length,
+          },
+          initialLoading: false,
+          backgroundRefreshing: false,
+        });
+        return;
+      }
+
       const result = await apiListOrdersWithMeta(params, {
         headers: createObservabilityHeaders(requestMeta),
       });
       if (get().activeListRequestId !== requestId) return;
+      if (typeof outletId === "number" && outletId >= 1 && !append) {
+        const openish = result.orders.filter(
+          (o) => o.paymentStatus === "unpaid" || o.paymentStatus === "partial",
+        );
+        if (openish.length > 0) {
+          await saveCachedOpenOrders(outletId, openish as never).catch(() => undefined);
+        }
+      }
       set((s) => ({
         orders: append ? [...s.orders, ...result.orders] : result.orders,
         meta: result.meta,

@@ -12,6 +12,26 @@ import {
   toggleMemberStatus as apiToggleMemberStatus,
   updateMember as apiUpdateMember,
 } from "@/lib/api-integration/membersEndpoints";
+import { createLocalMemberId } from "@/mobile/offline/offlineMemberMapping";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { toast } from "sonner";
+import i18n from "@/i18n";
+
+async function shaFingerprint(parts: string[]): Promise<string> {
+  const raw = parts.join("|");
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return `fp-${raw}`;
+}
+
+function shouldQueueOffline(): boolean {
+  return isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
+}
 
 export type MemberStatus = "active" | "inactive";
 
@@ -119,6 +139,20 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
   },
 
   searchMembersForOutlet: async (outletId, query) => {
+    if (shouldQueueOffline()) {
+      toast.info(
+        i18n.t("ops:mobile.memberSearchOffline", {
+          defaultValue: "Member search requires internet. You can still attach a newly created member.",
+        }),
+      );
+      const local = get().members.filter(
+        (m) =>
+          m.outletId === outletId &&
+          (m.name.toLowerCase().includes(query.toLowerCase()) || m.phone.includes(query)),
+      );
+      set({ searchResults: local, searchLoading: false });
+      return local;
+    }
     set({ searchLoading: true });
     try {
       const rows = await searchMembers(outletId, query);
@@ -132,6 +166,39 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
   },
 
   quickCreateMember: async (payload) => {
+    if (shouldQueueOffline()) {
+      const localRef = createLocalMemberId();
+      const member: Member = {
+        id: localRef,
+        outletId: payload.outletId,
+        name: payload.fullName.trim(),
+        phone: payload.phone.trim(),
+        email: payload.email,
+        notes: payload.notes,
+        points: 0,
+        status: "active",
+        createdAt: new Date().toISOString(),
+      };
+      const fp = await shaFingerprint(["member.quick_create", localRef, payload.phone]);
+      await useOfflineSyncStore.getState().enqueueReplayableOperation({
+        outletId: payload.outletId,
+        fingerprint: fp,
+        operationType: "member.quick_create",
+        payload: {
+          outletId: payload.outletId,
+          fullName: payload.fullName.trim(),
+          phone: payload.phone.trim(),
+          email: payload.email,
+          notes: payload.notes,
+          clientLocalRef: localRef,
+        },
+      });
+      set((state) => ({
+        members: [member, ...state.members.filter((m) => m.id !== member.id)],
+        searchResults: [member, ...state.searchResults.filter((m) => m.id !== member.id)],
+      }));
+      return member;
+    }
     const row = await quickCreateMember(payload);
     const member = mapMember(row);
     set((state) => ({
@@ -150,8 +217,46 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
     apiRedeemMemberReward(memberId, { outletId, ...payload }),
 
   addMember: async (m) => {
+    const outletId = m.outletId;
+    if (!outletId || outletId < 1) {
+      throw new Error("Outlet is required to create a member");
+    }
+    if (shouldQueueOffline()) {
+      const localRef = createLocalMemberId();
+      const member: Member = {
+        id: localRef,
+        outletId,
+        name: m.name.trim(),
+        phone: m.phone.trim(),
+        email: m.email?.trim() || undefined,
+        birthday: m.birthday?.trim() || undefined,
+        notes: m.notes?.trim() || undefined,
+        points: 0,
+        status: m.status,
+        createdAt: new Date().toISOString(),
+      };
+      const fp = await shaFingerprint(["member.create", localRef, m.phone]);
+      await useOfflineSyncStore.getState().enqueueReplayableOperation({
+        outletId,
+        fingerprint: fp,
+        operationType: "member.create",
+        payload: {
+          outletId,
+          name: m.name.trim(),
+          phone: m.phone.trim(),
+          email: m.email?.trim() || undefined,
+          birthday: m.birthday?.trim() || undefined,
+          notes: m.notes?.trim() || undefined,
+          clientLocalRef: localRef,
+        },
+      });
+      set((state) => ({
+        members: [member, ...state.members.filter((row) => row.id !== member.id)],
+      }));
+      return;
+    }
     await apiCreateMember({
-      outletId: m.outletId,
+      outletId,
       name: m.name.trim(),
       phone: m.phone.trim(),
       email: m.email?.trim() || undefined,
@@ -159,7 +264,7 @@ export const useMemberStore = create<MemberStore>((set, get) => ({
       notes: m.notes?.trim() || undefined,
       status: m.status,
     });
-    await get().fetchMembers({ force: true, outletId: m.outletId });
+    await get().fetchMembers({ force: true, outletId });
   },
 
   updateMember: async (id, m) => {

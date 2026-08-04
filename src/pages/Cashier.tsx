@@ -14,6 +14,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AppOverlay } from "@/components/ui/AppOverlay";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
@@ -348,6 +350,17 @@ export default function Cashier() {
         setSelectedOrderId(null);
         return;
       }
+      const offline = isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
+      if (offline) {
+        const { loadCachedOpenOrders } = await import("@/mobile/offline/offlineOrdersCache");
+        const cached = await loadCachedOpenOrders(activeOutletId);
+        const merged = cached.filter(
+          (order) => order.paymentStatus === "unpaid" || order.paymentStatus === "partial",
+        );
+        setOrders(merged.map((row) => mapOrder(row as never)));
+        setSelectedOrderId((prev) => (prev && !merged.some((order) => String(order.id) === prev) ? null : prev));
+        return;
+      }
       const baseFilters = {
         tenantId: POS_TENANT_ID,
         outletId: activeOutletId,
@@ -360,6 +373,8 @@ export default function Cashier() {
       const merged = data.filter(
         (order) => order.paymentStatus === "unpaid" || order.paymentStatus === "partial",
       );
+      const { saveCachedOpenOrders } = await import("@/mobile/offline/offlineOrdersCache");
+      await saveCachedOpenOrders(activeOutletId, merged as never);
       setOrders(merged.map(mapOrder));
       setSelectedOrderId((prev) => (prev && !merged.some((order) => order.id === prev) ? null : prev));
     } catch (error) {

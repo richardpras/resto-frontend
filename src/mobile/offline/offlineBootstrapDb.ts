@@ -1,5 +1,7 @@
 /** IndexedDB cache for POS offline bootstrap snapshots. */
 
+import type { PosSessionApi } from "@/lib/api-integration/posSessionEndpoints";
+
 export type OfflineBootstrapSnapshot = {
   generatedAt: string;
   schemaVersion: number;
@@ -12,6 +14,13 @@ export type OfflineBootstrapSnapshot = {
   checkoutMethods: unknown[];
   receiptSettings: Record<string, unknown>;
   thermalPaperWidth: "58mm" | "80mm";
+  /** Present from schemaVersion >= 2 */
+  posSession?: PosSessionApi | null;
+  defaultCashFloat?: number | null;
+  /** Phase 2+ optional caches */
+  openOrders?: unknown[];
+  inventoryItems?: unknown[];
+  activeStocktake?: unknown | null;
 };
 
 const DB_NAME = "resto-offline-bootstrap-v1";
@@ -88,6 +97,33 @@ export async function clearOfflineBootstrap(outletId: number): Promise<void> {
     tx.onerror = () => reject(tx.error ?? new Error("IDB transaction error"));
     tx.objectStore(STORE).delete(outletId);
   });
+}
+
+/** Patch menu item availability inside a cached bootstrap snapshot (sold-out). */
+export async function patchBootstrapMenuAvailability(
+  outletId: number,
+  menuItemId: number | string,
+  available: boolean,
+): Promise<OfflineBootstrapSnapshot | null> {
+  const snap = await loadOfflineBootstrap(outletId);
+  if (!snap) return null;
+  const data = Array.isArray(snap.menuItems?.data) ? [...snap.menuItems.data] : [];
+  const idStr = String(menuItemId);
+  let changed = false;
+  const nextData = data.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const id = (row as { id?: unknown }).id;
+    if (String(id) !== idStr) return row;
+    changed = true;
+    return { ...(row as Record<string, unknown>), available };
+  });
+  if (!changed) return snap;
+  const next: OfflineBootstrapSnapshot = {
+    ...snap,
+    menuItems: { ...snap.menuItems, data: nextData },
+  };
+  await saveOfflineBootstrap(next);
+  return next;
 }
 
 export function isBootstrapFresh(snapshot: OfflineBootstrapSnapshot | null, maxAgeHours = 24): boolean {

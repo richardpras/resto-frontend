@@ -1,4 +1,5 @@
 import { getOrCreateDeviceKeyAsync, getOrCreateDeviceKeySync } from "@/mobile/offline/deviceKey";
+import { probeApiReachability } from "@/mobile/offline/apiReachability";
 import { isCapacitorNative } from "@/mobile/platform";
 import { create } from "zustand";
 import { getApiAccessToken } from "@/lib/api-integration/client";
@@ -10,8 +11,14 @@ import {
   removeQueuedOperationsByFingerprints,
 } from "@/lib/offline/offlineOperationQueue";
 import { saveLocalOrderMapping } from "@/mobile/offline/offlineIdMapping";
+import { applyTerminalSyncOutcomeMappings } from "@/mobile/offline/terminalSyncOutcomeMappings";
 
 const DEVICE_KEY_PREFIX = "resto.terminal.device.";
+
+/** Failures before declaring API unreachable while link appears up. */
+const REACHABILITY_FAILURE_THRESHOLD = 2;
+const REACHABILITY_INTERVAL_MS = 15_000;
+const REACHABILITY_TIMEOUT_MS = 4_000;
 
 function storageDeviceKey(outletId: number): string {
   return `${DEVICE_KEY_PREFIX}${outletId}`;
@@ -31,12 +38,15 @@ async function resolveDeviceKey(outletId: number): Promise<string> {
 
 type OfflineSyncStore = {
   isOnline: boolean;
+  /** True when navigator says online but API probe failed. */
+  apiUnreachable: boolean;
   pendingQueueCount: number;
   syncPhase: "idle" | "syncing";
   lastSyncError: string | null;
   lastBatchConflictCount: number;
   lastRejectedStaleCount: number;
   listenersAttached: boolean;
+  consecutiveProbeFailures: number;
   initConnectivityListeners: () => void;
   refreshQueueCounts: (outletId: number | null) => Promise<void>;
   ensureTerminalPresence: (outletId: number | null) => Promise<void>;
@@ -47,21 +57,86 @@ type OfflineSyncStore = {
   flushQueueForOutlet: (outletId: number) => Promise<void>;
 };
 
+let probeTimer: ReturnType<typeof setInterval> | null = null;
+let probeInFlight = false;
+
+function recomputeOnline(linkOnline: boolean, consecutiveFailures: number): {
+  isOnline: boolean;
+  apiUnreachable: boolean;
+} {
+  if (!linkOnline) {
+    return { isOnline: false, apiUnreachable: false };
+  }
+  const unreachable = consecutiveFailures >= REACHABILITY_FAILURE_THRESHOLD;
+  return { isOnline: !unreachable, apiUnreachable: unreachable };
+}
+
 export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
   isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
+  apiUnreachable: false,
   pendingQueueCount: 0,
   syncPhase: "idle",
   lastSyncError: null,
   lastBatchConflictCount: 0,
   lastRejectedStaleCount: 0,
   listenersAttached: false,
+  consecutiveProbeFailures: 0,
 
   initConnectivityListeners: () => {
     if (typeof window === "undefined" || get().listenersAttached) return;
-    const apply = () => set({ isOnline: navigator.onLine });
-    window.addEventListener("online", apply);
-    window.addEventListener("offline", apply);
-    apply();
+
+    const applyLink = () => {
+      const linkOnline = navigator.onLine;
+      if (!linkOnline) {
+        set({
+          consecutiveProbeFailures: REACHABILITY_FAILURE_THRESHOLD,
+          ...recomputeOnline(false, REACHABILITY_FAILURE_THRESHOLD),
+        });
+        return;
+      }
+      // Link restored — reset failures and probe immediately
+      set({ consecutiveProbeFailures: 0 });
+      void runProbe();
+    };
+
+    const runProbe = async () => {
+      if (probeInFlight) return;
+      if (!navigator.onLine) {
+        set({
+          consecutiveProbeFailures: REACHABILITY_FAILURE_THRESHOLD,
+          ...recomputeOnline(false, REACHABILITY_FAILURE_THRESHOLD),
+        });
+        return;
+      }
+      probeInFlight = true;
+      try {
+        const result = await probeApiReachability({ timeoutMs: REACHABILITY_TIMEOUT_MS });
+        if (result.ok) {
+          set({
+            consecutiveProbeFailures: 0,
+            ...recomputeOnline(true, 0),
+          });
+        } else {
+          const next = get().consecutiveProbeFailures + 1;
+          set({
+            consecutiveProbeFailures: next,
+            ...recomputeOnline(true, next),
+          });
+        }
+      } finally {
+        probeInFlight = false;
+      }
+    };
+
+    window.addEventListener("online", applyLink);
+    window.addEventListener("offline", applyLink);
+    applyLink();
+    void runProbe();
+    if (probeTimer) clearInterval(probeTimer);
+    probeTimer = setInterval(() => {
+      void runProbe();
+    }, REACHABILITY_INTERVAL_MS);
+
     set({ listenersAttached: true });
   },
 
@@ -134,9 +209,10 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
       for (const r of response.results) {
         if (r.status === "applied" || r.status === "duplicate") {
           toDrop.add(r.fingerprint);
+          const op = operations.find((item) => item.fingerprint === r.fingerprint);
+          await applyTerminalSyncOutcomeMappings(op, r.outcomeSummary ?? {}).catch(() => undefined);
           const summary = r.outcomeSummary ?? {};
           if (summary.entity === "order" && typeof summary.orderId === "number") {
-            const op = operations.find((item) => item.fingerprint === r.fingerprint);
             const clientLocalRef = String(op?.payload?.clientLocalRef ?? summary.clientLocalRef ?? "");
             if (clientLocalRef.startsWith("local:")) {
               const code = String(op?.payload?.code ?? "");
@@ -167,6 +243,12 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
       set({
         syncPhase: "idle",
         lastSyncError: error instanceof Error ? error.message : "Sync failed",
+      });
+      // Treat flush network failure as reachability signal
+      const next = get().consecutiveProbeFailures + 1;
+      set({
+        consecutiveProbeFailures: next,
+        ...recomputeOnline(navigator.onLine, next),
       });
     }
   },

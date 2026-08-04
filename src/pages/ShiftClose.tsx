@@ -15,6 +15,9 @@ import { ShiftClosePreflightCards } from "@/components/shift-close/ShiftClosePre
 import { ShiftCloseCashDrawerPanel } from "@/components/shift-close/ShiftCloseCashDrawerPanel";
 import { formatMoney } from "@/lib/format/currency";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
+import { isNativePosShell } from "@/mobile/platform";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { usePosSessionStore } from "@/stores/posSessionStore";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 const STEP_KEYS = ["preflight", "cashDrawer", "warnings", "runClose", "complete"] as const;
@@ -22,17 +25,42 @@ const STEP_KEYS = ["preflight", "cashDrawer", "warnings", "runClose", "complete"
 export default function ShiftClose() {
   const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+  const currentSession = usePosSessionStore((s) => s.currentSession);
+  const closeSession = usePosSessionStore((s) => s.close);
+  const previewClose = usePosSessionStore((s) => s.previewClose);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   const [preflight, setPreflight] = useState<ShiftClosePreflight | null>(null);
   const [actualCash, setActualCash] = useState("");
   const [result, setResult] = useState<ShiftCloseRunResult | null>(null);
+  const offlineNative = isNativePosShell() && !isOnline;
 
   const loadPreflight = async () => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
     setLoading(true);
     try {
+      if (offlineNative) {
+        const session = currentSession ?? (await usePosSessionStore.getState().fetchCurrent(activeOutletId));
+        if (!session || session.status !== "open") {
+          setPreflight(null);
+          toast.info(t("mobile.requiresInternet", { defaultValue: "This menu requires an internet connection." }));
+          return;
+        }
+        const preview = await previewClose(session.id);
+        setPreflight({
+          severity: "warning",
+          drawerReconciliation: preview.drawerReconciliation,
+          qrOrders: { pendingCount: 0, blocked: false },
+          openOrders: { unpaidCount: 0 },
+          limitations: preview.drawerReconciliation.limitations ?? [
+            "Offline shift close queues POS session close only; full finance close requires internet.",
+          ],
+        } as unknown as ShiftClosePreflight);
+        setActualCash(String(preview.drawerReconciliation.expected ?? session.openingCash));
+        return;
+      }
       const data = await getShiftClosePreflight(activeOutletId, TENANT_ID);
       setPreflight(data);
     } catch (e) {
@@ -47,7 +75,7 @@ export default function ShiftClose() {
     setStep(0);
     setResult(null);
     setClosing(false);
-  }, [activeOutletId]);
+  }, [activeOutletId, offlineNative]);
 
   const goAfterCash = () => {
     if (preflight?.severity === "warning") {
@@ -61,6 +89,21 @@ export default function ShiftClose() {
     if (typeof activeOutletId !== "number" || activeOutletId < 1 || closing) return;
     setClosing(true);
     try {
+      if (offlineNative) {
+        const session = usePosSessionStore.getState().currentSession;
+        if (!session || session.status !== "open") {
+          throw new Error(t("shiftClose.failed"));
+        }
+        const parsedCash = actualCash.trim() ? Number(actualCash) : session.openingCash;
+        await closeSession(session.id, parsedCash);
+        setResult({
+          status: "queued_offline",
+          message: "POS session close queued for sync",
+        } as unknown as ShiftCloseRunResult);
+        setStep(4);
+        toast.success(t("shiftClose.success"));
+        return;
+      }
       const parsedCash = actualCash.trim() ? Number(actualCash) : undefined;
       const data = await postShiftCloseRun({
         outletId: activeOutletId,

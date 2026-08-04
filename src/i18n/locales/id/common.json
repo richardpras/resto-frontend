@@ -757,6 +757,7 @@
   "header": {
     "online": "Online",
     "offline": "Offline",
+    "apiUnreachable": "API tidak terjangkau",
     "lockScreen": "Kunci layar",
     "activeOutlet": "Outlet aktif",
     "toggleSidebar": "Buka/tutup sidebar",

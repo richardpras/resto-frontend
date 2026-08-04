@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api-integration/client";
 import { hydratePosBootstrapSettings } from "@/stores/settingsStore";
+import { usePosSessionStore } from "@/stores/posSessionStore";
 import {
   isBootstrapFresh,
   loadOfflineBootstrap,
@@ -26,10 +27,28 @@ export async function fetchOfflineBootstrapRemote(
   return response.data;
 }
 
+export function hydrateStoresFromOfflineBootstrap(snapshot: OfflineBootstrapSnapshot): void {
+  hydratePosBootstrapSettings(snapshot.merchant as never, snapshot.system as never);
+  const float =
+    typeof snapshot.defaultCashFloat === "number" && Number.isFinite(snapshot.defaultCashFloat)
+      ? snapshot.defaultCashFloat
+      : undefined;
+  usePosSessionStore
+    .getState()
+    .hydrateFromBootstrap(snapshot.outletId, snapshot.posSession ?? null, float);
+}
+
 export async function runOfflineBootstrap(params: FetchOfflineBootstrapParams): Promise<OfflineBootstrapSnapshot> {
   const snapshot = await fetchOfflineBootstrapRemote(params);
-  hydratePosBootstrapSettings(snapshot.merchant as never, snapshot.system as never);
+  hydrateStoresFromOfflineBootstrap(snapshot);
   await saveOfflineBootstrap(snapshot);
+  if (Array.isArray(snapshot.openOrders)) {
+    const { saveCachedOpenOrders } = await import("./offlineOrdersCache");
+    await saveCachedOpenOrders(
+      snapshot.outletId,
+      snapshot.openOrders as import("./offlineOrdersCache").CachedOpenOrder[],
+    );
+  }
   return snapshot;
 }
 

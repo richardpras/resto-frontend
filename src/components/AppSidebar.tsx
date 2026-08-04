@@ -14,6 +14,7 @@ import { translateNavItems } from "@/components/sidebar/sidebarNavI18n";
 import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
 import { SidebarNavMenu } from "@/components/sidebar/SidebarNavMenu";
 import type { SidebarNavItem } from "@/components/sidebar/sidebarNavTypes";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
 export function AppSidebar() {
   const { t } = useTranslation("common");
@@ -75,7 +76,7 @@ export function AppSidebar() {
         <SidebarHeader className="p-4 pb-2">
           <div className="flex items-center gap-3">
             {logoMark}
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-sidebar-foreground">RestoHub</h2>
               <p className="text-[11px] text-sidebar-foreground/50">
                 {user?.outletIds.length === 1
@@ -83,6 +84,7 @@ export function AppSidebar() {
                   : t("sidebar.outletsCount", { count: user?.outletIds.length ?? 0 })}
               </p>
             </div>
+            <LanguageSwitcher variant="sidebar" />
           </div>
         </SidebarHeader>
 

@@ -7,6 +7,7 @@ import { isNativePosShell } from "@/mobile/platform";
 import {
   canOperateOffline,
   getCachedOfflineBootstrap,
+  hydrateStoresFromOfflineBootstrap,
   runOfflineBootstrap,
   type OfflineBootstrapSnapshot,
 } from "@/mobile/offline/offlineBootstrap";
@@ -112,6 +113,9 @@ export function useOfflinePos({
       return;
     }
     const cached = await getCachedOfflineBootstrap(outletId);
+    if (cached) {
+      hydrateStoresFromOfflineBootstrap(cached);
+    }
     setBootstrap(cached);
   }, [outletId]);
 
@@ -146,7 +150,13 @@ export function useOfflinePos({
 
       const localId = createLocalOrderId();
       const offlineCode = `L${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-      const offlinePayload = { ...payload, code: offlineCode, clientLocalRef: localId };
+      // Local/offline POS sessions use negative ids — strip so server auto-links open session on replay.
+      const { posSessionId, ...restPayload } = payload as CreateOrderPayload & { posSessionId?: number };
+      const safePayload =
+        typeof posSessionId === "number" && posSessionId > 0
+          ? { ...restPayload, posSessionId }
+          : restPayload;
+      const offlinePayload = { ...safePayload, code: offlineCode, clientLocalRef: localId };
       const localOrder = localOrderFromPayload(localId, offlinePayload);
       const fp = await shaFingerprint([TERMINAL_OP.ORDER_CREATE, localId, JSON.stringify(offlinePayload)]);
 

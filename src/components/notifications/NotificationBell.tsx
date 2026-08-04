@@ -135,7 +135,7 @@ export function NotificationBell() {
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96">
+      <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1.5rem))]">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>{t("notifications.title")}</span>
           {unreadCount > 0 ? <Badge variant="secondary">{t("notifications.unread", { count: unreadCount })}</Badge> : null}
