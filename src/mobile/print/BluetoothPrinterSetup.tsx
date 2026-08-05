@@ -24,9 +24,11 @@ import { resetNativePrintPortCache } from "@/mobile/print/resolvePrintPort";
 
 type Props = {
   outletId: number | null;
+  /** Icon-only trigger for short/landscape viewports — hides the full banner. */
+  compact?: boolean;
 };
 
-export function BluetoothPrinterSetup({ outletId }: Props) {
+export function BluetoothPrinterSetup({ outletId, compact = false }: Props) {
   const { t } = useTranslation("ops");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,17 +96,29 @@ export function BluetoothPrinterSetup({ outletId }: Props) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border/60 bg-blue-500/5 text-xs">
-        <Bluetooth className="h-3.5 w-3.5 text-blue-600" />
-        <span className="text-foreground/80">
-          {savedAddress
-            ? t("mobile.bluetoothReady", { address: savedAddress })
-            : t("mobile.bluetoothSetupRequired")}
-        </span>
-        <Button type="button" size="sm" variant="outline" className="h-7 text-xs ml-auto" onClick={openDialog}>
-          {savedAddress ? t("mobile.bluetoothChange") : t("mobile.bluetoothSetup")}
-        </Button>
-      </div>
+      {compact ? (
+        <button
+          type="button"
+          onClick={openDialog}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 shrink-0"
+          aria-label={savedAddress ? t("mobile.bluetoothChange") : t("mobile.bluetoothSetup")}
+          title={savedAddress ? t("mobile.bluetoothReady", { address: savedAddress }) : t("mobile.bluetoothSetupRequired")}
+        >
+          <Bluetooth className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border/60 bg-blue-500/5 text-xs">
+          <Bluetooth className="h-3.5 w-3.5 text-blue-600" />
+          <span className="text-foreground/80">
+            {savedAddress
+              ? t("mobile.bluetoothReady", { address: savedAddress })
+              : t("mobile.bluetoothSetupRequired")}
+          </span>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs ml-auto" onClick={openDialog}>
+            {savedAddress ? t("mobile.bluetoothChange") : t("mobile.bluetoothSetup")}
+          </Button>
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

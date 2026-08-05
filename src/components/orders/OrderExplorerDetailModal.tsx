@@ -238,6 +238,33 @@ export function OrderExplorerDetailModal() {
                     <span>{t("ordersExplorer.detail.totalLabel")}</span>
                     <span>{formatRp(order.total)}</span>
                   </div>
+                  {(() => {
+                    const tenderedTotal = (order.payments ?? []).reduce(
+                      (sum, p) => sum + (p.tenderedAmount != null && p.tenderedAmount > 0 ? p.tenderedAmount : 0),
+                      0,
+                    );
+                    const changeTotal = (order.payments ?? []).reduce(
+                      (sum, p) => sum + (p.changeAmount != null && p.changeAmount > 0 ? p.changeAmount : 0),
+                      0,
+                    );
+                    if (tenderedTotal <= 0 && changeTotal <= 0) return null;
+                    return (
+                      <>
+                        {tenderedTotal > 0 ? (
+                          <div className="flex justify-between gap-2 text-[11px]" data-testid="order-detail-tendered">
+                            <span className="text-muted-foreground">{t("ordersExplorer.detail.tenderedLabel")}</span>
+                            <span className="font-medium text-foreground">{formatRp(tenderedTotal)}</span>
+                          </div>
+                        ) : null}
+                        {changeTotal > 0 ? (
+                          <div className="flex justify-between gap-2 text-[11px]" data-testid="order-detail-change">
+                            <span className="text-muted-foreground">{t("ordersExplorer.detail.changeLabel")}</span>
+                            <span className="font-medium text-primary">{formatRp(changeTotal)}</span>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {caps.canApproveItemRecovery && pendingRecoveryLines.length > 0 ? (

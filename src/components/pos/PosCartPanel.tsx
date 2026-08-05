@@ -1,4 +1,5 @@
 import type { MutableRefObject } from "react";
+import { useState } from "react";
 import {
   Plus,
   Minus,
@@ -11,6 +12,7 @@ import {
   CalendarDays,
   Ticket,
   Star,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -46,6 +48,8 @@ export type PosCartPanelProps = {
   formatRp: (n: number) => string;
   orderType: string;
   orderTypeLabel: (type: string) => string;
+  orderTypes: string[];
+  setOrderType: (type: string) => void;
   totalItems: number;
   currentOrderId: number | null;
   activeOutletId: number | null;
@@ -107,6 +111,8 @@ export type PosCartPanelProps = {
   handlePrintCustomerBill: () => Promise<void>;
   printingBill: boolean;
   setShowKitchenReprint: (v: boolean) => void;
+  /** `sheet` hides duplicate title (Sheet already has one) and collapses order details by default. */
+  layout?: "sidebar" | "sheet";
 };
 
 function ShoppingCartEmpty() {
@@ -125,6 +131,8 @@ export function PosCartPanel(props: PosCartPanelProps) {
     formatRp,
     orderType,
     orderTypeLabel,
+    orderTypes,
+    setOrderType,
     totalItems,
     currentOrderId,
     activeOutletId,
@@ -186,19 +194,26 @@ export function PosCartPanel(props: PosCartPanelProps) {
     handlePrintCustomerBill,
     printingBill,
     setShowKitchenReprint,
+    layout = "sidebar",
   } = props;
 
+  const isSheet = layout === "sheet";
+  const [detailsOpen, setDetailsOpen] = useState(!isSheet);
+
   return (
-    <>
-      <div className="p-4 border-b">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-foreground">{t("pos.currentOrder")}</h2>
-          <span className="text-sm text-muted-foreground bg-muted px-2 py-1 rounded-lg">
-            {t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}
-          </span>
-        </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className={`shrink-0 border-b ${isSheet ? "px-3 pb-2 pt-0" : "p-4"}`}>
+        {!isSheet ? (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="font-bold text-foreground">{t("pos.currentOrder")}</h2>
+            <span className="rounded-lg bg-muted px-2 py-1 text-sm text-muted-foreground">
+              {t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}
+            </span>
+          </div>
+        ) : null}
+
         {currentOrderId && typeof activeOutletId === "number" && activeOutletId >= 1 ? (
-          <div className="mb-3">
+          <div className={detailsOpen || !isSheet ? "mb-2" : "mb-0"}>
             <OrderPaymentHistoryPanel
               outletId={activeOutletId}
               orderId={currentOrderId}
@@ -207,26 +222,58 @@ export function PosCartPanel(props: PosCartPanelProps) {
             <PosOrderRecoveryPanel order={currentOpenOrder} />
           </div>
         ) : null}
-        <div className="space-y-2">
+
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((open) => !open)}
+          className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-left touch-manipulation"
+          aria-expanded={detailsOpen}
+          data-testid="pos-cart-details-toggle"
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground">{t("pos.orderDetails")}</p>
+            {(customerName.trim() || selectedTable || selectedMember) ? (
+              <p className="truncate text-[11px] text-muted-foreground">
+                {[
+                  customerName.trim() || null,
+                  selectedMember?.name ?? null,
+                  selectedTable ? t("pos.tableSelectedShort") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">{t("pos.orderDetailsHint")}</p>
+            )}
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {detailsOpen ? (
+        <div
+          className={`mt-2 space-y-2 ${isSheet ? "max-h-[32dvh] overflow-y-auto overscroll-contain pr-0.5" : ""}`}
+        >
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <User className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder={t("pos.customerName")}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-background border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border/50 bg-background py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
             </div>
             <div className="relative flex-1">
-              <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Phone className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder={t("pos.phone")}
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-background border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border/50 bg-background py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
             </div>
           </div>
@@ -235,16 +282,16 @@ export function PosCartPanel(props: PosCartPanelProps) {
               type="button"
               onClick={() => setShowReservationPicker(true)}
               disabled={submitting}
-              className="w-full px-3 py-2.5 rounded-lg bg-background border border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
+              className="min-h-10 w-full rounded-lg border border-dashed border-border bg-background px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="pos-select-reservation-btn"
             >
               {t("pos.selectReservation")}
             </button>
           ) : null}
           {activeReservationId && activeReservationLabel ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border/60">
-              <CalendarDays className="h-3.5 w-3.5 text-primary shrink-0" />
-              <p className="text-sm text-foreground truncate flex-1">
+            <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+              <CalendarDays className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <p className="flex-1 truncate text-sm text-foreground">
                 {t("pos.reservationActive")} · {activeReservationLabel}
               </p>
               <button
@@ -253,18 +300,39 @@ export function PosCartPanel(props: PosCartPanelProps) {
                   setActiveReservationId(null);
                   setActiveReservationLabel(null);
                 }}
-                className="text-sm text-muted-foreground hover:text-destructive shrink-0 min-h-11 min-w-11"
+                className="min-h-10 min-w-10 shrink-0 text-sm text-muted-foreground hover:text-destructive"
                 aria-label={t("shared.cancel")}
               >
                 ×
               </button>
             </div>
           ) : null}
+          <div
+            className="flex gap-1.5 rounded-xl border border-border bg-background p-1"
+            role="group"
+            aria-label={t("pos.orderType", { defaultValue: "Order type" })}
+            data-testid="pos-order-type-toggle"
+          >
+            {orderTypes.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setOrderType(type)}
+                className={`min-h-10 flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition-all sm:text-sm ${
+                  orderType === type
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {orderTypeLabel(type)}
+              </button>
+            ))}
+          </div>
           {selectedMember ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/50 border border-accent">
-              <Star className="h-3.5 w-3.5 text-primary fill-primary" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate">{selectedMember.name}</p>
+            <div className="flex items-center gap-2 rounded-lg border border-accent bg-accent/50 px-3 py-2">
+              <Star className="h-3.5 w-3.5 fill-primary text-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{selectedMember.name}</p>
                 <p className="text-xs text-muted-foreground">{selectedMember.memberNo ?? selectedMember.phone}</p>
               </div>
               <button
@@ -272,7 +340,7 @@ export function PosCartPanel(props: PosCartPanelProps) {
                   setSelectedMember(null);
                   void attachMemberToOpenOrder(null);
                 }}
-                className="text-sm text-muted-foreground hover:text-destructive min-h-11 min-w-11"
+                className="min-h-10 min-w-10 text-sm text-muted-foreground hover:text-destructive"
               >
                 ×
               </button>
@@ -281,57 +349,10 @@ export function PosCartPanel(props: PosCartPanelProps) {
             <button
               onClick={() => setShowMemberPicker(true)}
               disabled={typeof activeOutletId !== "number" || activeOutletId < 1}
-              className="w-full px-3 py-2.5 rounded-lg bg-background border border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
+              className="min-h-10 w-full rounded-lg border border-dashed border-border bg-background px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("pos.selectMember")}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              if (cart.length === 0) {
-                toast.error(t("pos.discountModal.emptyCart"));
-                return;
-              }
-              setShowDiscountModal(true);
-            }}
-            disabled={cart.length === 0 || currentOpenOrder?.paymentStatus === "paid"}
-            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-sm font-semibold text-primary hover:bg-primary/15 transition-colors disabled:opacity-50 min-h-11"
-            data-testid="pos-discount-modal-open"
-          >
-            <Ticket className="h-4 w-4" />
-            {t("pos.discountModal.openButton")}
-          </button>
-          {(currentOpenOrder?.promotion || currentOpenOrder?.voucher || appliedGiftCardState) && (
-            <div className="flex flex-wrap gap-1.5">
-              {currentOpenOrder?.promotion ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDiscountModal(true)}
-                  className="rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-200"
-                >
-                  {t("pos.discountModal.chipPromo", { amount: formatRp(promotionDiscount) })}
-                </button>
-              ) : null}
-              {currentOpenOrder?.voucher ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDiscountModal(true)}
-                  className="rounded-full bg-primary/10 border border-primary/30 px-2.5 py-1 text-xs font-medium text-primary"
-                >
-                  {t("pos.discountModal.chipVoucher", { amount: formatRp(voucherDiscount) })}
-                </button>
-              ) : null}
-              {appliedGiftCardState ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDiscountModal(true)}
-                  className="rounded-full bg-muted border border-border px-2.5 py-1 text-xs font-medium text-foreground"
-                >
-                  {t("pos.discountModal.chipGiftCard", { amount: formatRp(appliedGiftCardState.appliedAmount) })}
-                </button>
-              ) : null}
-            </div>
           )}
           {selectedMember && (
             <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2.5">
@@ -343,9 +364,9 @@ export function PosCartPanel(props: PosCartPanelProps) {
                   value={redeemPointsInput}
                   onChange={(e) => setRedeemPointsInput(e.target.value)}
                   placeholder={t("pos.redeemPoints")}
-                  className="w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-2 text-sm min-h-11"
+                  className="min-h-10 w-full rounded-lg border border-border/60 bg-muted/20 px-2 py-2 text-sm"
                 />
-                <button onClick={applyPointsRedemption} className="rounded-lg bg-muted px-3 py-2 text-sm font-medium min-h-11">
+                <button onClick={applyPointsRedemption} className="min-h-10 rounded-lg bg-muted px-3 py-2 text-sm font-medium">
                   {t("pos.apply")}
                 </button>
               </div>
@@ -357,7 +378,7 @@ export function PosCartPanel(props: PosCartPanelProps) {
               onChange={(e) => setSelectedTable(e.target.value)}
               onFocus={requestTables}
               onMouseDown={requestTables}
-              className="w-full px-3 py-2.5 rounded-lg bg-background border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/20 text-foreground min-h-11"
+              className="min-h-10 w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/20"
             >
               <option value="">{tablesLoading ? t("pos.loadingMenu") : t("pos.selectTable")}</option>
               {selectableTables.map((table) => (
@@ -371,9 +392,10 @@ export function PosCartPanel(props: PosCartPanelProps) {
             </select>
           )}
         </div>
+        ) : null}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[8rem]">
+      <div className={`min-h-0 flex-1 space-y-2 overflow-y-auto ${isSheet ? "px-3 py-2" : "p-3 sm:p-4"}`}>
         <AnimatePresence>
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-8">
@@ -443,7 +465,57 @@ export function PosCartPanel(props: PosCartPanelProps) {
         </AnimatePresence>
       </div>
 
-      <div className="p-4 border-t space-y-3">
+      <div className={`shrink-0 space-y-2 border-t ${isSheet ? "px-3 py-2" : "px-3 py-3 sm:px-4"}`}>
+        <button
+          type="button"
+          onClick={() => {
+            if (cart.length === 0) {
+              toast.error(t("pos.discountModal.emptyCart"));
+              return;
+            }
+            setShowDiscountModal(true);
+          }}
+          disabled={cart.length === 0 || currentOpenOrder?.paymentStatus === "paid"}
+          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
+          data-testid="pos-discount-modal-open"
+        >
+          <Ticket className="h-4 w-4" />
+          {t("pos.discountModal.openButton")}
+        </button>
+        {(currentOpenOrder?.promotion || currentOpenOrder?.voucher || appliedGiftCardState) && (
+          <div className="flex flex-wrap gap-1.5">
+            {currentOpenOrder?.promotion ? (
+              <button
+                type="button"
+                onClick={() => setShowDiscountModal(true)}
+                className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-200"
+              >
+                {t("pos.discountModal.chipPromo", { amount: formatRp(promotionDiscount) })}
+              </button>
+            ) : null}
+            {currentOpenOrder?.voucher ? (
+              <button
+                type="button"
+                onClick={() => setShowDiscountModal(true)}
+                className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+              >
+                {t("pos.discountModal.chipVoucher", { amount: formatRp(voucherDiscount) })}
+              </button>
+            ) : null}
+            {appliedGiftCardState ? (
+              <button
+                type="button"
+                onClick={() => setShowDiscountModal(true)}
+                className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+              >
+                {t("pos.discountModal.chipGiftCard", { amount: formatRp(appliedGiftCardState.appliedAmount) })}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className={`shrink-0 space-y-3 border-t ${isSheet ? "px-3 pb-3 pt-2" : "p-3 sm:p-4"}`}>
         {paymentStockError ? (
           <PosPaymentStockErrorAlert
             error={paymentStockError}
@@ -579,6 +651,6 @@ export function PosCartPanel(props: PosCartPanelProps) {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

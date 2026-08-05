@@ -43,8 +43,8 @@ export async function runOfflineBootstrap(params: FetchOfflineBootstrapParams): 
   hydrateStoresFromOfflineBootstrap(snapshot);
   await saveOfflineBootstrap(snapshot);
   if (Array.isArray(snapshot.openOrders)) {
-    const { saveCachedOpenOrders } = await import("./offlineOrdersCache");
-    await saveCachedOpenOrders(
+    const { mergeServerOpenOrdersWithLocalCache } = await import("./offlineOrdersCache");
+    await mergeServerOpenOrdersWithLocalCache(
       snapshot.outletId,
       snapshot.openOrders as import("./offlineOrdersCache").CachedOpenOrder[],
     );
@@ -55,6 +55,9 @@ export async function runOfflineBootstrap(params: FetchOfflineBootstrapParams): 
 export async function getCachedOfflineBootstrap(outletId: number): Promise<OfflineBootstrapSnapshot | null> {
   return loadOfflineBootstrap(outletId);
 }
+
+/** Sync peek of in-memory bootstrap (avoids blank/blocker flash on POS remount). */
+export { peekOfflineBootstrap } from "./offlineBootstrapDb";
 
 export function canOperateOffline(snapshot: OfflineBootstrapSnapshot | null): boolean {
   return isBootstrapFresh(snapshot);

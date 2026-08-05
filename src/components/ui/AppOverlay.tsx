@@ -55,7 +55,8 @@ export function AppOverlay({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className={cn(
-            "fixed inset-0 bg-foreground/40 backdrop-blur-sm flex p-4",
+            // pointer-events-auto: stay interactive when a Radix Sheet/Dialog sets body to pointer-events:none
+            "fixed inset-0 bg-foreground/40 backdrop-blur-sm flex p-4 pointer-events-auto",
             LAYER_CLASS[layer],
             align === "bottom" ? "items-end sm:items-center" : "items-center justify-center",
             className,
@@ -71,7 +72,9 @@ export function AppOverlay({
             exit={{ scale: 0.95, opacity: 0, y: align === "bottom" ? 24 : 0 }}
             onClick={(e) => e.stopPropagation()}
             className={cn(
-              "bg-card w-full max-w-md sm:max-w-lg max-h-[85dvh] overflow-y-auto pos-shadow-md safe-area-pb",
+              "bg-card w-full max-w-md sm:max-w-lg max-h-[85dvh] pos-shadow-md safe-area-pb",
+              // Default scroll; callers can override with overflow-hidden + internal scroll.
+              "overflow-y-auto",
               align === "bottom" ? "rounded-t-2xl sm:rounded-2xl" : "rounded-2xl",
               panelClassName,
             )}

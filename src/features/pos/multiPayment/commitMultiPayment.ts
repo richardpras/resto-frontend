@@ -55,7 +55,14 @@ function toPayload(
   buildPaymentPayload?: (method: string, amount: number) => OrderPaymentPayload,
 ): OrderPaymentPayload[] {
   if (buildPaymentPayload) {
-    return lines.map((line) => buildPaymentPayload(line.method, line.amount));
+    return lines.map((line) => {
+      const base = buildPaymentPayload(line.method, line.amount);
+      return {
+        ...base,
+        ...(line.tenderedAmount != null ? { tenderedAmount: line.tenderedAmount } : {}),
+        ...(line.changeAmount != null ? { changeAmount: line.changeAmount } : {}),
+      };
+    });
   }
   return draftLinesToPaymentPayload(lines);
 }

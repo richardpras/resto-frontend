@@ -1,6 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { Wifi, WifiOff, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useOutletStore } from "@/stores/outletStore";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
+import { OfflinePendingQueueButton } from "@/components/offline/OfflinePendingQueueButton";
 import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
 import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
@@ -104,6 +105,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // No chrome on login page and standalone public QR menu route only.
   // NOTE: use exact-match (with optional trailing slash) so "/qr-orders" stays in admin shell.
   const isStandalonePublicQr = /^\/qr-order\/?$/.test(location.pathname);
+  const isPosFullBleed = location.pathname === "/pos" || location.pathname.startsWith("/pos/");
   if (location.pathname === "/login" || isStandalonePublicQr) {
     return <>{children}</>;
   }
@@ -120,9 +122,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <IdleTracker />
       {locked && user?.pinSet ? <LockScreen /> : null}
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="flex h-dvh max-h-dvh w-full overflow-hidden bg-background">
         <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <SoundAlertsProvider />
           <div data-app-chrome>
             <StaffInstallPrompt />
@@ -156,17 +158,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
-              <div
-                className={cn(
-                  "flex items-center justify-center p-2 rounded-lg",
-                  isOnline ? "text-success" : "text-warning animate-pulse-soft",
-                )}
-                title={connectivityTitle}
-                aria-label={connectivityTitle}
-              >
-                {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-                <span className="hidden md:inline ml-1.5 text-xs font-medium">{connectivityTitle}</span>
-              </div>
+              <OfflinePendingQueueButton isOnline={isOnline} connectivityTitle={connectivityTitle} />
               {user.pinSet ? (
                 <button
                   type="button"
@@ -181,7 +173,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <NotificationBell />
             </div>
           </header>
-          <main className="flex-1 overflow-auto min-h-0">{children}</main>
+          <main
+            className={cn(
+              "flex flex-1 flex-col min-h-0",
+              isPosFullBleed ? "overflow-hidden" : "overflow-auto",
+            )}
+          >
+            {children}
+          </main>
           <BugReportButton />
         </div>
       </div>

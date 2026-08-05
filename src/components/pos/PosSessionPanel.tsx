@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -133,11 +134,9 @@ export function PosSessionPanel({ outletId }: Props) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("posSession.openShiftTitle")}</DialogTitle>
+            <DialogDescription>{t("posSession.defaultFloatHint", { amount: formatMoney(defaultCashFloat) })}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {t("posSession.defaultFloatHint", { amount: formatMoney(defaultCashFloat) })}
-            </p>
             <div>
               <Label htmlFor="openingCash">{t("shiftClose.openingCash")}</Label>
               <Input
@@ -165,6 +164,7 @@ export function PosSessionPanel({ outletId }: Props) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{t("posSession.closeShiftTitle")}</DialogTitle>
+            <DialogDescription>{t("posSession.cashDrawerTitle", { defaultValue: "Count the cash drawer and confirm closing this shift." })}</DialogDescription>
           </DialogHeader>
           {previewLoading || !closePreview ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">

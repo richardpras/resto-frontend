@@ -102,7 +102,7 @@ export default function Settings() {
       merchant: ["merchant"],
       outlets: ["outlets"],
       taxes: ["taxes"],
-      printers: ["printers"],
+      printers: ["printers", "outlets", "outletReceiptRows"],
       payments: ["paymentMethods", "outlets"],
       system: ["system"],
       integration: ["integration"],

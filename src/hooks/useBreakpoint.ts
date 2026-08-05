@@ -50,3 +50,23 @@ export function useIsCompactViewport(): boolean {
   const breakpoint = useBreakpoint();
   return breakpoint === "mobile" || breakpoint === "tablet";
 }
+
+/**
+ * Short viewport height (phone landscape, small windows).
+ * Use to collapse chrome so primary content stays scrollable/tappable.
+ */
+export function useIsShortViewport(maxHeightPx = 520): boolean {
+  const [isShort, setIsShort] = React.useState(() =>
+    typeof window !== "undefined" ? window.innerHeight < maxHeightPx : false,
+  );
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-height: ${maxHeightPx - 1}px)`);
+    const onChange = () => setIsShort(window.innerHeight < maxHeightPx);
+    mql.addEventListener("change", onChange);
+    onChange();
+    return () => mql.removeEventListener("change", onChange);
+  }, [maxHeightPx]);
+
+  return isShort;
+}

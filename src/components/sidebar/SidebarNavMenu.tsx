@@ -41,6 +41,12 @@ function useOfflineNavGuard() {
   const { t } = useTranslation("ops");
   const isOnline = useOfflineSyncStore((s) => s.isOnline);
   const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const closeDrawerAfterNavigate = () => {
+    // Mobile + tablet use the Sheet drawer (< 1024px).
+    if (isMobile) setOpenMobile(false);
+  };
 
   const guardNavigate = (href: string, event?: { preventDefault: () => void }) => {
     if (!isNativePosShell() || isOnline || isPathAllowedOffline(href)) {
@@ -55,7 +61,14 @@ function useOfflineNavGuard() {
     return true;
   };
 
-  return { guardNavigate, isOnline, navigate };
+  /** Returns true when navigation was blocked (offline). Otherwise closes drawer on mobile/tablet. */
+  const onNavItemSelect = (href: string, event?: { preventDefault: () => void }) => {
+    if (guardNavigate(href, event)) return true;
+    closeDrawerAfterNavigate();
+    return false;
+  };
+
+  return { guardNavigate, onNavItemSelect, closeDrawerAfterNavigate, isOnline, navigate };
 }
 
 function NavLeaf({
@@ -72,7 +85,7 @@ function NavLeaf({
   const Icon = item.icon;
   const showNotifBadge = item.href === "/notifications" && (unreadCount ?? 0) > 0;
   const showItemBadge = item.badge != null && Number(item.badge) > 0;
-  const { guardNavigate, isOnline } = useOfflineNavGuard();
+  const { onNavItemSelect, isOnline } = useOfflineNavGuard();
   const blocked =
     isNativePosShell() && !isOnline && item.href ? !isPathAllowedOffline(item.href) : false;
 
@@ -83,7 +96,7 @@ function NavLeaf({
           to={item.href!}
           end={item.href === "/"}
           onClick={(e) => {
-            if (item.href && guardNavigate(item.href, e)) return;
+            if (item.href) onNavItemSelect(item.href, e);
           }}
           className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
@@ -120,7 +133,7 @@ function NavSubTree({
   depth?: number;
 }) {
   const location = useLocation();
-  const { guardNavigate, isOnline } = useOfflineNavGuard();
+  const { onNavItemSelect, isOnline } = useOfflineNavGuard();
 
   return (
     <>
@@ -156,7 +169,7 @@ function NavSubTree({
                 to={child.href}
                 className={cn(blocked && "opacity-50")}
                 onClick={(e) => {
-                  if (guardNavigate(child.href!, e)) return;
+                  onNavItemSelect(child.href!, e);
                 }}
               >
                 {child.title}
@@ -211,7 +224,7 @@ function NavParent({
   const branchActive = isNavBranchActive(location, item);
   const [open, setOpen] = useState(branchActive);
   const Icon = item.icon;
-  const { guardNavigate } = useOfflineNavGuard();
+  const { onNavItemSelect } = useOfflineNavGuard();
 
   useEffect(() => {
     if (branchActive) setOpen(true);
@@ -226,7 +239,7 @@ function NavParent({
             <Link
               to={firstChildHref}
               onClick={(e) => {
-                if (guardNavigate(firstChildHref, e)) return;
+                onNavItemSelect(firstChildHref, e);
               }}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             >

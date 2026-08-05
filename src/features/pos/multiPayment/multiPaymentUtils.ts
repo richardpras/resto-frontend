@@ -73,11 +73,19 @@ export function partitionDraftByCapability(
 export function draftLinesToPaymentPayload(
   lines: PaymentDraftLine[],
   paidAt: string = new Date().toISOString(),
-): Array<{ method: string; amount: number; paidAt: string }> {
+): Array<{
+  method: string;
+  amount: number;
+  paidAt: string;
+  tenderedAmount?: number;
+  changeAmount?: number;
+}> {
   return lines.map((line) => ({
     method: line.method,
     amount: line.amount,
     paidAt,
+    ...(line.tenderedAmount != null ? { tenderedAmount: line.tenderedAmount } : {}),
+    ...(line.changeAmount != null ? { changeAmount: line.changeAmount } : {}),
   }));
 }
 

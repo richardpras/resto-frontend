@@ -15,6 +15,10 @@ export function posBootstrapQueryKey(tenantId: number, outletId: number) {
   return ["pos-bootstrap", tenantId, outletId] as const;
 }
 
+function isBrowserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
 export function usePosBootstrap({ tenantId, outletId }: UsePosBootstrapOptions) {
   const queryClient = useQueryClient();
   const enabled = typeof outletId === "number" && outletId >= 1 && Boolean(getApiAccessToken());
@@ -42,9 +46,15 @@ export function usePosBootstrap({ tenantId, outletId }: UsePosBootstrapOptions) 
     staleTime: POS_BOOTSTRAP_STALE_MS,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
+    // Prefer cached success; avoid long retry storms when the device is offline.
+    networkMode: "offlineFirst",
+    retry: (failureCount) => {
+      if (isBrowserOffline()) return false;
+      return failureCount < 1;
+    },
   });
 
-  const menuApiItems = query.data?.menuItems.data ?? [];
+  const menuApiItems = query.data?.menuItems?.data ?? [];
 
   return {
     menuApiItems,

@@ -63,6 +63,10 @@ export async function saveOfflineBootstrap(snapshot: OfflineBootstrapSnapshot): 
   });
 }
 
+export function peekOfflineBootstrap(outletId: number): OfflineBootstrapSnapshot | null {
+  return memoryFallback.get(outletId) ?? null;
+}
+
 export async function loadOfflineBootstrap(outletId: number): Promise<OfflineBootstrapSnapshot | null> {
   if (memoryFallback.has(outletId)) {
     return memoryFallback.get(outletId) ?? null;

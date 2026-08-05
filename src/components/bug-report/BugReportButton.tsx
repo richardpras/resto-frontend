@@ -5,6 +5,7 @@ import { Bug, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { BugReportModal } from "@/components/bug-report/BugReportModal";
 import { useIsSidebarDrawer } from "@/hooks/use-mobile";
+import { useIsShortViewport } from "@/hooks/useBreakpoint";
 import { cn } from "@/lib/utils";
 
 const HIDDEN_ROUTES = ["/login", "/payment-status", "/qr-order"];
@@ -56,6 +57,7 @@ async function captureViewportScreenshot(): Promise<{ preview: string; blob: Blo
 export function BugReportButton() {
   const location = useLocation();
   const isCompactChrome = useIsSidebarDrawer();
+  const isShortViewport = useIsShortViewport();
   const [open, setOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -89,9 +91,11 @@ export function BugReportButton() {
         data-app-chrome
         className={cn(
           "z-40 flex items-center justify-center border border-red-700/30 bg-red-600 text-white shadow-lg transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-80",
-          isCompactChrome
-            ? "fixed bottom-20 right-4 h-12 w-12 rounded-full safe-area-pb sm:bottom-6"
-            : "fixed right-0 top-1/2 -translate-y-1/2 flex-col gap-2 rounded-l-lg border-r-0 px-2.5 py-4",
+          isShortViewport
+            ? "fixed top-[calc(3.5rem+env(safe-area-inset-top,0px)+0.5rem)] right-3 h-9 w-9 rounded-full"
+            : isCompactChrome
+              ? "fixed bottom-20 right-4 h-12 w-12 rounded-full safe-area-pb sm:bottom-6"
+              : "fixed right-0 top-1/2 -translate-y-1/2 flex-col gap-2 rounded-l-lg border-r-0 px-2.5 py-4",
         )}
         onClick={() => void handleOpen()}
         disabled={capturing}

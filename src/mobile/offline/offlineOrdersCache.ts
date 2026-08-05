@@ -6,6 +6,14 @@ export type CachedOpenOrder = Record<string, unknown> & {
   outletId?: number | null;
 };
 
+function isLocalOrderId(orderId: string): boolean {
+  return orderId.startsWith("local:");
+}
+
+function isOpenPaymentStatus(status: unknown): boolean {
+  return status === "unpaid" || status === "partial";
+}
+
 const DB_NAME = "resto-offline-orders-v1";
 const STORE = "open_orders";
 const DB_VERSION = 1;
@@ -67,4 +75,24 @@ export async function upsertCachedOpenOrder(outletId: number, order: CachedOpenO
   const id = String(order.id);
   const next = [order, ...rows.filter((r) => String(r.id) !== id)];
   await saveCachedOpenOrders(outletId, next);
+}
+
+/** Keep unsynced `local:*` open bills when refreshing cache from the server. */
+export async function mergeServerOpenOrdersWithLocalCache(
+  outletId: number,
+  serverOrders: CachedOpenOrder[],
+): Promise<CachedOpenOrder[]> {
+  const existing = await loadCachedOpenOrders(outletId).catch(() => [] as CachedOpenOrder[]);
+  const byId = new Map<string, CachedOpenOrder>();
+  for (const row of serverOrders) {
+    byId.set(String(row.id), row);
+  }
+  for (const row of existing) {
+    const id = String(row.id);
+    if (!isLocalOrderId(id) || !isOpenPaymentStatus(row.paymentStatus)) continue;
+    if (!byId.has(id)) byId.set(id, row);
+  }
+  const merged = Array.from(byId.values());
+  await saveCachedOpenOrders(outletId, merged);
+  return merged;
 }

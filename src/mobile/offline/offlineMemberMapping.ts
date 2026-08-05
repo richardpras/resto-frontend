@@ -1,9 +1,10 @@
+import { createDeviceUuid } from "@/mobile/offline/createDeviceUuid";
 import { getSecureValue, setSecureValue } from "@/mobile/secureStorage";
 
 const MEMBER_MAP_PREFIX = "resto.offline.member.map.";
 
 export function createLocalMemberId(): string {
-  return `local-member:${crypto.randomUUID()}`;
+  return `local-member:${createDeviceUuid()}`;
 }
 
 export function isLocalMemberId(id: string): boolean {

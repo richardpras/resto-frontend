@@ -9,6 +9,8 @@ type UsePosLazyMembersOptions = {
   showMemberPicker: boolean;
   memberSearch: string;
   crmEnabled: boolean;
+  /** When true, skip network member search/list (offline POS). */
+  isOfflineMode?: boolean;
 };
 
 export function usePosLazyMembers({
@@ -16,25 +18,35 @@ export function usePosLazyMembers({
   showMemberPicker,
   memberSearch,
   crmEnabled,
+  isOfflineMode = false,
 }: UsePosLazyMembersOptions) {
   const fetchMembers = useMemberStore((s) => s.fetchMembers);
   const searchMembersForOutlet = useMemberStore((s) => s.searchMembersForOutlet);
   const refreshLoyalty = useLoyaltyStore((s) => s.refreshForOutlet);
   const crmLazyFetchedRef = useRef<Record<number, boolean>>({});
+  const offlineToastShownRef = useRef(false);
 
   useEffect(() => {
     if (!showMemberPicker) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    if (isOfflineMode) {
+      if (!offlineToastShownRef.current) {
+        offlineToastShownRef.current = true;
+        toast.message("Offline — member search needs network; use quick-create if needed.");
+      }
+      return;
+    }
+    offlineToastShownRef.current = false;
     const timer = setTimeout(() => {
       void searchMembersForOutlet(activeOutletId, memberSearch).catch((e) => {
         if (e instanceof ApiHttpError) toast.error(e.message);
       });
     }, 250);
     return () => clearTimeout(timer);
-  }, [activeOutletId, memberSearch, searchMembersForOutlet, showMemberPicker]);
+  }, [activeOutletId, isOfflineMode, memberSearch, searchMembersForOutlet, showMemberPicker]);
 
   useEffect(() => {
-    if (!crmEnabled || !showMemberPicker) return;
+    if (!crmEnabled || !showMemberPicker || isOfflineMode) return;
     if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
     if (crmLazyFetchedRef.current[activeOutletId]) return;
     crmLazyFetchedRef.current[activeOutletId] = true;
@@ -42,5 +54,5 @@ export function usePosLazyMembers({
       if (e instanceof ApiHttpError) toast.error(e.message);
     });
     void refreshLoyalty(activeOutletId);
-  }, [activeOutletId, crmEnabled, fetchMembers, refreshLoyalty, showMemberPicker]);
+  }, [activeOutletId, crmEnabled, fetchMembers, isOfflineMode, refreshLoyalty, showMemberPicker]);
 }

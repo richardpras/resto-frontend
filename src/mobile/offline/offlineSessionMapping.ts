@@ -1,9 +1,10 @@
+import { createDeviceUuid } from "@/mobile/offline/createDeviceUuid";
 import { getSecureValue, setSecureValue } from "@/mobile/secureStorage";
 
 const SESSION_MAP_PREFIX = "resto.offline.session.map.";
 
 export function createLocalSessionId(): string {
-  return `local-session:${crypto.randomUUID()}`;
+  return `local-session:${createDeviceUuid()}`;
 }
 
 export function isLocalSessionId(id: number | string): boolean {

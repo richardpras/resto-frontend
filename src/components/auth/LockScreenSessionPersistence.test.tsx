@@ -13,6 +13,16 @@ vi.mock("framer-motion", () => ({
   },
 }));
 
+vi.mock("@/mobile/offline/offlineScreenPin", () => ({
+  hasCachedScreenPinVerifier: vi.fn(async () => false),
+  hasCachedPasswordVerifier: vi.fn(async () => true),
+  cacheScreenPinVerifier: vi.fn(async () => undefined),
+  cachePasswordVerifier: vi.fn(async () => undefined),
+  clearAllLocalUnlockVerifiers: vi.fn(async () => undefined),
+  verifyScreenPinLocally: vi.fn(async () => false),
+  verifyPasswordLocally: vi.fn(async () => false),
+}));
+
 describe("LockScreenSessionPersistence", () => {
   it("shows lock UI while preserving auth and outlet context", () => {
     useOutletStore.setState({ activeOutletId: 7, activeOutletCode: "JKT" });

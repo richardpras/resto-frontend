@@ -12,9 +12,10 @@ type LanguageSwitcherProps = {
   mode?: "staff" | "guest";
 };
 
-const LOCALE_META: Record<AppLocale, { flag: string; code: string }> = {
-  en: { flag: "🇬🇧", code: "EN" },
-  id: { flag: "🇮🇩", code: "ID" },
+/** Locale codes only — flag emojis render as "GB"/"ID" letters on many Windows installs. */
+const LOCALE_CODE: Record<AppLocale, string> = {
+  en: "EN",
+  id: "ID",
 };
 
 export function LanguageSwitcher({ variant = "header", mode = "staff" }: LanguageSwitcherProps) {
@@ -23,7 +24,7 @@ export function LanguageSwitcher({ variant = "header", mode = "staff" }: Languag
   const updateMerchant = useSettingsStore((s) => s.updateMerchant);
 
   const currentLocale = normalizeAppLocale(i18n.language) as AppLocale;
-  const meta = LOCALE_META[currentLocale] ?? LOCALE_META.en;
+  const code = LOCALE_CODE[currentLocale] ?? LOCALE_CODE.en;
 
   const handleChange = (value: string) => {
     const locale = normalizeAppLocale(value) as AppLocale;
@@ -62,29 +63,14 @@ export function LanguageSwitcher({ variant = "header", mode = "staff" }: Languag
     <Select value={currentLocale} onValueChange={handleChange}>
       <SelectTrigger className={triggerClassName} aria-label={t("language.label")}>
         {isCompact ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span className="text-base leading-none" aria-hidden>
-              {meta.flag}
-            </span>
-            <span className="font-medium tabular-nums tracking-wide">{meta.code}</span>
-          </span>
+          <span className="font-medium tabular-nums tracking-wide">{code}</span>
         ) : (
           <SelectValue />
         )}
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="en">
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden>{LOCALE_META.en.flag}</span>
-            {t("language.en")}
-          </span>
-        </SelectItem>
-        <SelectItem value="id">
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden>{LOCALE_META.id.flag}</span>
-            {t("language.id")}
-          </span>
-        </SelectItem>
+        <SelectItem value="en">{t("language.en")}</SelectItem>
+        <SelectItem value="id">{t("language.id")}</SelectItem>
       </SelectContent>
     </Select>
   );

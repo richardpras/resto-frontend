@@ -8,6 +8,7 @@ import {
   canOperateOffline,
   getCachedOfflineBootstrap,
   hydrateStoresFromOfflineBootstrap,
+  peekOfflineBootstrap,
   runOfflineBootstrap,
   type OfflineBootstrapSnapshot,
 } from "@/mobile/offline/offlineBootstrap";
@@ -19,8 +20,10 @@ import {
   saveLocalOrderMapping,
   saveSplitMapping,
 } from "@/mobile/offline/offlineIdMapping";
+import { createDeviceUuid } from "@/mobile/offline/createDeviceUuid";
+import { upsertCachedOpenOrder, type CachedOpenOrder } from "@/mobile/offline/offlineOrdersCache";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
-import type { Order, SplitPerson } from "@/stores/orderStore";
+import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 
 const TERMINAL_OP = {
   ORDER_CREATE: "order.create",
@@ -77,6 +80,45 @@ function localOrderFromPayload(localId: string, payload: CreateOrderPayload): Or
   };
 }
 
+function toCachedOpenOrder(order: Order): CachedOpenOrder {
+  return {
+    id: order.id,
+    code: order.code,
+    outletId: order.outletId ?? null,
+    tableId: order.tableId ?? null,
+    tableName: order.tableName ?? "",
+    tableNumber: order.tableName ?? "",
+    customerName: order.customerName ?? "",
+    source: order.source,
+    orderType: order.orderType,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    subtotal: order.subtotal,
+    tax: order.tax,
+    total: order.total,
+    balanceDue: order.balanceDue ?? order.total,
+    createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : String(order.createdAt ?? ""),
+    items: order.items.map((item, idx) => ({
+      id: Number.isFinite(Number(item.orderItemId)) ? Number(item.orderItemId) : idx + 1,
+      name: item.name,
+      qty: item.qty,
+      price: item.price,
+      notes: item.notes,
+    })),
+    payments: order.payments.map((p, idx) => ({
+      id: `local-pay-${order.id}-${idx}`,
+      method: p.method,
+      amount: p.amount,
+      paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : String(p.paidAt ?? new Date().toISOString()),
+    })),
+  };
+}
+
+async function persistLocalOpenOrder(outletId: number, order: Order): Promise<void> {
+  useOrderStore.getState().addOrder(order);
+  await upsertCachedOpenOrder(outletId, toCachedOpenOrder(order)).catch(() => undefined);
+}
+
 export type UseOfflinePosOptions = {
   outletId: number | null | undefined;
   tenantId: number;
@@ -101,7 +143,10 @@ export function useOfflinePos({
   const enqueueReplayableOperation = useOfflineSyncStore((s) => s.enqueueReplayableOperation);
   const flushQueueForOutlet = useOfflineSyncStore((s) => s.flushQueueForOutlet);
 
-  const [bootstrap, setBootstrap] = useState<OfflineBootstrapSnapshot | null>(null);
+  const [bootstrap, setBootstrap] = useState<OfflineBootstrapSnapshot | null>(() => {
+    if (!outletId || outletId < 1) return null;
+    return peekOfflineBootstrap(outletId);
+  });
   const [bootstrapLoading, setBootstrapLoading] = useState(false);
 
   const isOfflineMode = !isOnline && isNativePosShell();
@@ -149,7 +194,7 @@ export function useOfflinePos({
       }
 
       const localId = createLocalOrderId();
-      const offlineCode = `L${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+      const offlineCode = `L${createDeviceUuid().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
       // Local/offline POS sessions use negative ids — strip so server auto-links open session on replay.
       const { posSessionId, ...restPayload } = payload as CreateOrderPayload & { posSessionId?: number };
       const safePayload =
@@ -168,6 +213,8 @@ export function useOfflinePos({
         operationType: TERMINAL_OP.ORDER_CREATE,
         payload: offlinePayload as unknown as Record<string, unknown>,
       });
+
+      await persistLocalOpenOrder(outletId, localOrder);
 
       return { order: localOrder, resumed: false };
     },
@@ -277,14 +324,15 @@ export function useOfflinePos({
         },
       });
 
-      const existing = await fetchOrderRemote(orderId).catch(() => null);
+      const fromStore = useOrderStore.getState().orders.find((o) => o.id === orderId) ?? null;
+      const existing = fromStore ?? (await fetchOrderRemote(orderId).catch(() => null));
       const paidAmount = payments.reduce((s, p) => s + p.amount, 0);
       const base = existing ?? localOrderFromPayload(orderId, {
         tenantId,
         outletId,
-        code: "OFFLINE",
+        code: localOrderCode ?? "OFFLINE",
         source: "pos",
-        orderType: "dine_in",
+        orderType: "Dine-in",
         status: "confirmed",
         paymentStatus: "partial",
         items: [],
@@ -300,15 +348,19 @@ export function useOfflinePos({
           method: p.method,
           amount: p.amount,
           paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+          tenderedAmount: p.tenderedAmount ?? null,
+          changeAmount: p.changeAmount ?? null,
         })),
       ];
       const totalPaid = nextPayments.reduce((s, p) => s + p.amount, 0);
-      return {
+      const updated: Order = {
         ...base,
         payments: nextPayments,
         paymentStatus: totalPaid >= base.total ? "paid" : "partial",
         balanceDue: Math.max(0, base.total - totalPaid),
       };
+      await persistLocalOpenOrder(outletId, updated);
+      return updated;
     },
     [addOrderPaymentsRemote, enqueueReplayableOperation, fetchOrderRemote, isOfflineMode, outletId, t, tenantId],
   );

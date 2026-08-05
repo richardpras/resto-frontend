@@ -21,6 +21,7 @@ import {
   mapStockMovementApiToStore,
 } from "@/domain/inventoryAdapters";
 import { isNativePosShell } from "@/mobile/platform";
+import { createDeviceUuid } from "@/mobile/offline/createDeviceUuid";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
@@ -219,7 +220,7 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       if (shouldQueueOffline()) {
         const outletId = resolveActiveOutletId(payload.outletId);
         if (outletId < 1) throw new Error("Outlet is required for offline inventory create");
-        const localId = `local-inv:${crypto.randomUUID()}`;
+        const localId = `local-inv:${createDeviceUuid()}`;
         const created: InventoryItem = {
           id: localId,
           name: payload.name,
@@ -354,7 +355,7 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
           },
         });
         const created: StockMovement = {
-          id: `local-mv:${crypto.randomUUID()}`,
+          id: `local-mv:${createDeviceUuid()}`,
           inventoryItemId: String(payload.inventory_item_id),
           outletId,
           inventoryItemName: null,

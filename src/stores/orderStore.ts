@@ -50,6 +50,8 @@ export type PaymentEntry = {
   method: string;
   amount: number;
   paidAt: Date;
+  tenderedAmount?: number | null;
+  changeAmount?: number | null;
   allocations?: { orderItemId: string; qty: number; amount: number }[];
 };
 
@@ -197,6 +199,8 @@ export function orderApiToStoreOrder(o: OrderApi): Order {
       method: p.method,
       amount: p.amount,
       paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+      tenderedAmount: p.tenderedAmount ?? null,
+      changeAmount: p.changeAmount ?? null,
       allocations: p.allocations?.map((a) => ({
         orderItemId: String(a.orderItemId),
         qty: a.qty,
@@ -809,6 +813,8 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
                   method: p.method,
                   amount: p.amount,
                   paidAt: p.paidAt ? new Date(p.paidAt) : new Date(),
+                  tenderedAmount: p.tenderedAmount ?? null,
+                  changeAmount: p.changeAmount ?? null,
                   allocations: p.allocations?.map((a) => ({
                     orderItemId: String(a.orderItemId),
                     qty: a.qty,

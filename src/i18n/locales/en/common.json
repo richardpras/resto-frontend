@@ -74,7 +74,11 @@
     "outletsCount": "{{count}} outlets",
     "guest": "Guest",
     "lock": "Lock",
-    "logout": "Logout"
+    "logout": "Logout",
+    "logoutConfirmTitle": "Log out?",
+    "logoutConfirmDescription": "You will need to sign in again to continue.",
+    "logoutConfirmAction": "Log out",
+    "logoutConfirmCancel": "Cancel"
   },
   "nav": {
     "dashboard": "Dashboard",

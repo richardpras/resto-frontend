@@ -158,7 +158,23 @@ export function OrderPaymentHistoryPanel({ outletId, orderId, orderChannelLabel 
                   <span>Cashier</span>
                   <span className="text-right">—</span>
                   <span>Settlement</span>
-                  <span className="text-right">—</span>
+                  <span className="text-right text-foreground">{formatRp(row.amount)}</span>
+                  {(row.tenderedAmount ?? 0) > 0 ? (
+                    <>
+                      <span>Dibayar</span>
+                      <span className="text-right font-medium text-foreground" data-testid="payment-history-tendered">
+                        {formatRp(row.tenderedAmount!)}
+                      </span>
+                    </>
+                  ) : null}
+                  {(row.changeAmount ?? 0) > 0 ? (
+                    <>
+                      <span>Kembali</span>
+                      <span className="text-right font-medium text-primary" data-testid="payment-history-change">
+                        {formatRp(row.changeAmount!)}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
                 {st === "void" ? (
                   <div className="flex flex-wrap gap-1 pt-0.5">

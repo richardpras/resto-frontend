@@ -74,7 +74,11 @@
     "outletsCount": "{{count}} outlet",
     "guest": "Tamu",
     "lock": "Kunci",
-    "logout": "Keluar"
+    "logout": "Keluar",
+    "logoutConfirmTitle": "Keluar dari akun?",
+    "logoutConfirmDescription": "Anda perlu masuk lagi untuk melanjutkan.",
+    "logoutConfirmAction": "Keluar",
+    "logoutConfirmCancel": "Batal"
   },
   "nav": {
     "dashboard": "Dasbor",

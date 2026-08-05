@@ -6,6 +6,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { AppOverlay } from "@/components/ui/AppOverlay";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsShortViewport } from "@/hooks/useBreakpoint";
 import { MenuItemImage } from "@/components/menu/MenuItemImage";
 import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { setOrderMember } from "@/lib/api-integration/membersEndpoints";
@@ -50,7 +51,11 @@ import { useNativePrint } from "@/hooks/useNativePrint";
 import { OfflineShiftBlocker } from "@/mobile/OfflineShiftBlocker";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos/PosCartPanel";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PosErrorBoundary } from "@/components/pos/PosErrorBoundary";
+import { DISMISS_OVERLAYS_EVENT } from "@/components/auth/LockScreen";
+import { resolvePosMenuDisplayState } from "@/features/pos/resolvePosMenuDisplayState";
+import { isLocalOrderId } from "@/mobile/offline/offlineIdMapping";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PosSessionPanel } from "@/components/pos/PosSessionPanel";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { canReconcilePayments } from "@/domain/permissionGates";
@@ -93,6 +98,13 @@ import {
   syncSplitPersonsToServer,
 } from "@/features/pos/syncSplitPersonsToServer";
 import { postPrintCustomerBill } from "@/lib/api-integration/receiptDocumentEndpoints";
+import { CashTenderFields } from "@/components/pos/CashTenderFields";
+import {
+  cashSettlementFromDraft,
+  computeCashChange,
+  isCashTenderSufficient,
+  parseCashTenderedInput,
+} from "@/features/pos/cashTender";
 import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
@@ -241,6 +253,7 @@ export default function POS() {
 
   // Modal states
   const [showPayment, setShowPayment] = useState(false);
+  const [cashTenderedInput, setCashTenderedInput] = useState("");
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [showStaticQrisModal, setShowStaticQrisModal] = useState(false);
   const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
@@ -359,6 +372,7 @@ export default function POS() {
     showMemberPicker,
     memberSearch,
     crmEnabled: capabilities.crm,
+    isOfflineMode: offlinePos.isOfflineMode,
   });
 
   const { requestTables, tablesLoading } = usePosLazyFloorTables({
@@ -438,11 +452,32 @@ export default function POS() {
     }
   }, [showPayment, paymentTransaction, selectedCheckoutMethod, qrisModalSuppressedTxId]);
 
+  // Keep the mobile cart sheet open under member/promo/reservation pickers.
+  // Only dismiss it for full-screen checkout flows.
   useEffect(() => {
-    if (showPayment || showSplit || showDiscountModal || showConfirmSent || showMemberPicker) {
+    if (showPayment || showSplit || showConfirmSent) {
       setMobileCartOpen(false);
     }
-  }, [showPayment, showSplit, showDiscountModal, showConfirmSent, showMemberPicker]);
+  }, [showPayment, showSplit, showConfirmSent]);
+
+  useEffect(() => {
+    const onDismissOverlays = () => {
+      setMobileCartOpen(false);
+      setShowPayment(false);
+      setShowSplit(false);
+      setShowQrisModal(false);
+      setShowStaticQrisModal(false);
+      setShowConfirmOrderDialog(false);
+      setShowConfirmSent(false);
+      setShowDiscountModal(false);
+      setShowMemberPicker(false);
+      setShowReservationPicker(false);
+      setShowKitchenReprint(false);
+      setCashTenderedInput("");
+    };
+    window.addEventListener(DISMISS_OVERLAYS_EVENT, onDismissOverlays);
+    return () => window.removeEventListener(DISMISS_OVERLAYS_EVENT, onDismissOverlays);
+  }, []);
 
   // Prevent outlet context leaks (cart, split/payment modal state) across outlet switch.
   useEffect(() => {
@@ -480,23 +515,32 @@ export default function POS() {
     };
   }, [paymentResetAsync]);
 
+  const offlineMenuRows = offlinePos.bootstrap?.menuItems?.data;
   const effectiveMenuApiItems =
-    offlinePos.isOfflineMode && offlinePos.bootstrap
-      ? (offlinePos.bootstrap.menuItems.data as typeof menuApiItems)
+    offlinePos.isOfflineMode && Array.isArray(offlineMenuRows)
+      ? (offlineMenuRows as typeof menuApiItems)
       : menuApiItems;
 
   const effectiveOutletTaxRules =
     offlinePos.isOfflineMode && offlinePos.bootstrap
-      ? (offlinePos.bootstrap.outletTaxRules as typeof outletTaxRules)
+      ? ((offlinePos.bootstrap.outletTaxRules ?? []) as typeof outletTaxRules)
       : outletTaxRules;
+
+  const { showMenuLoading, showMenuError } = resolvePosMenuDisplayState({
+    isOfflineMode: offlinePos.isOfflineMode,
+    offlineMenuCount: Array.isArray(offlineMenuRows) ? offlineMenuRows.length : 0,
+    menuLoading,
+    menuError,
+  });
 
   const menuItems: MenuItem[] = useMemo(() => {
     return effectiveMenuApiItems
+      .filter((m): m is NonNullable<typeof m> => !!m && typeof m === "object")
       .filter((m) => m.available !== false)
       .map((m) => ({
         id: String(m.id),
-        name: m.name,
-        price: m.price,
+        name: String(m.name ?? ""),
+        price: Number(m.price) || 0,
         category: m.menuCategory?.displayName?.trim()
           ? m.menuCategory.displayName
           : (m.menuCategory?.name?.trim() ? m.menuCategory.name : (m.category?.trim() ? m.category : "Uncategorized")),
@@ -634,6 +678,15 @@ export default function POS() {
   const posPaymentOrderTotal = checkoutTotals.source === "server"
     ? checkoutTotals.baseTotal
     : (currentOpenOrder?.total ?? total);
+  const cashSettlementAmount = enableMultiPayment
+    ? cashSettlementFromDraft(paymentDraft.lines)
+    : selectedCheckoutMethod && isCashCheckoutMethod(selectedCheckoutMethod)
+      ? (pendingGatewayPayments.length > 0
+          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+          : posPaymentBalanceDue)
+      : 0;
+  const showCashTenderFields = cashSettlementAmount > 0;
+
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
   const loyaltyAccountId = selectedMember?.loyaltyAccountId ?? null;
   const availablePoints = selectedMember
@@ -687,7 +740,7 @@ export default function POS() {
   const orderContextReady = typeof activeOutletId === "number" && activeOutletId >= 1;
   const checkoutReady =
     orderContextReady &&
-    (!menuLoading || cart.length > 0 || currentOrderId != null);
+    (!showMenuLoading || cart.length > 0 || currentOrderId != null);
 
   const orderTypeLabel = (type: string) => {
     if (type === "Dine-in") return t("pos.orderTypes.dine_in");
@@ -898,6 +951,17 @@ export default function POS() {
       toast.error(t("pos.memberLocked"));
       return;
     }
+    // Offline local orders: keep member on the draft UI only — no network attach.
+    if (offlinePos.isOfflineMode && isLocalOrderId(currentOrderId)) {
+      if (member) {
+        setCustomerName(member.name);
+        setCustomerPhone(member.phone);
+        setSelectedMember(member);
+      } else {
+        setSelectedMember(null);
+      }
+      return;
+    }
     try {
       await setOrderMember(currentOrderId, member ? Number(member.id) : null);
       if (member) {
@@ -1102,6 +1166,22 @@ export default function POS() {
       ];
     }
 
+    const cashSettled = cashSettlementFromDraft(draftLines);
+    if (cashSettled > 0) {
+      const tendered = parseCashTenderedInput(cashTenderedInput);
+      if (!isCashTenderSufficient(tendered, cashSettled)) {
+        toast.error(t("shared.cashTenderRequired"));
+        return;
+      }
+      const change = computeCashChange(tendered, cashSettled);
+      let attached = false;
+      draftLines = draftLines.map((line) => {
+        if (attached || String(line.method).toLowerCase() !== "cash") return line;
+        attached = true;
+        return { ...line, tenderedAmount: tendered, changeAmount: change };
+      });
+    }
+
     const primaryGatewayLine = draftLines.find((line) =>
       isGatewayPaymentMethod(line.method, checkoutMethods),
     );
@@ -1174,7 +1254,13 @@ export default function POS() {
 
       if (recoveryOrderId) {
         try {
-          if (shouldSyncCartToOpenBill(recoveryOrderId, currentOpenOrder, cart.length)) {
+          if (isLocalOrderId(recoveryOrderId)) {
+            const local = orders.find((o) => o.id === recoveryOrderId);
+            if (!local) {
+              throw new Error("Local offline order not found in session.");
+            }
+            storedOrder = local;
+          } else if (shouldSyncCartToOpenBill(recoveryOrderId, currentOpenOrder, cart.length)) {
             storedOrder = await syncCartToOpenBill(
               recoveryOrderId,
               updateOrderRemote,
@@ -1223,14 +1309,22 @@ export default function POS() {
         }
       }
 
-      storedOrder = await fetchOrderRemote(String(storedOrder.id));
+      // Local offline orders live only in the device store — never re-fetch from API.
+      if (!isLocalOrderId(String(storedOrder.id))) {
+        storedOrder = await fetchOrderRemote(String(storedOrder.id));
+      } else {
+        storedOrder =
+          useOrderStore.getState().orders.find((o) => o.id === storedOrder.id) ?? storedOrder;
+      }
 
       const orderBalanceDue = Math.max(
         0,
         storedOrder.total - storedOrder.payments.reduce((sum, payment) => sum + payment.amount, 0),
       );
       const paymentIdempotencyKey = beginOrderPaymentAttempt(String(storedOrder.id));
-      const giftCardSettlementIds = await redeemGiftCardForOrder(storedOrder.id);
+      const giftCardSettlementIds = isLocalOrderId(String(storedOrder.id))
+        ? []
+        : await redeemGiftCardForOrder(storedOrder.id);
 
       const result = await commitMultiPayment({
         orderId: storedOrder.id,
@@ -1239,7 +1333,7 @@ export default function POS() {
         draftLines,
         checkoutMethods,
         addOrderPaymentsRemote: (orderId, payments, options) =>
-          addOrderPaymentsRemote(orderId, payments, {
+          offlinePos.addPaymentsWithOffline(orderId, payments, {
             ...options,
             idempotencyKey: options?.idempotencyKey ?? paymentIdempotencyKey,
             ...paymentExtras,
@@ -1267,6 +1361,7 @@ export default function POS() {
         }
         await refreshSelectedMemberPoints();
         paymentDraft.clearDraft();
+        setCashTenderedInput("");
         clearCheckoutRecoveryState();
         checkoutAttemptIdRef.current = null;
         setCurrentOrderId(null);
@@ -1302,7 +1397,7 @@ export default function POS() {
       }
     } catch (e) {
       if (!(await handleCheckoutPaymentFailure(e))) {
-        if (currentOrderId) {
+        if (currentOrderId && !isLocalOrderId(currentOrderId)) {
           try {
             await fetchOrderRemote(currentOrderId);
             useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
@@ -1352,9 +1447,11 @@ export default function POS() {
         return;
       }
 
-      const giftCardSettlementIds = await redeemGiftCardForOrder(currentOrderId);
+      const giftCardSettlementIds = isLocalOrderId(currentOrderId)
+        ? []
+        : await redeemGiftCardForOrder(currentOrderId);
       const paymentIdempotencyKey = beginOrderPaymentAttempt(currentOrderId);
-      await addOrderPaymentsRemote(currentOrderId, manualBatch, {
+      await offlinePos.addPaymentsWithOffline(currentOrderId, manualBatch, {
         idempotencyKey: paymentIdempotencyKey,
         ...paymentExtras,
       });
@@ -1362,7 +1459,13 @@ export default function POS() {
       setShowStaticQrisModal(false);
 
       if (pendingGatewayLinesAfterManual.length > 0 && typeof activeOutletId === "number") {
-        const fresh = await fetchOrderRemote(currentOrderId);
+        const fresh = isLocalOrderId(currentOrderId)
+          ? (useOrderStore.getState().orders.find((o) => o.id === currentOrderId) ?? null)
+          : await fetchOrderRemote(currentOrderId);
+        if (!fresh) {
+          toast.error(t("shared.somethingWrong", { defaultValue: "Something went wrong." }));
+          return;
+        }
         const freshBalance = Math.max(
           0,
           fresh.total - fresh.payments.reduce((sum, payment) => sum + payment.amount, 0),
@@ -1376,7 +1479,7 @@ export default function POS() {
           draftLines: gatewayLines,
           checkoutMethods,
           addOrderPaymentsRemote: (orderId, payments, options) =>
-            addOrderPaymentsRemote(orderId, payments, {
+            offlinePos.addPaymentsWithOffline(orderId, payments, {
               ...options,
               idempotencyKey: options?.idempotencyKey ?? paymentIdempotencyKey,
               ...paymentExtras,
@@ -1427,11 +1530,13 @@ export default function POS() {
       showInventoryPolicySuccessToast(stockEnforcementMode);
     } catch (e) {
       if (!(await handleCheckoutPaymentFailure(e))) {
-        try {
-          await fetchOrderRemote(currentOrderId);
-          useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
-        } catch {
-          // Best-effort sync after failed static QRIS commit.
+        if (currentOrderId && !isLocalOrderId(currentOrderId)) {
+          try {
+            await fetchOrderRemote(currentOrderId);
+            useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+          } catch {
+            // Best-effort sync after failed static QRIS commit.
+          }
         }
         toastApiError(e);
         setShowPayment(false);
@@ -1455,6 +1560,13 @@ export default function POS() {
   const redeemGiftCardForOrder = async (orderId: string): Promise<number[]> => {
     if (!appliedGiftCardState || appliedGiftCardState.appliedAmount <= 0) {
       return [];
+    }
+    if (isLocalOrderId(orderId)) {
+      throw new Error(
+        t("mobile.giftCardRequiresOnline", {
+          defaultValue: "Gift card redemption requires an internet connection.",
+        }),
+      );
     }
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {
       throw new Error("Select an outlet before redeeming a gift card.");
@@ -1593,6 +1705,15 @@ export default function POS() {
 
   const ensureSplitOrderOnServer = async (): Promise<{ orderId: string; order: import("@/stores/orderStore").Order }> => {
     if (currentOrderId) {
+      if (isLocalOrderId(currentOrderId)) {
+        const local =
+          useOrderStore.getState().orders.find((o) => o.id === currentOrderId)
+          ?? orders.find((o) => o.id === currentOrderId);
+        if (!local) {
+          throw new Error("Local offline order not found in session.");
+        }
+        return { orderId: currentOrderId, order: local };
+      }
       const fresh = await fetchOrderRemote(currentOrderId);
       return { orderId: currentOrderId, order: fresh };
     }
@@ -1616,6 +1737,9 @@ export default function POS() {
     setCurrentOrderId(created.id);
     if (qrOrderContext) {
       setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: created.id } : prev));
+    }
+    if (isLocalOrderId(created.id)) {
+      return { orderId: created.id, order: created };
     }
     const fresh = await fetchOrderRemote(created.id);
     return { orderId: created.id, order: fresh };
@@ -1659,7 +1783,9 @@ export default function POS() {
         toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
-      const fresh = await fetchOrderRemote(orderId);
+      const fresh = isLocalOrderId(orderId)
+        ? (useOrderStore.getState().orders.find((o) => o.id === orderId) ?? serverOrder)
+        : await fetchOrderRemote(orderId);
       const paidAt = new Date().toISOString();
       const payment = buildSplitPaymentForPerson(syncedPerson, method, remaining, fresh, splitMethod, paidAt);
 
@@ -1669,6 +1795,10 @@ export default function POS() {
       }
 
       if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
+        if (isLocalOrderId(orderId)) {
+          toast.error(t("mobile.gatewayBlockedOffline", { defaultValue: "This payment method requires an internet connection." }));
+          return;
+        }
         const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
         const tx = await paymentCreateTransaction({
           orderId,
@@ -1715,15 +1845,30 @@ export default function POS() {
     setPrintingBill(true);
     try {
       let orderId = currentOrderId;
+      let orderFromEnsure: Order | null = null;
       if (!orderId && cart.length > 0) {
         const created = await ensureSplitOrderOnServer();
         orderId = created.orderId;
+        orderFromEnsure = created.order;
       }
       if (!orderId) return;
-      const order = orders.find((o) => o.id === orderId) ?? (await fetchOrderRemote(orderId));
+      const order =
+        orderFromEnsure
+        ?? orders.find((o) => o.id === orderId)
+        ?? useOrderStore.getState().orders.find((o) => o.id === orderId)
+        ?? (isLocalOrderId(orderId) ? null : await fetchOrderRemote(orderId));
+      if (!order) {
+        throw new Error(t("pos.toasts.orderNotFound", { defaultValue: "Order not found for printing." }));
+      }
       if (isNativePrint) {
         const result = await printCustomerReceipt(order);
         if (!result.ok) throw new Error(result.error);
+      } else if (isLocalOrderId(orderId)) {
+        throw new Error(
+          t("mobile.offlinePrintRequiresNative", {
+            defaultValue: "Offline bill print requires the native POS app.",
+          }),
+        );
       } else {
         await postPrintCustomerBill(Number(orderId), activeOutletId);
       }
@@ -1742,7 +1887,7 @@ export default function POS() {
       const paymentsToCommit = pendingGatewayPayments;
       setPendingGatewayPayments([]);
       try {
-        await addOrderPaymentsRemote(currentOrderId, paymentsToCommit, {
+        await offlinePos.addPaymentsWithOffline(currentOrderId, paymentsToCommit, {
           idempotencyKey: beginOrderPaymentAttempt(currentOrderId),
           ...paymentExtras,
         });
@@ -1769,7 +1914,7 @@ export default function POS() {
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
         if (!(await handleCheckoutPaymentFailure(error))) {
-          if (currentOrderId) {
+          if (currentOrderId && !isLocalOrderId(currentOrderId)) {
             try {
               await fetchOrderRemote(currentOrderId);
               useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
@@ -1855,7 +2000,9 @@ export default function POS() {
     || paymentAckRequired
     || (enableMultiPayment
       ? !isMultiPaymentDraftReady(enableMultiPayment, paymentDraft.lines, posPaymentBalanceDue)
-      : !selectedCheckoutCode);
+      : !selectedCheckoutCode)
+    || (showCashTenderFields
+      && !isCashTenderSufficient(parseCashTenderedInput(cashTenderedInput), cashSettlementAmount));
 
   const primaryPaymentActionLabel =
     canRetryGatewayCheckout && selectedApiMethod
@@ -1894,6 +2041,8 @@ export default function POS() {
     formatRp,
     orderType,
     orderTypeLabel,
+    orderTypes,
+    setOrderType,
     totalItems,
     currentOrderId,
     activeOutletId,
@@ -1948,8 +2097,8 @@ export default function POS() {
     total,
     setShowConfirmOrderDialog,
     checkoutReady,
-    menuLoading,
-    menuError,
+    menuLoading: showMenuLoading,
+    menuError: showMenuError,
     handlePayNow,
     paymentAckRequired,
     handlePrintCustomerBill,
@@ -1957,29 +2106,63 @@ export default function POS() {
     setShowKitchenReprint,
   };
 
+  const nestedCartPickerOpen =
+    showMemberPicker || showDiscountModal || showReservationPicker;
+  // Keep sheet mounted while nested pickers are open (same behavior as reservation).
+  const cartSheetOpen = mobileCartOpen || nestedCartPickerOpen;
+
   const showMobileCartBar =
-    (totalItems > 0 || !!currentOrderId) && !showPayment && !showSplit && !showDiscountModal;
+    (totalItems > 0 || !!currentOrderId)
+    && !showPayment
+    && !showSplit
+    && !cartSheetOpen;
   const isPhoneViewport = useIsMobile();
+  const isShortViewport = useIsShortViewport();
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))] min-h-0">
-      <ConnectivitySyncRibbon
-        outletId={activeOutletId}
-        terminalRegistrationReady={!menuLoading}
-        onManualSync={offlinePos.isNativeShell ? () => void offlinePos.manualSync() : undefined}
-        showNativeControls={offlinePos.isNativeShell}
-      />
-      <BluetoothPrinterSetup outletId={activeOutletId} />
+    <PosErrorBoundary>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={
+          isShortViewport
+            ? "flex items-center gap-2 border-b border-border/60 bg-muted/30 min-w-0 shrink-0"
+            : "contents"
+        }
+      >
+        <div className={isShortViewport ? "min-w-0 flex-1 overflow-hidden" : undefined}>
+          <ConnectivitySyncRibbon
+            outletId={activeOutletId}
+            terminalRegistrationReady={!showMenuLoading}
+            onManualSync={offlinePos.isNativeShell ? () => void offlinePos.manualSync() : undefined}
+            showNativeControls={offlinePos.isNativeShell}
+          />
+        </div>
+        {isShortViewport ? (
+          <div className="pr-2 shrink-0">
+            <BluetoothPrinterSetup outletId={activeOutletId} compact />
+          </div>
+        ) : (
+          <BluetoothPrinterSetup outletId={activeOutletId} />
+        )}
+      </div>
       {offlinePos.showOfflineBlocker ? (
         <OfflineShiftBlocker onBootstrap={() => void offlinePos.performBootstrap()} loading={offlinePos.bootstrapLoading} />
       ) : (
       <>
-      <div className="px-4 py-1 border-b border-border/40 bg-card/30">
-        <PosSessionPanel outletId={activeOutletId} />
+      <div
+        className={
+          isShortViewport
+            ? "px-3 py-0.5 border-b border-border/40 bg-card/30 flex items-center gap-2 min-h-0 shrink-0"
+            : "px-4 py-1 border-b border-border/40 bg-card/30 shrink-0"
+        }
+      >
+        <div className="min-w-0 flex-1">
+          <PosSessionPanel outletId={activeOutletId} />
+        </div>
       </div>
-      {qrOrderContext ? (
+      {!isShortViewport && qrOrderContext ? (
         <div
-          className="px-4 py-2 border-b border-primary/20 bg-primary/5 text-xs font-semibold tracking-wide text-primary flex items-center justify-between gap-2"
+          className="px-4 py-2 border-b border-primary/20 bg-primary/5 text-xs font-semibold tracking-wide text-primary flex items-center justify-between gap-2 shrink-0"
           data-testid="pos-qr-order-badge"
         >
           <span>
@@ -1989,102 +2172,134 @@ export default function POS() {
             {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
           </span>
         </div>
-      ) : (
-        <div
-          className="px-4 py-2 border-b border-border/40 bg-muted/20 text-xs font-semibold tracking-wide text-muted-foreground flex items-center justify-between gap-2"
-          data-testid="pos-direct-source-badge"
-        >
-          <span>{t("pos.directPos")}</span>
-          <span className="text-xs font-medium uppercase sm:text-sm" data-testid="pos-stock-mode-badge">
-            {t("pos.stockMode", { mode: stockEnforcementMode ?? "deferred" })}
-          </span>
-        </div>
-      )}
-      <div className="flex flex-1 min-h-0">
-      {/* Menu Panel */}
-      <div className="flex-1 flex flex-col min-w-0 p-4 md:p-5 pb-24 lg:pb-5">
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      ) : null}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Compact fixed filters; only the item grid scrolls */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pt-2 sm:px-3 sm:pt-3 md:px-5 md:pt-4">
+        <div className="mb-2 shrink-0 space-y-1.5 border-b border-border/40 bg-background pb-1.5">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
-              type="text" placeholder={t("pos.searchMenu")} value={search}
+              type="text"
+              placeholder={t("pos.searchMenu")}
+              value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              className="h-9 w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
-          <div className="flex gap-1.5 bg-card rounded-xl p-1 border border-border">
-            {orderTypes.map((type) => (
-              <button key={type} onClick={() => setOrderType(type)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${orderType === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >{orderTypeLabel(type)}</button>
+
+          <div className="scrollbar-hide flex gap-1.5 overflow-x-auto pb-0.5">
+            {categories.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setActiveCat(c)}
+                className={`touch-manipulation whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                  activeCat === c
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {categoryLabel(c)}
+              </button>
             ))}
           </div>
         </div>
 
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
-          {categories.map((c) => (
-            <button key={c} onClick={() => setActiveCat(c)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${activeCat === c ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-muted-foreground hover:text-foreground border border-border"}`}
-            >{categoryLabel(c)}</button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className={`h-0 min-h-0 flex-1 overflow-y-auto overscroll-y-auto touch-pan-y ${
+            showMobileCartBar
+              ? "pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]"
+              : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]"
+          }`}
+          data-testid="pos-menu-scroll"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {(!activeOutletId || activeOutletId < 1) && (
-            <div className="mb-4 p-4 rounded-xl border border-border bg-muted/20 text-sm text-muted-foreground text-center">
+            <div className="mb-4 rounded-xl border border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
               {t("pos.loadMenuOutlet")}
             </div>
           )}
-          <SkeletonBusyRegion busy={!!menuLoading} className="min-h-[12rem]" label={t("pos.loadingMenu")}>
-            {menuLoading && <PosMenuGridSkeleton items={8} />}
-            {menuError && !menuLoading && (
-            <div className="flex flex-col items-center justify-center h-48 gap-2 text-center px-4">
-              <p className="text-sm text-destructive">{t("pos.couldNotLoadMenu")}</p>
-              <button
-                type="button"
-                onClick={() => void refetchMenu()}
-                className="text-sm font-medium text-primary underline"
-              >
-                {t("shared.retry")}
-              </button>
-            </div>
-          )}
-            {!menuLoading && !menuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm text-center px-4">
-              {t("pos.noMenuItems")}
-            </div>
-          )}
-            {!menuLoading && !menuError && menuItems.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-            {filtered.map((item) => {
-              const inCart = cart.find((c) => c.id === item.id);
-              return (
-                <motion.button key={item.id} whileTap={{ scale: 0.97 }} onClick={() => addToCart(item)}
-                  className={`relative bg-card rounded-2xl p-4 border transition-all text-left hover:pos-shadow-md ${inCart ? "border-primary/30 ring-1 ring-primary/10" : "border-border/50"}`}
+          <SkeletonBusyRegion busy={!!showMenuLoading} className="min-h-[12rem]" label={t("pos.loadingMenu")}>
+            {showMenuLoading && <PosMenuGridSkeleton items={8} />}
+            {showMenuError && !showMenuLoading && (
+              <div className="flex h-48 flex-col items-center justify-center gap-2 px-4 text-center">
+                <p className="text-sm text-destructive">{t("pos.couldNotLoadMenu")}</p>
+                <button
+                  type="button"
+                  onClick={() => void refetchMenu()}
+                  className="text-sm font-medium text-primary underline"
                 >
-                  <MenuItemImage
-                    imageUrl={item.imageUrl}
-                    imageVersion={item.imageVersion}
-                    emoji={item.emoji}
-                    name={item.name}
-                    size="grid"
-                  />
-                  <p className="text-sm font-medium text-foreground leading-tight">{item.name}</p>
-                  <p className="text-sm font-bold text-primary mt-1">{formatRp(item.price)}</p>
-                  {inCart && (
-                    <span className="absolute top-2 right-2 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">{inCart.qty}</span>
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-          )}
+                  {t("shared.retry")}
+                </button>
+              </div>
+            )}
+            {!showMenuLoading && !showMenuError && menuItems.length === 0 && activeOutletId && activeOutletId >= 1 && (
+              <div className="flex h-48 flex-col items-center justify-center px-4 text-center text-sm text-muted-foreground">
+                {t("pos.noMenuItems")}
+              </div>
+            )}
+            {!showMenuLoading && !showMenuError && menuItems.length > 0 && (
+              <div
+                className={`grid gap-3 ${
+                  isShortViewport
+                    ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-5"
+                    : "grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+                }`}
+              >
+                {filtered.map((item) => {
+                  const inCart = cart.find((c) => c.id === item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => addToCart(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          addToCart(item);
+                        }
+                      }}
+                      className={`relative cursor-pointer select-none rounded-2xl border bg-card text-left transition-transform touch-pan-y hover:pos-shadow-md active:scale-[0.98] ${
+                        isShortViewport ? "p-2.5" : "p-4"
+                      } ${inCart ? "border-primary/30 ring-1 ring-primary/10" : "border-border/50"}`}
+                    >
+                      <MenuItemImage
+                        imageUrl={item.imageUrl}
+                        imageVersion={item.imageVersion}
+                        emoji={item.emoji}
+                        name={item.name}
+                        size="grid"
+                      />
+                      <p
+                        className={`font-medium leading-tight text-foreground ${
+                          isShortViewport ? "text-xs" : "text-sm"
+                        }`}
+                      >
+                        {item.name}
+                      </p>
+                      <p
+                        className={`mt-1 font-bold text-primary ${isShortViewport ? "text-xs" : "text-sm"}`}
+                      >
+                        {formatRp(item.price)}
+                      </p>
+                      {inCart && (
+                        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                          {inCart.qty}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </SkeletonBusyRegion>
         </div>
       </div>
 
       {/* Cart Panel — desktop */}
-      <div className="w-[340px] lg:w-[380px] bg-card border-l flex flex-col shrink-0 hidden lg:flex">
+      <div className="hidden h-full min-h-0 w-[340px] shrink-0 flex-col border-l bg-card lg:flex lg:w-[380px]">
         <PosCartPanel {...cartPanelProps} />
       </div>
 
@@ -2104,17 +2319,44 @@ export default function POS() {
         </div>
       ) : null}
 
-      <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
+      <Sheet
+        open={cartSheetOpen}
+        onOpenChange={(open) => {
+          // Nested pickers stack on the cart — never dismiss the sheet under them.
+          if (!open && nestedCartPickerOpen) return;
+          setMobileCartOpen(open);
+        }}
+      >
         <SheetContent
           side="bottom"
-          className="lg:hidden p-0 max-h-[90vh] flex flex-col overflow-hidden"
+          className="lg:hidden flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-none border-0 p-0 pt-[env(safe-area-inset-top)]"
           data-testid="pos-mobile-cart-sheet"
+          onInteractOutside={(event) => {
+            if (nestedCartPickerOpen) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (nestedCartPickerOpen) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            if (nestedCartPickerOpen) event.preventDefault();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (nestedCartPickerOpen) event.preventDefault();
+          }}
         >
-          <SheetHeader className="px-4 pt-4 pb-2 text-left border-b shrink-0">
-            <SheetTitle>{t("pos.currentOrder")}</SheetTitle>
+          <SheetHeader className="shrink-0 space-y-0 border-b px-3 py-2 text-left">
+            <div className="flex items-baseline justify-between gap-2 pr-8">
+              <SheetTitle className="text-base leading-none">{t("pos.currentOrder")}</SheetTitle>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}
+              </span>
+            </div>
+            <SheetDescription className="sr-only">
+              {t("pos.orderMeta", { type: orderTypeLabel(orderType), n: totalItems })}
+            </SheetDescription>
           </SheetHeader>
-          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-            <PosCartPanel {...cartPanelProps} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <PosCartPanel {...cartPanelProps} layout="sheet" />
           </div>
         </SheetContent>
       </Sheet>
@@ -2183,41 +2425,47 @@ export default function POS() {
         </button>
       </AppOverlay>
 
-      {/* Payment Modal */}
+      {/* Payment Modal — centered compact sheet, actions pinned */}
       <AppOverlay
         open={showPayment && !showSplit}
         layer="modal"
-        align={isPhoneViewport ? "bottom" : "center"}
+        align="center"
         dismissible={!submitting && !paymentIsSubmitting && !paymentAckRequired}
         data-testid="pos-payment-overlay"
         onClose={() => {
           if (submitting || paymentIsSubmitting || paymentAckRequired) return;
           setShowQrisModal(false);
           setShowPayment(false);
+          setCashTenderedInput("");
         }}
-        panelClassName="p-4 sm:p-6"
+        panelClassName="!max-h-[min(92dvh,36rem)] !overflow-hidden flex w-[min(100%,24rem)] flex-col p-3 sm:p-4"
       >
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-foreground">{t("shared.payment")}</h3>
+              <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+                <h3 className="text-base font-bold text-foreground">{t("shared.payment")}</h3>
                 <button
                   onClick={() => {
                     if (submitting || paymentIsSubmitting) return;
                     setShowQrisModal(false);
                     setShowPayment(false);
+                    setCashTenderedInput("");
                   }}
                   disabled={submitting || paymentIsSubmitting}
-                  className="p-1 rounded-lg hover:bg-muted disabled:opacity-40"
+                  className="rounded-lg p-1 hover:bg-muted disabled:opacity-40"
                 >
                   <X className="h-5 w-5 text-muted-foreground" />
                 </button>
               </div>
-              <div className="text-center mb-6">
-                <p className="text-sm text-muted-foreground">{t("shared.balanceDue")}</p>
-                <p className="text-3xl font-bold text-foreground mt-1">{formatRp(paymentCheckoutAmount)}</p>
+              <div className="mb-2 shrink-0 text-center">
+                <p className="text-[11px] text-muted-foreground">{t("shared.balanceDue")}</p>
+                <p className="text-2xl font-bold tabular-nums text-foreground leading-tight">
+                  {formatRp(paymentCheckoutAmount)}
+                </p>
                 {splitCheckoutActive ? (
-                  <p className="text-xs text-muted-foreground mt-1">{t("shared.splitGatewayPortion")}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{t("shared.splitGatewayPortion")}</p>
                 ) : null}
               </div>
+
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
               {paymentStockError ? (
                 <PosPaymentStockErrorAlert
                   error={paymentStockError}
@@ -2225,6 +2473,7 @@ export default function POS() {
                     clearCheckoutRecoveryState();
                     checkoutAttemptIdRef.current = null;
                     setShowPayment(false);
+                    setCashTenderedInput("");
                   }}
                 />
               ) : null}
@@ -2245,35 +2494,33 @@ export default function POS() {
               />
               {!enableMultiPayment ? (
               <PaymentMethodTileGrid
-                className="mb-6"
+                className="mb-1"
                 tiles={checkoutTiles}
                 selectedCode={selectedCheckoutCode}
-                onSelect={handleSelectPaymentMethod}
+                onSelect={(code) => {
+                  handleSelectPaymentMethod(code);
+                  setCashTenderedInput("");
+                }}
                 disabled={submitting || paymentIsSubmitting || paymentAckRequired}
               />
               ) : null}
-              <button onClick={initSplitBill}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all mb-4">
-                <SplitSquareHorizontal className="h-4 w-4" /> {t("shared.splitBill")}
-              </button>
-              <button
-                onClick={() => void completeDirectPayment()}
-                disabled={paymentSubmitDisabled}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity mb-3"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" /> {primaryPaymentActionLabel}
-                </span>
-              </button>
+              {showCashTenderFields ? (
+                <CashTenderFields
+                  settledAmount={cashSettlementAmount}
+                  tenderedInput={cashTenderedInput}
+                  onTenderedInputChange={setCashTenderedInput}
+                  disabled={submitting || paymentIsSubmitting || paymentAckRequired}
+                />
+              ) : null}
               {currentOrderId ? (
-                <p className="mb-3 text-sm text-muted-foreground text-center">
+                <p className="text-center text-[11px] text-muted-foreground">
                   {t("shared.checkoutOrder", { code: currentOpenOrder?.code ?? currentOrderId ?? "" })}{gatewayCheckoutPending ? t("shared.qrPaymentPending") : ""}
                 </p>
               ) : null}
               {paymentTransaction &&
                 (enableMultiPayment ||
                   (selectedCheckoutMethod && !isCashCheckoutMethod(selectedCheckoutMethod))) && (
-                <div className="mb-3 rounded-xl border border-border p-3 space-y-2 text-xs">
+                <div className="space-y-2 rounded-xl border border-border p-2.5 text-xs">
                   <p className="font-semibold text-foreground">{t("shared.onlineCheckout")}</p>
                   <p className="text-muted-foreground">{t("shared.statusColon")} <span className="font-medium text-foreground">{paymentTransaction.status}</span></p>
                   {paymentTransaction.status === "paid" && (
@@ -2306,7 +2553,7 @@ export default function POS() {
                   )}
                   <p className="text-muted-foreground">{t("shared.expiresInColon")} <span className="font-medium text-foreground">{paymentExpiryCountdown}s</span></p>
                   {paymentError && <p className="text-destructive">{paymentError}</p>}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={() => void handleGatewayRetry(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{gatewayRetryLabel(paymentTransaction.method)}</button>
                     {showReconcile ? (
                       <button onClick={() => void paymentReconcile(paymentTransaction.id)} disabled={paymentIsSubmitting} className="rounded-lg border border-border px-2 py-1">{t("shared.reconcile")}</button>
@@ -2321,6 +2568,25 @@ export default function POS() {
                 </div>
               )}
               <PosPrintStatusBar outletId={printStatusOutletId} />
+              </div>
+
+              <div className="mt-2 flex shrink-0 gap-2 border-t border-border/50 pt-2">
+                <button
+                  type="button"
+                  onClick={initSplitBill}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border px-2 py-2.5 text-xs font-medium text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                >
+                  <SplitSquareHorizontal className="h-3.5 w-3.5" /> {t("shared.splitBill")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void completeDirectPayment()}
+                  disabled={paymentSubmitDisabled}
+                  className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl bg-primary px-2 py-2.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {primaryPaymentActionLabel}
+                </button>
+              </div>
       </AppOverlay>
       <QrisPaymentModal
         open={showPayment && showQrisModal && !!paymentTransaction?.qrString}
@@ -2740,5 +3006,6 @@ export default function POS() {
       </>
       )}
     </div>
+    </PosErrorBoundary>
   );
 }

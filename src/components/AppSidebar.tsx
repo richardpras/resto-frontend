@@ -1,10 +1,20 @@
 import { Store, LogOut, Lock } from "lucide-react";
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarFooter, SidebarHeader, SidebarLogoRail,
 } from "@/components/ui/sidebar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
@@ -19,6 +29,7 @@ import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 export function AppSidebar() {
   const { t } = useTranslation("common");
   const { user, hasPermission, logout, lock } = useAuthStore();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const recoveryPendingCount = useOrdersExplorerStore((s) => s.recoveryPendingCount);
   const fetchRecoveryPendingCount = useOrdersExplorerStore((s) => s.fetchRecoveryPendingCount);
@@ -110,7 +121,11 @@ export function AppSidebar() {
                 <Lock className="h-3 w-3" /> {t("sidebar.lock")}
               </button>
             ) : null}
-            <button type="button" onClick={logout} className={`${user?.pinSet ? "flex-1" : "w-full"} flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors`}>
+            <button
+              type="button"
+              onClick={() => setLogoutOpen(true)}
+              className={`${user?.pinSet ? "flex-1" : "w-full"} flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors`}
+            >
               <LogOut className="h-3 w-3" /> {t("sidebar.logout")}
             </button>
           </div>
@@ -118,6 +133,26 @@ export function AppSidebar() {
       </Sidebar>
 
       <SidebarLogoRail>{logoMark}</SidebarLogoRail>
+
+      <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("sidebar.logoutConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("sidebar.logoutConfirmDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("sidebar.logoutConfirmCancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setLogoutOpen(false);
+                logout();
+              }}
+            >
+              {t("sidebar.logoutConfirmAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

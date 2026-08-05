@@ -32,7 +32,7 @@ import { useOfflineSyncStore } from "./offlineSyncStore";
 import { isNativePosShell } from "@/mobile/platform";
 import { toast } from "sonner";
 import i18n from "@/i18n";
-import { loadCachedOpenOrders, saveCachedOpenOrders } from "@/mobile/offline/offlineOrdersCache";
+import { loadCachedOpenOrders, mergeServerOpenOrdersWithLocalCache } from "@/mobile/offline/offlineOrdersCache";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -247,17 +247,33 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
         headers: createObservabilityHeaders(requestMeta),
       });
       if (get().activeListRequestId !== requestId) return;
+      let displayOrders = result.orders;
       if (typeof outletId === "number" && outletId >= 1 && !append) {
         const openish = result.orders.filter(
           (o) => o.paymentStatus === "unpaid" || o.paymentStatus === "partial",
         );
-        if (openish.length > 0) {
-          await saveCachedOpenOrders(outletId, openish as never).catch(() => undefined);
+        const mergedCache = await mergeServerOpenOrdersWithLocalCache(outletId, openish as never).catch(
+          () => openish as never,
+        );
+        const localOnly = (mergedCache as { id: string | number; paymentStatus?: string }[]).filter(
+          (row) =>
+            String(row.id).startsWith("local:")
+            && (row.paymentStatus === "unpaid" || row.paymentStatus === "partial")
+            && !result.orders.some((o) => String(o.id) === String(row.id)),
+        );
+        if (localOnly.length > 0) {
+          displayOrders = [...localOnly, ...result.orders] as OrderApi[];
         }
       }
       set((s) => ({
-        orders: append ? [...s.orders, ...result.orders] : result.orders,
-        meta: result.meta,
+        orders: append ? [...s.orders, ...result.orders] : displayOrders,
+        meta: append
+          ? result.meta
+          : {
+              ...result.meta,
+              total: displayOrders.length,
+              perPage: Math.max(result.meta.perPage, displayOrders.length),
+            },
         initialLoading: false,
         backgroundRefreshing: false,
       }));

@@ -345,6 +345,10 @@ export type OrderItemPayload = {
 export type OrderPaymentPayload = {
   method: string;
   amount: number;
+  /** Cash received from customer (settlement amount may be lower). */
+  tenderedAmount?: number | null;
+  /** Change returned to customer (tendered − amount). */
+  changeAmount?: number | null;
   status?: "paid" | "pending" | "failed" | "void";
   orderSplitId?: number;
   paidAt?: string;
@@ -453,6 +457,8 @@ export type OrderApi = {
     id: string;
     method: string;
     amount: number;
+    tenderedAmount?: number | null;
+    changeAmount?: number | null;
     status?: string;
     orderSplitId?: number | null;
     paidAt?: string;
@@ -547,6 +553,10 @@ export type OrderPaymentHistoryItem = {
   orderSplitId: number | null;
   method: string;
   amount: number;
+  /** Cash received from customer (may exceed settlement amount). */
+  tenderedAmount?: number | null;
+  /** Change returned (tendered − amount). */
+  changeAmount?: number | null;
   status: string;
   paidAt?: string | null;
   createdAt?: string | null;

@@ -3,6 +3,7 @@ import { FALLBACK_CHECKOUT_METHODS } from "@/features/pos/paymentMethodCapabilit
 import type { PaymentDraftLine } from "./multiPaymentTypes";
 import {
   clampDraftAmount,
+  draftLinesToPaymentPayload,
   draftTotal,
   partitionDraftByCapability,
   remainingToAllocate,
@@ -50,6 +51,29 @@ describe("multiPaymentUtils", () => {
     expect(clampDraftAmount(150000, 100000)).toBe(100000);
     expect(clampDraftAmount(0, 100000)).toBe(0);
     expect(clampDraftAmount(30000, 70000)).toBe(30000);
+  });
+
+  it("maps tendered and change onto payment payload for cash", () => {
+    const lines: PaymentDraftLine[] = [
+      {
+        id: "1",
+        method: "cash",
+        methodLabel: "Cash",
+        amount: 36000,
+        tenderedAmount: 100000,
+        changeAmount: 64000,
+      },
+    ];
+    const payload = draftLinesToPaymentPayload(lines, "2026-08-05T00:00:00.000Z");
+    expect(payload).toEqual([
+      {
+        method: "cash",
+        amount: 36000,
+        paidAt: "2026-08-05T00:00:00.000Z",
+        tenderedAmount: 100000,
+        changeAmount: 64000,
+      },
+    ]);
   });
 
   it("partitions cash, manual qris, and gateway lines", () => {

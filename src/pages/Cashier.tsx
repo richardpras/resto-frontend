@@ -9,13 +9,32 @@ import {
   Users,
   SplitSquareHorizontal,
   Undo2,
+  Search,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppOverlay } from "@/components/ui/AppOverlay";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { CashTenderFields } from "@/components/pos/CashTenderFields";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useBreakpoint, useIsPortrait } from "@/hooks/useBreakpoint";
+import { cn } from "@/lib/utils";
+import {
+  cashSettlementFromDraft,
+  computeCashChange,
+  isCashTenderSufficient,
+  parseCashTenderedInput,
+} from "@/features/pos/cashTender";
 import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi } from "@/lib/api";
 import { isNativePosShell } from "@/mobile/platform";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { useOfflinePos } from "@/hooks/useOfflinePos";
+import { isLocalOrderId } from "@/mobile/offline/offlineIdMapping";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
@@ -120,7 +139,9 @@ function snapshotCashierOrder(order: CashierOrder): CashierOrder {
 }
 
 function mapOrder(order: OrderApi): CashierOrder {
-  const paidTotal = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const payments = order.payments ?? [];
+  const items = order.items ?? [];
+  const paidTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
   return {
     id: order.id,
     outletId: typeof order.outletId === "number" ? order.outletId : undefined,
@@ -137,8 +158,8 @@ function mapOrder(order: OrderApi): CashierOrder {
     createdAt: order.createdAt,
     source: order.source,
     orderChannel: order.orderChannel ?? undefined,
-    items: order.items,
-    payments: order.payments,
+    items,
+    payments,
     splitBill: order.splitBill,
   };
 }
@@ -250,9 +271,22 @@ function buildBalancePaymentPayload(order: CashierOrder, apiMethod: string, amou
 export default function Cashier() {
   const { t } = useOpsTranslation();
   const isPhoneViewport = useIsMobile();
+  const breakpoint = useBreakpoint();
+  const isPortrait = useIsPortrait();
+  /** Desktop + tablet landscape: persistent right drawer. Mobile / tablet portrait: bottom sheet. */
+  const showDetailDrawer =
+    breakpoint === "desktop" || (breakpoint === "tablet" && !isPortrait);
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
+  const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
+  const offlinePos = useOfflinePos({
+    outletId: activeOutletId,
+    tenantId: POS_TENANT_ID,
+    createOrderRemote,
+    addOrderPaymentsRemote,
+    fetchOrderRemote,
+  });
   const paymentIsSubmitting = usePaymentStore((s) => s.isSubmitting);
   const paymentError = usePaymentStore((s) => s.error);
   const paymentTransaction = usePaymentStore((s) => s.currentTransaction);
@@ -273,12 +307,14 @@ export default function Cashier() {
   const showReconcile = canReconcilePayments(authUser);
 
   const [orders, setOrders] = useState<CashierOrder[]>([]);
+  const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [qrisModalSuppressedTxId, setQrisModalSuppressedTxId] = useState<string | null>(null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<CashierOrder | null>(null);
+  const [cashTenderedInput, setCashTenderedInput] = useState("");
   const printStatusOutletId = useMemo(
     () => resolvePrintStatusOutletId(activeOutletId, paymentModalOrder?.outletId),
     [activeOutletId, paymentModalOrder?.outletId],
@@ -323,6 +359,23 @@ export default function Cashier() {
     () => orders.find((order) => order.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
   );
+  const filteredOrders = useMemo(() => {
+    const q = orderSearchQuery.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((order) => {
+      const table = `${order.tableName ?? ""} ${order.tableNumber ?? ""}`.toLowerCase();
+      const haystack = `${order.code} ${table} ${order.customerName ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [orders, orderSearchQuery]);
+  const cashSettlementAmount = enableMultiPayment
+    ? cashSettlementFromDraft(paymentDraft.lines)
+    : selectedCheckoutMethod && isCashCheckoutMethod(selectedCheckoutMethod)
+      ? (pendingGatewayPayments.length > 0
+          ? pendingGatewayCheckoutTotal(pendingGatewayPayments)
+          : paymentBalanceDue)
+      : 0;
+  const showCashTenderFields = cashSettlementAmount > 0;
   const openBillTableOptions = useMemo(() => {
     const seen = new Set<string>();
     return orders
@@ -373,10 +426,10 @@ export default function Cashier() {
       const merged = data.filter(
         (order) => order.paymentStatus === "unpaid" || order.paymentStatus === "partial",
       );
-      const { saveCachedOpenOrders } = await import("@/mobile/offline/offlineOrdersCache");
-      await saveCachedOpenOrders(activeOutletId, merged as never);
-      setOrders(merged.map(mapOrder));
-      setSelectedOrderId((prev) => (prev && !merged.some((order) => order.id === prev) ? null : prev));
+      const { mergeServerOpenOrdersWithLocalCache } = await import("@/mobile/offline/offlineOrdersCache");
+      const withLocal = await mergeServerOpenOrdersWithLocalCache(activeOutletId, merged as never);
+      setOrders(withLocal.map((row) => mapOrder(row as never)));
+      setSelectedOrderId((prev) => (prev && !withLocal.some((order) => String(order.id) === prev) ? null : prev));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("cashier.loadOrdersFailed"));
     } finally {
@@ -530,6 +583,7 @@ export default function Cashier() {
     if (!selectedOrder || selectedOrder.balanceDue <= 0) return;
     void paymentResetAsync();
     setSelectedCheckoutCode(null);
+    setCashTenderedInput("");
     setShowStaticQrisModal(false);
     setPendingGatewayPayments([]);
     setGatewayOrderId(null);
@@ -546,6 +600,7 @@ export default function Cashier() {
     setShowPaymentModal(false);
     setPaymentModalOrder(null);
     setSelectedCheckoutCode(null);
+    setCashTenderedInput("");
     setShowStaticQrisModal(false);
     setPendingGatewayPayments([]);
     setGatewayOrderId(null);
@@ -820,6 +875,36 @@ export default function Cashier() {
       ];
     }
 
+    const cashSettled = cashSettlementFromDraft(draftLines);
+    if (cashSettled > 0) {
+      const tendered = parseCashTenderedInput(cashTenderedInput);
+      if (!isCashTenderSufficient(tendered, cashSettled)) {
+        toast.error(t("shared.cashTenderRequired"));
+        return;
+      }
+      const change = computeCashChange(tendered, cashSettled);
+      let attached = false;
+      draftLines = draftLines.map((line) => {
+        if (attached || String(line.method).toLowerCase() !== "cash") return line;
+        attached = true;
+        return { ...line, tenderedAmount: tendered, changeAmount: change };
+      });
+    }
+
+    if (
+      draftLines.some((line) => offlinePos.isGatewayBlockedOffline(line.method, checkoutMethods))
+      || (isLocalOrderId(String(paymentModalOrder.id))
+        && offlinePos.isOfflineMode
+        && draftLines.some((line) => isGatewayPaymentMethod(line.method, checkoutMethods)))
+    ) {
+      toast.error(
+        t("mobile.gatewayBlockedOffline", {
+          defaultValue: "This payment method requires an internet connection.",
+        }),
+      );
+      return;
+    }
+
     const primaryGatewayLine = draftLines.find((line) =>
       isGatewayPaymentMethod(line.method, checkoutMethods),
     );
@@ -889,7 +974,8 @@ export default function Cashier() {
         balanceDue: amount,
         draftLines,
         checkoutMethods,
-        addOrderPaymentsRemote,
+        addOrderPaymentsRemote: (orderId, payments, options) =>
+          offlinePos.addPaymentsWithOffline(orderId, payments, options),
         paymentCreateTransaction: (payload) => paymentCreateTransaction(payload),
         buildPaymentPayload: (method, lineAmount) =>
           buildBalancePaymentPayload(paymentModalOrder, method, lineAmount),
@@ -897,6 +983,7 @@ export default function Cashier() {
 
       if (result.outcome === "completed") {
         paymentDraft.clearDraft();
+        setCashTenderedInput("");
         toast.success(t("shared.paymentRecorded"));
         await loadOpenOrders();
         setSelectedOrderId(null);
@@ -967,12 +1054,18 @@ export default function Cashier() {
         return;
       }
 
-      await addOrderPaymentsRemote(paymentModalOrder.id, manualBatch);
+      await offlinePos.addPaymentsWithOffline(paymentModalOrder.id, manualBatch);
       setPendingManualQrisPayments([]);
       setShowStaticQrisModal(false);
 
       if (pendingGatewayLinesAfterManual.length > 0 && typeof activeOutletId === "number") {
-        const fresh = await fetchOrderRemote(paymentModalOrder.id);
+        const fresh = isLocalOrderId(String(paymentModalOrder.id))
+          ? (useOrderStore.getState().orders.find((o) => o.id === paymentModalOrder.id) ?? null)
+          : await fetchOrderRemote(paymentModalOrder.id);
+        if (!fresh) {
+          toast.error(t("cashier.paymentFailed"));
+          return;
+        }
         const snap = snapshotCashierOrder(storeOrderToCashier(fresh));
         setPaymentModalOrder(snap);
         const gatewayLines = pendingGatewayLinesAfterManual;
@@ -983,7 +1076,8 @@ export default function Cashier() {
           balanceDue: snap.balanceDue,
           draftLines: gatewayLines,
           checkoutMethods,
-          addOrderPaymentsRemote,
+          addOrderPaymentsRemote: (orderId, payments, options) =>
+            offlinePos.addPaymentsWithOffline(orderId, payments, options),
           paymentCreateTransaction: (payload) => paymentCreateTransaction(payload),
           buildPaymentPayload: (method, lineAmount) =>
             buildBalancePaymentPayload(snap, method, lineAmount),
@@ -1052,6 +1146,7 @@ export default function Cashier() {
           await abandonCashierPendingGateway();
           setSelectedCheckoutCode(code);
           setShowStaticQrisModal(false);
+          setCashTenderedInput("");
           toast.success(t("shared.previousCheckoutCancelled"));
         } catch (error) {
           toast.error(error instanceof ApiHttpError ? error.message : t("shared.failedSwitchMethod"));
@@ -1061,6 +1156,7 @@ export default function Cashier() {
     }
     setSelectedCheckoutCode(code);
     setShowStaticQrisModal(false);
+    setCashTenderedInput("");
   };
 
   const handleCashierChangePaymentMethodFromQris = () => {
@@ -1112,9 +1208,13 @@ export default function Cashier() {
       : paymentTransaction?.amount ?? paymentModalOrder?.balanceDue ?? 0;
   const splitCheckoutActive = pendingGatewayPayments.length > 0;
   const canCompleteCashierPayment =
-    enableMultiPayment && paymentModalOrder
+    (enableMultiPayment && paymentModalOrder
       ? isMultiPaymentDraftReady(enableMultiPayment, paymentDraft.lines, paymentModalOrder.balanceDue)
-      : Boolean(selectedCheckoutCode);
+      : Boolean(selectedCheckoutCode))
+    && !(
+      showCashTenderFields
+      && !isCashTenderSufficient(parseCashTenderedInput(cashTenderedInput), cashSettlementAmount)
+    );
 
   const settleOpenBillOrders = async (mode: "selected" | "all") => {
     if (!openBill || openBill.orders.length === 0) return;
@@ -1177,40 +1277,9 @@ export default function Cashier() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-        <div className="space-y-3">
-          {orders.length === 0 ? (
-            <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
-              {t("cashier.noOpenOrders")}
-            </div>
-          ) : (
-            orders.map((order) => (
-              <button
-                key={order.id}
-                type="button"
-                onClick={() => setSelectedOrderId(order.id)}
-                data-testid={`cashier-order-${order.id}`}
-                className={`w-full text-left bg-card border rounded-2xl p-4 transition-colors ${
-                  selectedOrderId === order.id ? "border-primary" : "border-border hover:border-primary/40"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-foreground">{order.code}</p>
-                  <p className="font-bold text-foreground">{formatRp(order.balanceDue)}</p>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {(order.tableName?.trim() || order.tableNumber)
-                    ? t("cashier.tableLabel", { name: order.tableName?.trim() || order.tableNumber })
-                    : t("shared.noTable")}{" "}
-                  {order.customerName ? `• ${order.customerName}` : ""}
-                </p>
-              </button>
-            ))
-          )}
-        </div>
-
-        <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
-          <div className="space-y-2 border-b border-border/60 pb-3">
+      {(() => {
+        const openBillSection = (
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">{t("cashier.openBillTitle")}</p>
             <select
               value={selectedTableId ?? ""}
@@ -1232,12 +1301,21 @@ export default function Cashier() {
                   {t("cashier.tableOrders", { name: openBill.table.name, n: openBill.orderCount })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {t("cashier.subtotalTaxService", { subtotal: formatRp(openBill.subtotal), tax: formatRp(openBill.tax), service: formatRp(openBill.service) })}
+                  {t("cashier.subtotalTaxService", {
+                    subtotal: formatRp(openBill.subtotal),
+                    tax: formatRp(openBill.tax),
+                    service: formatRp(openBill.service),
+                  })}
                 </p>
-                <p className="text-sm font-bold text-primary">{t("cashier.remaining")} {formatRp(openBill.remainingPayable)}</p>
+                <p className="text-sm font-bold text-primary">
+                  {t("cashier.remaining")} {formatRp(openBill.remainingPayable)}
+                </p>
                 <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
                   {openBill.orders.map((order) => (
-                    <label key={order.id} className="flex items-center gap-2 rounded-lg border border-border/50 px-2 py-1.5">
+                    <label
+                      key={order.id}
+                      className="flex items-center gap-2 rounded-lg border border-border/50 px-2 py-1.5"
+                    >
                       <input
                         type="checkbox"
                         checked={selectedOpenBillOrderIds.has(order.id)}
@@ -1256,7 +1334,9 @@ export default function Cashier() {
                           <OrderSourceBadge source={order.orderSource ?? null} />
                         </span>
                       </span>
-                      <span className="text-xs font-semibold text-foreground">{formatRp(order.remainingPayable)}</span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {formatRp(order.remainingPayable)}
+                      </span>
                       <button
                         type="button"
                         onClick={() => setSelectedOrderId(String(order.id))}
@@ -1291,71 +1371,181 @@ export default function Cashier() {
               <p className="text-xs text-muted-foreground">{t("cashier.noOpenBill")}</p>
             )}
           </div>
-          {!selectedOrder ? (
-            <p className="text-sm text-muted-foreground">{t("cashier.selectOrder")}</p>
-          ) : (
-            <>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("cashier.order")}</p>
-                <p className="font-semibold text-foreground">{selectedOrder.code}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t("cashier.totalPaidLine", { total: formatRp(selectedOrder.total), paid: formatRp(selectedOrder.paidTotal) })}
-                </p>
-                <p className="text-sm font-bold text-primary mt-1">
-                  {t("cashier.balanceDueLabel")} {formatRp(selectedOrder.balanceDue)}
-                </p>
-              </div>
+        );
 
-              {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
-                <OrderPaymentHistoryPanel
-                  outletId={activeOutletId}
-                  orderId={selectedOrder.id}
-                  orderChannelLabel={operationalChannelLabel(selectedOrder.source, selectedOrder.orderChannel)}
+        const orderDetailBody = selectedOrder ? (
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs text-muted-foreground">{t("cashier.order")}</p>
+              <p className="font-semibold text-foreground">{selectedOrder.code}</p>
+              <p className="text-xs text-muted-foreground">
+                {t("cashier.totalPaidLine", {
+                  total: formatRp(selectedOrder.total),
+                  paid: formatRp(selectedOrder.paidTotal),
+                })}
+              </p>
+              <p className="text-sm font-bold text-primary mt-1">
+                {t("cashier.balanceDueLabel")} {formatRp(selectedOrder.balanceDue)}
+              </p>
+            </div>
+
+            {typeof activeOutletId === "number" && activeOutletId >= 1 ? (
+              <OrderPaymentHistoryPanel
+                outletId={activeOutletId}
+                orderId={selectedOrder.id}
+                orderChannelLabel={operationalChannelLabel(
+                  selectedOrder.source,
+                  selectedOrder.orderChannel,
+                )}
+              />
+            ) : null}
+
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={openPaymentModal}
+                  disabled={selectedOrder.balanceDue <= 0}
+                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity min-h-11"
+                >
+                  {t("cashier.payBalance")}
+                </button>
+                <button
+                  type="button"
+                  onClick={openSplitFromPanel}
+                  disabled={selectedOrder.balanceDue <= 0}
+                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors flex items-center justify-center gap-2 min-h-11"
+                >
+                  <SplitSquareHorizontal className="h-4 w-4" />
+                  {t("shared.splitBill")}
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handlePrintCustomerBill()}
+                  disabled={selectedOrder.balanceDue <= 0 || printingBill}
+                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted min-h-11"
+                >
+                  {printingBill ? "…" : t("pos.printBill")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowKitchenReprint(true)}
+                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted min-h-11"
+                >
+                  {t("pos.reprintKitchen")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null;
+
+        return (
+          <>
+            <div className="space-y-3 max-w-3xl">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={orderSearchQuery}
+                  onChange={(e) => setOrderSearchQuery(e.target.value)}
+                  placeholder={t("cashier.searchPlaceholder")}
+                  className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-3 text-sm"
+                  data-testid="cashier-order-search"
+                  aria-label={t("cashier.searchPlaceholder")}
                 />
-              ) : null}
-
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={openPaymentModal}
-                    disabled={selectedOrder.balanceDue <= 0}
-                    className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                  >
-                    {t("cashier.payBalance")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openSplitFromPanel}
-                    disabled={selectedOrder.balanceDue <= 0}
-                    className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors flex items-center justify-center gap-2"
-                  >
-                    <SplitSquareHorizontal className="h-4 w-4" />
-                    {t("shared.splitBill")}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handlePrintCustomerBill()}
-                    disabled={selectedOrder.balanceDue <= 0 || printingBill}
-                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted"
-                  >
-                    {printingBill ? "…" : t("pos.printBill")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowKitchenReprint(true)}
-                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
-                  >
-                    {t("pos.reprintKitchen")}
-                  </button>
-                </div>
               </div>
-            </>
-          )}
-        </div>
-      </div>
+
+              <details className="bg-card border border-border rounded-2xl p-4 group">
+                <summary className="cursor-pointer list-none text-sm font-medium text-foreground flex items-center justify-between gap-2">
+                  <span>{t("cashier.openBillTitle")}</span>
+                  <span className="text-xs text-muted-foreground font-normal group-open:hidden">
+                    {t("cashier.openBillExpand")}
+                  </span>
+                </summary>
+                <div className="mt-3">{openBillSection}</div>
+              </details>
+
+              <div className="space-y-3 min-w-0">
+                {orders.length === 0 ? (
+                  <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
+                    {t("cashier.noOpenOrders")}
+                  </div>
+                ) : filteredOrders.length === 0 ? (
+                  <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
+                    {t("cashier.searchEmpty")}
+                  </div>
+                ) : (
+                  filteredOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => setSelectedOrderId(order.id)}
+                      data-testid={`cashier-order-${order.id}`}
+                      className={cn(
+                        "w-full text-left bg-card border rounded-2xl p-4 transition-colors",
+                        selectedOrderId === order.id
+                          ? "border-primary"
+                          : "border-border hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-foreground">{order.code}</p>
+                        <p className="font-bold text-foreground">{formatRp(order.balanceDue)}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {order.tableName?.trim() || order.tableNumber
+                          ? t("cashier.tableLabel", {
+                              name: order.tableName?.trim() || order.tableNumber,
+                            })
+                          : t("shared.noTable")}{" "}
+                        {order.customerName ? `• ${order.customerName}` : ""}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <Sheet
+              open={
+                !!selectedOrder
+                && !showPaymentModal
+                && !showSplitModal
+                && !showQrisModal
+                && !showStaticQrisModal
+              }
+              onOpenChange={(open) => {
+                if (!open) setSelectedOrderId(null);
+              }}
+            >
+              <SheetContent
+                side={showDetailDrawer ? "right" : "bottom"}
+                className={cn(
+                  "flex flex-col overflow-hidden gap-0 p-0",
+                  showDetailDrawer
+                    ? "w-full sm:max-w-md border-l"
+                    : "max-h-[92dvh] rounded-t-2xl border-0",
+                )}
+                data-testid={showDetailDrawer ? "cashier-detail-drawer" : "cashier-detail-sheet"}
+              >
+                <SheetHeader className="shrink-0 border-b px-4 pb-3 pt-4 text-left pr-12">
+                  <SheetTitle className="text-base">
+                    {selectedOrder?.code ?? t("cashier.order")}
+                  </SheetTitle>
+                  <SheetDescription className="text-xs">
+                    {selectedOrder
+                      ? `${t("cashier.balanceDueLabel")} ${formatRp(selectedOrder.balanceDue)}`
+                      : t("cashier.selectOrder")}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">{orderDetailBody}</div>
+              </SheetContent>
+            </Sheet>
+          </>
+        );
+      })()}
 
       {paymentModalOrder ? (
       <AppOverlay
@@ -1399,6 +1589,16 @@ export default function Cashier() {
                 onSelect={handleCashierSelectPaymentMethod}
                 disabled={submitting || paymentIsSubmitting}
               />
+              ) : null}
+              {showCashTenderFields ? (
+                <div className="mb-4">
+                  <CashTenderFields
+                    settledAmount={cashSettlementAmount}
+                    tenderedInput={cashTenderedInput}
+                    onTenderedInputChange={setCashTenderedInput}
+                    disabled={submitting || paymentIsSubmitting}
+                  />
+                </div>
               ) : null}
               <button
                 type="button"

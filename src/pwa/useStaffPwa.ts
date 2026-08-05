@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { isCapacitorNative } from "@/mobile/platform";
 import { registerSW } from "virtual:pwa-register";
 import {
   injectStaffManifest,
@@ -13,6 +14,15 @@ import {
 let swRegistered = false;
 
 function ensureServiceWorkerRegistered(): void {
+  // Capacitor already bundles assets; SW registration causes blank remounts offline.
+  if (isCapacitorNative()) {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      void navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) void reg.unregister();
+      });
+    }
+    return;
+  }
   if (swRegistered || typeof window === "undefined") return;
   registerSW({ immediate: true });
   swRegistered = true;

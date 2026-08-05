@@ -17,4 +17,10 @@ describe("useBreakpoint", () => {
     expect(source).toContain("useIsSidebarDrawer");
     expect(source).toContain("1024");
   });
+
+  it("exports short viewport helper for landscape chrome", () => {
+    const source = readFileSync(HOOK_PATH, "utf-8");
+    expect(source).toContain("useIsShortViewport");
+    expect(source).toContain("max-height");
+  });
 });

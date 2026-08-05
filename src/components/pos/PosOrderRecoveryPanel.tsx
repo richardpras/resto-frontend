@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -180,9 +181,11 @@ export function PosOrderRecoveryPanel({ order }: { order: Order | null }) {
                   : "Request store credit"
                 : "Report item issue"}
             </DialogTitle>
-            {dialog?.itemName ? (
-              <p className="text-xs text-muted-foreground pt-1">{dialog.itemName}</p>
-            ) : null}
+            <DialogDescription>
+              {dialog?.itemName
+                ? dialog.itemName
+                : "Choose how to handle this order item recovery."}
+            </DialogDescription>
           </DialogHeader>
           {dialog?.mode === "preset" ? (
             <div className="grid gap-2">

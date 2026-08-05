@@ -63,8 +63,22 @@ export function buildCustomerReceiptDocument(order: Order, ctx: ReceiptPrintCont
   const paid = order.payments.reduce((s, p) => s + p.amount, 0);
   if (paid > 0) {
     lines.push({ text: divider });
+    let tenderedTotal = 0;
+    let changeTotal = 0;
     for (const p of order.payments) {
       lines.push({ text: padLine(String(p.method).toUpperCase(), formatMoney(p.amount), width) });
+      if (p.tenderedAmount != null && p.tenderedAmount > 0) {
+        tenderedTotal += p.tenderedAmount;
+      }
+      if (p.changeAmount != null && p.changeAmount > 0) {
+        changeTotal += p.changeAmount;
+      }
+    }
+    if (tenderedTotal > 0) {
+      lines.push({ text: padLine("Dibayar", formatMoney(tenderedTotal), width) });
+    }
+    if (changeTotal > 0) {
+      lines.push({ text: padLine("Kembali", formatMoney(changeTotal), width) });
     }
     if (paid < order.total) {
       lines.push({ text: padLine("Balance", formatMoney(order.total - paid), width) });

@@ -10,6 +10,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { EmployeeLayout } from "./components/employee/EmployeeLayout";
 import { EmployeeProtectedRoute } from "./components/employee/EmployeeProtectedRoute";
 import { NativePosShell } from "@/mobile/NativePosShell";
+import { PosErrorBoundary } from "@/components/pos/PosErrorBoundary";
 import { PwaRouteController } from "@/pwa/useStaffPwa";
 import { PublicGuestStandaloneGuard } from "@/components/pwa/PublicGuestStandaloneGuard";
 import { PERMISSIONS } from "@/stores/authStore";
@@ -273,7 +274,15 @@ const App = () => (
               path="/dashboard/menu"
               element={guarded(PERMISSIONS.MENU_DASHBOARD, <MenuIntelligenceDashboard />)}
             />
-            <Route path="/pos" element={guarded(PERMISSIONS.POS, <POS />)} />
+            <Route
+              path="/pos"
+              element={guarded(
+                PERMISSIONS.POS,
+                <PosErrorBoundary>
+                  <POS />
+                </PosErrorBoundary>,
+              )}
+            />
             <Route path="/kitchen" element={guarded(PERMISSIONS.KITCHEN, <Kitchen />)} />
             <Route path="/qr-orders" element={guarded(PERMISSIONS.QR_ORDERS, <QROrdersList />)} />
             <Route path="/cashier" element={guarded(PERMISSIONS.POS, <Cashier />)} />

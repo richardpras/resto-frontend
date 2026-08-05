@@ -79,4 +79,26 @@ describe("OrderPaymentHistoryPanel", () => {
       expect(screen.getByTestId("payment-history-row-20")).toHaveTextContent("Void");
     });
   });
+
+  it("shows tendered and change for cash payments", async () => {
+    mockListOrderPayments.mockResolvedValue([
+      {
+        id: 30,
+        orderId: 4,
+        orderSplitId: null,
+        method: "cash",
+        amount: 36000,
+        tenderedAmount: 100000,
+        changeAmount: 64000,
+        status: "paid",
+        createdAt: "2026-08-05T10:00:00.000Z",
+      },
+    ]);
+    render(<OrderPaymentHistoryPanel outletId={1} orderId="4" orderChannelLabel="POS" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("payment-history-row-30")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("payment-history-tendered")).toHaveTextContent("100.000");
+    expect(screen.getByTestId("payment-history-change")).toHaveTextContent("64.000");
+  });
 });

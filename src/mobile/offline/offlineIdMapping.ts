@@ -1,3 +1,4 @@
+import { createDeviceUuid } from "@/mobile/offline/createDeviceUuid";
 import { getSecureValue, setSecureValue } from "@/mobile/secureStorage";
 
 const ORDER_MAP_PREFIX = "resto.offline.order.map.";
@@ -61,7 +62,7 @@ export function isLocalOrderId(orderId: string): boolean {
 }
 
 export function createLocalOrderId(): string {
-  return `local:${crypto.randomUUID()}`;
+  return `local:${createDeviceUuid()}`;
 }
 
 export function resolveServerOrderId(orderId: string, mapping: OrderMapEntry | null): number | null {

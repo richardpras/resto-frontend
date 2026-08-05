@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { PaymentMethodTileGrid, type PaymentMethodTile } from "@/components/pos/PaymentMethodTileGrid";
+import { isCashCheckoutMethod } from "@/features/pos/paymentMethodCapabilities";
 import { apiMethodFromCheckoutMethod } from "@/features/pos/paymentMethodUtils";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import type { PaymentDraftLine } from "./multiPaymentTypes";
@@ -51,21 +52,66 @@ export function OrderMultiPaymentPanel({
   const remaining = remainingToAllocate(balanceDue, draftLines);
   const collected = draftTotal(draftLines);
   const settlement = validateFullSettlement(draftLines, balanceDue);
+  const fullyAllocated = remaining <= 0 && draftLines.length > 0;
 
+  const selectedMethod = useMemo(() => {
+    if (!selectedCode) return null;
+    return (
+      findCheckoutMethodByCode(
+        checkoutTiles.map((tile) => tile.method),
+        selectedCode,
+      ) ?? null
+    );
+  }, [checkoutTiles, selectedCode]);
+
+  const selectedIsCash = selectedMethod ? isCashCheckoutMethod(selectedMethod) : false;
   const defaultAmount = useMemo(() => String(remaining || ""), [remaining]);
 
-  const handleAddLine = () => {
-    if (!selectedCode || disabled) return;
+  const handleSelectMethod = (code: string) => {
+    setSelectedCode(code);
     const methodConfig = findCheckoutMethodByCode(
       checkoutTiles.map((tile) => tile.method),
-      selectedCode,
+      code,
     );
-    if (!methodConfig) return;
+    if (!methodConfig || disabled || remaining <= 0) return;
+
+    if (isCashCheckoutMethod(methodConfig)) {
+      const added = onAddLine(
+        apiMethodFromCheckoutMethod(methodConfig),
+        methodConfig.label,
+        remaining,
+      );
+      if (added) {
+        setSelectedCode(null);
+        setAmountInput("");
+      } else {
+        setAmountInput(String(remaining));
+      }
+      return;
+    }
+
+    setAmountInput(String(remaining));
+  };
+
+  const handleAddLine = () => {
+    if (!selectedCode || disabled || !selectedMethod) return;
+    if (selectedIsCash) {
+      const added = onAddLine(
+        apiMethodFromCheckoutMethod(selectedMethod),
+        selectedMethod.label,
+        remaining,
+      );
+      if (added) {
+        setSelectedCode(null);
+        setAmountInput("");
+      }
+      return;
+    }
     const parsed = Number(amountInput.replace(/\D/g, ""));
     const amount = parsed > 0 ? parsed : remaining;
     const added = onAddLine(
-      apiMethodFromCheckoutMethod(methodConfig),
-      methodConfig.label,
+      apiMethodFromCheckoutMethod(selectedMethod),
+      selectedMethod.label,
       amount,
     );
     if (added) {
@@ -79,45 +125,48 @@ export function OrderMultiPaymentPanel({
   }
 
   return (
-    <div className="mb-4 space-y-3 rounded-xl border border-border/70 bg-background/60 p-3">
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <p className="text-muted-foreground">{t("shared.total")}</p>
-          <p className="font-semibold text-foreground">{formatRp(totalBill)}</p>
+    <div className="space-y-2">
+      {/* Compact one-liner when already allocated; full stats only while allocating */}
+      {!fullyAllocated ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px]">
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t("shared.total")}</span>
+            <span className="font-semibold tabular-nums">{formatRp(totalBill)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t("shared.paidSoFar")}</span>
+            <span className="font-semibold tabular-nums">{formatRp(alreadyPaid)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t("shared.balanceDue")}</span>
+            <span className="font-semibold tabular-nums text-primary">{formatRp(balanceDue)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{t("shared.draftCollected")}</span>
+            <span className="font-semibold tabular-nums">{formatRp(collected)}</span>
+          </div>
         </div>
-        <div>
-          <p className="text-muted-foreground">{t("shared.paidSoFar")}</p>
-          <p className="font-semibold text-foreground">{formatRp(alreadyPaid)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">{t("shared.balanceDue")}</p>
-          <p className="font-semibold text-primary">{formatRp(balanceDue)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">{t("shared.draftCollected")}</p>
-          <p className="font-semibold text-foreground">{formatRp(collected)}</p>
-        </div>
-      </div>
+      ) : null}
 
       {draftLines.length > 0 ? (
-        <ul className="space-y-2">
+        <ul className="space-y-1">
           {draftLines.map((line) => (
             <li
               key={line.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2"
+              className="flex items-center justify-between gap-2 rounded-lg border border-border/50 px-2.5 py-1.5"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex items-center gap-2">
                 <p className="text-sm font-medium text-foreground truncate">{line.methodLabel}</p>
-                <p className="text-xs text-muted-foreground">{formatRp(line.amount)}</p>
+                <p className="text-xs text-muted-foreground tabular-nums">{formatRp(line.amount)}</p>
               </div>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => onRemoveLine(line.id)}
-                className="inline-flex items-center justify-center rounded-lg border border-border p-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40 disabled:opacity-40"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40 disabled:opacity-40"
                 aria-label={t("shared.remove")}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}
@@ -125,42 +174,44 @@ export function OrderMultiPaymentPanel({
       ) : null}
 
       {remaining > 0 ? (
-        <div className="rounded-xl border border-accent/50 bg-accent/20 p-3 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground">
+        <div className="space-y-2 rounded-lg border border-accent/50 bg-accent/15 p-2">
+          <p className="text-[11px] font-medium text-muted-foreground">
             {t("shared.remainingToAllocate", { amount: formatRp(remaining) })}
           </p>
           <PaymentMethodTileGrid
             variant="compact"
             tiles={checkoutTiles}
             selectedCode={selectedCode}
-            onSelect={setSelectedCode}
+            onSelect={handleSelectMethod}
             disabled={disabled}
           />
-          <div className="flex gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              placeholder={defaultAmount}
-              disabled={disabled || !selectedCode}
-              className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
-              aria-label={t("shared.paymentAmount")}
-            />
-            <button
-              type="button"
-              disabled={disabled || !selectedCode || remaining <= 0}
-              onClick={handleAddLine}
-              className="shrink-0 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-40"
-            >
-              {draftLines.length > 0 ? t("shared.addMore") : t("shared.addPayment")}
-            </button>
-          </div>
+          {selectedCode && !selectedIsCash ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                placeholder={defaultAmount}
+                disabled={disabled || !selectedCode}
+                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-sm"
+                aria-label={t("shared.paymentAllocation")}
+              />
+              <button
+                type="button"
+                disabled={disabled || !selectedCode || remaining <= 0}
+                onClick={handleAddLine}
+                className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+              >
+                {draftLines.length > 0 ? t("shared.addMore") : t("shared.addPayment")}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {!settlement.ok && draftLines.length > 0 ? (
-        <p className="text-xs text-amber-900 dark:text-amber-100 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+        <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-900 dark:text-amber-100">
           {t("shared.draftMustMatchBalance")}
         </p>
       ) : null}

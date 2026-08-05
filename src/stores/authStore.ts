@@ -8,6 +8,13 @@ import {
 } from "@/lib/api-integration/userManagementEndpoints";
 import type { MeResponse } from "@/lib/api-integration/userManagementEndpoints";
 import { ApiHttpError, refreshAccessToken, setApiAccessToken } from "@/lib/api-integration/client";
+import {
+  cachePasswordVerifier,
+  cacheScreenPinVerifier,
+  clearAllLocalUnlockVerifiers,
+  verifyPasswordLocally,
+  verifyScreenPinLocally,
+} from "@/mobile/offline/offlineScreenPin";
 import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
 import { useOutletStore } from "@/stores/outletStore";
 import { toast } from "sonner";
@@ -24,7 +31,7 @@ export interface AuthUser {
   permissionCodes: string[];
   /** Outlets from `/auth/me` (no `settings.view` required) — used for POS/Menu outlet matrices. */
   assignedOutlets?: { id: number; name: string; code?: string | null }[];
-  /** Whether a screen-unlock PIN is stored on the server (hashed); verify via API only. */
+  /** Whether a screen-unlock PIN is stored on the server (hashed); unlock prefers API, falls back to local cache offline. */
   pinSet: boolean;
   /** Expanded route-guard aliases — do not use for platform write checks; prefer `permissionCodes`. */
   permissions: string[];
@@ -171,6 +178,8 @@ interface AuthStore {
   logout: () => void;
   lock: () => void;
   unlock: (pin: string) => Promise<boolean>;
+  /** Offline fallback when PIN was never unlocked on this device (uses hash cached at login). */
+  unlockWithPassword: (password: string) => Promise<boolean>;
   setAutoLock: (v: boolean) => void;
   setIdleMinutes: (n: number) => void;
   hasPermission: (perm: string) => boolean;
@@ -256,6 +265,8 @@ export const useAuthStore = create<AuthStore>()(
             accessToken: res.data.accessToken,
             sessionRestoreStatus: "done",
           });
+          // Enables emergency unlock if power/network drops before the first PIN unlock.
+          await cachePasswordVerifier(user.id, password).catch(() => undefined);
           return { ok: true };
         } catch (e) {
           setApiAccessToken(undefined);
@@ -267,9 +278,11 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: () => {
         const token = get().accessToken;
+        const userId = get().user?.id;
         set({ user: null, locked: false, accessToken: null, sessionRestoreStatus: "done" });
         useOutletStore.getState().clearActiveOutlet();
         setApiAccessToken(undefined);
+        void clearAllLocalUnlockVerifiers(userId).catch(() => undefined);
         if (token) {
           void apiLogout().catch(() => undefined);
         }
@@ -279,12 +292,35 @@ export const useAuthStore = create<AuthStore>()(
         const u = get().user;
         if (u?.pinSet) {
           set({ locked: true });
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("resto:dismiss-overlays"));
+          }
         }
       },
 
       unlock: async (pin) => {
+        const userId = get().user?.id;
+        const tryLocal = async (): Promise<boolean> => {
+          if (!userId) return false;
+          const ok = await verifyScreenPinLocally(userId, pin);
+          if (ok) {
+            set({ locked: false });
+          }
+          return ok;
+        };
+
+        const offline =
+          typeof navigator !== "undefined" && navigator.onLine === false;
+
+        if (offline) {
+          return tryLocal();
+        }
+
         try {
           await verifyScreenPin(pin);
+          if (userId) {
+            await cacheScreenPinVerifier(userId, pin).catch(() => undefined);
+          }
           set({ locked: false });
           return true;
         } catch (e) {
@@ -294,8 +330,33 @@ export const useAuthStore = create<AuthStore>()(
             return false;
           }
 
+          // Network / API unreachable — allow unlock via local verifier cached from a prior online unlock.
+          const isNetworkFailure =
+            !(e instanceof ApiHttpError) ||
+            e.status === 0 ||
+            e.status >= 500;
+          if (isNetworkFailure) {
+            return tryLocal();
+          }
+
           return false;
         }
+      },
+
+      unlockWithPassword: async (password) => {
+        const userId = get().user?.id;
+        if (!userId) return false;
+        const offline =
+          typeof navigator !== "undefined" && navigator.onLine === false;
+        // Password emergency path is for offline / unreachable API only.
+        if (!offline) {
+          // Still allow if API is up but user prefers password — verify locally only when cached.
+        }
+        const ok = await verifyPasswordLocally(userId, password);
+        if (ok) {
+          set({ locked: false });
+        }
+        return ok;
       },
 
       setAutoLock: (v) => set({ autoLock: v }),
