@@ -2,10 +2,14 @@ import { create } from "zustand";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import {
   closePosSession,
+  createPosSessionCashMovement,
   getCurrentPosSession,
   getPosSessionClosePreview,
+  listPosSessionCashMovements,
   openPosSession,
+  type PosCashMovementDirection,
   type PosSessionApi,
+  type PosSessionCashMovementApi,
   type PosSessionClosePreview,
 } from "@/lib/api-integration/posSessionEndpoints";
 import { isNativePosShell } from "@/mobile/platform";
@@ -30,11 +34,20 @@ type PosSessionState = {
   bootstrapSyncedOutletId: number | null;
   /** Maps negative local session id → local-session:uuid ref */
   localSessionRefs: Record<number, string>;
+  cashMovements: PosSessionCashMovementApi[];
   fetchCurrent: (outletId: number) => Promise<PosSessionApi | null>;
   hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null, defaultCashFloat?: number) => void;
   open: (outletId: number, openingCash?: number, notes?: string) => Promise<PosSessionApi>;
   previewClose: (sessionId: number) => Promise<PosSessionClosePreview>;
   close: (sessionId: number, actualCash: number, notes?: string) => Promise<PosSessionApi>;
+  fetchCashMovements: (sessionId: number) => Promise<PosSessionCashMovementApi[]>;
+  addCashMovement: (input: {
+    sessionId: number;
+    direction: PosCashMovementDirection;
+    amount: number;
+    category: string;
+    notes?: string;
+  }) => Promise<PosSessionCashMovementApi>;
   reset: () => void;
 };
 
@@ -59,6 +72,17 @@ function shouldQueueOffline(): boolean {
   return isNativePosShell() && !useOfflineSyncStore.getState().isOnline;
 }
 
+function createLocalCashMovementRef(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `local-cash-mv:${crypto.randomUUID()}`;
+  }
+  return `local-cash-mv:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function sumMovements(rows: PosSessionCashMovementApi[], direction: PosCashMovementDirection): number {
+  return rows.filter((r) => r.direction === direction).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+}
+
 export const usePosSessionStore = create<PosSessionState>((set, get) => ({
   currentSession: null,
   defaultCashFloat: 500000,
@@ -71,6 +95,7 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
   inFlightFetch: null,
   bootstrapSyncedOutletId: null,
   localSessionRefs: {},
+  cashMovements: [],
 
   hydrateFromBootstrap: (outletId: number, session: PosSessionApi | null, defaultCashFloat?: number) => {
     set({
@@ -83,6 +108,7 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
       error: null,
       inFlightOutletId: null,
       inFlightFetch: null,
+      cashMovements: [],
     });
   },
 
@@ -108,6 +134,11 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
           inFlightOutletId: null,
           inFlightFetch: null,
         });
+        if (currentSession?.id) {
+          void get().fetchCashMovements(currentSession.id).catch(() => undefined);
+        } else {
+          set({ cashMovements: [] });
+        }
         return currentSession;
       } catch (error) {
         const message = mapError(error);
@@ -163,6 +194,7 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
           bootstrapSyncedOutletId: null,
           lastSyncAt: new Date().toISOString(),
           localSessionRefs: { ...get().localSessionRefs, [numericId]: localRef },
+          cashMovements: [],
         });
         return currentSession;
       }
@@ -176,6 +208,7 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
         currentSession,
         bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
+        cashMovements: [],
       });
       return currentSession;
     } catch (error) {
@@ -191,6 +224,10 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
     if (shouldQueueOffline() || sessionId < 1) {
       const session = get().currentSession;
       const opening = session?.openingCash ?? get().defaultCashFloat;
+      const movements = get().cashMovements.filter((m) => m.posSessionId === sessionId || sessionId < 1);
+      const cashIn = sumMovements(movements, "in");
+      const cashOut = sumMovements(movements, "out");
+      const expected = opening + cashIn - cashOut;
       return {
         sessionId,
         outletId: get().activeOutletId ?? session?.outletId ?? 0,
@@ -200,13 +237,15 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
           cashSales: 0,
           cashRefunds: 0,
           cashExpenses: 0,
-          cashIn: 0,
-          cashOut: 0,
-          expected: opening,
+          cashIn,
+          cashOut,
+          expected,
           actual: null,
           variance: null,
           status: "offline_estimate",
-          limitations: ["Offline close preview uses opening cash only; reconcile after sync."],
+          limitations: [
+            "Offline close preview uses opening cash plus local cash in/out; sales reconcile after sync.",
+          ],
         },
       };
     }
@@ -250,6 +289,7 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
           currentSession: null,
           bootstrapSyncedOutletId: null,
           lastSyncAt: new Date().toISOString(),
+          cashMovements: [],
         });
         return closed;
       }
@@ -259,8 +299,94 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
         currentSession: null,
         bootstrapSyncedOutletId: null,
         lastSyncAt: new Date().toISOString(),
+        cashMovements: [],
       });
       return currentSession;
+    } catch (error) {
+      const message = mapError(error);
+      set({ error: message });
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
+    }
+  },
+
+  fetchCashMovements: async (sessionId: number) => {
+    if (shouldQueueOffline() || sessionId < 1) {
+      const local = get().cashMovements.filter((m) => m.posSessionId === sessionId);
+      return local;
+    }
+    const rows = await listPosSessionCashMovements(sessionId);
+    set({ cashMovements: rows });
+    return rows;
+  },
+
+  addCashMovement: async ({ sessionId, direction, amount, category, notes }) => {
+    set({ isSubmitting: true, error: null });
+    try {
+      if (shouldQueueOffline()) {
+        const session = get().currentSession;
+        if (!session || session.status !== "open") {
+          throw new Error("Open POS session required");
+        }
+        const outletId = get().activeOutletId ?? session.outletId;
+        if (outletId < 1) throw new Error("Outlet required");
+        const clientLocalRef = createLocalCashMovementRef();
+        const localSessionRef = get().localSessionRefs[sessionId];
+        const payload: Record<string, unknown> = {
+          sessionId: sessionId > 0 ? sessionId : 0,
+          direction,
+          amount,
+          category,
+          notes,
+          clientLocalRef,
+          occurredAt: new Date().toISOString(),
+        };
+        if (localSessionRef) payload.clientLocalRefSession = localSessionRef;
+        const fp = await shaFingerprint([
+          "pos_session.cash_movement",
+          clientLocalRef,
+          direction,
+          String(amount),
+        ]);
+        await useOfflineSyncStore.getState().enqueueReplayableOperation({
+          outletId,
+          fingerprint: fp,
+          operationType: "pos_session.cash_movement",
+          payload,
+        });
+        const optimistic: PosSessionCashMovementApi = {
+          id: -Date.now(),
+          outletId,
+          posSessionId: sessionId,
+          direction,
+          amount,
+          category,
+          notes: notes ?? null,
+          createdByUserId: Number(useAuthStore.getState().user?.id ?? 0),
+          occurredAt: new Date().toISOString(),
+          clientLocalRef,
+          journalId: null,
+          createdAt: new Date().toISOString(),
+        };
+        set({
+          cashMovements: [optimistic, ...get().cashMovements],
+          lastSyncAt: new Date().toISOString(),
+        });
+        return optimistic;
+      }
+
+      const row = await createPosSessionCashMovement(sessionId, {
+        direction,
+        amount,
+        category,
+        notes,
+      });
+      set({
+        cashMovements: [row, ...get().cashMovements.filter((m) => m.id !== row.id)],
+        lastSyncAt: new Date().toISOString(),
+      });
+      return row;
     } catch (error) {
       const message = mapError(error);
       set({ error: message });
@@ -283,5 +409,6 @@ export const usePosSessionStore = create<PosSessionState>((set, get) => ({
       inFlightFetch: null,
       bootstrapSyncedOutletId: null,
       localSessionRefs: {},
+      cashMovements: [],
     }),
 }));

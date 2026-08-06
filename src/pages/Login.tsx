@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Store, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { isDevelopmentEnvironment } from "@/domain/environment";
 import { useAuthStore, DEMO_CREDENTIALS, isSessionRestoreReady } from "@/stores/authStore";
 import { hasStaffAppAccess, resolvePostLoginPath } from "@/domain/permissionGates";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { RestoHubMark } from "@/components/brand/RestoHubMark";
 import { motion } from "framer-motion";
 
 export default function Login() {
@@ -32,7 +33,7 @@ export default function Login() {
 
   if (accessToken && sessionRestoreStatus === "pending") {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-sidebar-background">
+      <div className="min-h-screen w-full flex items-center justify-center bg-sidebar">
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           {t("auth.restoringSession", { defaultValue: "Restoring session…" })}
@@ -73,22 +74,31 @@ export default function Login() {
   const quickFill = (em: string, pw: string) => { setEmail(em); setPassword(pw); };
 
   return (
-    <div className="min-h-screen w-full flex bg-sidebar-background">
+    <div className="min-h-screen w-full flex bg-sidebar">
       {/* Brand panel */}
-      <div className="hidden lg:flex flex-1 items-center justify-center p-12 text-sidebar-foreground relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/30 via-transparent to-sidebar-primary/20" />
+      <div className="hidden lg:flex flex-1 items-center justify-center p-12 relative overflow-hidden">
+        <div className="absolute inset-0 bg-sidebar" />
+        <div className="absolute inset-0 bg-gradient-to-br from-sidebar-primary/25 via-sidebar to-sidebar-accent/70" />
+        {/* Soft edge vignette — top / bottom / left / right */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/40" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/25" />
+        {/* Blurred light blobs on all sides */}
+        <div className="pointer-events-none absolute -left-28 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 rounded-full bg-sidebar-primary/25 blur-[100px]" />
+        <div className="pointer-events-none absolute -right-24 top-1/3 h-[22rem] w-[22rem] rounded-full bg-sidebar-primary/20 blur-[90px]" />
+        <div className="pointer-events-none absolute left-1/4 -top-32 h-72 w-72 rounded-full bg-sidebar-primary/18 blur-[80px]" />
+        <div className="pointer-events-none absolute bottom-[-6rem] right-1/4 h-80 w-80 rounded-full bg-sidebar-primary/15 blur-[90px]" />
         <div className="relative max-w-md">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="h-12 w-12 rounded-2xl bg-sidebar-primary/20 flex items-center justify-center">
-              <Store className="h-6 w-6 text-sidebar-primary" />
+          <div className="flex items-center gap-3.5 mb-10">
+            <div className="h-12 w-12 rounded-2xl bg-white shadow-md shadow-black/15 ring-1 ring-white/30 flex items-center justify-center">
+              <RestoHubMark className="h-8 w-8" title={t("auth.brandName")} />
             </div>
             <div>
-              <h1 className="text-xl font-bold">{t("auth.brandName")}</h1>
-              <p className="text-xs text-sidebar-foreground/60">{t("auth.brandTagline")}</p>
+              <h1 className="text-xl font-bold text-white tracking-tight">{t("auth.brandName")}</h1>
+              <p className="text-sm font-medium text-sidebar-primary">{t("auth.brandTagline")}</p>
             </div>
           </div>
-          <h2 className="text-4xl font-bold leading-tight mb-4">{t("auth.headline")}</h2>
-          <p className="text-sidebar-foreground/70 text-base">{t("auth.description")}</p>
+          <h2 className="text-4xl font-bold leading-tight mb-4 text-white">{t("auth.headline")}</h2>
+          <p className="text-base leading-relaxed text-sidebar-foreground/90">{t("auth.description")}</p>
         </div>
       </div>
 
@@ -102,10 +112,13 @@ export default function Login() {
         </div>
 
         <div className="lg:hidden flex items-center gap-3 mb-8">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Store className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 rounded-xl bg-primary/8 ring-1 ring-primary/10 flex items-center justify-center">
+            <RestoHubMark className="h-6 w-6" title={t("auth.brandName")} />
           </div>
-          <h1 className="text-lg font-bold">{t("auth.brandName")}</h1>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">{t("auth.brandName")}</h1>
+            <p className="text-xs text-muted-foreground">{t("auth.brandTagline")}</p>
+          </div>
         </div>
 
         <h2 className="text-2xl font-bold text-foreground mb-1">{t("auth.welcomeBack")}</h2>

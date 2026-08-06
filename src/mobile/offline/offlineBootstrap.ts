@@ -49,6 +49,9 @@ export async function runOfflineBootstrap(params: FetchOfflineBootstrapParams): 
       snapshot.openOrders as import("./offlineOrdersCache").CachedOpenOrder[],
     );
   }
+  void import("./hydratePaidOrdersCache").then(({ hydratePaidOrdersCacheDebounced }) =>
+    hydratePaidOrdersCacheDebounced(snapshot.outletId),
+  );
   return snapshot;
 }
 

@@ -1,6 +1,6 @@
 import { AppOverlay } from "@/components/ui/AppOverlay";
-import { X, FileText, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { X, FileText, RefreshCw, Printer } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
 import { ManagerRecoveryWizard } from "@/components/orders/recovery/ManagerRecoveryWizard";
 import {
@@ -19,11 +19,19 @@ import { useAuthStore } from "@/stores/authStore";
 import { getOrdersExplorerUiCaps } from "@/stores/ordersExplorerCapabilities";
 import { explorerDetailKey, useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
+import { orderApiToStoreOrder } from "@/stores/orderStore";
 import type { OrderApi, OrderTaxSnapshotLine } from "@/lib/api-integration/endpoints";
 import { formatOrderSourceLabel } from "@/features/orders/orderSource";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import type { TFunction } from "i18next";
 import { Badge } from "@/components/ui/badge";
+import { isNativePosShell } from "@/mobile/platform";
+import {
+  getCachedOfflineBootstrap,
+  type OfflineBootstrapSnapshot,
+} from "@/mobile/offline/offlineBootstrap";
+import { useNativePrint } from "@/hooks/useNativePrint";
 
 function taxLineLabel(line: OrderTaxSnapshotLine, t: TFunction): string {
   if (line.type === "percentage") {
@@ -57,6 +65,8 @@ export function OrderExplorerDetailModal() {
   const user = useAuthStore((s) => s.user);
   const caps = useMemo(() => getOrdersExplorerUiCaps(user), [user]);
   const outletId = useOutletStore((s) => s.activeOutletId);
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+  const isOfflineNative = isNativePosShell() && !isOnline;
   const selectedOrderId = useOrdersExplorerStore((s) => s.selectedOrderId);
   const closeOrderDetail = useOrdersExplorerStore((s) => s.closeOrderDetail);
   const ensureDetailLoaded = useOrdersExplorerStore((s) => s.ensureDetailLoaded);
@@ -71,6 +81,23 @@ export function OrderExplorerDetailModal() {
   const [showKitchenReprint, setShowKitchenReprint] = useState(false);
   const [printingBill, setPrintingBill] = useState(false);
   const [reprintingId, setReprintingId] = useState<number | null>(null);
+  const [nativeReprinting, setNativeReprinting] = useState(false);
+  const [bootstrap, setBootstrap] = useState<OfflineBootstrapSnapshot | null>(null);
+  const { printCustomerReceipt, isNativePrint } = useNativePrint(bootstrap, outletId);
+
+  useEffect(() => {
+    if (!isOfflineNative || typeof outletId !== "number" || outletId < 1) {
+      setBootstrap(null);
+      return;
+    }
+    let cancelled = false;
+    void getCachedOfflineBootstrap(outletId).then((snap) => {
+      if (!cancelled) setBootstrap(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOfflineNative, outletId]);
 
   const receiptKindLabel = (kind: string, splitId: number | null) => {
     if (kind === "customer_bill") return t("ordersExplorer.detail.receiptKinds.customerBill");
@@ -83,6 +110,7 @@ export function OrderExplorerDetailModal() {
   const handlePrintBill = async () => {
     if (!order || typeof outletId !== "number" || outletId < 1) return;
     if ((order.paymentStatus ?? "") === "paid") return;
+    if (isOfflineNative) return;
     setPrintingBill(true);
     try {
       await postPrintCustomerBill(Number(order.id), outletId);
@@ -96,6 +124,7 @@ export function OrderExplorerDetailModal() {
   };
 
   const handleDirectReprint = async (historyId: number) => {
+    if (isOfflineNative) return;
     setReprintingId(historyId);
     try {
       await postReceiptReprint(historyId);
@@ -104,6 +133,31 @@ export function OrderExplorerDetailModal() {
       toast.error(error instanceof ApiHttpError ? error.message : t("ordersExplorer.detail.toasts.reprintFailed"));
     } finally {
       setReprintingId(null);
+    }
+  };
+
+  const handleNativeOfflineReprint = async () => {
+    if (!order || !isOfflineNative) return;
+    if (!isNativePrint) {
+      toast.error(t("ordersExplorer.detail.toasts.nativePrintUnavailable", {
+        defaultValue: "Native printer is not available on this device.",
+      }));
+      return;
+    }
+    setNativeReprinting(true);
+    try {
+      const result = await printCustomerReceipt(orderApiToStoreOrder(order));
+      if (result.ok) {
+        toast.success(t("ordersExplorer.detail.toasts.reprintPrinted", {
+          defaultValue: "Receipt sent to printer.",
+        }));
+      } else {
+        toast.error(result.error ?? t("ordersExplorer.detail.toasts.reprintFailed"));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("ordersExplorer.detail.toasts.reprintFailed"));
+    } finally {
+      setNativeReprinting(false);
     }
   };
 
@@ -151,7 +205,19 @@ export function OrderExplorerDetailModal() {
           <div className="p-4 space-y-4">
             {bucket?.error ? <p className="text-sm text-destructive">{bucket.error}</p> : null}
 
-            {caps.showOperationalCorrectionHint ? (
+            {isOfflineNative ? (
+              <div
+                className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-950 dark:text-sky-100"
+                data-testid="order-explorer-offline-banner"
+              >
+                {t("ordersExplorer.detail.offlineBanner", {
+                  defaultValue:
+                    "Offline mode: showing cached order. Receipt history, audit timeline, and kitchen reprint need internet.",
+                })}
+              </div>
+            ) : null}
+
+            {caps.showOperationalCorrectionHint && !isOfflineNative ? (
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-950 dark:text-amber-100">
                 {caps.canApproveItemRecovery ? (
                   <p>{t("managerRecovery.hint.manager")}</p>
@@ -203,8 +269,11 @@ export function OrderExplorerDetailModal() {
                 <div className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2.5 space-y-1.5 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-foreground">{t("ordersExplorer.detail.financialSummary")}</span>
-                    <Badge variant={order.applyTax ? "default" : "secondary"} className="text-[10px] shrink-0">
-                      {(order.applyTax ?? false)
+                    <Badge
+                      variant={(order.applyTax ?? false) || (order.tax ?? 0) > 0 ? "default" : "secondary"}
+                      className="text-[10px] shrink-0"
+                    >
+                      {(order.applyTax ?? false) || (order.tax ?? 0) > 0
                         ? t("ordersExplorer.detail.taxApplied")
                         : t("ordersExplorer.detail.taxNotApplied")}
                     </Badge>
@@ -219,7 +288,7 @@ export function OrderExplorerDetailModal() {
                       <span className="text-primary">-{formatRp(order.discountAmount ?? 0)}</span>
                     </div>
                   ) : null}
-                  {order.applyTax ?? false ? (
+                  {(order.applyTax ?? false) || (order.tax ?? 0) > 0 ? (
                     (order.taxSnapshot?.length ?? 0) > 0
                       ? order.taxSnapshot!.map((line) => (
                         <div key={line.taxId} className="flex justify-between gap-2 text-[11px]">
@@ -267,7 +336,7 @@ export function OrderExplorerDetailModal() {
                   })()}
                 </div>
 
-                {caps.canApproveItemRecovery && pendingRecoveryLines.length > 0 ? (
+                {caps.canApproveItemRecovery && !isOfflineNative && pendingRecoveryLines.length > 0 ? (
                   <ManagerRecoveryWizard
                     orderId={selectedOrderId}
                     order={order}
@@ -333,13 +402,32 @@ export function OrderExplorerDetailModal() {
                   </div>
                 ) : null}
 
-                <OrderPaymentHistoryPanel
-                  outletId={outletId}
-                  orderId={selectedOrderId}
-                  orderChannelLabel={orderChannelLabel(order)}
-                />
+                {!isOfflineNative ? (
+                  <OrderPaymentHistoryPanel
+                    outletId={outletId}
+                    orderId={selectedOrderId}
+                    orderChannelLabel={orderChannelLabel(order)}
+                  />
+                ) : (order.payments?.length ?? 0) > 0 ? (
+                  <div data-testid="order-explorer-offline-payments">
+                    <p className="text-xs font-semibold text-foreground mb-2">
+                      {t("ordersExplorer.detail.paymentsLabel", { defaultValue: "Payments" })}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {order.payments.map((p) => (
+                        <li
+                          key={String(p.id)}
+                          className="rounded-lg border border-border/60 px-2 py-1.5 text-[11px] flex justify-between gap-2"
+                        >
+                          <span className="font-medium truncate">{p.method}</span>
+                          <span className="text-muted-foreground shrink-0">{formatRp(p.amount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
-                {caps.canViewRecoveryTimeline ? (
+                {caps.canViewRecoveryTimeline && !isOfflineNative ? (
                   <div data-testid="order-explorer-recovery-section">
                     <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-2">
                       {t("ordersExplorer.detail.itemRecovery")}
@@ -371,7 +459,23 @@ export function OrderExplorerDetailModal() {
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs font-semibold text-foreground">{t("ordersExplorer.detail.receiptHistory")}</p>
-                    {caps.canUseReceiptActions && order && order.paymentStatus !== "paid" ? (
+                    {caps.canUseReceiptActions && isOfflineNative && order.paymentStatus === "paid" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        disabled={nativeReprinting}
+                        data-testid="order-explorer-offline-reprint"
+                        onClick={() => void handleNativeOfflineReprint()}
+                      >
+                        <Printer className="h-3 w-3 mr-1" />
+                        {nativeReprinting
+                          ? t("ordersExplorer.detail.printing")
+                          : t("ordersExplorer.detail.reprint")}
+                      </Button>
+                    ) : null}
+                    {caps.canUseReceiptActions && !isOfflineNative && order && order.paymentStatus !== "paid" ? (
                       <Button
                         type="button"
                         size="sm"
@@ -383,7 +487,7 @@ export function OrderExplorerDetailModal() {
                         {printingBill ? t("ordersExplorer.detail.printing") : t("ordersExplorer.detail.printBill")}
                       </Button>
                     ) : null}
-                    {caps.canUseReceiptActions && order ? (
+                    {caps.canUseReceiptActions && !isOfflineNative && order ? (
                       <Button
                         type="button"
                         size="sm"
@@ -395,7 +499,16 @@ export function OrderExplorerDetailModal() {
                       </Button>
                     ) : null}
                   </div>
-                  {!caps.canUseReceiptActions ? (
+                  {isOfflineNative ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("ordersExplorer.detail.offlineReceiptHint", {
+                        defaultValue:
+                          order.paymentStatus === "paid"
+                            ? "Use Reprint to print from this device. Server receipt history is unavailable offline."
+                            : "Server receipt history is unavailable offline.",
+                      })}
+                    </p>
+                  ) : !caps.canUseReceiptActions ? (
                     <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.receiptActionsRequirePos")}</p>
                   ) : (bucket?.receipts?.length ?? 0) === 0 ? (
                     <p className="text-[11px] text-muted-foreground">{t("ordersExplorer.detail.noReceipts")}</p>
@@ -426,7 +539,11 @@ export function OrderExplorerDetailModal() {
                               variant="outline"
                               className="h-7 text-[10px]"
                               disabled={!caps.canUseReceiptActions}
-                              onClick={() => void openPreview(r.id)}
+                              onClick={() =>
+                                void openPreview(r.id, {
+                                  outletId: typeof outletId === "number" ? outletId : r.outletId,
+                                })
+                              }
                             >
                               <FileText className="h-3 w-3 mr-1" /> {t("ordersExplorer.detail.view")}
                             </Button>
@@ -437,7 +554,7 @@ export function OrderExplorerDetailModal() {
                   )}
                 </div>
 
-                {caps.canViewAuditTimeline ? (
+                {caps.canViewAuditTimeline && !isOfflineNative ? (
                   <div data-testid="order-explorer-audit-section">
                     <p className="text-xs font-semibold text-foreground mb-2">{t("ordersExplorer.detail.auditTimeline")}</p>
                     {!bucket?.events.length ? (
@@ -472,7 +589,7 @@ export function OrderExplorerDetailModal() {
           </div>
       </AppOverlay>
 
-      {order ? (
+      {order && !isOfflineNative ? (
         <KitchenReprintModal
           open={showKitchenReprint}
           orderId={Number(order.id)}

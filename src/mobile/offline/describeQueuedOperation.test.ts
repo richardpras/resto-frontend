@@ -36,4 +36,15 @@ describe("describeQueuedOperation", () => {
     expect(summary.detail).toContain("LABC123");
     expect(summary.detail).toContain("28.000");
   });
+
+  it("summarizes pos_session.cash_movement", () => {
+    const summary = describeQueuedOperation({
+      ...base,
+      operationType: "pos_session.cash_movement",
+      payload: { direction: "out", amount: 15000, category: "iuran" },
+    });
+    expect(summary.titleDefault).toBe("Cash out");
+    expect(summary.detail).toContain("15.000");
+    expect(summary.detail).toContain("iuran");
+  });
 });

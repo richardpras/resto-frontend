@@ -5,12 +5,22 @@ const mockOpenPosSession = vi.fn();
 const mockClosePosSession = vi.fn();
 const mockGetCurrentPosSession = vi.fn();
 const mockGetPosSessionClosePreview = vi.fn();
+const mockListPosSessionCashMovements = vi.fn();
+const mockCreatePosSessionCashMovement = vi.fn();
 
 vi.mock("@/lib/api-integration/posSessionEndpoints", () => ({
   openPosSession: (...args: unknown[]) => mockOpenPosSession(...args),
   closePosSession: (...args: unknown[]) => mockClosePosSession(...args),
   getCurrentPosSession: (...args: unknown[]) => mockGetCurrentPosSession(...args),
   getPosSessionClosePreview: (...args: unknown[]) => mockGetPosSessionClosePreview(...args),
+  listPosSessionCashMovements: (...args: unknown[]) => mockListPosSessionCashMovements(...args),
+  createPosSessionCashMovement: (...args: unknown[]) => mockCreatePosSessionCashMovement(...args),
+  POS_CASH_OUT_CATEGORIES: ["iuran", "operasional", "beli_bahan_darurat", "lainnya"],
+  POS_CASH_IN_CATEGORIES: ["setor_modal", "dari_brankas", "lainnya"],
+}));
+
+vi.mock("@/mobile/platform", () => ({
+  isNativePosShell: () => false,
 }));
 
 describe("posSessionStore async lifecycle", () => {
@@ -118,5 +128,50 @@ describe("posSessionStore async lifecycle", () => {
     expect(state.isSubmitting).toBe(false);
     expect(state.lastSyncAt).not.toBeNull();
     expect(mockClosePosSession).toHaveBeenCalledWith(201, { actualCash: 98000, notes: "End shift" });
+  });
+
+  it("records cash out online and keeps it in store", async () => {
+    usePosSessionStore.setState({
+      currentSession: {
+        id: 301,
+        outletId: 9,
+        openedByUserId: 1,
+        closedByUserId: null,
+        status: "open",
+        openingCash: 500000,
+        closingCash: null,
+        expectedCash: null,
+        actualCash: null,
+        cashVariance: null,
+        openedAt: new Date().toISOString(),
+        closedAt: null,
+        notes: null,
+      },
+      activeOutletId: 9,
+    });
+
+    mockCreatePosSessionCashMovement.mockResolvedValueOnce({
+      id: 55,
+      outletId: 9,
+      posSessionId: 301,
+      direction: "out",
+      amount: 20000,
+      category: "iuran",
+      notes: null,
+      createdByUserId: 1,
+      occurredAt: new Date().toISOString(),
+      clientLocalRef: null,
+      journalId: 12,
+    });
+
+    await usePosSessionStore.getState().addCashMovement({
+      sessionId: 301,
+      direction: "out",
+      amount: 20000,
+      category: "iuran",
+    });
+
+    expect(mockCreatePosSessionCashMovement).toHaveBeenCalled();
+    expect(usePosSessionStore.getState().cashMovements[0]?.amount).toBe(20000);
   });
 });

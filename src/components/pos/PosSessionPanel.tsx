@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Banknote, Loader2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Banknote, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,12 @@ import {
 import { toast } from "sonner";
 import { usePosSessionStore } from "@/stores/posSessionStore";
 import { CashDrawerReconciliationPanel } from "@/components/pos/CashDrawerReconciliationPanel";
-import type { PosSessionClosePreview } from "@/lib/api-integration/posSessionEndpoints";
+import {
+  POS_CASH_IN_CATEGORIES,
+  POS_CASH_OUT_CATEGORIES,
+  type PosCashMovementDirection,
+  type PosSessionClosePreview,
+} from "@/lib/api-integration/posSessionEndpoints";
 import { formatMoney } from "@/lib/format/currency";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 
@@ -27,15 +32,22 @@ export function PosSessionPanel({ outletId }: Props) {
   const currentSession = usePosSessionStore((s) => s.currentSession);
   const defaultCashFloat = usePosSessionStore((s) => s.defaultCashFloat);
   const bootstrapSyncedOutletId = usePosSessionStore((s) => s.bootstrapSyncedOutletId);
+  const cashMovements = usePosSessionStore((s) => s.cashMovements);
   const fetchCurrent = usePosSessionStore((s) => s.fetchCurrent);
   const openSession = usePosSessionStore((s) => s.open);
   const previewClose = usePosSessionStore((s) => s.previewClose);
   const closeSession = usePosSessionStore((s) => s.close);
+  const fetchCashMovements = usePosSessionStore((s) => s.fetchCashMovements);
+  const addCashMovement = usePosSessionStore((s) => s.addCashMovement);
   const [openDialog, setOpenDialog] = useState(false);
   const [closeDialog, setCloseDialog] = useState(false);
+  const [cashDialog, setCashDialog] = useState<PosCashMovementDirection | null>(null);
   const [openingCash, setOpeningCash] = useState("");
   const [actualCash, setActualCash] = useState("");
   const [notes, setNotes] = useState("");
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashCategory, setCashCategory] = useState("");
+  const [cashNotes, setCashNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [closePreview, setClosePreview] = useState<PosSessionClosePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -51,6 +63,11 @@ export function PosSessionPanel({ outletId }: Props) {
       setOpeningCash(String(defaultCashFloat));
     }
   }, [openDialog, defaultCashFloat]);
+
+  useEffect(() => {
+    if (!currentSession?.id || currentSession.status !== "open") return;
+    void fetchCashMovements(currentSession.id).catch(() => undefined);
+  }, [currentSession?.id, currentSession?.status, fetchCashMovements]);
 
   useEffect(() => {
     if (!closeDialog || !currentSession?.id) {
@@ -69,6 +86,14 @@ export function PosSessionPanel({ outletId }: Props) {
       })
       .finally(() => setPreviewLoading(false));
   }, [closeDialog, currentSession?.id, previewClose, t]);
+
+  useEffect(() => {
+    if (!cashDialog) return;
+    const cats = cashDialog === "in" ? POS_CASH_IN_CATEGORIES : POS_CASH_OUT_CATEGORIES;
+    setCashCategory(cats[0]);
+    setCashAmount("");
+    setCashNotes("");
+  }, [cashDialog]);
 
   if (typeof outletId !== "number" || outletId < 1) return null;
 
@@ -109,10 +134,43 @@ export function PosSessionPanel({ outletId }: Props) {
     }
   };
 
+  const handleCashMovement = async () => {
+    if (!currentSession?.id || !cashDialog) return;
+    const parsed = Number(cashAmount);
+    if (!cashAmount.trim() || Number.isNaN(parsed) || parsed <= 0) {
+      toast.error(t("posSession.cashMovement.amountRequired"));
+      return;
+    }
+    if (!cashCategory) {
+      toast.error(t("posSession.cashMovement.categoryRequired"));
+      return;
+    }
+    setBusy(true);
+    try {
+      await addCashMovement({
+        sessionId: currentSession.id,
+        direction: cashDialog,
+        amount: parsed,
+        category: cashCategory,
+        notes: cashNotes || undefined,
+      });
+      toast.success(
+        cashDialog === "in" ? t("posSession.cashMovement.inSaved") : t("posSession.cashMovement.outSaved"),
+      );
+      setCashDialog(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("posSession.cashMovement.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const isOpen = currentSession?.status === "open";
+  const categories = cashDialog === "in" ? POS_CASH_IN_CATEGORIES : POS_CASH_OUT_CATEGORIES;
+  const recentMovements = cashMovements.slice(0, 5);
 
   return (
-    <div className="flex items-center gap-2 text-xs min-w-0">
+    <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
       <Banknote className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
       <span className="text-muted-foreground min-w-0 truncate">
         {t("posSession.label")}: {isOpen ? t("posSession.openLabel", { id: currentSession.id }) : t("posSession.none")}
@@ -125,9 +183,19 @@ export function PosSessionPanel({ outletId }: Props) {
           {t("posSession.openShift")}
         </Button>
       ) : (
-        <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setCloseDialog(true)}>
-          {t("posSession.closeShift")}
-        </Button>
+        <>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setCashDialog("in")}>
+            <ArrowDownToLine className="h-3 w-3 mr-1" />
+            {t("posSession.cashMovement.cashIn")}
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setCashDialog("out")}>
+            <ArrowUpFromLine className="h-3 w-3 mr-1" />
+            {t("posSession.cashMovement.cashOut")}
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setCloseDialog(true)}>
+            {t("posSession.closeShift")}
+          </Button>
+        </>
       )}
 
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
@@ -155,6 +223,66 @@ export function PosSessionPanel({ outletId }: Props) {
           <DialogFooter>
             <Button onClick={() => void handleOpen()} disabled={busy}>
               {t("posSession.openShift")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cashDialog !== null} onOpenChange={(open) => !open && setCashDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {cashDialog === "in" ? t("posSession.cashMovement.cashInTitle") : t("posSession.cashMovement.cashOutTitle")}
+            </DialogTitle>
+            <DialogDescription>{t("posSession.cashMovement.hint")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="cashAmount">{t("posSession.cashMovement.amount")}</Label>
+              <Input
+                id="cashAmount"
+                type="number"
+                min={0}
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="cashCategory">{t("posSession.cashMovement.category")}</Label>
+              <select
+                id="cashCategory"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={cashCategory}
+                onChange={(e) => setCashCategory(e.target.value)}
+              >
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {t(`posSession.cashMovement.categories.${cat}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="cashNotes">{t("posSession.notes")}</Label>
+              <Input id="cashNotes" value={cashNotes} onChange={(e) => setCashNotes(e.target.value)} />
+            </div>
+            {recentMovements.length > 0 ? (
+              <ul className="text-xs text-muted-foreground space-y-1 border-t pt-2 max-h-28 overflow-auto">
+                {recentMovements.map((m) => (
+                  <li key={`${m.id}-${m.clientLocalRef ?? ""}`}>
+                    {m.direction === "in" ? "+" : "−"}
+                    {formatMoney(m.amount)} · {t(`posSession.cashMovement.categories.${m.category}`, { defaultValue: m.category })}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCashDialog(null)} disabled={busy}>
+              {t("shared.cancel")}
+            </Button>
+            <Button onClick={() => void handleCashMovement()} disabled={busy}>
+              {t("posSession.cashMovement.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

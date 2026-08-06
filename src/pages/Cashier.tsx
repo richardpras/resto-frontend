@@ -71,7 +71,7 @@ import type { OrderPaymentPayload } from "@/lib/api-integration/endpoints";
 import { toast } from "sonner";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { useOutletStore } from "@/stores/outletStore";
-import { useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
+import { orderApiToStoreOrder, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { OrderPaymentHistoryPanel } from "@/components/pos/OrderPaymentHistoryPanel";
@@ -101,6 +101,11 @@ type CashierOrder = {
   customerName: string;
   tableName: string;
   tableNumber: string;
+  subtotal: number;
+  tax: number;
+  applyTax: boolean;
+  taxSnapshot?: OrderApi["taxSnapshot"];
+  discountAmount?: number;
   total: number;
   paidTotal: number;
   balanceDue: number;
@@ -109,6 +114,7 @@ type CashierOrder = {
   createdAt?: string;
   source: OrderApi["source"];
   orderChannel?: OrderApi["orderChannel"];
+  orderType?: string;
   items: OrderApi["items"];
   payments: OrderApi["payments"];
   splitBill?: OrderApi["splitBill"];
@@ -135,6 +141,7 @@ function snapshotCashierOrder(order: CashierOrder): CashierOrder {
       ...p,
       allocations: p.allocations?.map((a) => ({ ...a })),
     })),
+    taxSnapshot: order.taxSnapshot?.map((line) => ({ ...line })),
   };
 }
 
@@ -150,6 +157,11 @@ function mapOrder(order: OrderApi): CashierOrder {
     customerName: order.customerName ?? "",
     tableName: order.tableName ?? "",
     tableNumber: order.tableNumber ?? "",
+    subtotal: order.subtotal,
+    tax: order.tax,
+    applyTax: order.applyTax ?? false,
+    taxSnapshot: order.taxSnapshot ?? null,
+    discountAmount: order.discountAmount,
     total: order.total,
     paidTotal,
     balanceDue: Math.max(0, order.total - paidTotal),
@@ -158,6 +170,7 @@ function mapOrder(order: OrderApi): CashierOrder {
     createdAt: order.createdAt,
     source: order.source,
     orderChannel: order.orderChannel ?? undefined,
+    orderType: order.orderType,
     items,
     payments,
     splitBill: order.splitBill,
@@ -172,6 +185,8 @@ function storeOrderToCashier(order: Order): CashierOrder {
     method: p.method,
     amount: p.amount,
     paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : new Date(p.paidAt).toISOString(),
+    tenderedAmount: p.tenderedAmount ?? null,
+    changeAmount: p.changeAmount ?? null,
     allocations: p.allocations?.map((a) => ({
       orderItemId: Number(a.orderItemId),
       qty: a.qty,
@@ -180,12 +195,17 @@ function storeOrderToCashier(order: Order): CashierOrder {
   }));
   return {
     id: order.id,
-    outletId: undefined,
+    outletId: order.outletId ?? undefined,
     tableId: Number.isFinite(Number(order.tableId)) ? Number(order.tableId) : undefined,
     code: order.code,
     customerName: order.customerName ?? "",
     tableName: order.tableName ?? "",
     tableNumber: order.tableNumber ?? "",
+    subtotal: order.subtotal,
+    tax: order.tax,
+    applyTax: order.applyTax ?? false,
+    taxSnapshot: order.taxSnapshot ?? null,
+    discountAmount: order.discountAmount,
     total: order.total,
     paidTotal,
     balanceDue: Math.max(0, order.total - paidTotal),
@@ -194,9 +214,40 @@ function storeOrderToCashier(order: Order): CashierOrder {
     createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : undefined,
     source: order.source,
     orderChannel: order.orderChannel ?? undefined,
+    orderType: order.orderType,
     items: order.items as CashierOrder["items"],
     payments,
     splitBill: order.splitBill as OrderApi["splitBill"],
+  };
+}
+
+/** Preserve tax metadata when hydrating offline pay from Cashier list state. */
+function cashierOrderToApiish(order: CashierOrder, outletId: number): OrderApi {
+  return {
+    id: order.id,
+    outletId: order.outletId ?? outletId,
+    code: order.code,
+    source: order.source,
+    orderType: order.orderType ?? "Dine-in",
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    items: order.items,
+    subtotal: order.subtotal,
+    tax: order.tax,
+    applyTax: order.applyTax,
+    taxSnapshot: order.taxSnapshot ?? null,
+    discountAmount: order.discountAmount,
+    total: order.total,
+    balanceDue: order.balanceDue,
+    payments: order.payments,
+    customerName: order.customerName,
+    customerPhone: "",
+    tableNumber: order.tableNumber,
+    tableName: order.tableName,
+    tableId: order.tableId ?? null,
+    createdAt: order.createdAt,
+    splitBill: order.splitBill,
+    orderChannel: order.orderChannel ?? null,
   };
 }
 
@@ -346,9 +397,14 @@ export default function Cashier() {
   const [splitPayMethod, setSplitPayMethod] = useState<string | null>(null);
   const [showKitchenReprint, setShowKitchenReprint] = useState(false);
   const [printingBill, setPrintingBill] = useState(false);
-  const { data: checkoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
-    enabled: showPaymentModal || showSplitModal,
+  const { data: onlineCheckoutMethods = FALLBACK_CHECKOUT_METHODS } = useOutletCheckoutMethods(activeOutletId, {
+    enabled: (showPaymentModal || showSplitModal) && !offlinePos.isOfflineMode,
   });
+  const checkoutMethods = offlinePos.isOfflineMode
+    ? ((offlinePos.offlineCheckoutMethods.length > 0
+        ? offlinePos.offlineCheckoutMethods
+        : FALLBACK_CHECKOUT_METHODS) as typeof onlineCheckoutMethods)
+    : onlineCheckoutMethods;
   const checkoutTiles = useMemo(
     () => checkoutMethods.map((method) => ({ method, icon: iconForCheckoutMethod(method) })),
     [checkoutMethods],
@@ -714,6 +770,20 @@ export default function Cashier() {
     if (splitPersons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
       return splitPersons;
     }
+    if (offlinePos.isOfflineMode) {
+      if (typeof activeOutletId !== "number" || activeOutletId < 1) {
+        throw new Error(t("shared.selectOutlet"));
+      }
+      const orderForSync = orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId));
+      const synced = await offlinePos.syncSplitsWithOffline(
+        splitSourceOrder.id,
+        orderForSync,
+        splitPersons,
+        splitMethod,
+      );
+      setSplitPersons(synced);
+      return synced;
+    }
     const fresh = await fetchOrderRemote(splitSourceOrder.id);
     const synced = await syncSplitPersonsToServer(fresh.id, fresh, splitPersons, splitMethod);
     setSplitPersons(synced);
@@ -749,6 +819,15 @@ export default function Cashier() {
       return;
     }
 
+    if (offlinePos.isGatewayBlockedOffline(method, checkoutMethods)) {
+      toast.error(
+        t("mobile.gatewayBlockedOffline", {
+          defaultValue: "This payment method requires an internet connection.",
+        }),
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       const persons = await ensureCashierSplitsSynced();
@@ -757,7 +836,9 @@ export default function Cashier() {
         toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
-      const fresh = await fetchOrderRemote(splitSourceOrder.id);
+      const fresh = offlinePos.isOfflineMode
+        ? orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId))
+        : await fetchOrderRemote(splitSourceOrder.id);
       const paidAt = new Date().toISOString();
       const payment = buildSplitPaymentForPerson(
         syncedPerson,
@@ -788,7 +869,7 @@ export default function Cashier() {
         return;
       }
 
-      await addOrderPaymentsRemote(fresh.id, [payment]);
+      await offlinePos.addPaymentsWithOffline(fresh.id, [payment]);
       const nextPersons = persons.map((p, i) =>
         i === idx
           ? { ...p, payments: [...p.payments, { method, amount: remaining, paidAt: new Date() }] }
@@ -968,6 +1049,16 @@ export default function Cashier() {
 
     setSubmitting(true);
     try {
+      if (offlinePos.isOfflineMode && activeOutletId && activeOutletId >= 1) {
+        // Ensure offline pay can resolve totals/items from store + open-order cache
+        // (Cashier list lives in React state; bootstrap bills may not be in orderStore).
+        // Preserve tax / applyTax / taxSnapshot — never wipe with tax:0.
+        const { upsertCachedOpenOrder } = await import("@/mobile/offline/offlineOrdersCache");
+        const apiish = cashierOrderToApiish(paymentModalOrder, activeOutletId);
+        await upsertCachedOpenOrder(activeOutletId, apiish).catch(() => undefined);
+        useOrderStore.getState().addOrder(orderApiToStoreOrder(apiish));
+      }
+
       const result = await commitMultiPayment({
         orderId: paymentModalOrder.id,
         outletId: activeOutletId,
@@ -1236,7 +1327,7 @@ export default function Cashier() {
     setOpenBillSettling(true);
     try {
       for (const order of toPay) {
-        await addOrderPaymentsRemote(String(order.id), [
+        await offlinePos.addPaymentsWithOffline(String(order.id), [
           {
             method: "cash",
             amount: order.remainingPayable,
@@ -1517,7 +1608,17 @@ export default function Cashier() {
                 && !showStaticQrisModal
               }
               onOpenChange={(open) => {
-                if (!open) setSelectedOrderId(null);
+                // Don't clear selection when Sheet closes because Pay/Split/QRIS opened
+                // (derived open=false would otherwise wipe selectedOrderId mid-flow).
+                if (
+                  !open
+                  && !showPaymentModal
+                  && !showSplitModal
+                  && !showQrisModal
+                  && !showStaticQrisModal
+                ) {
+                  setSelectedOrderId(null);
+                }
               }}
             >
               <SheetContent

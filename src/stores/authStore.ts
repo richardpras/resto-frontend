@@ -17,7 +17,13 @@ import {
 } from "@/mobile/offline/offlineScreenPin";
 import { getDefaultIdleLockMinutes } from "@/lib/sessionConfig";
 import { useOutletStore } from "@/stores/outletStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { toast } from "sonner";
+
+/** True when POS reachability says API is offline (not just Wi‑Fi link down). */
+export function isScreenLockApiOffline(): boolean {
+  return !useOfflineSyncStore.getState().isOnline;
+}
 
 export type RoleName = "Owner" | "Manager" | "Cashier" | "Kitchen";
 
@@ -180,6 +186,8 @@ interface AuthStore {
   unlock: (pin: string) => Promise<boolean>;
   /** Offline fallback when PIN was never unlocked on this device (uses hash cached at login). */
   unlockWithPassword: (password: string) => Promise<boolean>;
+  /** Online: verify screen PIN once and cache local verifier for offline unlock. */
+  seedScreenPinForOffline: (pin: string) => Promise<{ ok: boolean; error?: string }>;
   setAutoLock: (v: boolean) => void;
   setIdleMinutes: (n: number) => void;
   hasPermission: (perm: string) => boolean;
@@ -309,10 +317,7 @@ export const useAuthStore = create<AuthStore>()(
           return ok;
         };
 
-        const offline =
-          typeof navigator !== "undefined" && navigator.onLine === false;
-
-        if (offline) {
+        if (isScreenLockApiOffline()) {
           return tryLocal();
         }
 
@@ -346,17 +351,39 @@ export const useAuthStore = create<AuthStore>()(
       unlockWithPassword: async (password) => {
         const userId = get().user?.id;
         if (!userId) return false;
-        const offline =
-          typeof navigator !== "undefined" && navigator.onLine === false;
-        // Password emergency path is for offline / unreachable API only.
-        if (!offline) {
-          // Still allow if API is up but user prefers password — verify locally only when cached.
-        }
         const ok = await verifyPasswordLocally(userId, password);
         if (ok) {
           set({ locked: false });
         }
         return ok;
+      },
+
+      seedScreenPinForOffline: async (pin) => {
+        const userId = get().user?.id;
+        if (!userId) {
+          return { ok: false, error: "Not signed in" };
+        }
+        if (pin.length < 4) {
+          return { ok: false, error: "PIN must be 4 digits" };
+        }
+        if (isScreenLockApiOffline()) {
+          return { ok: false, error: "Connect to the API once to enable offline PIN unlock" };
+        }
+        try {
+          await verifyScreenPin(pin);
+          await cacheScreenPinVerifier(userId, pin);
+          return { ok: true };
+        } catch (e) {
+          if (e instanceof ApiHttpError && e.status === 401) {
+            toast.error("Session expired. Please sign in again.");
+            get().logout();
+            return { ok: false, error: "Session expired" };
+          }
+          if (e instanceof ApiHttpError) {
+            return { ok: false, error: e.message || "Incorrect PIN" };
+          }
+          return { ok: false, error: "Could not verify PIN" };
+        }
       },
 
       setAutoLock: (v) => set({ autoLock: v }),

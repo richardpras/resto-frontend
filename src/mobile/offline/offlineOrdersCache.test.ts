@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   loadCachedOpenOrders,
   mergeServerOpenOrdersWithLocalCache,
+  removeCachedOpenOrder,
   saveCachedOpenOrders,
   upsertCachedOpenOrder,
 } from "./offlineOrdersCache";
@@ -56,5 +57,13 @@ describe("offlineOrdersCache", () => {
 
     const ids = merged.map((row) => String(row.id)).sort();
     expect(ids).toEqual(["99", "local:keep-me"]);
+  });
+
+  it("removeCachedOpenOrder drops a row by id", async () => {
+    await upsertCachedOpenOrder(7, { id: "a", paymentStatus: "unpaid" });
+    await upsertCachedOpenOrder(7, { id: "b", paymentStatus: "unpaid" });
+    await removeCachedOpenOrder(7, "a");
+    const rows = await loadCachedOpenOrders(7);
+    expect(rows.map((r) => String(r.id))).toEqual(["b"]);
   });
 });

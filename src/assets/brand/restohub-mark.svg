@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true">
+  <g transform="translate(32 32) rotate(-45)" fill="currentColor">
+    <path d="M-18.75 -5.25 H-2.25 V5.25 H-18.75 V-5.25 Z M-5.25 -18.75 H5.25 V-2.25 H-5.25 V-18.75 Z M2.25 -5.25 H11.25 V5.25 H2.25 V-5.25 Z"/>
+    <path d="M13.75 -5.25 H18.75 V5.25 H13.75 V-5.25 Z"/>
+  </g>
+</svg>

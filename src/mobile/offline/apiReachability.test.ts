@@ -55,9 +55,10 @@ describe("deviceKey", () => {
 });
 
 describe("offlineCapability", () => {
-  it("allows POS and blocks QR/reservations", () => {
+  it("allows POS and blocks QR/reservations/daily close", () => {
     expect(isPathAllowedOffline("/pos")).toBe(true);
     expect(isPathAllowedOffline("/cashier")).toBe(true);
+    expect(isPathAllowedOffline("/shift-close")).toBe(false);
     expect(isPathAllowedOffline("/qr-orders")).toBe(false);
     expect(isPathAllowedOffline("/reservations")).toBe(false);
     expect(isPathAllowedOffline("/accounting")).toBe(false);

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useOutletStore } from "./outletStore";
 import { useOrdersExplorerStore } from "./ordersExplorerStore";
+import { useOfflineSyncStore } from "./offlineSyncStore";
+import { saveCachedOpenOrders } from "@/mobile/offline/offlineOrdersCache";
+import { saveCachedPaidOrders } from "@/mobile/offline/offlinePaidOrdersCache";
 
 const mockListOrdersWithMeta = vi.fn();
 const mockGetOrder = vi.fn();
@@ -8,6 +11,8 @@ const mockListOrderPosEvents = vi.fn();
 const mockListOrderRecoveryEvents = vi.fn();
 const mockApproveOrderItemRecovery = vi.fn();
 const mockListReceiptRenderHistory = vi.fn();
+const mockIsNativePosShell = vi.fn(() => false);
+const mockHydratePaidDebounced = vi.fn(() => Promise.resolve([]));
 
 vi.mock("@/lib/api-integration/endpoints", async () => {
   const actual =
@@ -26,6 +31,14 @@ vi.mock("@/lib/api-integration/receiptDocumentEndpoints", () => ({
   listReceiptRenderHistory: (...args: unknown[]) => mockListReceiptRenderHistory(...args),
 }));
 
+vi.mock("@/mobile/platform", () => ({
+  isNativePosShell: () => mockIsNativePosShell(),
+}));
+
+vi.mock("@/mobile/offline/hydratePaidOrdersCache", () => ({
+  hydratePaidOrdersCacheDebounced: (...args: unknown[]) => mockHydratePaidDebounced(...args),
+}));
+
 describe("ordersExplorerStore", () => {
   beforeEach(() => {
     mockListOrdersWithMeta.mockReset();
@@ -34,6 +47,11 @@ describe("ordersExplorerStore", () => {
     mockListOrderRecoveryEvents.mockReset();
     mockApproveOrderItemRecovery.mockReset();
     mockListReceiptRenderHistory.mockReset();
+    mockIsNativePosShell.mockReset();
+    mockIsNativePosShell.mockReturnValue(false);
+    mockHydratePaidDebounced.mockReset();
+    mockHydratePaidDebounced.mockResolvedValue([]);
+    useOfflineSyncStore.setState({ isOnline: true });
     useOutletStore.setState({ activeOutletId: 1, activeOutletCode: "t1" });
     useOrdersExplorerStore.getState().resetForOutletSwitch();
     useOrdersExplorerStore.setState({ filters: {}, perPage: 25 });
@@ -233,5 +251,74 @@ describe("ordersExplorerStore", () => {
     useOrdersExplorerStore.getState().resetForOutletSwitch();
     expect(useOrdersExplorerStore.getState().orders).toHaveLength(0);
     expect(useOrdersExplorerStore.getState().pollingTimer).toBeNull();
+  });
+
+  it("offline list unions open + paid caches", async () => {
+    mockIsNativePosShell.mockReturnValue(true);
+    useOfflineSyncStore.setState({ isOnline: false });
+    const fresh = new Date().toISOString();
+    await saveCachedOpenOrders(1, [
+      {
+        id: "local:1",
+        code: "L1",
+        paymentStatus: "unpaid",
+        status: "confirmed",
+        total: 1,
+        items: [],
+        payments: [],
+      },
+    ]);
+    await saveCachedPaidOrders(1, [
+      {
+        id: "55",
+        code: "P55",
+        paymentStatus: "paid",
+        status: "completed",
+        total: 2,
+        items: [],
+        payments: [],
+        createdAt: fresh,
+        paidAt: fresh,
+        cachedAt: fresh,
+      },
+    ]);
+    await useOrdersExplorerStore.getState().fetchList({ append: false, background: false });
+    expect(mockListOrdersWithMeta).not.toHaveBeenCalled();
+    const ids = useOrdersExplorerStore.getState().orders.map((o) => String(o.id)).sort();
+    expect(ids).toEqual(["55", "local:1"]);
+  });
+
+  it("offline detail loads from paid cache without remote APIs", async () => {
+    mockIsNativePosShell.mockReturnValue(true);
+    useOfflineSyncStore.setState({ isOnline: false });
+    const fresh = new Date().toISOString();
+    await saveCachedPaidOrders(1, [
+      {
+        id: "77",
+        code: "PAID-77",
+        paymentStatus: "paid",
+        status: "completed",
+        total: 5000,
+        items: [{ id: 1, name: "Tea", qty: 1, price: 5000 }],
+        payments: [{ id: "p", method: "cash", amount: 5000, paidAt: fresh }],
+        createdAt: fresh,
+        paidAt: fresh,
+        cachedAt: fresh,
+        customerName: "",
+        customerPhone: "",
+        tableNumber: "",
+        source: "pos",
+        orderType: "Dine-in",
+        subtotal: 5000,
+        tax: 0,
+      },
+    ]);
+    await useOrdersExplorerStore.getState().ensureDetailLoaded("77");
+    expect(mockGetOrder).not.toHaveBeenCalled();
+    const bucket = useOrdersExplorerStore.getState().detailByKey["1:77"];
+    expect(bucket?.order?.code).toBe("PAID-77");
+    expect(bucket?.events).toEqual([]);
+    expect(bucket?.receipts).toEqual([]);
+    expect(bucket?.error).toBeNull();
   });
 });

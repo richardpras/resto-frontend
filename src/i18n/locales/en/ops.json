@@ -140,7 +140,30 @@
     "openFailed": "Failed to open shift",
     "closeFailed": "Failed to close shift",
     "closePreviewFailed": "Failed to load close preview",
-    "actualCashRequired": "Enter the physical cash count before closing."
+    "actualCashRequired": "Enter the physical cash count before closing.",
+    "cashMovement": {
+      "cashIn": "Cash In",
+      "cashOut": "Cash Out",
+      "cashInTitle": "Cash In (drawer)",
+      "cashOutTitle": "Cash Out (drawer)",
+      "hint": "Record money added to or taken from the cashier drawer. Helps shift reconciliation; journals post when online.",
+      "amount": "Amount",
+      "category": "Category",
+      "amountRequired": "Enter a valid amount.",
+      "categoryRequired": "Select a category.",
+      "save": "Save",
+      "inSaved": "Cash in recorded.",
+      "outSaved": "Cash out recorded.",
+      "failed": "Failed to record cash movement",
+      "categories": {
+        "iuran": "Dues / fees",
+        "operasional": "Operations",
+        "beli_bahan_darurat": "Emergency supplies",
+        "setor_modal": "Float top-up",
+        "dari_brankas": "From safe",
+        "lainnya": "Other"
+      }
+    }
   },
   "ordersExplorer": {
     "title": "Orders",
@@ -358,9 +381,11 @@
     }
   },
   "shiftClose": {
-    "title": "Shift Close",
+    "title": "Daily Close",
     "selectOutlet": "Select an outlet to begin.",
     "subtitle": "End-of-day outlet close: financial posting, inventory batch, and audit.",
+    "offlineHint": "This menu is for managers/finance while online. Cashiers close their session via Open/Close Shift on POS.",
+    "goToPosSession": "Open POS (cashier session close)",
     "steps": {
       "preflight": "Preflight",
       "cashDrawer": "Cash Drawer",

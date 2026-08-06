@@ -31,7 +31,7 @@ describe("accessControl", () => {
   });
 
   it("sends kasir without dashboard to POS landing", () => {
-    const kasir = userWithCodes(["pos.use", "tables.view", "finance.shift_close"], "Cashier");
+    const kasir = userWithCodes(["pos.use", "tables.view"], "Cashier");
     expect(resolveDefaultLandingPath(kasir)).toBe("/pos");
     expect(resolvePostLoginPath(kasir, "/")).toBe("/pos");
   });

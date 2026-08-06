@@ -24,7 +24,6 @@ const OFFLINE_ALLOWED: ReadonlySet<OfflineCapability> = new Set([
   "pos",
   "openBills",
   "orders",
-  "shiftClose",
   "membersCreate",
   "menuAvailability",
   "inventoryDraft",

@@ -20,7 +20,7 @@ type ReceiptDocumentStore = {
   pdfObjectUrl: string | null;
   setHistoryOutletId: (id: number | null) => void;
   loadHistory: (outletId: number) => Promise<void>;
-  openPreview: (historyId: number) => Promise<void>;
+  openPreview: (historyId: number, opts?: { outletId?: number | null }) => Promise<void>;
   closePreview: () => void;
   requestReprint: (reason?: string) => Promise<void>;
   markDeferred: () => Promise<void>;
@@ -57,12 +57,22 @@ export const useReceiptDocumentStore = create<ReceiptDocumentStore>((set, get) =
     }
   },
 
-  openPreview: async (historyId) => {
+  openPreview: async (historyId, opts) => {
     set({ isLoadingDetail: true, error: null, previewOpen: true });
     revokePdfUrl(get().pdfObjectUrl);
     try {
       const activeRender = await getReceiptRenderHistory(historyId);
-      set({ activeRender, pdfObjectUrl: null });
+      const nextOutletId =
+        (typeof opts?.outletId === "number" && opts.outletId >= 1 ? opts.outletId : null)
+        ?? (typeof activeRender.outletId === "number" && activeRender.outletId >= 1
+          ? activeRender.outletId
+          : null)
+        ?? get().historyOutletId;
+      set({
+        activeRender,
+        pdfObjectUrl: null,
+        historyOutletId: nextOutletId,
+      });
     } catch (e) {
       set({
         error: e instanceof Error ? e.message : "Failed to load receipt",

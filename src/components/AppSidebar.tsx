@@ -1,4 +1,4 @@
-import { Store, LogOut, Lock } from "lucide-react";
+import { LogOut, Lock } from "lucide-react";
 import { useMemo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -25,6 +25,7 @@ import { filterNavItems } from "@/components/sidebar/sidebarNavUtils";
 import { SidebarNavMenu } from "@/components/sidebar/SidebarNavMenu";
 import type { SidebarNavItem } from "@/components/sidebar/sidebarNavTypes";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { RestoHubMark } from "@/components/brand/RestoHubMark";
 
 export function AppSidebar() {
   const { t } = useTranslation("common");
@@ -77,7 +78,7 @@ export function AppSidebar() {
 
   const logoMark = (
     <div className="h-9 w-9 rounded-xl bg-sidebar-primary/20 flex items-center justify-center shrink-0">
-      <Store className="h-5 w-5 text-sidebar-primary" />
+      <RestoHubMark className="h-5 w-5 text-sidebar-primary" />
     </div>
   );
 

@@ -39,6 +39,26 @@ export type PosSessionApi = {
   notes: string | null;
 };
 
+export type PosCashMovementDirection = "in" | "out";
+
+export type PosSessionCashMovementApi = {
+  id: number;
+  outletId: number;
+  posSessionId: number;
+  direction: PosCashMovementDirection;
+  amount: number;
+  category: string;
+  notes: string | null;
+  createdByUserId: number | null;
+  occurredAt: string | null;
+  clientLocalRef: string | null;
+  journalId: number | null;
+  createdAt?: string | null;
+};
+
+export const POS_CASH_OUT_CATEGORIES = ["iuran", "operasional", "beli_bahan_darurat", "lainnya"] as const;
+export const POS_CASH_IN_CATEGORIES = ["setor_modal", "dari_brankas", "lainnya"] as const;
+
 export async function openPosSession(payload: {
   outletId: number;
   openingCash?: number;
@@ -80,4 +100,33 @@ export async function getCurrentPosSession(
     session: response.data,
     defaultCashFloat: Number(response.meta?.defaultCashFloat ?? 500000),
   };
+}
+
+export async function listPosSessionCashMovements(sessionId: number): Promise<PosSessionCashMovementApi[]> {
+  const response = await request<{ data: PosSessionCashMovementApi[] }>(
+    `/pos-sessions/${encodeURIComponent(String(sessionId))}/cash-movements`,
+  );
+  return response.data ?? [];
+}
+
+export async function createPosSessionCashMovement(
+  sessionId: number,
+  payload: {
+    direction: PosCashMovementDirection;
+    amount: number;
+    category: string;
+    notes?: string;
+    occurredAt?: string;
+    clientLocalRef?: string;
+    idempotencyKey?: string;
+  },
+): Promise<PosSessionCashMovementApi> {
+  const response = await request<MessageEnvelope<PosSessionCashMovementApi>>(
+    `/pos-sessions/${encodeURIComponent(String(sessionId))}/cash-movements`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.data;
 }

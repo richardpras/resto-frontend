@@ -58,6 +58,19 @@ export function describeQueuedOperation(op: QueuedOfflineOperation): QueuedOpera
     };
   }
 
+  if (op.operationType === "pos_session.cash_movement") {
+    const direction = String(payload.direction ?? "");
+    const amount = moneyHint(payload.amount);
+    const category = String(payload.category ?? "").replace(/_/g, " ");
+    const label = direction === "in" ? "Cash in" : direction === "out" ? "Cash out" : "Cash movement";
+    return {
+      titleKey: "mobile.pendingOp.cashMovement",
+      titleDefault: label,
+      detail: [amount, category].filter(Boolean).join(" · "),
+      occurredAt,
+    };
+  }
+
   return {
     titleKey: "mobile.pendingOp.generic",
     titleDefault: op.operationType,

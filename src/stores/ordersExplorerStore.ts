@@ -33,6 +33,8 @@ import { isNativePosShell } from "@/mobile/platform";
 import { toast } from "sonner";
 import i18n from "@/i18n";
 import { loadCachedOpenOrders, mergeServerOpenOrdersWithLocalCache } from "@/mobile/offline/offlineOrdersCache";
+import { findCachedPaidOrder, loadCachedPaidOrders } from "@/mobile/offline/offlinePaidOrdersCache";
+import { hydratePaidOrdersCacheDebounced } from "@/mobile/offline/hydratePaidOrdersCache";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 
@@ -222,7 +224,14 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
             }),
           );
         }
-        let rows = await loadCachedOpenOrders(outletId);
+        const [openRows, paidRows] = await Promise.all([
+          loadCachedOpenOrders(outletId),
+          loadCachedPaidOrders(outletId),
+        ]);
+        const byId = new Map<string, (typeof openRows)[number]>();
+        for (const row of openRows) byId.set(String(row.id), row);
+        for (const row of paidRows) byId.set(String(row.id), row);
+        let rows = Array.from(byId.values());
         if (params.paymentStatus) {
           rows = rows.filter((r) => r.paymentStatus === params.paymentStatus);
         }
@@ -263,6 +272,9 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
         );
         if (localOnly.length > 0) {
           displayOrders = [...localOnly, ...result.orders] as OrderApi[];
+        }
+        if (isNativePosShell()) {
+          void hydratePaidOrdersCacheDebounced(outletId);
         }
       }
       set((s) => ({
@@ -344,6 +356,42 @@ export const useOrdersExplorerStore = create<OrdersExplorerState>((set, get) => 
         },
       }));
       try {
+        if (isNativePosShell() && !useOfflineSyncStore.getState().isOnline) {
+          if (typeof outletId !== "number" || outletId < 1) {
+            throw new Error(
+              i18n.t("ops:mobile.requiresInternet", {
+                defaultValue: "This menu requires an internet connection.",
+              }),
+            );
+          }
+          const openRows = await loadCachedOpenOrders(outletId);
+          const fromOpen = openRows.find((r) => String(r.id) === orderId) ?? null;
+          const fromPaid = fromOpen ? null : await findCachedPaidOrder(outletId, orderId);
+          const cached = fromOpen ?? fromPaid;
+          if (!cached) {
+            throw new Error(
+              i18n.t("ops:ordersExplorer.detail.offlineOrderMissing", {
+                defaultValue: "Order is not available offline. Reconnect to load it from the server.",
+              }),
+            );
+          }
+          set((s) => ({
+            detailByKey: {
+              ...s.detailByKey,
+              [key]: {
+                order: cached as unknown as OrderApi,
+                events: [],
+                recoveryEvents: [],
+                receipts: [],
+                loading: false,
+                recoveryRefreshing: false,
+                error: null,
+              },
+            },
+          }));
+          return;
+        }
+
         const [order, events, recoveryEvents, receipts] = await Promise.all([
           apiGetOrder(orderId),
           apiListOrderPosEvents(orderId),

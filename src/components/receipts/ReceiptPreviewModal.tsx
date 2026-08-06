@@ -24,12 +24,17 @@ export function ReceiptPreviewModal() {
   const printers = useSettingsStore((s) => s.printers);
   const outlets = useSettingsStore((s) => s.outlets);
   const outletReceiptRows = useSettingsStore((s) => s.outletReceiptRows);
-  const previewWidthCh = historyOutletId
-    ? resolveReceiptPreviewWidthCh(historyOutletId, printers)
+  const resolvedOutletId =
+    historyOutletId
+    ?? (typeof activeRender?.outletId === "number" && activeRender.outletId >= 1
+      ? activeRender.outletId
+      : null);
+  const previewWidthCh = resolvedOutletId
+    ? resolveReceiptPreviewWidthCh(resolvedOutletId, printers)
     : 32;
-  const previewOutlet = historyOutletId ? outlets.find((o) => o.id === historyOutletId) : undefined;
-  const previewReceiptRow = historyOutletId
-    ? outletReceiptRows.find((row) => row.outletId === historyOutletId)
+  const previewOutlet = resolvedOutletId ? outlets.find((o) => o.id === resolvedOutletId) : undefined;
+  const previewReceiptRow = resolvedOutletId
+    ? outletReceiptRows.find((row) => row.outletId === resolvedOutletId)
     : undefined;
   const showPreviewLogo = Boolean(previewReceiptRow?.showLogo && previewOutlet?.logoUrl);
 
@@ -40,7 +45,7 @@ export function ReceiptPreviewModal() {
       layer="paymentGateway"
       dismissible={!isMutating && !isLoadingDetail}
       data-testid="receipt-preview-overlay"
-      panelClassName="max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-5"
+      panelClassName="max-w-xl max-h-[92vh] overflow-y-auto p-4 sm:p-5"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -86,18 +91,30 @@ export function ReceiptPreviewModal() {
               <Badge variant="outline">
                 {t("settings.printers.receiptPreview.reprints", { count: activeRender.reprintCount })}
               </Badge>
+              <Badge variant="outline" data-testid="receipt-preview-width-badge">
+                {previewWidthCh}ch
+              </Badge>
             </div>
-            <div className="space-y-2">
+            <div
+              className="mx-auto w-full overflow-x-auto rounded-2xl border-2 border-dashed border-border bg-muted/30 p-4 sm:p-6"
+              style={{ maxWidth: `${previewWidthCh + 16}ch` }}
+              data-testid="receipt-preview-thermal-card"
+            >
               {showPreviewLogo ? (
                 <img
                   src={previewOutlet?.logoUrl}
                   alt={t("settings.printers.receiptPreview.outletLogoAlt", { name: previewOutlet?.name ?? "Outlet" })}
-                  className="mx-auto max-h-16 max-w-[70%] object-contain"
+                  className="mx-auto mb-3 max-h-16 max-w-[70%] object-contain"
                 />
               ) : null}
+              {/*
+                Keep whitespace-pre (not pre-wrap) so thermal column padding stays aligned.
+                Width mirrors paper chars (32/42); parent scrolls horizontally on narrow screens.
+              */}
               <pre
-                className="mx-auto max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 font-mono text-xs"
-                style={{ maxWidth: `${previewWidthCh}ch` }}
+                className="mx-auto max-h-[min(60vh,32rem)] overflow-auto whitespace-pre font-mono text-[11px] leading-relaxed text-foreground sm:text-xs"
+                style={{ width: `${previewWidthCh}ch` }}
+                data-testid="receipt-preview-thermal-text"
               >
                 {activeRender.thermalText}
               </pre>

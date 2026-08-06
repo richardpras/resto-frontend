@@ -77,6 +77,13 @@ export async function upsertCachedOpenOrder(outletId: number, order: CachedOpenO
   await saveCachedOpenOrders(outletId, next);
 }
 
+export async function removeCachedOpenOrder(outletId: number, orderId: string): Promise<void> {
+  const rows = await loadCachedOpenOrders(outletId);
+  const next = rows.filter((r) => String(r.id) !== orderId);
+  if (next.length === rows.length) return;
+  await saveCachedOpenOrders(outletId, next);
+}
+
 /** Keep unsynced `local:*` open bills when refreshing cache from the server. */
 export async function mergeServerOpenOrdersWithLocalCache(
   outletId: number,

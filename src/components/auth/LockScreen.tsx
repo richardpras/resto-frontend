@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Lock, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/stores/authStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import {
   hasCachedPasswordVerifier,
   hasCachedScreenPinVerifier,
@@ -21,6 +22,7 @@ export function dispatchDismissOverlays(): void {
 
 export function LockScreen() {
   const { user, unlock, unlockWithPassword, logout } = useAuthStore();
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
   const [pin, setPin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,10 +31,8 @@ export function LockScreen() {
   const [hasLocalPassword, setHasLocalPassword] = useState(false);
   const [usePassword, setUsePassword] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [linkOnline, setLinkOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
   const nativeShell = isNativePosShell();
+  const apiOffline = !isOnline;
 
   useEffect(() => {
     setMounted(true);
@@ -50,17 +50,6 @@ export function LockScreen() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sync = () => setLinkOnline(navigator.onLine);
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
-    return () => {
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
-    };
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
     const userId = user?.id ?? "";
     void Promise.all([
@@ -70,14 +59,14 @@ export function LockScreen() {
       if (cancelled) return;
       setHasLocalPin(pinOk);
       setHasLocalPassword(passOk);
-      if (!navigator.onLine && !pinOk && passOk) {
+      if (apiOffline && !pinOk && passOk) {
         setUsePassword(true);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, apiOffline]);
 
   const handleKey = (digit: string) => {
     setError("");
@@ -94,7 +83,7 @@ export function LockScreen() {
         if (!ok) {
           if (!user?.pinSet) {
             setError("PIN not configured — set it under Settings");
-          } else if (!linkOnline && !hasLocalPin) {
+          } else if (apiOffline && !hasLocalPin) {
             setError(
               hasLocalPassword
                 ? "PIN not cached yet — unlock with login password"
@@ -134,7 +123,7 @@ export function LockScreen() {
       data-testid="lock-screen"
       className={cn(
         "pointer-events-auto fixed inset-0 z-systemLock flex items-center justify-center p-6",
-        nativeShell ? "bg-sidebar-background" : "bg-sidebar-background/95",
+        nativeShell ? "bg-sidebar" : "bg-sidebar/95",
       )}
     >
       <div className="pointer-events-auto w-full max-w-sm rounded-3xl bg-card p-8 pos-shadow-md">
@@ -147,7 +136,7 @@ export function LockScreen() {
             <p className="text-sm text-muted-foreground">
               {user?.name} · {usePassword ? "Enter login password" : "Enter PIN to unlock"}
             </p>
-            {!linkOnline && (
+            {apiOffline && (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                 {hasLocalPin
                   ? "Offline — unlock with your PIN"
@@ -176,7 +165,7 @@ export function LockScreen() {
             <Button type="button" className="w-full" disabled={checking || !password.trim()} onClick={submitPassword}>
               Unlock
             </Button>
-            {(hasLocalPin || linkOnline) && (
+            {(hasLocalPin || !apiOffline) && (
               <button
                 type="button"
                 className="w-full touch-manipulation text-xs text-muted-foreground hover:text-foreground"
@@ -216,7 +205,7 @@ export function LockScreen() {
                 </button>
               ))}
             </div>
-            {!linkOnline && hasLocalPassword && !hasLocalPin && (
+            {apiOffline && hasLocalPassword && (
               <button
                 type="button"
                 className="mt-3 w-full touch-manipulation text-xs text-primary hover:underline"
@@ -244,7 +233,7 @@ export function LockScreen() {
         >
           <LogOut className="h-3.5 w-3.5" /> Switch user (logout)
         </button>
-        {!linkOnline && (
+        {apiOffline && (
           <p className="mt-2 text-center text-[10px] text-muted-foreground">
             Logout offline: you cannot sign in again until the API is reachable.
           </p>

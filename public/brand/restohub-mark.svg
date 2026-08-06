@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="RestoHub">
+  <rect width="512" height="512" rx="96" fill="currentColor" class="rh-bg" opacity="0"/>
+  <g transform="translate(256 256) rotate(-45)" fill="#293830">
+    <!-- Main piece (larger) -->
+    <path d="M-150 -42 H-18 V42 H-150 V-42 Z M-42 -150 H42 V-18 H-42 V-150 Z M18 -42 H90 V42 H18 V-42 Z"/>
+    <!-- Separated tip -->
+    <path d="M110 -42 H150 V42 H110 V-42 Z"/>
+  </g>
+</svg>

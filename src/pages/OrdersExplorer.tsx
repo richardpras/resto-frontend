@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Filter, Search, X } from "lucide-react";
+import { CloudOff, Eye, Filter, Search, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
 import { OrderExplorerDetailModal } from "@/components/orders/OrderExplorerDetailModal";
@@ -10,8 +10,12 @@ import { CustomerTableRowsSkeleton } from "@/components/skeletons/list/CustomerT
 import { AppOverlay } from "@/components/ui/AppOverlay";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { listQueuedOperationsForOutlet } from "@/lib/offline/offlineOperationQueue";
+import { isNativePosShell } from "@/mobile/platform";
+import { collectPendingOrderSyncKeys, isOrderPendingSync } from "@/mobile/offline/orderPendingSync";
 import { useOutletStore } from "@/stores/outletStore";
 import { useOrdersExplorerStore } from "@/stores/ordersExplorerStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import type { OrderApi } from "@/lib/api-integration/endpoints";
 
 type ListTab = "all" | "pendingRefund";
@@ -83,6 +87,9 @@ export default function OrdersExplorer() {
 
   const [searchDraft, setSearchDraft] = useState("");
   const listTab: ListTab = filters.hasRecoveryPending ? "pendingRefund" : "all";
+  const pendingQueueCount = useOfflineSyncStore((s) => s.pendingQueueCount);
+  const isOnline = useOfflineSyncStore((s) => s.isOnline);
+  const [pendingSyncKeys, setPendingSyncKeys] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     resetForOutletSwitch();
@@ -102,6 +109,24 @@ export default function OrdersExplorer() {
   }, [activeOutletId, resetForOutletSwitch, fetchList, startPolling, stopPolling, fetchRecoveryPendingCount]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!isNativePosShell() || typeof activeOutletId !== "number" || activeOutletId < 1) {
+      setPendingSyncKeys(new Set());
+      return;
+    }
+    void listQueuedOperationsForOutlet(activeOutletId)
+      .then((ops) => {
+        if (!cancelled) setPendingSyncKeys(collectPendingOrderSyncKeys(ops));
+      })
+      .catch(() => {
+        if (!cancelled) setPendingSyncKeys(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOutletId, pendingQueueCount, isOnline, orders.length]);
+
+  useEffect(() => {
     const orderId = searchParams.get("orderId");
     if (orderId) {
       openOrderDetail(orderId);
@@ -113,6 +138,19 @@ export default function OrdersExplorer() {
   }, [filters.search]);
 
   const showListSkeleton = initialLoading && orders.length === 0;
+
+  const SyncPendingIcon = ({ order }: { order: OrderApi }) => {
+    if (!isOrderPendingSync(order, pendingSyncKeys)) return null;
+    return (
+      <CloudOff
+        className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+        aria-label={t("ordersExplorer.table.pendingSync", {
+          defaultValue: "Pending sync",
+        })}
+        data-testid="order-row-pending-sync"
+      />
+    );
+  };
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -366,7 +404,10 @@ export default function OrdersExplorer() {
                 <div key={o.id} className="rounded-xl border border-border/60 bg-background px-3 py-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{o.code}</p>
+                      <p className="truncate text-sm font-semibold text-foreground inline-flex items-center gap-1.5">
+                        <SyncPendingIcon order={o} />
+                        <span className="truncate">{o.code}</span>
+                      </p>
                       {(o.pendingRecoveryCount ?? 0) > 0 ? (
                         <span
                           className="mt-1 inline-flex rounded-md border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-950 dark:text-amber-100"
@@ -413,7 +454,8 @@ export default function OrdersExplorer() {
                   className="w-full grid grid-cols-7 gap-2 rounded-lg px-2 py-2 text-left text-sm items-center hover:bg-muted/40"
                 >
                   <span className="col-span-2 truncate font-medium text-foreground flex items-center gap-1.5">
-                    {o.code}
+                    <SyncPendingIcon order={o} />
+                    <span className="truncate">{o.code}</span>
                     {(o.pendingRecoveryCount ?? 0) > 0 ? (
                       <span
                         className="inline-flex rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[9px] font-semibold text-amber-950 dark:text-amber-100"

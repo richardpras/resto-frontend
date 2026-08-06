@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, ExternalLink, LockKeyhole } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, LockKeyhole, WifiOff } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,9 +15,7 @@ import { ShiftClosePreflightCards } from "@/components/shift-close/ShiftClosePre
 import { ShiftCloseCashDrawerPanel } from "@/components/shift-close/ShiftCloseCashDrawerPanel";
 import { formatMoney } from "@/lib/format/currency";
 import { useOpsTranslation } from "@/i18n/useOpsTranslation";
-import { isNativePosShell } from "@/mobile/platform";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
-import { usePosSessionStore } from "@/stores/posSessionStore";
 
 const TENANT_ID = Number(import.meta.env.VITE_API_TENANT_ID ?? 1) || 1;
 const STEP_KEYS = ["preflight", "cashDrawer", "warnings", "runClose", "complete"] as const;
@@ -26,43 +24,22 @@ export default function ShiftClose() {
   const { t } = useOpsTranslation();
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const isOnline = useOfflineSyncStore((s) => s.isOnline);
-  const currentSession = usePosSessionStore((s) => s.currentSession);
-  const closeSession = usePosSessionStore((s) => s.close);
-  const previewClose = usePosSessionStore((s) => s.previewClose);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   const [preflight, setPreflight] = useState<ShiftClosePreflight | null>(null);
   const [actualCash, setActualCash] = useState("");
   const [result, setResult] = useState<ShiftCloseRunResult | null>(null);
-  const offlineNative = isNativePosShell() && !isOnline;
 
   const loadPreflight = async () => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || !isOnline) return;
     setLoading(true);
     try {
-      if (offlineNative) {
-        const session = currentSession ?? (await usePosSessionStore.getState().fetchCurrent(activeOutletId));
-        if (!session || session.status !== "open") {
-          setPreflight(null);
-          toast.info(t("mobile.requiresInternet", { defaultValue: "This menu requires an internet connection." }));
-          return;
-        }
-        const preview = await previewClose(session.id);
-        setPreflight({
-          severity: "warning",
-          drawerReconciliation: preview.drawerReconciliation,
-          qrOrders: { pendingCount: 0, blocked: false },
-          openOrders: { unpaidCount: 0 },
-          limitations: preview.drawerReconciliation.limitations ?? [
-            "Offline shift close queues POS session close only; full finance close requires internet.",
-          ],
-        } as unknown as ShiftClosePreflight);
-        setActualCash(String(preview.drawerReconciliation.expected ?? session.openingCash));
-        return;
-      }
       const data = await getShiftClosePreflight(activeOutletId, TENANT_ID);
       setPreflight(data);
+      if (data.drawerReconciliation?.expected != null) {
+        setActualCash(String(data.drawerReconciliation.expected));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("shiftClose.preflightFailed"));
     } finally {
@@ -71,11 +48,12 @@ export default function ShiftClose() {
   };
 
   useEffect(() => {
-    void loadPreflight();
     setStep(0);
     setResult(null);
     setClosing(false);
-  }, [activeOutletId, offlineNative]);
+    setPreflight(null);
+    if (isOnline) void loadPreflight();
+  }, [activeOutletId, isOnline]);
 
   const goAfterCash = () => {
     if (preflight?.severity === "warning") {
@@ -86,24 +64,9 @@ export default function ShiftClose() {
   };
 
   const runClose = async (opts: { confirm?: boolean; force?: boolean }) => {
-    if (typeof activeOutletId !== "number" || activeOutletId < 1 || closing) return;
+    if (typeof activeOutletId !== "number" || activeOutletId < 1 || closing || !isOnline) return;
     setClosing(true);
     try {
-      if (offlineNative) {
-        const session = usePosSessionStore.getState().currentSession;
-        if (!session || session.status !== "open") {
-          throw new Error(t("shiftClose.failed"));
-        }
-        const parsedCash = actualCash.trim() ? Number(actualCash) : session.openingCash;
-        await closeSession(session.id, parsedCash);
-        setResult({
-          status: "queued_offline",
-          message: "POS session close queued for sync",
-        } as unknown as ShiftCloseRunResult);
-        setStep(4);
-        toast.success(t("shiftClose.success"));
-        return;
-      }
       const parsedCash = actualCash.trim() ? Number(actualCash) : undefined;
       const data = await postShiftCloseRun({
         outletId: activeOutletId,
@@ -127,6 +90,32 @@ export default function ShiftClose() {
       <div className="p-6">
         <h1 className="text-2xl font-bold">{t("shiftClose.title")}</h1>
         <p className="text-sm text-muted-foreground mt-2">{t("shiftClose.selectOutlet")}</p>
+      </div>
+    );
+  }
+
+  if (!isOnline) {
+    return (
+      <div className="p-6 max-w-lg space-y-4">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <LockKeyhole className="h-6 w-6" /> {t("shiftClose.title")}
+        </h1>
+        <Card className="p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <WifiOff className="h-5 w-5 mt-0.5 text-amber-600 shrink-0" />
+            <div className="space-y-2">
+              <p className="font-medium">
+                {t("mobile.requiresInternet", {
+                  defaultValue: "This menu requires an internet connection.",
+                })}
+              </p>
+              <p className="text-sm text-muted-foreground">{t("shiftClose.offlineHint")}</p>
+            </div>
+          </div>
+          <Button variant="outline" asChild>
+            <Link to="/pos">{t("shiftClose.goToPosSession")}</Link>
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -183,9 +172,9 @@ export default function ShiftClose() {
           {qr && (
             <p className="text-xs text-muted-foreground">
               {t("shiftClose.qrSummary", {
-                pending: qr.pending,
-                review: qr.underReview,
-                unpaid: qr.linkedUnpaidBills,
+                pending: qr.pending ?? 0,
+                review: qr.underReview ?? 0,
+                unpaid: qr.linkedUnpaidBills ?? 0,
               })}
             </p>
           )}
@@ -259,15 +248,15 @@ export default function ShiftClose() {
           <div className="text-sm space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("shiftClose.sales")}</span>
-              <span>{formatMoney(result.totalSales)}</span>
+              <span>{formatMoney(result.totalSales ?? 0)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("shiftClose.cashVariance")}</span>
-              <span>{result.cash.variance != null ? formatMoney(result.cash.variance) : "—"}</span>
+              <span>{result.cash?.variance != null ? formatMoney(result.cash.variance) : "—"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("shiftClose.inventoryProcessed")}</span>
-              <span>{result.inventory.processed}</span>
+              <span>{result.inventory?.processed ?? 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("shiftClose.journal")}</span>

@@ -52,6 +52,7 @@ const WR_WB_MANAGER_CODES = [
   "members.manage",
   "suppliers.manage",
   "accounting.manage",
+  "finance.shift_close",
   "payroll.manage",
   "employees.view",
   "attendance.view",
@@ -68,7 +69,6 @@ const WR_WB_KASIR_CODES = [
   "members.manage",
   "tables.view",
   "qr_orders.view",
-  "finance.shift_close",
 ] as const;
 
 function wrWbUser(role: RoleName, permissionCodes: readonly string[]): AuthUser {
@@ -125,22 +125,23 @@ describe("WR WB sidebar matrix", () => {
     expect(hrefs).not.toContain("/hr/departments");
   });
 
-  it("manager sees dashboard, settings, and scoped user management without system admin", () => {
+  it("manager sees dashboard, settings, daily close, and scoped user management without system admin", () => {
     const manager = wrWbUser("Manager", WR_WB_MANAGER_CODES);
     const hrefs = collectHrefs(manager);
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/settings");
     expect(hrefs).toContain("/users");
+    expect(hrefs).toContain("/shift-close");
     expect(hrefs).not.toContain("/system/health");
     expect(hrefs).not.toContain("/hr/departments");
   });
 
-  it("kasir sees POS and shift close but not dashboard or settings", () => {
+  it("kasir sees POS but not daily close, dashboard, or settings", () => {
     const kasir = wrWbUser("Cashier", WR_WB_KASIR_CODES);
     const hrefs = collectHrefs(kasir);
     expect(hrefs).toContain("/pos");
-    expect(hrefs).toContain("/shift-close");
     expect(hrefs).toContain("/gift-cards");
+    expect(hrefs).not.toContain("/shift-close");
     expect(hrefs).not.toContain("/");
     expect(hrefs).not.toContain("/settings");
     expect(hrefs).not.toContain("/accounting");

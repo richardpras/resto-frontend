@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LockScreen } from "@/components/auth/LockScreen";
 import { useAuthStore } from "@/stores/authStore";
 import { useOutletStore } from "@/stores/outletStore";
+import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 
 vi.mock("framer-motion", () => ({
   motion: {
@@ -11,6 +12,12 @@ vi.mock("framer-motion", () => ({
       <div {...props}>{children}</div>
     ),
   },
+}));
+
+vi.mock("@/mobile/platform", () => ({
+  isNativePosShell: () => false,
+  isCapacitorNative: () => false,
+  isNativeAndroid: () => false,
 }));
 
 vi.mock("@/mobile/offline/offlineScreenPin", () => ({
@@ -26,6 +33,7 @@ vi.mock("@/mobile/offline/offlineScreenPin", () => ({
 describe("LockScreenSessionPersistence", () => {
   it("shows lock UI while preserving auth and outlet context", () => {
     useOutletStore.setState({ activeOutletId: 7, activeOutletCode: "JKT" });
+    useOfflineSyncStore.setState({ isOnline: false });
     useAuthStore.setState({
       user: {
         id: "1",
@@ -35,6 +43,7 @@ describe("LockScreenSessionPersistence", () => {
         outletIds: [7],
         pinSet: true,
         permissions: [],
+        permissionCodes: [],
       },
       locked: true,
       accessToken: "persisted-token",
@@ -46,5 +55,26 @@ describe("LockScreenSessionPersistence", () => {
     expect(screen.getByText(/Cashier One/)).toBeInTheDocument();
     expect(useAuthStore.getState().accessToken).toBe("persisted-token");
     expect(useOutletStore.getState().activeOutletId).toBe(7);
+  });
+
+  it("shows password unlock CTA when API offline and PIN not cached", async () => {
+    useOfflineSyncStore.setState({ isOnline: false });
+    useAuthStore.setState({
+      user: {
+        id: "1",
+        name: "Cashier One",
+        email: "cashier@example.com",
+        role: "Cashier",
+        outletIds: [7],
+        pinSet: true,
+        permissions: [],
+        permissionCodes: [],
+      },
+      locked: true,
+      accessToken: "persisted-token",
+    });
+
+    render(<LockScreen />);
+    expect(await screen.findByText(/use login password/i)).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { LockScreen } from "@/components/auth/LockScreen";
+import { OfflinePinSeedGate } from "@/components/auth/OfflinePinSeedGate";
 import { IdleTracker } from "@/components/auth/ProtectedRoute";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useOutletStore } from "@/stores/outletStore";
@@ -122,6 +123,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <IdleTracker />
       {locked && user?.pinSet ? <LockScreen /> : null}
+      {!locked && user?.pinSet ? <OfflinePinSeedGate /> : null}
       <div className="flex h-dvh max-h-dvh w-full overflow-hidden bg-background">
         <AppSidebar />
         <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

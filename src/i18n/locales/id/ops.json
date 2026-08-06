@@ -140,7 +140,30 @@
     "openFailed": "Gagal membuka shift",
     "closeFailed": "Gagal menutup shift",
     "closePreviewFailed": "Gagal memuat pratinjau tutup shift",
-    "actualCashRequired": "Masukkan hitungan kas fisik sebelum menutup."
+    "actualCashRequired": "Masukkan hitungan kas fisik sebelum menutup.",
+    "cashMovement": {
+      "cashIn": "Kas Masuk",
+      "cashOut": "Kas Keluar",
+      "cashInTitle": "Kas Masuk (laci)",
+      "cashOutTitle": "Kas Keluar (laci)",
+      "hint": "Catat uang masuk/keluar dari laci kasir. Membantu rekonsiliasi shift; jurnal diposting saat online.",
+      "amount": "Jumlah",
+      "category": "Kategori",
+      "amountRequired": "Masukkan jumlah yang valid.",
+      "categoryRequired": "Pilih kategori.",
+      "save": "Simpan",
+      "inSaved": "Kas masuk dicatat.",
+      "outSaved": "Kas keluar dicatat.",
+      "failed": "Gagal mencatat pergerakan kas",
+      "categories": {
+        "iuran": "Iuran",
+        "operasional": "Operasional",
+        "beli_bahan_darurat": "Beli bahan darurat",
+        "setor_modal": "Setor modal",
+        "dari_brankas": "Dari brankas",
+        "lainnya": "Lainnya"
+      }
+    }
   },
   "ordersExplorer": {
     "title": "Pesanan",
@@ -358,9 +381,11 @@
     }
   },
   "shiftClose": {
-    "title": "Tutup Shift",
+    "title": "Tutup Harian",
     "selectOutlet": "Pilih outlet untuk memulai.",
     "subtitle": "Tutup harian outlet: posting keuangan, batch inventori, dan audit.",
+    "offlineHint": "Menu ini hanya untuk manager/finance saat online. Kasir tutup sesi lewat Open/Close Shift di POS.",
+    "goToPosSession": "Buka POS (tutup sesi kasir)",
     "steps": {
       "preflight": "Preflight",
       "cashDrawer": "Laci Kas",

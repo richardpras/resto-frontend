@@ -61,6 +61,18 @@ describe("receiptDocumentStore", () => {
     expect(mockGet).toHaveBeenCalledWith(42);
     expect(useReceiptDocumentStore.getState().previewOpen).toBe(true);
     expect(useReceiptDocumentStore.getState().activeRender?.id).toBe(42);
+    expect(useReceiptDocumentStore.getState().historyOutletId).toBe(1);
+  });
+
+  it("openPreview prefers explicit outletId then render outletId", async () => {
+    mockGet.mockResolvedValue(sampleRow({ id: 42, outletId: 9 }));
+    await useReceiptDocumentStore.getState().openPreview(42, { outletId: 3 });
+    expect(useReceiptDocumentStore.getState().historyOutletId).toBe(3);
+
+    useReceiptDocumentStore.getState().reset();
+    mockGet.mockResolvedValue(sampleRow({ id: 43, outletId: 9 }));
+    await useReceiptDocumentStore.getState().openPreview(43);
+    expect(useReceiptDocumentStore.getState().historyOutletId).toBe(9);
   });
 
   it("reprint action delegates to API then refreshes the active render", async () => {
