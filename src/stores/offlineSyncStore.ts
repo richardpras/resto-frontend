@@ -12,6 +12,7 @@ import {
 } from "@/lib/offline/offlineOperationQueue";
 import { saveLocalOrderMapping } from "@/mobile/offline/offlineIdMapping";
 import { applyTerminalSyncOutcomeMappings } from "@/mobile/offline/terminalSyncOutcomeMappings";
+import { flushPendingReservationProofs } from "@/mobile/offline/flushReservationProofs";
 
 const DEVICE_KEY_PREFIX = "resto.terminal.device.";
 
@@ -187,6 +188,7 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
     if (!get().isOnline || outletId < 1 || !getApiAccessToken()) return;
     const rows = await listQueuedOperationsForOutlet(outletId);
     if (rows.length === 0) {
+      await flushPendingReservationProofs(outletId).catch(() => undefined);
       set({ pendingQueueCount: 0, lastBatchConflictCount: 0, lastRejectedStaleCount: 0 });
       return;
     }
@@ -237,6 +239,7 @@ export const useOfflineSyncStore = create<OfflineSyncStore>((set, get) => ({
       if (toDrop.size > 0) {
         await removeQueuedOperationsByFingerprints(outletId, toDrop);
       }
+      await flushPendingReservationProofs(outletId).catch(() => undefined);
       await get().refreshQueueCounts(outletId);
       set({ lastBatchConflictCount: conflicts, lastRejectedStaleCount: rejectedStale, syncPhase: "idle" });
     } catch (error) {

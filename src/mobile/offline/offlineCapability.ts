@@ -28,6 +28,7 @@ const OFFLINE_ALLOWED: ReadonlySet<OfflineCapability> = new Set([
   "menuAvailability",
   "inventoryDraft",
   "stocktakeDraft",
+  "reservations",
 ]);
 
 const ROUTE_CAPABILITY: Array<{ prefix: string; capability: OfflineCapability }> = [

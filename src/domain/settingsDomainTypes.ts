@@ -48,6 +48,8 @@ export interface Printer {
   printerType: "kitchen" | "cashier" | "bar" | "dessert";
   connection: "bluetooth" | "lan" | "usb" | "shared";
   thermalPaperWidth?: "58mm" | "80mm";
+  /** When true, send ESC/POS paper-cut after print (ignored by printers without a cutter). */
+  autoCut?: boolean;
   ip?: string;
   port?: number;
   bluetoothDevice?: string;

@@ -6,6 +6,10 @@ import {
 } from "@/stores/orderPaymentHistoryStore";
 import type { OrderPaymentHistoryItem } from "@/lib/api-integration/endpoints";
 
+function isServerOrderId(orderId: string): boolean {
+  return /^\d+$/.test(orderId);
+}
+
 function formatRp(amount: number): string {
   return "Rp " + amount.toLocaleString("id-ID");
 }
@@ -59,7 +63,7 @@ export function OrderPaymentHistoryPanel({ outletId, orderId, orderChannelLabel 
   const fetchHistory = useOrderPaymentHistoryStore((s) => s.fetchHistory);
 
   useEffect(() => {
-    if (!orderId || !cacheKey) return;
+    if (!orderId || !cacheKey || !isServerOrderId(orderId)) return;
     registerInterest(outletId, orderId);
     ensureLoaded(outletId, orderId);
     return () => unregisterInterest(outletId, orderId);
@@ -67,7 +71,7 @@ export function OrderPaymentHistoryPanel({ outletId, orderId, orderChannelLabel 
 
   const rows = useMemo(() => sortHistoryRows(entry?.payments ?? []), [entry?.payments]);
 
-  if (!orderId || typeof outletId !== "number" || outletId < 1) {
+  if (!orderId || typeof outletId !== "number" || outletId < 1 || !isServerOrderId(orderId)) {
     return null;
   }
 

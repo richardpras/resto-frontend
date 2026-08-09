@@ -11,6 +11,11 @@ import {
   type RealtimeConnectionState,
   type RealtimeEnvelope,
 } from "@/domain/realtimeAdapter";
+import {
+  loadReservationListCache,
+  mergeReservationRowsWithLocal,
+  saveReservationListCache,
+} from "@/mobile/offline/offlineReservationCacheDb";
 
 export type ReservationRow = ReservationApi;
 
@@ -42,6 +47,8 @@ type ReservationStore = {
     options?: { mode?: "initial" | "background" },
   ) => Promise<ReservationRow[]>;
   revalidateReservations: () => Promise<ReservationRow[] | null>;
+  upsertLocalRow: (row: ReservationRow) => void;
+  replaceLocalWithServer: (localNumericId: number, serverRow: ReservationRow) => void;
   applyRealtimePatch: (payload: Record<string, unknown>) => void;
   subscribeTableProjection: (listener: (payload: Record<string, unknown>) => void) => () => void;
   acquireRealtime: (outletId: number) => void;
@@ -142,12 +149,26 @@ export const useReservationStore = create<ReservationStore>((set, get) => ({
     });
     try {
       const rows = await listReservations(params.outletId, params.status);
+      const pendingLocal = get().reservations.filter((r) => r.id < 0);
+      const merged = mergeReservationRowsWithLocal(rows, pendingLocal);
+      await saveReservationListCache(params.outletId, merged).catch(() => undefined);
       set({
-        reservations: rows,
+        reservations: merged,
         lastSyncAt: new Date().toISOString(),
       });
-      return rows;
+      return merged;
     } catch (error) {
+      const cached = await loadReservationListCache(params.outletId).catch(() => null);
+      const pendingLocal = get().reservations.filter((r) => r.id < 0);
+      if (cached || pendingLocal.length > 0) {
+        const merged = mergeReservationRowsWithLocal(cached?.rows ?? [], pendingLocal);
+        set({
+          reservations: merged,
+          error: null,
+          lastSyncAt: cached?.updatedAt ?? get().lastSyncAt,
+        });
+        return merged;
+      }
       const message = mapApiError(error);
       set({ error: message });
       throw error;
@@ -160,6 +181,21 @@ export const useReservationStore = create<ReservationStore>((set, get) => ({
     const params = get().lastListParams;
     if (params === null) return null;
     return get().fetchReservations(params, { mode: "background" });
+  },
+
+  upsertLocalRow: (row) => {
+    set((state) => ({
+      reservations: upsertReservation(state.reservations, row),
+    }));
+  },
+
+  replaceLocalWithServer: (localNumericId, serverRow) => {
+    set((state) => {
+      const without = state.reservations.filter(
+        (r) => r.id !== localNumericId && r.id !== serverRow.id,
+      );
+      return { reservations: [serverRow, ...without] };
+    });
   },
 
   applyRealtimePatch: (payload) => {

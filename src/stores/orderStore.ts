@@ -41,6 +41,8 @@ export type OrderItem = {
   qty: number;
   emoji: string;
   notes: string;
+  /** Menu category label — used for kitchen chit split when category printer is unset. */
+  category?: string;
   recoveryStatus?: string | null;
   recoveryReason?: string | null;
   recoveryApprovedAt?: string | null;

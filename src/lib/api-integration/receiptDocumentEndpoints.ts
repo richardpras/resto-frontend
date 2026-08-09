@@ -46,6 +46,23 @@ export async function postPrintCustomerBill(orderId: number, outletId: number): 
   });
 }
 
+/** Final customer receipt for one paid split guest (bridge queue). */
+export async function postPrintCustomerSplitReceipt(
+  orderId: number,
+  outletId: number,
+  orderSplitId: number,
+): Promise<ReceiptRenderHistoryRow> {
+  return renderReceiptDocument({
+    outletId,
+    kind: "customer_receipt",
+    sourceType: "order",
+    sourceId: orderId,
+    orderSplitId,
+    issueFiscal: false,
+    queuePrint: true,
+  });
+}
+
 export async function postKitchenReprint(
   orderId: number,
   orderItemIds: number[],

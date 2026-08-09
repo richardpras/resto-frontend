@@ -21,6 +21,20 @@ describe("escposBuilder", () => {
       cut: true,
     });
     expect(bytes.length).toBeGreaterThan(10);
+    // Ends with partial cut GS V 1
     expect(bytes[bytes.length - 1]).toBe(0x01);
+    expect(bytes[bytes.length - 2]).toBe(0x56);
+    expect(bytes[bytes.length - 3]).toBe(0x1d);
+  });
+
+  it("omits cut when disabled", () => {
+    const bytes = encodeEscPos({
+      lines: [{ text: "Hello" }],
+      cut: false,
+    });
+    const asArray = Array.from(bytes);
+    const hasPartialCut =
+      asArray.some((_, i) => asArray[i] === 0x1d && asArray[i + 1] === 0x56 && asArray[i + 2] === 0x01);
+    expect(hasPartialCut).toBe(false);
   });
 });

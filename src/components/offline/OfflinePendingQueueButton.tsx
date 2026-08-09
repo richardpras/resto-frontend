@@ -43,8 +43,10 @@ export function OfflinePendingQueueButton({
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const pendingQueueCount = useOfflineSyncStore((s) => s.pendingQueueCount);
   const syncPhase = useOfflineSyncStore((s) => s.syncPhase);
+  const isStoreOnline = useOfflineSyncStore((s) => s.isOnline);
   const refreshQueueCounts = useOfflineSyncStore((s) => s.refreshQueueCounts);
   const flushQueueForOutlet = useOfflineSyncStore((s) => s.flushQueueForOutlet);
+  const ensureTerminalPresence = useOfflineSyncStore((s) => s.ensureTerminalPresence);
   const initConnectivityListeners = useOfflineSyncStore((s) => s.initConnectivityListeners);
 
   const [open, setOpen] = useState(false);
@@ -63,6 +65,15 @@ export function OfflinePendingQueueButton({
     }, 15_000);
     return () => clearInterval(timer);
   }, [activeOutletId, refreshQueueCounts]);
+
+  // Keep terminal registration + queue flush alive app-wide (header is always mounted).
+  useEffect(() => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    void ensureTerminalPresence(activeOutletId);
+    if (typeof navigator !== "undefined" && isStoreOnline) {
+      void flushQueueForOutlet(activeOutletId);
+    }
+  }, [activeOutletId, ensureTerminalPresence, flushQueueForOutlet, isStoreOnline]);
 
   const loadRows = useCallback(async () => {
     if (typeof activeOutletId !== "number" || activeOutletId < 1) {

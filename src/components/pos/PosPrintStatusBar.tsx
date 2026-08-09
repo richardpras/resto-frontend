@@ -13,7 +13,20 @@ const healthClass = {
 
 const PENDING_SLOW_MS = 30_000;
 
-export function PosPrintStatusBar({ outletId }: { outletId: number | null }) {
+export function PosPrintStatusBar({
+  outletId,
+  canPrint = true,
+  hideBridgeStatus = false,
+}: {
+  outletId: number | null;
+  /** When false, reprint actions stay disabled (no bridge and no device printer). */
+  canPrint?: boolean;
+  /**
+   * APK Bluetooth/Sunmi path: hide bridge queue status so offline bridge noise
+   * is not shown across POS/Cashier when the device printer is the active path.
+   */
+  hideBridgeStatus?: boolean;
+}) {
   const { t } = useTranslation("ops");
   const health = usePrintStatusStore((s) => s.health);
   const pending = usePrintStatusStore((s) => s.pending);
@@ -26,13 +39,13 @@ export function PosPrintStatusBar({ outletId }: { outletId: number | null }) {
   const [showPendingSlowHint, setShowPendingSlowHint] = useState(false);
 
   useEffect(() => {
-    if (!outletId || outletId < 1) return;
+    if (hideBridgeStatus || !outletId || outletId < 1) return;
     void refresh(outletId);
     const timer = setInterval(() => {
       void refresh(outletId);
     }, 5000);
     return () => clearInterval(timer);
-  }, [outletId, refresh]);
+  }, [outletId, refresh, hideBridgeStatus]);
 
   useEffect(() => {
     if (health === "pending" && pending > 0) {
@@ -63,7 +76,7 @@ export function PosPrintStatusBar({ outletId }: { outletId: number | null }) {
     return () => clearTimeout(timer);
   }, [health, pending]);
 
-  if (!outletId || outletId < 1) return null;
+  if (hideBridgeStatus || !outletId || outletId < 1) return null;
 
   const healthLabel = t(`pos.printStatus.${health}`);
 
@@ -90,7 +103,15 @@ export function PosPrintStatusBar({ outletId }: { outletId: number | null }) {
           </Button>
         ) : null}
         {lastReceiptHistoryId ? (
-          <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => void reprintLastReceipt()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            disabled={!canPrint}
+            title={!canPrint ? t("pos.printerUnavailable", { defaultValue: "No printer configured" }) : undefined}
+            onClick={() => void reprintLastReceipt()}
+          >
             <RotateCcw className="h-3.5 w-3.5 mr-1" />
             {t("pos.printStatus.reprintLast")}
           </Button>

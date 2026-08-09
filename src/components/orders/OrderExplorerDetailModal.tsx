@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useReceiptDocumentStore } from "@/stores/receiptDocumentStore";
 import { postPrintCustomerBill, postReceiptReprint } from "@/lib/api-integration/receiptDocumentEndpoints";
 import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
+import { toKitchenReprintLines } from "@/features/pos/toKitchenReprintLines";
 import { toast } from "sonner";
 import { ApiHttpError } from "@/lib/api-integration/client";
 import { useAuthStore } from "@/stores/authStore";
@@ -83,10 +84,10 @@ export function OrderExplorerDetailModal() {
   const [reprintingId, setReprintingId] = useState<number | null>(null);
   const [nativeReprinting, setNativeReprinting] = useState(false);
   const [bootstrap, setBootstrap] = useState<OfflineBootstrapSnapshot | null>(null);
-  const { printCustomerReceipt, isNativePrint } = useNativePrint(bootstrap, outletId);
+  const { printCustomerReceipt, canPrint, nativeReady, isNativePrint } = useNativePrint(bootstrap, outletId);
 
   useEffect(() => {
-    if (!isOfflineNative || typeof outletId !== "number" || outletId < 1) {
+    if (!isNativePosShell() || typeof outletId !== "number" || outletId < 1) {
       setBootstrap(null);
       return;
     }
@@ -97,7 +98,7 @@ export function OrderExplorerDetailModal() {
     return () => {
       cancelled = true;
     };
-  }, [isOfflineNative, outletId]);
+  }, [outletId]);
 
   const receiptKindLabel = (kind: string, splitId: number | null) => {
     if (kind === "customer_bill") return t("ordersExplorer.detail.receiptKinds.customerBill");
@@ -110,9 +111,26 @@ export function OrderExplorerDetailModal() {
   const handlePrintBill = async () => {
     if (!order || typeof outletId !== "number" || outletId < 1) return;
     if ((order.paymentStatus ?? "") === "paid") return;
-    if (isOfflineNative) return;
     setPrintingBill(true);
     try {
+      // Offline always uses device printer; APK with BT/Sunmi prefers local print too.
+      if (isOfflineNative || nativeReady) {
+        const result = await printCustomerReceipt(orderApiToStoreOrder(order));
+        if (!result.ok) {
+          if (result.skipped) {
+            toast.error(
+              t("pos.printerUnavailable", {
+                defaultValue: "No printer configured (bridge or Bluetooth).",
+              }),
+            );
+          } else {
+            toast.error(result.error ?? t("ordersExplorer.detail.toasts.billPrintFailed"));
+          }
+          return;
+        }
+        toast.success(t("ordersExplorer.detail.toasts.billPrinted"));
+        return;
+      }
       await postPrintCustomerBill(Number(order.id), outletId);
       toast.success(t("ordersExplorer.detail.toasts.billPrinted"));
       void ensureDetailLoaded(selectedOrderId!, { force: true });
@@ -151,6 +169,12 @@ export function OrderExplorerDetailModal() {
         toast.success(t("ordersExplorer.detail.toasts.reprintPrinted", {
           defaultValue: "Receipt sent to printer.",
         }));
+      } else if (result.skipped) {
+        toast.error(
+          t("pos.printerUnavailable", {
+            defaultValue: "No printer configured (bridge or Bluetooth).",
+          }),
+        );
       } else {
         toast.error(result.error ?? t("ordersExplorer.detail.toasts.reprintFailed"));
       }
@@ -212,7 +236,7 @@ export function OrderExplorerDetailModal() {
               >
                 {t("ordersExplorer.detail.offlineBanner", {
                   defaultValue:
-                    "Offline mode: showing cached order. Receipt history, audit timeline, and kitchen reprint need internet.",
+                    "Offline mode: showing cached order. Print bill / reprint / kitchen use this device printer (Bluetooth or Sunmi). Server receipt history needs internet.",
                 })}
               </div>
             ) : null}
@@ -465,7 +489,7 @@ export function OrderExplorerDetailModal() {
                         size="sm"
                         variant="outline"
                         className="h-7 text-[10px]"
-                        disabled={nativeReprinting}
+                        disabled={nativeReprinting || !canPrint}
                         data-testid="order-explorer-offline-reprint"
                         onClick={() => void handleNativeOfflineReprint()}
                       >
@@ -475,24 +499,25 @@ export function OrderExplorerDetailModal() {
                           : t("ordersExplorer.detail.reprint")}
                       </Button>
                     ) : null}
-                    {caps.canUseReceiptActions && !isOfflineNative && order && order.paymentStatus !== "paid" ? (
+                    {caps.canUseReceiptActions && order && order.paymentStatus !== "paid" ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         className="h-7 text-[10px]"
-                        disabled={printingBill}
+                        disabled={printingBill || (isOfflineNative && !canPrint)}
                         onClick={() => void handlePrintBill()}
                       >
                         {printingBill ? t("ordersExplorer.detail.printing") : t("ordersExplorer.detail.printBill")}
                       </Button>
                     ) : null}
-                    {caps.canUseReceiptActions && !isOfflineNative && order ? (
+                    {caps.canUseReceiptActions && order ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         className="h-7 text-[10px]"
+                        disabled={isOfflineNative && !canPrint}
                         onClick={() => setShowKitchenReprint(true)}
                       >
                         {t("ordersExplorer.detail.kitchenReprint")}
@@ -504,8 +529,8 @@ export function OrderExplorerDetailModal() {
                       {t("ordersExplorer.detail.offlineReceiptHint", {
                         defaultValue:
                           order.paymentStatus === "paid"
-                            ? "Use Reprint to print from this device. Server receipt history is unavailable offline."
-                            : "Server receipt history is unavailable offline.",
+                            ? "Use Reprint / kitchen reprint on this device. Server receipt history is unavailable offline."
+                            : "Use Print bill / kitchen reprint on this device. Server receipt history is unavailable offline.",
                       })}
                     </p>
                   ) : !caps.canUseReceiptActions ? (
@@ -589,15 +614,16 @@ export function OrderExplorerDetailModal() {
           </div>
       </AppOverlay>
 
-      {order && !isOfflineNative ? (
+      {order ? (
         <KitchenReprintModal
           open={showKitchenReprint}
-          orderId={Number(order.id)}
-          items={order.items.map((it) => ({
-            orderItemId: Number(it.orderItemId ?? it.id),
-            name: it.name,
-            qty: it.qty,
-          }))}
+          orderId={String(order.id)}
+          orderCode={order.code}
+          tableName={order.tableName ?? undefined}
+          orderType={order.orderType}
+          items={toKitchenReprintLines(order.items)}
+          outletId={typeof outletId === "number" ? outletId : null}
+          bootstrap={bootstrap}
           onClose={() => setShowKitchenReprint(false)}
         />
       ) : null}

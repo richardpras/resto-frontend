@@ -1,4 +1,7 @@
-import { formatPreviewColumns, formatPreviewMoney } from "@/domain/receiptPreviewUtils";
+import {
+  buildCustomerReceiptLines,
+  buildSettingsReceiptPreviewSnapshot,
+} from "@/domain/thermalReceiptLayout";
 
 type Props = {
   outletName: string;
@@ -10,24 +13,6 @@ type Props = {
   widthCh: number;
 };
 
-const SAMPLE_ITEMS = [
-  { name: "Item A", qty: 1, price: 15000 },
-  { name: "Item B", qty: 2, price: 15000 },
-] as const;
-
-const SAMPLE_SUBTOTAL = 45000;
-const SAMPLE_DISCOUNT = 5000;
-const SAMPLE_TAX_LINES = [{ label: "PB1 10%", amount: 4500 }] as const;
-const SAMPLE_TOTAL = SAMPLE_SUBTOTAL - SAMPLE_DISCOUNT + SAMPLE_TAX_LINES[0].amount;
-
-function MetaRow({ label, value, widthCh }: { label: string; value: string; widthCh: number }) {
-  return (
-    <div className="whitespace-pre font-mono text-xs leading-relaxed">
-      {formatPreviewColumns(label, value, widthCh)}
-    </div>
-  );
-}
-
 export function ReceiptThermalPreview({
   outletName,
   header,
@@ -37,98 +22,57 @@ export function ReceiptThermalPreview({
   showTaxBreakdown,
   widthCh,
 }: Props) {
-  const divider = "-".repeat(widthCh);
-  const now = new Date();
-  const timeLabel = now.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).replace(",", "");
+  const lines = buildCustomerReceiptLines(
+    buildSettingsReceiptPreviewSnapshot({
+      outletName,
+      header,
+      footer,
+      showTaxBreakdown,
+    }),
+    widthCh,
+  );
 
   return (
     <div
       className="bg-muted/30 rounded-2xl p-6 font-mono text-xs border-2 border-dashed mx-auto overflow-x-auto"
-      style={{ maxWidth: `${widthCh+50}ch` }}
+      style={{ maxWidth: `${widthCh + 50}ch` }}
       data-testid="receipt-thermal-preview"
     >
-      <div className="text-center space-y-1">
-        {showLogo && logoUrl ? (
-          <img
-            src={logoUrl}
-            alt={`${outletName} logo`}
-            className="mx-auto mb-2 max-h-16 max-w-[70%] object-contain"
-            data-testid="receipt-preview-logo"
-          />
-        ) : showLogo ? (
-          <div className="h-10 w-10 mx-auto mb-2 rounded bg-primary/20 flex items-center justify-center text-primary font-bold">
-            LOGO
-          </div>
-        ) : null}
-        <p className="font-bold">{outletName}</p>
-        {header ? <p className="whitespace-pre-line">{header}</p> : null}
-      </div>
+      {showLogo && logoUrl ? (
+        <img
+          src={logoUrl}
+          alt={`${outletName} logo`}
+          className="mx-auto mb-1 max-h-16 max-w-[70%] object-contain"
+          data-testid="receipt-preview-logo"
+        />
+      ) : showLogo ? (
+        <div className="h-10 w-10 mx-auto mb-1 rounded bg-primary/20 flex items-center justify-center text-primary font-bold">
+          LOGO
+        </div>
+      ) : null}
 
-      <div className="mt-3 space-y-1">
-        <MetaRow label="Order" value="ORD-SAMPLE-001" widthCh={widthCh} />
-        <MetaRow label="Customer" value="Budi" widthCh={widthCh} />
-        <MetaRow label="Time" value={timeLabel} widthCh={widthCh} />
-        <MetaRow label="Type" value="Dine In" widthCh={widthCh} />
-        <MetaRow label="Cashier" value="Siti" widthCh={widthCh} />
-        <MetaRow label="Split" value="Guest A" widthCh={widthCh} />
-      </div>
-
-      <div className="my-2 whitespace-pre">{divider}</div>
-
-      <div className="space-y-2">
-        {SAMPLE_ITEMS.map((item) => {
-          const lineTotal = item.qty * item.price;
+      <div className="space-y-0.5">
+        {lines.map((line, index) => {
+          const isBlank = !line.text.trim();
+          if (isBlank) {
+            return <div key={`feed-${index}`} aria-hidden className="h-3" />;
+          }
           return (
-            <div key={item.name}>
-              <div>{item.name}</div>
-              <div className="whitespace-pre">
-                {formatPreviewColumns(
-                  `${item.qty} x ${formatPreviewMoney(item.price)}`,
-                  formatPreviewMoney(lineTotal),
-                  widthCh,
-                )}
-              </div>
+            <div
+              key={`${index}-${line.text.slice(0, 12)}`}
+              className={[
+                "whitespace-pre leading-relaxed",
+                line.align === "center" ? "text-center" : "",
+                line.bold ? "font-bold" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {line.text}
             </div>
           );
         })}
       </div>
-
-      <div className="my-2 whitespace-pre">{divider}</div>
-
-      <div className="space-y-1">
-        <MetaRow label="Subtotal" value={formatPreviewMoney(SAMPLE_SUBTOTAL)} widthCh={widthCh} />
-        <MetaRow label="Promo (SAVE10)" value={formatPreviewMoney(-SAMPLE_DISCOUNT)} widthCh={widthCh} />
-        {showTaxBreakdown
-          ? SAMPLE_TAX_LINES.map((line) => (
-            <MetaRow key={line.label} label={line.label} value={formatPreviewMoney(line.amount)} widthCh={widthCh} />
-          ))
-          : null}
-        <div className="whitespace-pre font-bold">
-          {formatPreviewColumns("TOTAL", formatPreviewMoney(SAMPLE_TOTAL), widthCh)}
-        </div>
-      </div>
-
-      <div className="my-2 whitespace-pre">{divider}</div>
-
-      <div className="space-y-1">
-        <MetaRow label="Cash" value={formatPreviewMoney(30000)} widthCh={widthCh} />
-        <MetaRow label="QRIS" value={formatPreviewMoney(14500)} widthCh={widthCh} />
-      </div>
-
-      <div className="my-2 whitespace-pre">{divider}</div>
-
-      {footer ? <p className="text-center whitespace-pre-line">{footer}</p> : null}
-
-      <div aria-hidden className="h-6" />
-      <div aria-hidden className="h-3" />
-      <div aria-hidden className="h-3" />
     </div>
   );
 }

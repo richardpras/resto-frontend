@@ -47,4 +47,14 @@ describe("describeQueuedOperation", () => {
     expect(summary.detail).toContain("15.000");
     expect(summary.detail).toContain("iuran");
   });
+
+  it("summarizes reservation.create", () => {
+    const summary = describeQueuedOperation({
+      ...base,
+      operationType: "reservation.create",
+      payload: { customerName: "Budi", clientLocalRef: "local:rsv-abc" },
+    });
+    expect(summary.titleDefault).toBe("Create reservation");
+    expect(summary.detail).toContain("Budi");
+  });
 });

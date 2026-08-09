@@ -346,6 +346,7 @@ export type OutletReservationSettingRow = {
   preorderRequired: boolean;
   depositInstructions: string | null;
   depositReviewTimeoutHours: number | null;
+  inviteLinkExpiryHours: number;
   publicUrlPath: string;
 };
 
@@ -369,6 +370,7 @@ export async function patchOutletReservationSettings(
       | "preorderRequired"
       | "depositInstructions"
       | "depositReviewTimeoutHours"
+      | "inviteLinkExpiryHours"
     >
   >,
 ): Promise<OutletReservationSettingRow> {

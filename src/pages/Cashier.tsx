@@ -34,6 +34,7 @@ import { getOpenBillByTable, listOrders, type OpenBillByTableApi, type OrderApi 
 import { isNativePosShell } from "@/mobile/platform";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { useOfflinePos } from "@/hooks/useOfflinePos";
+import { useNativePrint } from "@/hooks/useNativePrint";
 import { isLocalOrderId } from "@/mobile/offline/offlineIdMapping";
 import { OrderSourceBadge } from "@/components/orders/OrderSourceBadge";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
@@ -43,6 +44,7 @@ import {
   apiMethodFromCheckoutMethod,
   isGatewayPaymentMethod,
   toApiPaymentMethod,
+  resolveSettlementMethod,
 } from "@/features/pos/paymentMethodUtils";
 import {
   FALLBACK_CHECKOUT_METHODS,
@@ -63,10 +65,11 @@ import {
   buildSplitPaymentForPerson,
   syncSplitPersonsToServer,
 } from "@/features/pos/syncSplitPersonsToServer";
-import { postPrintCustomerBill } from "@/lib/api-integration/receiptDocumentEndpoints";
 import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
+import { toKitchenReprintLines } from "@/features/pos/toKitchenReprintLines";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
+import { hasAssignedSplitId } from "@/features/pos/splitIdUtils";
 import type { OrderPaymentPayload } from "@/lib/api-integration/endpoints";
 import { toast } from "sonner";
 import { ApiHttpError } from "@/lib/api-integration/client";
@@ -330,14 +333,21 @@ export default function Cashier() {
   const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const addOrderPaymentsRemote = useOrderStore((s) => s.addOrderPaymentsRemote);
   const createOrderRemote = useOrderStore((s) => s.createOrderRemote);
+  const updateOrderRemote = useOrderStore((s) => s.updateOrderRemote);
   const fetchOrderRemote = useOrderStore((s) => s.fetchOrder);
   const offlinePos = useOfflinePos({
     outletId: activeOutletId,
     tenantId: POS_TENANT_ID,
     createOrderRemote,
+    updateOrderRemote,
     addOrderPaymentsRemote,
     fetchOrderRemote,
   });
+  const { printCustomerReceipt, tryPrintCustomerReceipt, tryPrintSplitPersonReceipt, canPrint, nativeReady, bridgeReady } = useNativePrint(
+    offlinePos.bootstrap,
+    activeOutletId,
+  );
+  const hideBridgePrintStatus = Boolean(nativeReady && !bridgeReady);
   const paymentIsSubmitting = usePaymentStore((s) => s.isSubmitting);
   const paymentError = usePaymentStore((s) => s.error);
   const paymentTransaction = usePaymentStore((s) => s.currentTransaction);
@@ -585,7 +595,8 @@ export default function Cashier() {
       try {
         await addOrderPaymentsRemote(gatewayOrderId, paymentsToCommit);
         toast.success(t("shared.paymentCompleted"));
-        await loadOpenOrders();
+        const paidSnapshot = paymentModalOrder;
+        const paidOrderId = gatewayOrderId;
         setShowPaymentModal(false);
         setShowSplitModal(false);
         setSplitSourceOrder(null);
@@ -593,8 +604,20 @@ export default function Cashier() {
         setPaymentModalOrder(null);
         setGatewayOrderId(null);
         setSelectedCheckoutCode(null);
-      setShowStaticQrisModal(false);
+        setShowStaticQrisModal(false);
         setSelectedOrderId(null);
+        // Print + list refresh must not block closing the payment UI.
+        const splitPayment = paymentsToCommit.find((p) => p.orderSplitId != null && Number(p.orderSplitId) > 0);
+        if (splitPayment?.orderSplitId) {
+          const orderForPrint = await resolveOrderForPrint(paidOrderId, paidSnapshot);
+          const personSnap = splitPersons.find((p) => p.serverSplitId === Number(splitPayment.orderSplitId));
+          if (orderForPrint && personSnap) {
+            void tryPrintSplitPersonReceipt(orderForPrint, personSnap, splitMethod);
+          }
+        } else {
+          void maybeAutoPrintAfterPayment(paidOrderId, paidSnapshot);
+        }
+        void loadOpenOrders();
       } catch (error) {
         setPendingGatewayPayments(paymentsToCommit);
         if (gatewayOrderId) {
@@ -767,14 +790,16 @@ export default function Cashier() {
 
   const ensureCashierSplitsSynced = async (): Promise<SplitPerson[]> => {
     if (!splitSourceOrder) return splitPersons;
-    if (splitPersons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
+    if (splitPersons.every((p) => hasAssignedSplitId(p.serverSplitId))) {
       return splitPersons;
     }
     if (offlinePos.isOfflineMode) {
       if (typeof activeOutletId !== "number" || activeOutletId < 1) {
         throw new Error(t("shared.selectOutlet"));
       }
-      const orderForSync = orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId));
+      const orderForSync =
+        (await offlinePos.resolveOrderOffline(splitSourceOrder.id))
+        ?? orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId));
       const synced = await offlinePos.syncSplitsWithOffline(
         splitSourceOrder.id,
         orderForSync,
@@ -798,9 +823,9 @@ export default function Cashier() {
     });
     if (!allPaid) return;
     toast.success(t("cashier.splitRecorded"), { icon: "💰" });
-    await loadOpenOrders();
     resetSplitState();
     setSelectedOrderId(null);
+    void loadOpenOrders();
   };
 
   const handleSplitPersonPay = async () => {
@@ -819,7 +844,8 @@ export default function Cashier() {
       return;
     }
 
-    if (offlinePos.isGatewayBlockedOffline(method, checkoutMethods)) {
+    const settlementMethod = resolveSettlementMethod(method, checkoutMethods);
+    if (offlinePos.isGatewayBlockedOffline(settlementMethod, checkoutMethods)) {
       toast.error(
         t("mobile.gatewayBlockedOffline", {
           defaultValue: "This payment method requires an internet connection.",
@@ -832,24 +858,48 @@ export default function Cashier() {
     try {
       const persons = await ensureCashierSplitsSynced();
       const syncedPerson = persons[idx];
-      if (!syncedPerson?.serverSplitId) {
+      if (!hasAssignedSplitId(syncedPerson?.serverSplitId)) {
         toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
       const fresh = offlinePos.isOfflineMode
-        ? orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId))
+        ? ((await offlinePos.resolveOrderOffline(splitSourceOrder.id))
+          ?? orderApiToStoreOrder(cashierOrderToApiish(splitSourceOrder, activeOutletId)))
         : await fetchOrderRemote(splitSourceOrder.id);
       const paidAt = new Date().toISOString();
-      const payment = buildSplitPaymentForPerson(
+      const selectedSplitMethod = findCheckoutMethod(checkoutMethods, method);
+      let payment = buildSplitPaymentForPerson(
         syncedPerson,
-        method,
+        settlementMethod,
         remaining,
         fresh,
         splitMethod,
         paidAt,
       );
 
-      if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
+      if (selectedSplitMethod ? isCashCheckoutMethod(selectedSplitMethod) : settlementMethod === "cash") {
+        const tendered = parseCashTenderedInput(cashTenderedInput);
+        if (!isCashTenderSufficient(tendered, remaining)) {
+          toast.error(t("shared.cashTenderRequired"));
+          return;
+        }
+        const change = computeCashChange(tendered, remaining);
+        payment = {
+          ...payment,
+          tenderedAmount: tendered,
+          changeAmount: change,
+        };
+      }
+
+      if (isGatewayPaymentMethod(settlementMethod, checkoutMethods)) {
+        if (offlinePos.isQueueMode) {
+          toast.error(
+            t("mobile.gatewayBlockedOffline", {
+              defaultValue: "This payment method requires an internet connection.",
+            }),
+          );
+          return;
+        }
         const tx = await paymentCreateTransaction({
           orderId: fresh.id,
           outletId: activeOutletId,
@@ -878,7 +928,18 @@ export default function Cashier() {
       setSplitPersons(nextPersons);
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
-      toast.success(t("shared.paidVia", { label: syncedPerson.label, amount: formatRp(remaining), method }));
+      setCashTenderedInput("");
+      toast.success(t("shared.paidVia", {
+        label: syncedPerson.label,
+        amount: formatRp(remaining),
+        method: findCheckoutMethod(checkoutMethods, method)?.label ?? method,
+      }));
+      const paidPerson = nextPersons[idx] ?? syncedPerson;
+      void tryPrintSplitPersonReceipt(fresh, paidPerson, splitMethod).then((result) => {
+        if (!result.ok && !result.skipped) {
+          toast.error(result.error || t("shared.somethingWrong"));
+        }
+      });
       await finishCashierSplitIfComplete(nextPersons);
     } catch (error) {
       toast.error(error instanceof ApiHttpError ? error.message : t("cashier.splitFailed"));
@@ -887,15 +948,101 @@ export default function Cashier() {
     }
   };
 
-  const handlePrintCustomerBill = async () => {
-    if (!selectedOrder || typeof activeOutletId !== "number" || activeOutletId < 1) return;
-    if (selectedOrder.balanceDue <= 0) return;
-    setPrintingBill(true);
+  const resolveOrderForPrint = async (
+    orderId: string,
+    fallback?: CashierOrder | null,
+  ): Promise<Order | null> => {
+    const fromStore = useOrderStore.getState().orders.find((o) => o.id === orderId);
+    if (fromStore) return fromStore;
+    if (fallback && typeof activeOutletId === "number" && activeOutletId >= 1) {
+      return orderApiToStoreOrder(cashierOrderToApiish(fallback, activeOutletId));
+    }
+    if (!isLocalOrderId(orderId)) {
+      try {
+        return await fetchOrderRemote(orderId);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const printCustomerReceiptForOrder = async (
+    orderId: string,
+    fallback?: CashierOrder | null,
+    options?: { soft?: boolean },
+  ): Promise<void> => {
+    if (typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    const soft = Boolean(options?.soft);
     try {
-      await postPrintCustomerBill(Number(selectedOrder.id), activeOutletId);
+      const order = await resolveOrderForPrint(orderId, fallback);
+      if (!order) {
+        if (!soft) {
+          toast.error(t("pos.toasts.orderNotFound", { defaultValue: "Order not found for printing." }));
+        }
+        return;
+      }
+      if (soft) {
+        await tryPrintCustomerReceipt(order);
+        return;
+      }
+      if (!canPrint) {
+        toast.error(
+          t("pos.printerUnavailable", {
+            defaultValue: "No printer configured (bridge or Bluetooth).",
+          }),
+        );
+        return;
+      }
+      const result = await printCustomerReceipt(order);
+      if (!result.ok) {
+        if (result.skipped) {
+          toast.error(
+            t("pos.printerUnavailable", {
+              defaultValue: "No printer configured (bridge or Bluetooth).",
+            }),
+          );
+          return;
+        }
+        toast.error(result.error || t("pos.toasts.billPrintFailed"));
+        return;
+      }
       toast.success(t("pos.toasts.billPrinted"));
     } catch (error) {
-      toast.error(error instanceof ApiHttpError ? error.message : t("pos.toasts.billPrintFailed"));
+      if (!soft) {
+        toast.error(error instanceof ApiHttpError ? error.message : t("pos.toasts.billPrintFailed"));
+      }
+    }
+  };
+
+  const maybeAutoPrintAfterPayment = async (
+    orderId: string,
+    fallback?: CashierOrder | null,
+  ): Promise<void> => {
+    const order = await resolveOrderForPrint(orderId, fallback);
+    if (!order) return;
+    // Split orders print per guest on person pay — never a full-order receipt here.
+    if (order.splitBill?.persons && order.splitBill.persons.length > 0) {
+      return;
+    }
+    const paid =
+      order.paymentStatus === "paid" ||
+      (order.balanceDue != null ? order.balanceDue <= 0 : false);
+    if (!paid) return;
+    // Soft: payment already saved; skip print quietly when no printer.
+    // Pass resolved order via fallback path only — avoid a second GET.
+    try {
+      await tryPrintCustomerReceipt(order);
+    } catch {
+      // best-effort
+    }
+  };
+
+  const handlePrintCustomerBill = async () => {
+    if (!selectedOrder || typeof activeOutletId !== "number" || activeOutletId < 1) return;
+    setPrintingBill(true);
+    try {
+      await printCustomerReceiptForOrder(selectedOrder.id, selectedOrder);
     } finally {
       setPrintingBill(false);
     }
@@ -1073,12 +1220,16 @@ export default function Cashier() {
       });
 
       if (result.outcome === "completed") {
+        const paidSnapshot = paymentModalOrder;
+        const paidOrderId = paymentModalOrder.id;
         paymentDraft.clearDraft();
         setCashTenderedInput("");
         toast.success(t("shared.paymentRecorded"));
-        await loadOpenOrders();
         setSelectedOrderId(null);
         closePaymentModal();
+        // Print + list refresh after UI closes — do not hold the pay spinner.
+        void printCustomerReceiptForOrder(paidOrderId, paidSnapshot, { soft: true });
+        void loadOpenOrders();
         return;
       }
 
@@ -1192,10 +1343,13 @@ export default function Cashier() {
         useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, paymentModalOrder.id);
       }
       toast.success(t("pos.staticQrisRecorded"));
+      const paidSnapshot = paymentModalOrder;
+      const paidOrderId = paymentModalOrder.id;
       paymentDraft.clearDraft();
-      await loadOpenOrders();
       setSelectedOrderId(null);
       closePaymentModal();
+      void maybeAutoPrintAfterPayment(paidOrderId, paidSnapshot);
+      void loadOpenOrders();
     } catch (error) {
       toast.error(error instanceof ApiHttpError ? error.message : t("cashier.paymentFailed"));
     } finally {
@@ -1336,8 +1490,8 @@ export default function Cashier() {
         ]);
       }
       toast.success(t("cashier.openBillRecorded"));
-      await loadOpenOrders();
-      await loadOpenBill();
+      void loadOpenOrders();
+      void loadOpenBill();
     } catch (error) {
       toast.error(error instanceof ApiHttpError ? error.message : t("cashier.openBillFailed"));
     } finally {
@@ -1515,7 +1669,8 @@ export default function Cashier() {
                 <button
                   type="button"
                   onClick={() => void handlePrintCustomerBill()}
-                  disabled={selectedOrder.balanceDue <= 0 || printingBill}
+                  disabled={!canPrint || printingBill}
+                  title={!canPrint ? t("pos.printerUnavailable", { defaultValue: "No printer configured" }) : undefined}
                   className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted min-h-11"
                 >
                   {printingBill ? "…" : t("pos.printBill")}
@@ -1523,7 +1678,9 @@ export default function Cashier() {
                 <button
                   type="button"
                   onClick={() => setShowKitchenReprint(true)}
-                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted min-h-11"
+                  disabled={!canPrint}
+                  title={!canPrint ? t("pos.printerUnavailable", { defaultValue: "No printer configured" }) : undefined}
+                  className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40 hover:bg-muted min-h-11"
                 >
                   {t("pos.reprintKitchen")}
                 </button>
@@ -1809,7 +1966,11 @@ export default function Cashier() {
                   </div>
                 </div>
               )}
-              <PosPrintStatusBar outletId={printStatusOutletId} />
+              <PosPrintStatusBar
+                outletId={printStatusOutletId}
+                canPrint={canPrint}
+                hideBridgeStatus={hideBridgePrintStatus}
+              />
       </AppOverlay>
       ) : null}
       <QrisPaymentModal
@@ -2081,32 +2242,60 @@ export default function Cashier() {
                                 className="mb-3"
                                 variant="compact"
                                 tiles={checkoutTiles}
-                                selectedCode={
-                                  checkoutTiles.find((t) => t.method.label === splitPayMethod)?.method
-                                    .paymentMethodCode ?? null
-                                }
+                                selectedCode={splitPayMethod}
                                 onSelect={(code) => {
-                                  const tile = checkoutTiles.find((t) => t.method.paymentMethodCode === code);
-                                  setSplitPayMethod(tile?.method.label ?? null);
+                                  setSplitPayMethod(code);
+                                  setCashTenderedInput("");
                                 }}
                               />
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setPayingPersonIdx(null)}
-                                  className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
-                                >
-                                  {t("shared.cancel")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSplitPersonPay()}
-                                  disabled={!splitPayMethod || submitting}
-                                  className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-                                >
-                                  {t("shared.confirmPayment")}
-                                </button>
-                              </div>
+                              {(() => {
+                                const splitMethodCfg = findCheckoutMethod(checkoutMethods, splitPayMethod);
+                                const personPaid = person.payments.reduce((s, p) => s + p.amount, 0);
+                                const personRemaining = Math.max(0, person.totalDue - personPaid);
+                                const showSplitCash =
+                                  Boolean(splitMethodCfg && isCashCheckoutMethod(splitMethodCfg))
+                                  && personRemaining > 0;
+                                const splitCashReady =
+                                  !showSplitCash
+                                  || isCashTenderSufficient(
+                                    parseCashTenderedInput(cashTenderedInput),
+                                    personRemaining,
+                                  );
+                                return (
+                                  <>
+                                    {showSplitCash ? (
+                                      <div className="mb-3">
+                                        <CashTenderFields
+                                          settledAmount={personRemaining}
+                                          tenderedInput={cashTenderedInput}
+                                          onTenderedInputChange={setCashTenderedInput}
+                                          disabled={submitting}
+                                        />
+                                      </div>
+                                    ) : null}
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPayingPersonIdx(null);
+                                          setCashTenderedInput("");
+                                        }}
+                                        className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
+                                      >
+                                        {t("shared.cancel")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleSplitPersonPay()}
+                                        disabled={!splitPayMethod || submitting || !splitCashReady}
+                                        className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                                      >
+                                        {t("shared.confirmPayment")}
+                                      </button>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </motion.div>
                         )}
@@ -2136,12 +2325,13 @@ export default function Cashier() {
       {selectedOrder ? (
         <KitchenReprintModal
           open={showKitchenReprint}
-          orderId={Number(selectedOrder.id)}
-          items={selectedOrder.items.map((it) => ({
-              orderItemId: Number(it.orderItemId ?? it.id),
-              name: it.name,
-              qty: it.qty,
-            }))}
+          orderId={String(selectedOrder.id)}
+          orderCode={selectedOrder.code}
+          tableName={selectedOrder.tableName}
+          orderType={selectedOrder.orderType}
+          items={toKitchenReprintLines(selectedOrder.items)}
+          outletId={typeof activeOutletId === "number" ? activeOutletId : null}
+          bootstrap={offlinePos.bootstrap}
           onClose={() => setShowKitchenReprint(false)}
         />
       ) : null}

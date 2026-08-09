@@ -60,6 +60,14 @@ export type ReservationTableAllocationApi = {
   allocatedByUserId: number | null;
 };
 
+export type ReservationMenuItemApi = {
+  id: string;
+  name: string;
+  category?: string | null;
+  price: number;
+  available: boolean;
+};
+
 export type CreateReservationPayload = {
   outletId: number;
   customerName: string;
@@ -67,15 +75,25 @@ export type CreateReservationPayload = {
   memberId?: number | null;
   partySize: number;
   reservationAt: string;
+  items: Array<{ menuItemId: number; qty: number }>;
 };
 
 export async function listReservations(
   outletId: number,
   status?: ReservationApi["status"],
+  range?: { from?: string; to?: string },
 ): Promise<ReservationApi[]> {
   const params = new URLSearchParams({ outletId: String(outletId) });
   if (status) params.set("status", status);
+  if (range?.from) params.set("from", range.from);
+  if (range?.to) params.set("to", range.to);
   const res = await request<Envelope<ReservationApi[]>>(`/reservations?${params.toString()}`);
+  return res.data;
+}
+
+export async function listReservationMenu(outletId: number): Promise<ReservationMenuItemApi[]> {
+  const params = new URLSearchParams({ outletId: String(outletId) });
+  const res = await request<Envelope<ReservationMenuItemApi[]>>(`/reservations/menu?${params.toString()}`);
   return res.data;
 }
 
@@ -293,7 +311,18 @@ export function reservationDepositProofFileUrl(reservationId: number, proofId: n
   return `${API_BASE_URL}/reservations/${reservationId}/deposit-proofs/${proofId}/file`;
 }
 
-export async function openReservationDepositProof(reservationId: number, proofId: number): Promise<void> {
+export type ReservationDepositProofFile = {
+  blob: Blob;
+  objectUrl: string;
+  contentType: string;
+  filename: string;
+};
+
+export async function fetchReservationDepositProofFile(
+  reservationId: number,
+  proofId: number,
+  filenameHint?: string,
+): Promise<ReservationDepositProofFile> {
   const token = getApiAccessToken();
   const response = await fetch(reservationDepositProofFileUrl(reservationId, proofId), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -302,7 +331,62 @@ export async function openReservationDepositProof(reservationId: number, proofId
     throw new Error(`Failed to load proof (${response.status})`);
   }
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  window.open(objectUrl, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  const headerType = response.headers.get("content-type")?.split(";")[0]?.trim() || "";
+  const contentType = headerType || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const matchedName = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(disposition)?.[1];
+  const filename = decodeURIComponent((matchedName ?? filenameHint ?? `proof-${proofId}`).replace(/"/g, ""));
+  return {
+    blob,
+    objectUrl: URL.createObjectURL(blob),
+    contentType,
+    filename,
+  };
+}
+
+/** @deprecated Prefer in-app preview via fetchReservationDepositProofFile (APK-safe). */
+export async function openReservationDepositProof(reservationId: number, proofId: number): Promise<void> {
+  const file = await fetchReservationDepositProofFile(reservationId, proofId);
+  try {
+    const opened = window.open(file.objectUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      const anchor = document.createElement("a");
+      anchor.href = file.objectUrl;
+      anchor.download = file.filename;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(file.objectUrl), 60_000);
+  }
+}
+
+export async function uploadReservationDepositProof(
+  reservationId: number,
+  file: File,
+): Promise<ReservationApi> {
+  const form = new FormData();
+  form.append("proof", file);
+  const res = await request<MessageEnvelope<ReservationApi>>(
+    `/reservations/${encodeURIComponent(String(reservationId))}/deposit-proof`,
+    { method: "POST", body: form },
+  );
+  return res.data;
+}
+
+export type ReservationInviteApi = {
+  token: string;
+  expiresAt: string;
+  urlPath: string;
+  absoluteUrl: string | null;
+};
+
+export async function createReservationInvite(outletId: number): Promise<ReservationInviteApi> {
+  const res = await request<MessageEnvelope<ReservationInviteApi>>(
+    `/outlets/${encodeURIComponent(String(outletId))}/reservation-invites`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return res.data;
 }

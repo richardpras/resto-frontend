@@ -65,6 +65,7 @@ export default function OutletReservationSettingsDialog({
         preorderRequired: form.preorderRequired,
         depositInstructions: form.depositInstructions,
         depositReviewTimeoutHours: form.depositReviewTimeoutHours,
+        inviteLinkExpiryHours: form.inviteLinkExpiryHours,
       });
       setForm(saved);
       toast.success(t("settings.outletReservation.saved"));
@@ -127,13 +128,18 @@ export default function OutletReservationSettingsDialog({
                 <Label>{t("settings.outletReservation.depositPercent")}</Label>
                 <Input
                   type="number"
-                  min={0.01}
+                  min={50}
                   max={100}
                   value={form.depositPercent ?? ""}
-                  onChange={(e) =>
-                    setForm({ ...form, depositPercent: e.target.value === "" ? null : Number(e.target.value) })
-                  }
+                  onChange={(e) => {
+                    const raw = e.target.value === "" ? null : Number(e.target.value);
+                    setForm({
+                      ...form,
+                      depositPercent: raw == null || Number.isNaN(raw) ? null : Math.max(50, Math.min(100, raw)),
+                    });
+                  }}
                 />
+                <p className="text-xs text-muted-foreground">{t("settings.outletReservation.depositPercentHint")}</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -162,6 +168,21 @@ export default function OutletReservationSettingsDialog({
                 value={form.depositInstructions ?? ""}
                 onChange={(e) => setForm({ ...form, depositInstructions: e.target.value })}
               />
+            </div>
+            <div className="space-y-1">
+              <Label>{t("settings.outletReservation.inviteLinkExpiryHours")}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={form.inviteLinkExpiryHours ?? 24}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const next = Number.isFinite(raw) ? Math.max(1, Math.min(168, Math.round(raw))) : 24;
+                  setForm({ ...form, inviteLinkExpiryHours: next });
+                }}
+              />
+              <p className="text-xs text-muted-foreground">{t("settings.outletReservation.inviteLinkExpiryHint")}</p>
             </div>
           </div>
         )}

@@ -71,7 +71,7 @@ function buildPaymentRow(
   priceLines: Array<Pick<OrderItem, "id" | "price" | "qty">>,
 ): OrderPaymentPayload {
   const base: OrderPaymentPayload = { method, amount, paidAt };
-  if (person.serverSplitId != null && person.serverSplitId > 0) {
+  if (person.serverSplitId != null && person.serverSplitId !== 0) {
     base.orderSplitId = person.serverSplitId;
   }
   if (splitMethod !== "by-item" || person.items.length === 0) {

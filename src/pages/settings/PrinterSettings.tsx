@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,6 +27,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { buildPrinterPayload, normalizePrinterForForm } from "@/domain/printerFormUtils";
 import { BridgePairingWizard } from "@/components/hardware-bridge/BridgePairingWizard";
 import { usePrinterSettingsOutlets } from "@/hooks/usePrinterSettingsOutlets";
+import { BluetoothPrinterSetup } from "@/mobile/print/BluetoothPrinterSetup";
+import { useOutletStore } from "@/stores/outletStore";
 
 const empty: Printer = {
   id: "",
@@ -33,6 +36,7 @@ const empty: Printer = {
   printerType: "kitchen",
   connection: "lan",
   thermalPaperWidth: "58mm",
+  autoCut: true,
   ip: "",
   port: 9100,
   outletId: 0,
@@ -66,6 +70,7 @@ export default function PrinterSettings() {
   const capabilities = getUserCapabilities(authUser);
   const printers = useSettingsStore((s) => s.printers);
   const outlets = usePrinterSettingsOutlets();
+  const activeOutletId = useOutletStore((s) => s.activeOutletId);
   const upsertPrinter = useSettingsStore((s) => s.upsertPrinter);
   const queueByPrinter = usePrinterManagementStore((s) => s.queueByPrinter);
   const fetchQueueStatus = usePrinterManagementStore((s) => s.fetchQueueStatus);
@@ -174,6 +179,14 @@ export default function PrinterSettings() {
             <BridgePairingWizard />
           </>
         ) : null}
+        <BluetoothPrinterSetup
+          outletId={
+            typeof activeOutletId === "number" && activeOutletId > 0
+              ? activeOutletId
+              : outlets[0]?.id ?? null
+          }
+          variant="panel"
+        />
         <div className="flex justify-between items-center">
           <h2 className="font-semibold">{t("settings.printers.title")}</h2>
           <Button
@@ -580,6 +593,17 @@ export default function PrinterSettings() {
                   </SelectContent>
                 </Select>
               </div>
+              <label className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 cursor-pointer">
+                <Checkbox
+                  checked={form.autoCut !== false}
+                  onCheckedChange={(checked) => setForm({ ...form, autoCut: checked === true })}
+                  className="mt-0.5"
+                />
+                <span className="space-y-0.5">
+                  <span className="block text-sm font-medium text-foreground">{t("settings.printers.autoCut")}</span>
+                  <span className="block text-xs text-muted-foreground">{t("settings.printers.autoCutHint")}</span>
+                </span>
+              </label>
               {form.connection === "lan" ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">

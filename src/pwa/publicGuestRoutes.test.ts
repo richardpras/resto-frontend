@@ -11,6 +11,7 @@ describe("publicGuestRoutes", () => {
       expect(isPublicGuestPath("/payment-status/abc")).toBe(true);
       expect(isPublicGuestPath("/reserve/demo-outlet")).toBe(true);
       expect(isPublicGuestPath("/reserve/demo-outlet/RSV-123")).toBe(true);
+      expect(isPublicGuestPath("/reserve/invite/abc123token")).toBe(true);
     });
 
     it("does not classify staff routes as guest", () => {
@@ -35,6 +36,7 @@ describe("publicGuestRoutes", () => {
       expect(isStaffPwaPath("/qr-order")).toBe(false);
       expect(isStaffPwaPath("/payment-status")).toBe(false);
       expect(isStaffPwaPath("/reserve/demo-outlet")).toBe(false);
+      expect(isStaffPwaPath("/reserve/invite/abc123token")).toBe(false);
     });
   });
 });

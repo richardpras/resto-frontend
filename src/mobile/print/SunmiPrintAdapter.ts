@@ -25,7 +25,7 @@ export class SunmiPrintAdapter implements PrintPort {
     try {
       const base64 = await encodeDocumentBase64(document);
       await RestoSunmiPrinter.printRaw({ data: base64 });
-      if (document.cut !== false) {
+      if (document.cut !== false && document.cut !== "none") {
         await RestoSunmiPrinter.cutPaper();
       }
       return { ok: true };

@@ -335,6 +335,7 @@ export type OrderItemPayload = {
   qty: number;
   emoji?: string;
   notes?: string;
+  category?: string;
   recoveryStatus?: string | null;
   recoveryReason?: string | null;
   recoveryApprovedAt?: string | null;
@@ -409,6 +410,8 @@ export type CreateOrderPayload = {
   posSessionId?: number;
   qrOrderRequestId?: number;
   idempotencyKey?: string;
+  /** Pay Now: defer kitchen printer jobs until after customer receipt. */
+  skipKitchenPrint?: boolean;
 };
 
 export type UpdateOrderPayload = Partial<{

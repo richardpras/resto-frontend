@@ -132,7 +132,8 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = getApiAccessToken();
   const mergedHeaders = new Headers(init?.headers ?? {});
-  if (!mergedHeaders.has("Content-Type")) {
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (!isFormData && !mergedHeaders.has("Content-Type")) {
     mergedHeaders.set("Content-Type", "application/json");
   }
   if (!mergedHeaders.has("Accept")) {

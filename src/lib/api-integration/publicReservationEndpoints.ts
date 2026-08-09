@@ -16,9 +16,16 @@ export type PublicReservationOutletApi = {
   phone: string;
 };
 
+export type PublicReservationInviteMetaApi = {
+  expiresAt: string | null;
+  token: string;
+};
+
 export type PublicReservationContextApi = {
   outlet: PublicReservationOutletApi;
   settings: PublicReservationSettingsApi;
+  publicSlug?: string;
+  invite?: PublicReservationInviteMetaApi;
 };
 
 export type PublicReservationApi = {
@@ -74,6 +81,17 @@ export async function fetchPublicReservationMenu(outletSlug: string): Promise<Pu
   return body.data ?? [];
 }
 
+export async function fetchPublicReservationInviteContext(token: string): Promise<PublicReservationContextApi> {
+  return publicJson<PublicReservationContextApi>(`/public/reserve/invite/${encodeURIComponent(token)}`);
+}
+
+export async function fetchPublicReservationInviteMenu(token: string): Promise<PublicMenuItemApi[]> {
+  const body = await publicJson<{ data: PublicMenuItemApi[] }>(
+    `/public/reserve/invite/${encodeURIComponent(token)}/menu`,
+  );
+  return body.data ?? [];
+}
+
 export type CreatePublicReservationPayload = {
   customerName: string;
   customerPhone?: string;
@@ -88,6 +106,21 @@ export async function createPublicReservation(
 ): Promise<PublicReservationApi> {
   const body = await publicJson<Envelope<PublicReservationApi>>(
     `/public/reserve/${encodeURIComponent(outletSlug)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  return body.data;
+}
+
+export async function createPublicReservationFromInvite(
+  token: string,
+  payload: CreatePublicReservationPayload,
+): Promise<PublicReservationApi> {
+  const body = await publicJson<Envelope<PublicReservationApi>>(
+    `/public/reserve/invite/${encodeURIComponent(token)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -115,6 +148,24 @@ export async function uploadPublicReservationDepositProof(
     { method: "POST", body: form },
   );
   return body.data;
+}
+
+export async function downloadPublicReservationPdf(reservationCode: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/public/reservations/${encodeURIComponent(reservationCode)}/pdf`,
+    { headers: { Accept: "application/pdf" } },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message || `Request failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `reservation-${reservationCode}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export function estimateDepositAmount(

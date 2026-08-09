@@ -242,6 +242,16 @@ const App = () => (
             }
           />
           <Route
+            path="/reserve/invite/:token"
+            element={
+              <Suspense fallback={routeFallback}>
+                <PublicGuestStandaloneGuard>
+                  <PublicReservation />
+                </PublicGuestStandaloneGuard>
+              </Suspense>
+            }
+          />
+          <Route
             path="/reserve/:outletSlug"
             element={
               <Suspense fallback={routeFallback}>

@@ -76,4 +76,11 @@ describe("orderPaymentHistoryStore", () => {
     useOrderPaymentHistoryStore.getState().resetForOutletContextChange();
     expect(useOrderPaymentHistoryStore.getState().entries).toEqual({});
   });
+
+  it("skips API fetch for local / non-numeric order ids", async () => {
+    await useOrderPaymentHistoryStore.getState().fetchHistory(1, "local:abc", {});
+    useOrderPaymentHistoryStore.getState().ensureLoaded(1, "ORD-1");
+    useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(1, "local:abc");
+    expect(mockListOrderPayments).not.toHaveBeenCalled();
+  });
 });

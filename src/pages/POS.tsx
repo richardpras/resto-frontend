@@ -44,8 +44,6 @@ import { showInventoryPolicySuccessToast } from "@/features/pos/posInventoryPoli
 import { POS_AUTO_ORDER_CODE } from "@/features/pos/posOrderCode";
 import { useOrderPaymentHistoryStore } from "@/stores/orderPaymentHistoryStore";
 import { getUserCapabilities } from "@/domain/accessControl";
-import { ConnectivitySyncRibbon } from "@/components/ConnectivitySyncRibbon";
-import { BluetoothPrinterSetup } from "@/mobile/print/BluetoothPrinterSetup";
 import { useOfflinePos } from "@/hooks/useOfflinePos";
 import { useNativePrint } from "@/hooks/useNativePrint";
 import { OfflineShiftBlocker } from "@/mobile/OfflineShiftBlocker";
@@ -76,6 +74,7 @@ import {
   apiMethodFromCheckoutMethod,
   isGatewayPaymentMethod,
   toApiPaymentMethod,
+  resolveSettlementMethod,
 } from "@/features/pos/paymentMethodUtils";
 import {
   FALLBACK_CHECKOUT_METHODS,
@@ -97,7 +96,6 @@ import {
   buildSplitPaymentForPerson,
   syncSplitPersonsToServer,
 } from "@/features/pos/syncSplitPersonsToServer";
-import { postPrintCustomerBill } from "@/lib/api-integration/receiptDocumentEndpoints";
 import { CashTenderFields } from "@/components/pos/CashTenderFields";
 import {
   cashSettlementFromDraft,
@@ -106,10 +104,12 @@ import {
   parseCashTenderedInput,
 } from "@/features/pos/cashTender";
 import { KitchenReprintModal } from "@/components/orders/KitchenReprintModal";
+import { toKitchenReprintLines } from "@/features/pos/toKitchenReprintLines";
 import { PosPrintStatusBar } from "@/components/pos/PosPrintStatusBar";
 import { resolvePrintStatusOutletId } from "@/domain/printStatusUtils";
 import { byItemFullyAllocated, maxQtyForPersonOnLine } from "@/features/pos/splitBillAssignmentUtils";
 import { applyByItemTotalDuesWithTaxScale } from "@/features/pos/splitBillProportionalDues";
+import { hasAssignedSplitId } from "@/features/pos/splitIdUtils";
 import {
   appliedGiftCardAmount,
   buildGiftCardDirectSettleIdempotencyKey,
@@ -132,7 +132,8 @@ import {
 } from "@/features/pos/posOpenBillCheckout";
 import { resolvePosCheckoutTotals } from "@/features/pos/resolvePosCheckoutTotals";
 import {
-  hydrateCartFromOrder,
+  orderBalanceDue,
+  orderItemsToCartItems,
   shouldSyncCartToOpenBill,
   shouldUpdateOpenBill,
   syncCartToOpenBill,
@@ -187,7 +188,8 @@ function buildCartPayload(
       price: c.price,
       qty: c.qty,
       emoji: c.emoji,
-      notes: c.notes || undefined,
+      notes: (c.notes ?? "").trim(),
+      category: c.category || undefined,
     })),
     subtotal,
     tax,
@@ -293,6 +295,8 @@ export default function POS() {
   const [paymentAckRequired, setPaymentAckRequired] = useState(false);
   const [openBillRecoveryCode, setOpenBillRecoveryCode] = useState<string | null>(null);
   const checkoutAttemptIdRef = useRef<string | null>(null);
+  /** Pay Now create+pay: also print kitchen (Confirm Order already did for open bills). */
+  const printKitchenOnDirectPayRef = useRef(false);
   const cartLengthRef = useRef(0);
   cartLengthRef.current = cart.length;
   const [qrOrderContext, setQrOrderContext] = useState<{
@@ -311,14 +315,21 @@ export default function POS() {
     outletId: activeOutletId,
     tenantId: POS_TENANT_ID,
     createOrderRemote,
+    updateOrderRemote,
     addOrderPaymentsRemote,
     fetchOrderRemote,
   });
 
-  const { printCustomerReceipt, printKitchenChit, isNativePrint } = useNativePrint(
-    offlinePos.bootstrap,
-    activeOutletId,
-  );
+  const {
+    printCustomerReceipt,
+    tryPrintKitchenChit,
+    tryPrintCustomerReceipt,
+    tryPrintSplitPersonReceipt,
+    canPrint,
+    nativeReady,
+    bridgeReady,
+  } = useNativePrint(offlinePos.bootstrap, activeOutletId);
+  const hideBridgePrintStatus = Boolean(nativeReady && !bridgeReady);
 
   const isOnline = useOfflineSyncStore((s) => s.isOnline);
 
@@ -768,6 +779,10 @@ export default function POS() {
       toast.error(e.message);
       return;
     }
+    if (e instanceof Error && e.message.trim()) {
+      toast.error(e.message);
+      return;
+    }
     toast.error(t("shared.somethingWrong"));
   }
 
@@ -995,8 +1010,8 @@ export default function POS() {
       cartLength: cart.length,
       currentOrderId,
       currentOpenOrder,
-      createOrderRemote,
-      updateOrderRemote,
+      createOrderRemote: offlinePos.createOrderWithOffline,
+      updateOrderRemote: offlinePos.updateOrderWithOffline,
       buildCartUpdate: buildOpenBillCartUpdate,
       buildCreatePayload: buildDiscountDraftCreatePayload,
     });
@@ -1007,7 +1022,12 @@ export default function POS() {
   }
 
   async function handleDiscountOrderUpdated(orderId: string) {
-    const order = await fetchOrderRemote(orderId);
+    const order = offlinePos.isOfflineMode
+      ? ((await offlinePos.resolveOrderOffline(orderId))
+        ?? useOrderStore.getState().orders.find((o) => o.id === orderId)
+        ?? null)
+      : await fetchOrderRemote(orderId);
+    if (!order) return;
     setVoucherPreview(order.voucherPreview ?? null);
     setPromotionPreview(order.promotionPreview ?? null);
     if (order.memberId) {
@@ -1048,7 +1068,7 @@ export default function POS() {
       if (shouldUpdateOpenBill(currentOrderId, currentOpenOrder)) {
         const storedOrder = await syncCartToOpenBill(
           currentOrderId!,
-          updateOrderRemote,
+          offlinePos.updateOrderWithOffline,
           buildOpenBillCartUpdate(),
         );
         setCurrentOrderId(storedOrder.id);
@@ -1075,12 +1095,30 @@ export default function POS() {
       };
       const { order: storedOrder } = await offlinePos.createOrderWithOffline(payload);
       setCurrentOrderId(storedOrder.id);
+      const kitchenOrder = {
+        ...storedOrder,
+        items: storedOrder.items.map((it) => {
+          const fromCart = cart.find((c) => String(c.id) === String(it.id));
+          return {
+            ...it,
+            category:
+              fromCart?.category?.trim() ||
+              it.category?.trim() ||
+              "Uncategorized",
+            notes: (fromCart?.notes ?? it.notes ?? "").trim(),
+          };
+        }),
+      };
       resetCart();
       clearQrOrderContext();
       setShowConfirmSent(true);
-      if (isNativePrint) {
-        void printKitchenChit(storedOrder);
-      }
+      // Kitchen confirm always saves; print is best-effort (bridge/BT) and skipped if none.
+      // Native path splits one chit per category when category printers are unset.
+      void tryPrintKitchenChit(kitchenOrder).then((result) => {
+        if (!result.ok && !result.skipped) {
+          toast.error(result.error || t("shared.somethingWrong"));
+        }
+      });
       toast.success(t("pos.orderSentKitchen", { code: storedOrder.code }), { icon: "🍳" });
     } catch (e) {
       toastApiError(e);
@@ -1094,9 +1132,45 @@ export default function POS() {
     setShowConfirmOrderDialog(false);
   };
 
+  const enrichOrderForKitchenPrint = (order: Order): Order => ({
+    ...order,
+    items: order.items.map((it) => {
+      const fromCart = cart.find((c) => String(c.id) === String(it.id));
+      return {
+        ...it,
+        category:
+          fromCart?.category?.trim() ||
+          it.category?.trim() ||
+          "Uncategorized",
+        notes: (fromCart?.notes ?? it.notes ?? "").trim(),
+      };
+    }),
+  });
+
+  const autoPrintAfterDirectPay = (order: Order, opts?: { kitchen?: boolean }) => {
+    const printKitchen = opts?.kitchen ?? printKitchenOnDirectPayRef.current;
+    printKitchenOnDirectPayRef.current = false;
+    // Snapshot notes/categories from cart before any resetCart / await.
+    const kitchenOrder = printKitchen ? enrichOrderForKitchenPrint(order) : null;
+
+    void (async () => {
+      const receiptResult = await tryPrintCustomerReceipt(order);
+      if (!receiptResult.ok && !receiptResult.skipped) {
+        toast.error(receiptResult.error || t("shared.somethingWrong"));
+      }
+      if (!kitchenOrder) return;
+      // Receipt must finish first (same Bluetooth device), then kitchen.
+      const kitchenResult = await tryPrintKitchenChit(kitchenOrder, { allowBridge: true });
+      if (!kitchenResult.ok && !kitchenResult.skipped) {
+        toast.error(kitchenResult.error || t("shared.somethingWrong"));
+      }
+    })();
+  };
+
   // FLOW 2: Pay Now (Takeaway/Quick)
   const handlePayNow = async () => {
-    if (cart.length === 0) return;
+    const hasUnpaidOpenBill = Boolean(currentOrderId && isUnpaidOpenBill(currentOpenOrder));
+    if (cart.length === 0 && !hasUnpaidOpenBill) return;
     if (paymentAckRequired) {
       toast.error(t("pos.fixStock"));
       return;
@@ -1104,8 +1178,12 @@ export default function POS() {
     if (shouldSyncCartToOpenBill(currentOrderId, currentOpenOrder, cart.length)) {
       setSubmitting(true);
       try {
-        await syncCartToOpenBill(currentOrderId!, updateOrderRemote, buildOpenBillCartUpdate());
-        await fetchOrderRemote(currentOrderId!);
+        await syncCartToOpenBill(
+          currentOrderId!,
+          offlinePos.updateOrderWithOffline,
+          buildOpenBillCartUpdate(),
+        );
+        // Sync already updates local/open-bill cache — do not block Pay Now on a refetch.
       } catch (e) {
         toastApiError(e);
         return;
@@ -1113,7 +1191,7 @@ export default function POS() {
         setSubmitting(false);
       }
     }
-    if (currentOrderId && isUnpaidOpenBill(currentOpenOrder)) {
+    if (hasUnpaidOpenBill && currentOrderId) {
       beginOrderPaymentAttempt(currentOrderId);
       setMobileCartOpen(false);
       setShowPayment(true);
@@ -1140,10 +1218,6 @@ export default function POS() {
       if (attachedMemberId !== Number(selectedMember.id)) {
         await attachMemberToOpenOrder(selectedMember);
       }
-    } else if (!selectedMember && !memberIdForPayload) {
-      toast.message("No member attached — loyalty points will not be earned.", {
-        description: "Select a member before checkout to earn program points.",
-      });
     }
 
     let draftLines: PaymentDraftLine[];
@@ -1253,6 +1327,7 @@ export default function POS() {
         ?? (paymentStockError?.orderId ? String(paymentStockError.orderId) : null);
 
       if (recoveryOrderId) {
+        printKitchenOnDirectPayRef.current = false;
         try {
           if (isLocalOrderId(recoveryOrderId)) {
             const local = orders.find((o) => o.id === recoveryOrderId);
@@ -1263,11 +1338,20 @@ export default function POS() {
           } else if (shouldSyncCartToOpenBill(recoveryOrderId, currentOpenOrder, cart.length)) {
             storedOrder = await syncCartToOpenBill(
               recoveryOrderId,
-              updateOrderRemote,
+              offlinePos.updateOrderWithOffline,
               buildOpenBillCartUpdate(),
             );
           } else {
-            storedOrder = await fetchOrderRemote(recoveryOrderId);
+            const local =
+              useOrderStore.getState().orders.find((o) => o.id === recoveryOrderId)
+              ?? (await offlinePos.resolveOrderOffline(recoveryOrderId));
+            if (local) {
+              storedOrder = local;
+            } else if (offlinePos.isOfflineMode) {
+              throw new Error("offline-order-missing");
+            } else {
+              storedOrder = await fetchOrderRemote(recoveryOrderId);
+            }
           }
         } catch {
           toast.error(
@@ -1295,6 +1379,8 @@ export default function POS() {
           paymentStatus: "unpaid",
           payments: [],
           confirmedAt: new Date().toISOString(),
+          // Defer kitchen printer until after customer receipt on Pay Now.
+          skipKitchenPrint: true,
           ...qrOrderPayloadFields,
           idempotencyKey: recoveryOrderId
             ? openBillCheckoutIdempotencyKey(recoveryOrderId)
@@ -1303,19 +1389,16 @@ export default function POS() {
         };
         const createResult = await offlinePos.createOrderWithOffline(payload);
         storedOrder = createResult.order;
+        printKitchenOnDirectPayRef.current = true;
         setCurrentOrderId(storedOrder.id);
         if (createResult.resumed && qrOrderContext) {
           setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: storedOrder.id } : prev));
         }
       }
 
-      // Local offline orders live only in the device store — never re-fetch from API.
-      if (!isLocalOrderId(String(storedOrder.id))) {
-        storedOrder = await fetchOrderRemote(String(storedOrder.id));
-      } else {
-        storedOrder =
-          useOrderStore.getState().orders.find((o) => o.id === storedOrder.id) ?? storedOrder;
-      }
+      // Prefer in-memory order from create/sync — avoid an extra GET on the pay critical path.
+      storedOrder =
+        useOrderStore.getState().orders.find((o) => o.id === storedOrder.id) ?? storedOrder;
 
       const orderBalanceDue = Math.max(
         0,
@@ -1359,7 +1442,11 @@ export default function POS() {
             replayFingerprint: `pos-${storedOrder.id}-${loyaltyAccountId}-${appliedPoints}`,
           });
         }
-        await refreshSelectedMemberPoints();
+        void refreshSelectedMemberPoints();
+        // Pay succeeds even without a printer; print is best-effort.
+        const paidForPrint =
+          useOrderStore.getState().orders.find((o) => o.id === storedOrder.id) ?? storedOrder;
+        autoPrintAfterDirectPay(paidForPrint);
         paymentDraft.clearDraft();
         setCashTenderedInput("");
         clearCheckoutRecoveryState();
@@ -1518,6 +1605,9 @@ export default function POS() {
         });
       }
       useOrderPaymentHistoryStore.getState().refreshOrderAfterPaymentMutation(activeOutletId, currentOrderId);
+      const paidForPrint =
+        useOrderStore.getState().orders.find((o) => o.id === currentOrderId) ?? null;
+      if (paidForPrint) autoPrintAfterDirectPay(paidForPrint);
       paymentDraft.clearDraft();
       clearCheckoutRecoveryState();
       checkoutAttemptIdRef.current = null;
@@ -1612,27 +1702,39 @@ export default function POS() {
   };
 
   // Split bill helpers
+  const splitAmountBase = Math.max(posPaymentBalanceDue, total);
+
   const initSplitBill = () => {
-    if (shouldUpdateOpenBill(currentOrderId, currentOpenOrder)) {
-      toast.error(t("pos.splitBlockedOpenBill"));
-      return;
+    if (currentOpenOrder && cart.length === 0 && currentOpenOrder.items.length > 0) {
+      setCart(orderItemsToCartItems(currentOpenOrder));
     }
+    const amount =
+      currentOpenOrder && isUnpaidOpenBill(currentOpenOrder)
+        ? Math.max(
+            posPaymentBalanceDue,
+            total,
+            typeof currentOpenOrder.balanceDue === "number"
+              ? currentOpenOrder.balanceDue
+              : orderBalanceDue(currentOpenOrder),
+          )
+        : splitAmountBase;
     setShowPayment(false);
     setMobileCartOpen(false);
     setShowSplit(true);
     setSplitMethod("equal");
     setSplitCount(2);
-    buildEqualSplit(2);
+    buildEqualSplit(2, amount);
   };
 
-  const buildEqualSplit = (count: number) => {
-    const perPerson = Math.ceil(total / count);
+  const buildEqualSplit = (count: number, amount: number = splitAmountBase) => {
+    const base = Math.max(0, amount);
+    const perPerson = Math.ceil(base / count);
     setSplitPersons(
       Array.from({ length: count }, (_, i) => ({
         label: t("shared.person", { n: i + 1 }),
         items: [],
         payments: [],
-        totalDue: i === count - 1 ? total - perPerson * (count - 1) : perPerson,
+        totalDue: i === count - 1 ? base - perPerson * (count - 1) : perPerson,
       }))
     );
   };
@@ -1674,7 +1776,7 @@ export default function POS() {
       });
 
       const lines = cart.map((l) => ({ id: l.id, price: l.price, qty: l.qty }));
-      const next = applyByItemTotalDuesWithTaxScale(updatedPeople, lines, total);
+      const next = applyByItemTotalDuesWithTaxScale(updatedPeople, lines, splitAmountBase);
       return next.map((p) => ({ ...p, payments: [] }));
     });
     if (hadDraftPayments) {
@@ -1703,19 +1805,30 @@ export default function POS() {
     return byItemFullyAllocated(splitPersons, cart.map((l) => ({ id: l.id, qty: l.qty })));
   }, [splitMethod, splitPersons, cart]);
 
-  const ensureSplitOrderOnServer = async (): Promise<{ orderId: string; order: import("@/stores/orderStore").Order }> => {
+  const ensureSplitOrderOnServer = async (): Promise<{
+    orderId: string;
+    order: import("@/stores/orderStore").Order;
+    created: boolean;
+  }> => {
     if (currentOrderId) {
-      if (isLocalOrderId(currentOrderId)) {
+      if (isLocalOrderId(currentOrderId) || offlinePos.isOfflineMode) {
         const local =
           useOrderStore.getState().orders.find((o) => o.id === currentOrderId)
-          ?? orders.find((o) => o.id === currentOrderId);
+          ?? orders.find((o) => o.id === currentOrderId)
+          ?? (await offlinePos.resolveOrderOffline(currentOrderId));
         if (!local) {
-          throw new Error("Local offline order not found in session.");
+          throw new Error(
+            offlinePos.isQueueMode
+              ? t("mobile.offlineOrderMissing", {
+                  defaultValue: "Order is not available offline. Refresh open bills while online, then try again.",
+                })
+              : "Local offline order not found in session.",
+          );
         }
-        return { orderId: currentOrderId, order: local };
+        return { orderId: currentOrderId, order: local, created: false };
       }
       const fresh = await fetchOrderRemote(currentOrderId);
-      return { orderId: currentOrderId, order: fresh };
+      return { orderId: currentOrderId, order: fresh, created: false };
     }
     const code = POS_AUTO_ORDER_CODE;
     const { order: created } = await offlinePos.createOrderWithOffline({
@@ -1738,11 +1851,18 @@ export default function POS() {
     if (qrOrderContext) {
       setQrOrderContext((prev) => (prev ? { ...prev, linkedOrderId: created.id } : prev));
     }
+    // First confirm via Split/Print-bill: kitchen once (same as Confirm Order). Not on each person pay.
+    const kitchenOrder = enrichOrderForKitchenPrint(created);
+    void tryPrintKitchenChit(kitchenOrder).then((result) => {
+      if (!result.ok && !result.skipped) {
+        toast.error(result.error || t("shared.somethingWrong"));
+      }
+    });
     if (isLocalOrderId(created.id)) {
-      return { orderId: created.id, order: created };
+      return { orderId: created.id, order: created, created: true };
     }
     const fresh = await fetchOrderRemote(created.id);
-    return { orderId: created.id, order: fresh };
+    return { orderId: created.id, order: fresh, created: true };
   };
 
   const finishPosSplitIfComplete = async (persons: SplitPerson[]) => {
@@ -1774,28 +1894,54 @@ export default function POS() {
     try {
       const { orderId, order: serverOrder } = await ensureSplitOrderOnServer();
       let persons = splitPersons;
-      if (!persons.every((p) => p.serverSplitId != null && p.serverSplitId > 0)) {
+      if (!persons.every((p) => hasAssignedSplitId(p.serverSplitId))) {
         persons = await offlinePos.syncSplitsWithOffline(orderId, serverOrder, persons, splitMethod);
         setSplitPersons(persons);
       }
       const syncedPerson = persons[idx];
-      if (!syncedPerson?.serverSplitId) {
+      if (!hasAssignedSplitId(syncedPerson?.serverSplitId)) {
         toast.error(t("pos.toasts.splitSyncFailed"));
         return;
       }
-      const fresh = isLocalOrderId(orderId)
-        ? (useOrderStore.getState().orders.find((o) => o.id === orderId) ?? serverOrder)
-        : await fetchOrderRemote(orderId);
+      const fresh =
+        isLocalOrderId(orderId) || offlinePos.isQueueMode
+          ? (useOrderStore.getState().orders.find((o) => o.id === orderId)
+            ?? (await offlinePos.resolveOrderOffline(orderId))
+            ?? serverOrder)
+          : await fetchOrderRemote(orderId);
       const paidAt = new Date().toISOString();
-      const payment = buildSplitPaymentForPerson(syncedPerson, method, remaining, fresh, splitMethod, paidAt);
+      const settlementMethod = resolveSettlementMethod(method, checkoutMethods);
+      const selectedSplitMethod = findCheckoutMethod(checkoutMethods, method);
+      let payment = buildSplitPaymentForPerson(
+        syncedPerson,
+        settlementMethod,
+        remaining,
+        fresh,
+        splitMethod,
+        paidAt,
+      );
 
-      if (offlinePos.isGatewayBlockedOffline(payment.method, checkoutMethods)) {
+      if (selectedSplitMethod ? isCashCheckoutMethod(selectedSplitMethod) : settlementMethod === "cash") {
+        const tendered = parseCashTenderedInput(cashTenderedInput);
+        if (!isCashTenderSufficient(tendered, remaining)) {
+          toast.error(t("shared.cashTenderRequired"));
+          return;
+        }
+        const change = computeCashChange(tendered, remaining);
+        payment = {
+          ...payment,
+          tenderedAmount: tendered,
+          changeAmount: change,
+        };
+      }
+
+      if (offlinePos.isGatewayBlockedOffline(settlementMethod, checkoutMethods)) {
         toast.error(t("mobile.gatewayBlockedOffline", { defaultValue: "This payment method requires an internet connection." }));
         return;
       }
 
-      if (isGatewayPaymentMethod(payment.method, checkoutMethods)) {
-        if (isLocalOrderId(orderId)) {
+      if (isGatewayPaymentMethod(settlementMethod, checkoutMethods)) {
+        if (isLocalOrderId(orderId) || offlinePos.isQueueMode) {
           toast.error(t("mobile.gatewayBlockedOffline", { defaultValue: "This payment method requires an internet connection." }));
           return;
         }
@@ -1819,9 +1965,11 @@ export default function POS() {
         return;
       }
 
-      const giftCardSettlementIds = await redeemGiftCardForOrder(orderId);
+      const giftCardSettlementIds = offlinePos.isQueueMode ? [] : await redeemGiftCardForOrder(orderId);
       await offlinePos.addPaymentsWithOffline(orderId, [payment], paymentExtras);
-      await settleGiftCardAfterDirectPayment(orderId, giftCardSettlementIds);
+      if (giftCardSettlementIds.length > 0) {
+        await settleGiftCardAfterDirectPayment(orderId, giftCardSettlementIds);
+      }
 
       const nextPersons = persons.map((p, i) =>
         i === idx
@@ -1831,7 +1979,22 @@ export default function POS() {
       setSplitPersons(nextPersons);
       setPayingPersonIdx(null);
       setSplitPayMethod(null);
-      toast.success(t("shared.paidVia", { label: syncedPerson.label, amount: formatRp(remaining), method }));
+      setCashTenderedInput("");
+      toast.success(t("shared.paidVia", {
+        label: syncedPerson.label,
+        amount: formatRp(remaining),
+        method: findCheckoutMethod(checkoutMethods, method)?.label ?? method,
+      }));
+      const paidPerson = nextPersons[idx] ?? syncedPerson;
+      const orderForPrint =
+        useOrderStore.getState().orders.find((o) => o.id === orderId)
+        ?? fresh
+        ?? serverOrder;
+      void tryPrintSplitPersonReceipt(orderForPrint, paidPerson, splitMethod).then((result) => {
+        if (!result.ok && !result.skipped) {
+          toast.error(result.error || t("shared.somethingWrong"));
+        }
+      });
       await finishPosSplitIfComplete(nextPersons);
     } catch (e) {
       toastApiError(e);
@@ -1856,21 +2019,30 @@ export default function POS() {
         orderFromEnsure
         ?? orders.find((o) => o.id === orderId)
         ?? useOrderStore.getState().orders.find((o) => o.id === orderId)
-        ?? (isLocalOrderId(orderId) ? null : await fetchOrderRemote(orderId));
+        ?? (offlinePos.isOfflineMode || isLocalOrderId(orderId)
+          ? await offlinePos.resolveOrderOffline(orderId)
+          : null)
+        ?? (isLocalOrderId(orderId) || offlinePos.isOfflineMode ? null : await fetchOrderRemote(orderId));
       if (!order) {
         throw new Error(t("pos.toasts.orderNotFound", { defaultValue: "Order not found for printing." }));
       }
-      if (isNativePrint) {
-        const result = await printCustomerReceipt(order);
-        if (!result.ok) throw new Error(result.error);
-      } else if (isLocalOrderId(orderId)) {
+      if (!canPrint) {
         throw new Error(
-          t("mobile.offlinePrintRequiresNative", {
-            defaultValue: "Offline bill print requires the native POS app.",
+          t("pos.printerUnavailable", {
+            defaultValue: "No printer configured (bridge or Bluetooth).",
           }),
         );
-      } else {
-        await postPrintCustomerBill(Number(orderId), activeOutletId);
+      }
+      const result = await printCustomerReceipt(order);
+      if (!result.ok) {
+        if (result.skipped) {
+          throw new Error(
+            t("pos.printerUnavailable", {
+              defaultValue: "No printer configured (bridge or Bluetooth).",
+            }),
+          );
+        }
+        throw new Error(result.error);
       }
       toast.success(t("pos.toasts.billPrinted"));
     } catch (e) {
@@ -1898,6 +2070,17 @@ export default function POS() {
             amountValue: Math.round(appliedPoints / 10),
             replayFingerprint: `pos-${currentOrderId}-${loyaltyAccountId}-${appliedPoints}`,
           });
+        }
+        const paidForPrint =
+          useOrderStore.getState().orders.find((o) => o.id === currentOrderId) ?? null;
+        const splitPayment = paymentsToCommit.find((p) => p.orderSplitId != null && Number(p.orderSplitId) > 0);
+        if (paidForPrint && splitPayment?.orderSplitId) {
+          const personSnap = splitPersons.find((p) => p.serverSplitId === Number(splitPayment.orderSplitId));
+          if (personSnap) {
+            void tryPrintSplitPersonReceipt(paidForPrint, personSnap, splitMethod);
+          }
+        } else if (paidForPrint) {
+          autoPrintAfterDirectPay(paidForPrint);
         }
         clearCheckoutRecoveryState();
         checkoutAttemptIdRef.current = null;
@@ -2104,6 +2287,7 @@ export default function POS() {
     handlePrintCustomerBill,
     printingBill,
     setShowKitchenReprint,
+    canPrint,
   };
 
   const nestedCartPickerOpen =
@@ -2122,29 +2306,6 @@ export default function POS() {
   return (
     <PosErrorBoundary>
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div
-        className={
-          isShortViewport
-            ? "flex items-center gap-2 border-b border-border/60 bg-muted/30 min-w-0 shrink-0"
-            : "contents"
-        }
-      >
-        <div className={isShortViewport ? "min-w-0 flex-1 overflow-hidden" : undefined}>
-          <ConnectivitySyncRibbon
-            outletId={activeOutletId}
-            terminalRegistrationReady={!showMenuLoading}
-            onManualSync={offlinePos.isNativeShell ? () => void offlinePos.manualSync() : undefined}
-            showNativeControls={offlinePos.isNativeShell}
-          />
-        </div>
-        {isShortViewport ? (
-          <div className="pr-2 shrink-0">
-            <BluetoothPrinterSetup outletId={activeOutletId} compact />
-          </div>
-        ) : (
-          <BluetoothPrinterSetup outletId={activeOutletId} />
-        )}
-      </div>
       {offlinePos.showOfflineBlocker ? (
         <OfflineShiftBlocker onBootstrap={() => void offlinePos.performBootstrap()} loading={offlinePos.bootstrapLoading} />
       ) : (
@@ -2395,7 +2556,11 @@ export default function POS() {
             </div>
           </DialogHeader>
           {printStatusOutletId ? (
-            <PosPrintStatusBar outletId={printStatusOutletId} />
+            <PosPrintStatusBar
+              outletId={printStatusOutletId}
+              canPrint={canPrint}
+              hideBridgeStatus={hideBridgePrintStatus}
+            />
           ) : null}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" disabled={submitting} onClick={() => setShowConfirmOrderDialog(false)}>
@@ -2567,7 +2732,11 @@ export default function POS() {
                   </div>
                 </div>
               )}
-              <PosPrintStatusBar outletId={printStatusOutletId} />
+              <PosPrintStatusBar
+                outletId={printStatusOutletId}
+                canPrint={canPrint}
+                hideBridgeStatus={hideBridgePrintStatus}
+              />
               </div>
 
               <div className="mt-2 flex shrink-0 gap-2 border-t border-border/50 pt-2">
@@ -2830,32 +2999,60 @@ export default function POS() {
                                 className="mb-3"
                                 variant="compact"
                                 tiles={checkoutTiles}
-                                selectedCode={
-                                  checkoutTiles.find((t) => t.method.label === splitPayMethod)?.method
-                                    .paymentMethodCode ?? null
-                                }
+                                selectedCode={splitPayMethod}
                                 onSelect={(code) => {
-                                  const tile = checkoutTiles.find((t) => t.method.paymentMethodCode === code);
-                                  setSplitPayMethod(tile?.method.label ?? null);
+                                  setSplitPayMethod(code);
+                                  setCashTenderedInput("");
                                 }}
                               />
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setPayingPersonIdx(null)}
-                                  className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
-                                >
-                                  {t("shared.cancel")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSplitPersonPay()}
-                                  disabled={!splitPayMethod || submitting}
-                                  className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-                                >
-                                  {t("shared.confirmPayment")}
-                                </button>
-                              </div>
+                              {(() => {
+                                const splitMethodCfg = findCheckoutMethod(checkoutMethods, splitPayMethod);
+                                const personPaid = person.payments.reduce((s, p) => s + p.amount, 0);
+                                const personRemaining = Math.max(0, person.totalDue - personPaid);
+                                const showSplitCash =
+                                  Boolean(splitMethodCfg && isCashCheckoutMethod(splitMethodCfg))
+                                  && personRemaining > 0;
+                                const splitCashReady =
+                                  !showSplitCash
+                                  || isCashTenderSufficient(
+                                    parseCashTenderedInput(cashTenderedInput),
+                                    personRemaining,
+                                  );
+                                return (
+                                  <>
+                                    {showSplitCash ? (
+                                      <div className="mb-3">
+                                        <CashTenderFields
+                                          settledAmount={personRemaining}
+                                          tenderedInput={cashTenderedInput}
+                                          onTenderedInputChange={setCashTenderedInput}
+                                          disabled={submitting}
+                                        />
+                                      </div>
+                                    ) : null}
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPayingPersonIdx(null);
+                                          setCashTenderedInput("");
+                                        }}
+                                        className="flex-1 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-medium"
+                                      >
+                                        {t("shared.cancel")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleSplitPersonPay()}
+                                        disabled={!splitPayMethod || submitting || !splitCashReady}
+                                        className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                                      >
+                                        {t("shared.confirmPayment")}
+                                      </button>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </motion.div>
                         )}
@@ -2994,12 +3191,13 @@ export default function POS() {
       {currentOrderId ? (
         <KitchenReprintModal
           open={showKitchenReprint}
-          orderId={Number(currentOrderId)}
-          items={(currentOpenOrder?.items ?? []).map((it) => ({
-            orderItemId: Number(it.orderItemId ?? it.id),
-            name: it.name,
-            qty: it.qty,
-          }))}
+          orderId={String(currentOrderId)}
+          orderCode={currentOpenOrder?.code ?? String(currentOrderId)}
+          tableName={currentOpenOrder?.tableName}
+          orderType={currentOpenOrder?.orderType}
+          items={toKitchenReprintLines(currentOpenOrder?.items ?? [])}
+          outletId={typeof activeOutletId === "number" ? activeOutletId : null}
+          bootstrap={offlinePos.bootstrap}
           onClose={() => setShowKitchenReprint(false)}
         />
       ) : null}

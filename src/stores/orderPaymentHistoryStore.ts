@@ -6,6 +6,11 @@ import {
 } from "@/lib/api-integration/endpoints";
 import { useAuthStore } from "./authStore";
 
+/** Server payment history only works with numeric order ids (not local:* / codes). */
+function isServerOrderId(orderId: string): boolean {
+  return Boolean(orderId) && /^\d+$/.test(orderId);
+}
+
 function mapApiError(error: unknown): string {
   if (error instanceof ApiHttpError) return error.message;
   if (error instanceof Error) return error.message;
@@ -108,7 +113,7 @@ export const useOrderPaymentHistoryStore = create<OrderPaymentHistoryState>((set
   getEntry: (outletId, orderId) => get().entries[orderPaymentHistoryCacheKey(outletId, orderId)],
 
   ensureLoaded: (outletId, orderId) => {
-    if (!orderId) return;
+    if (!orderId || !isServerOrderId(orderId)) return;
     const key = orderPaymentHistoryCacheKey(outletId, orderId);
     const existing = get().entries[key];
     if (existing?.fetchedAt && !existing.error) return;
@@ -116,7 +121,7 @@ export const useOrderPaymentHistoryStore = create<OrderPaymentHistoryState>((set
   },
 
   fetchHistory: async (outletId, orderId, opts = {}) => {
-    if (!orderId) return;
+    if (!orderId || !isServerOrderId(orderId)) return;
     useAuthStore.getState().syncApiBearerForRequests();
     const { background = false, force = false } = opts;
     const key = orderPaymentHistoryCacheKey(outletId, orderId);
@@ -201,6 +206,7 @@ export const useOrderPaymentHistoryStore = create<OrderPaymentHistoryState>((set
   },
 
   refreshOrderAfterPaymentMutation: (outletId, orderId) => {
+    if (!isServerOrderId(orderId)) return;
     const key = orderPaymentHistoryCacheKey(outletId, orderId);
     abortInflightKey(key, get().inflightAbortByKey, get().inflightPromiseByKey);
     set((s) => {
@@ -214,6 +220,7 @@ export const useOrderPaymentHistoryStore = create<OrderPaymentHistoryState>((set
   },
 
   onOrderUpstreamSnapshot: (outletId, orderId) => {
+    if (!isServerOrderId(orderId)) return;
     const key = orderPaymentHistoryCacheKey(outletId, orderId);
     if ((get().interestRefCount.get(key) ?? 0) <= 0) return;
     void get().fetchHistory(outletId, orderId, { background: true, force: true });

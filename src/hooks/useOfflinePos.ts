@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { CreateOrderPayload, OrderApi, OrderPaymentPayload } from "@/lib/api-integration/endpoints";
+import type { CreateOrderPayload, OrderApi, OrderPaymentPayload, UpdateOrderPayload } from "@/lib/api-integration/endpoints";
 import { buildSplitSyncPersons } from "@/features/pos/syncSplitPersonsToServer";
 import { isNativePosShell } from "@/mobile/platform";
 import {
@@ -28,11 +28,15 @@ import {
   type CachedOpenOrder,
 } from "@/mobile/offline/offlineOrdersCache";
 import { upsertCachedPaidOrder } from "@/mobile/offline/offlinePaidOrdersCache";
+import { listQueuedOperationsForOutlet, replaceQueuedOperationPayload } from "@/lib/offline/offlineOperationQueue";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { orderApiToStoreOrder, useOrderStore, type Order, type SplitPerson } from "@/stores/orderStore";
+import type { OutletPaymentMethodConfigApi } from "@/lib/api-integration/outletPaymentMethodEndpoints";
+import { isPaymentMethodBlockedWhenOffline } from "@/features/pos/paymentMethodUtils";
 
 const TERMINAL_OP = {
   ORDER_CREATE: "order.create",
+  ORDER_UPDATE: "order.update",
   ORDER_SPLITS_SYNC: "order.splits.sync",
   ORDER_ADD_PAYMENTS: "order.add_payments",
 } as const;
@@ -57,7 +61,8 @@ function localOrderFromPayload(localId: string, payload: CreateOrderPayload): Or
     emoji: item.emoji,
     qty: item.qty,
     price: item.price,
-    notes: item.notes,
+    notes: typeof item.notes === "string" ? item.notes : "",
+    category: typeof item.category === "string" ? item.category : undefined,
     lineIndex: idx,
   }));
   return {
@@ -142,6 +147,85 @@ async function persistRemoteOrderCaches(outletId: number | null | undefined, ord
   await persistOrderCaches(outletId, order);
 }
 
+function applyUpdatePayloadToOrder(order: Order, payload: UpdateOrderPayload): Order {
+  const items = payload.items
+    ? payload.items.map((item, idx) => ({
+        id: String(item.id),
+        orderItemId: order.items.find((oi) => String(oi.id) === String(item.id))?.orderItemId,
+        name: item.name,
+        emoji: item.emoji,
+        qty: item.qty,
+        price: item.price,
+        notes: typeof item.notes === "string" ? item.notes : "",
+        category: typeof item.category === "string" ? item.category : undefined,
+        lineIndex: idx,
+      }))
+    : order.items;
+
+  return {
+    ...order,
+    items,
+    subtotal: payload.subtotal ?? order.subtotal,
+    tax: payload.tax ?? order.tax,
+    total: payload.total ?? order.total,
+    discountAmount: payload.discountAmount ?? order.discountAmount,
+    applyTax: payload.applyTax ?? order.applyTax,
+    taxSnapshot: payload.taxSnapshot !== undefined ? payload.taxSnapshot ?? undefined : order.taxSnapshot,
+    customerName:
+      payload.customerName !== undefined ? (payload.customerName ?? "") : order.customerName,
+    customerPhone:
+      payload.customerPhone !== undefined ? (payload.customerPhone ?? "") : order.customerPhone,
+    memberId: payload.memberId !== undefined ? payload.memberId : order.memberId,
+    tableId: payload.tableId !== undefined ? payload.tableId : order.tableId,
+    balanceDue: Math.max(
+      0,
+      (payload.total ?? order.total) -
+        order.payments.reduce((sum, payment) => sum + payment.amount, 0),
+    ),
+  };
+}
+
+async function patchQueuedOrderCreatePayload(
+  outletId: number,
+  orderId: string,
+  payload: UpdateOrderPayload,
+): Promise<void> {
+  const mapping = isLocalOrderId(orderId) ? await loadLocalOrderMapping(orderId) : null;
+  const rows = await listQueuedOperationsForOutlet(outletId);
+  const createOp = rows.find((row) => {
+    if (row.operationType !== TERMINAL_OP.ORDER_CREATE) return false;
+    const clientLocalRef = row.payload.clientLocalRef;
+    const code = row.payload.code;
+    return (
+      (typeof clientLocalRef === "string" && clientLocalRef === orderId) ||
+      (typeof code === "string" && mapping?.localOrderCode != null && code === mapping.localOrderCode)
+    );
+  });
+  if (!createOp) return;
+
+  const nextPayload: Record<string, unknown> = {
+    ...createOp.payload,
+    ...(payload.items ? { items: payload.items } : {}),
+    ...(payload.subtotal != null ? { subtotal: payload.subtotal } : {}),
+    ...(payload.tax != null ? { tax: payload.tax } : {}),
+    ...(payload.total != null ? { total: payload.total } : {}),
+    ...(payload.discountAmount != null ? { discountAmount: payload.discountAmount } : {}),
+    ...(payload.applyTax != null ? { applyTax: payload.applyTax } : {}),
+    ...(payload.taxSnapshot !== undefined ? { taxSnapshot: payload.taxSnapshot } : {}),
+    ...(payload.customerName !== undefined ? { customerName: payload.customerName } : {}),
+    ...(payload.customerPhone !== undefined ? { customerPhone: payload.customerPhone } : {}),
+    ...(payload.memberId !== undefined ? { memberId: payload.memberId } : {}),
+    ...(payload.tableId !== undefined ? { tableId: payload.tableId } : {}),
+    ...(payload.notes !== undefined ? { notes: payload.notes } : {}),
+  };
+  const fp = await shaFingerprint([
+    TERMINAL_OP.ORDER_CREATE,
+    orderId,
+    JSON.stringify(nextPayload),
+  ]);
+  await replaceQueuedOperationPayload(outletId, createOp.id, nextPayload, fp);
+}
+
 async function loadOrderForOfflineMutation(outletId: number, orderId: string): Promise<Order | null> {
   const fromStore = useOrderStore.getState().orders.find((o) => o.id === orderId) ?? null;
   if (fromStore) return fromStore;
@@ -170,6 +254,7 @@ export type UseOfflinePosOptions = {
   outletId: number | null | undefined;
   tenantId: number;
   createOrderRemote: (payload: CreateOrderPayload) => Promise<{ order: Order; resumed: boolean }>;
+  updateOrderRemote: (id: string, payload: UpdateOrderPayload) => Promise<Order>;
   addOrderPaymentsRemote: (
     id: string,
     payments: OrderPaymentPayload[],
@@ -182,6 +267,7 @@ export function useOfflinePos({
   outletId,
   tenantId,
   createOrderRemote,
+  updateOrderRemote,
   addOrderPaymentsRemote,
   fetchOrderRemote,
 }: UseOfflinePosOptions) {
@@ -234,7 +320,12 @@ export function useOfflinePos({
   const createOrderWithOffline = useCallback(
     async (payload: CreateOrderPayload): Promise<{ order: Order; resumed: boolean }> => {
       if (!isOfflineMode || !outletId) {
-        return createOrderRemote(payload);
+        const created = await createOrderRemote(payload);
+        // Seed open-bill cache so a later offline Pay Now / split can mutate without a refetch.
+        if (outletId && outletId >= 1) {
+          await persistRemoteOrderCaches(outletId, created.order);
+        }
+        return created;
       }
       if (!bootstrapReady) {
         throw new Error(t("mobile.connectToBootstrap", { defaultValue: "Connect to the internet once to prepare offline shift." }));
@@ -268,6 +359,66 @@ export function useOfflinePos({
     [bootstrapReady, createOrderRemote, enqueueReplayableOperation, isOfflineMode, outletId, t],
   );
 
+  const updateOrderWithOffline = useCallback(
+    async (orderId: string, payload: UpdateOrderPayload): Promise<Order> => {
+      if (!isOfflineMode || !outletId) {
+        return updateOrderRemote(orderId, payload);
+      }
+      if (!bootstrapReady) {
+        throw new Error(
+          t("mobile.connectToBootstrap", {
+            defaultValue: "Connect to the internet once to prepare offline shift.",
+          }),
+        );
+      }
+
+      const existing = await loadOrderForOfflineMutation(outletId, orderId);
+      if (!existing) {
+        throw new Error(
+          t("mobile.offlineOrderMissing", {
+            defaultValue: "Order is not available offline. Refresh open bills while online, then try again.",
+          }),
+        );
+      }
+
+      const updated = applyUpdatePayloadToOrder(existing, payload);
+      await persistOrderCaches(outletId, updated);
+
+      if (isLocalOrderId(orderId)) {
+        await patchQueuedOrderCreatePayload(outletId, orderId, payload);
+        return updated;
+      }
+
+      const serverOrderId = resolveServerOrderId(orderId, null);
+      if (serverOrderId == null || serverOrderId <= 0) {
+        throw new Error(
+          t("mobile.offlineOrderIdInvalid", {
+            defaultValue: "This order cannot be updated offline. Reconnect and refresh open bills.",
+          }),
+        );
+      }
+
+      const syncPayload = {
+        orderId: serverOrderId,
+        ...payload,
+      };
+      const fp = await shaFingerprint([
+        TERMINAL_OP.ORDER_UPDATE,
+        orderId,
+        JSON.stringify(syncPayload),
+      ]);
+      await enqueueReplayableOperation({
+        outletId,
+        fingerprint: fp,
+        operationType: TERMINAL_OP.ORDER_UPDATE,
+        payload: syncPayload as unknown as Record<string, unknown>,
+      });
+
+      return updated;
+    },
+    [bootstrapReady, enqueueReplayableOperation, isOfflineMode, outletId, t, updateOrderRemote],
+  );
+
   const syncSplitsWithOffline = useCallback(
     async (
       orderId: string,
@@ -287,15 +438,23 @@ export function useOfflinePos({
       const persons = buildSplitSyncPersons(order, splitPersons, splitMethod).map((person) => ({
         ...person,
         items: person.items.map((item) => {
-          const clientLine = order.items.find(
-            (oi) => oi.orderItemId != null && Number(oi.orderItemId) === item.orderItemId,
-          );
-          const clientItemId = clientLine?.id ?? String(item.orderItemId);
-          const mappedServerItemId = mapping?.itemMap[String(clientItemId)];
+          const fromClientId =
+            item.clientItemId != null
+              ? order.items.find((oi) => String(oi.id) === String(item.clientItemId))
+              : undefined;
+          const fromOrderItemId =
+            item.orderItemId != null && Number(item.orderItemId) > 0
+              ? order.items.find(
+                  (oi) => oi.orderItemId != null && Number(oi.orderItemId) === Number(item.orderItemId),
+                )
+              : undefined;
+          const clientLine = fromClientId ?? fromOrderItemId;
+          const clientItemId = String(item.clientItemId ?? clientLine?.id ?? item.orderItemId ?? "");
+          const mappedServerItemId = clientItemId ? mapping?.itemMap[clientItemId] : undefined;
           return {
             ...item,
-            clientItemId: String(clientItemId),
-            orderItemId: mappedServerItemId ?? item.orderItemId,
+            clientItemId,
+            orderItemId: mappedServerItemId ?? (Number(item.orderItemId) > 0 ? Number(item.orderItemId) : 0),
           };
         }),
       }));
@@ -319,10 +478,24 @@ export function useOfflinePos({
       });
       await saveSplitMapping(orderId, splitMap);
 
-      return splitPersons.map((person, idx) => ({
+      const synced = splitPersons.map((person, idx) => ({
         ...person,
         serverSplitId: splitMap[idx],
       }));
+
+      // Keep local order snapshot aware of split layout for offline reprint / resume.
+      const existing = await loadOrderForOfflineMutation(outletId, orderId);
+      if (existing) {
+        await persistOrderCaches(outletId, {
+          ...existing,
+          splitBill: {
+            method: splitMethod === "by-item" ? "by-item" : "equal",
+            persons: synced,
+          },
+        });
+      }
+
+      return synced;
     },
     [enqueueReplayableOperation, isOfflineMode, outletId, t],
   );
@@ -335,7 +508,8 @@ export function useOfflinePos({
     ): Promise<Order> => {
       if (!isOfflineMode || !outletId) {
         const remote = await addOrderPaymentsRemote(orderId, payments, extra);
-        await persistRemoteOrderCaches(outletId, remote);
+        // IndexedDB cache write is best-effort; don't hold the pay spinner.
+        void persistRemoteOrderCaches(outletId, remote);
         return remote;
       }
 
@@ -415,13 +589,19 @@ export function useOfflinePos({
   );
 
   const isGatewayBlockedOffline = useCallback(
-    (method: string, checkoutMethods: { code: string; type?: string }[]): boolean => {
+    (method: string, checkoutMethods?: OutletPaymentMethodConfigApi[]): boolean => {
       if (!isOfflineMode) return false;
-      const match = checkoutMethods.find((m) => m.code === method);
-      const type = match?.type ?? method;
-      return type !== "cash" && type !== "static_qris" && method !== "cash" && method !== "static_qris";
+      return isPaymentMethodBlockedWhenOffline(method, checkoutMethods);
     },
     [isOfflineMode],
+  );
+
+  const resolveOrderOffline = useCallback(
+    async (orderId: string): Promise<Order | null> => {
+      if (!outletId || outletId < 1) return null;
+      return loadOrderForOfflineMutation(outletId, orderId);
+    },
+    [outletId],
   );
 
   const manualSync = useCallback(async () => {
@@ -431,6 +611,8 @@ export function useOfflinePos({
 
   return {
     isOfflineMode,
+    /** @deprecated alias — POS/Cashier historically used isQueueMode */
+    isQueueMode: isOfflineMode,
     isNativeShell: isNativePosShell(),
     bootstrap,
     bootstrapReady,
@@ -439,8 +621,10 @@ export function useOfflinePos({
     performBootstrap,
     refreshBootstrapCache,
     createOrderWithOffline,
+    updateOrderWithOffline,
     syncSplitsWithOffline,
     addPaymentsWithOffline,
+    resolveOrderOffline,
     isGatewayBlockedOffline,
     manualSync,
     offlineMenuItems: bootstrap?.menuItems?.data ?? [],

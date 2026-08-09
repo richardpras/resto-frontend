@@ -55,14 +55,15 @@ describe("deviceKey", () => {
 });
 
 describe("offlineCapability", () => {
-  it("allows POS and blocks QR/reservations/daily close", () => {
+  it("allows POS and reservations; blocks QR and daily close", () => {
     expect(isPathAllowedOffline("/pos")).toBe(true);
     expect(isPathAllowedOffline("/cashier")).toBe(true);
+    expect(isPathAllowedOffline("/reservations")).toBe(true);
     expect(isPathAllowedOffline("/shift-close")).toBe(false);
     expect(isPathAllowedOffline("/qr-orders")).toBe(false);
-    expect(isPathAllowedOffline("/reservations")).toBe(false);
     expect(isPathAllowedOffline("/accounting")).toBe(false);
     expect(capabilityForPath("/members")).toBe("membersCreate");
     expect(isOfflineCapabilityAllowed("gatewayPayment")).toBe(false);
+    expect(isOfflineCapabilityAllowed("reservations")).toBe(true);
   });
 });

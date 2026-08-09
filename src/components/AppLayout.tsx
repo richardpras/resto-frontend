@@ -14,6 +14,7 @@ import { useOutletStore } from "@/stores/outletStore";
 import { useOfflineSyncStore } from "@/stores/offlineSyncStore";
 import { BugReportButton } from "@/components/bug-report/BugReportButton";
 import { OfflinePendingQueueButton } from "@/components/offline/OfflinePendingQueueButton";
+import { BluetoothPrinterSetup } from "@/mobile/print/BluetoothPrinterSetup";
 import { SoundAlertPrompt } from "@/components/sound/SoundAlertPrompt";
 import { StaffInstallPrompt } from "@/components/pwa/StaffInstallPrompt";
 import { SoundAlertsProvider } from "@/components/sound/SoundAlertsProvider";
@@ -161,6 +162,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
               <OfflinePendingQueueButton isOnline={isOnline} connectivityTitle={connectivityTitle} />
+              <BluetoothPrinterSetup outletId={activeOutletId} variant="header" />
               {user.pinSet ? (
                 <button
                   type="button"

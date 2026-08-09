@@ -114,6 +114,44 @@ export async function removeQueuedOperationsByFingerprints(outletId: number, fin
   }
 }
 
+/** Replace payload on an existing queued row (e.g. patch offline order.create before sync). */
+export async function replaceQueuedOperationPayload(
+  outletId: number,
+  operationId: string,
+  payload: Record<string, unknown>,
+  fingerprint?: string,
+): Promise<boolean> {
+  const rows = await listQueuedOperationsForOutlet(outletId);
+  const existing = rows.find((r) => r.id === operationId);
+  if (!existing) return false;
+
+  const next: QueuedOfflineOperation = {
+    ...existing,
+    payload,
+    fingerprint: fingerprint ?? existing.fingerprint,
+  };
+
+  if (!hasIndexedDb()) {
+    memoryFallback.set(`${outletId}:${next.fingerprint}`, next);
+    if (fingerprint && fingerprint !== existing.fingerprint) {
+      memoryFallback.delete(`${outletId}:${existing.fingerprint}`);
+    }
+    return true;
+  }
+
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error ?? new Error("IDB transaction error"));
+    tx.objectStore(STORE).put(next);
+  });
+  return true;
+}
+
 export function countMemoryQueueForTests(outletId: number): number {
   return [...memoryFallback.values()].filter((o) => o.outletId === outletId).length;
 }

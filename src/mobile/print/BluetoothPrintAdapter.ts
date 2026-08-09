@@ -1,7 +1,7 @@
 import { RestoBluetoothPrinter } from "@restohub/capacitor-bluetooth-printer";
 import { encodeDocumentBase64 } from "./CloudPrintAdapter";
 import type { EscPosDocument } from "./escposBuilder";
-import { getSavedBluetoothAddress } from "./bluetoothPrinterConfig";
+import { getSavedBluetoothAddress, getBluetoothAutoCut } from "./bluetoothPrinterConfig";
 import type { PrintPort, PrintResult } from "./PrintPort";
 
 export class BluetoothPrintAdapter implements PrintPort {
@@ -54,7 +54,12 @@ export class BluetoothPrintAdapter implements PrintPort {
         return { ok: false, error: "Bluetooth is disabled" };
       }
 
-      const base64 = await encodeDocumentBase64(document);
+      const autoCut = await getBluetoothAutoCut(this.outletId);
+      const payload: EscPosDocument = {
+        ...document,
+        cut: autoCut && document.cut !== false && document.cut !== "none" ? (document.cut ?? true) : false,
+      };
+      const base64 = await encodeDocumentBase64(payload);
       await RestoBluetoothPrinter.printRaw({ address, data: base64 });
       return { ok: true };
     } catch (error) {

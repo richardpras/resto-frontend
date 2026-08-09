@@ -34,6 +34,18 @@ export function describeQueuedOperation(op: QueuedOfflineOperation): QueuedOpera
     };
   }
 
+  if (op.operationType === "order.update") {
+    const code = String(payload.localOrderCode ?? payload.orderId ?? "").trim();
+    const total = moneyHint(payload.total);
+    const parts = [code ? `Order ${code}` : "Update order", total].filter(Boolean);
+    return {
+      titleKey: "mobile.pendingOp.updateOrder",
+      titleDefault: "Update order",
+      detail: parts.join(" · "),
+      occurredAt,
+    };
+  }
+
   if (op.operationType === "order.add_payments") {
     const code = String(payload.localOrderCode ?? payload.orderId ?? "").trim();
     const payments = Array.isArray(payload.payments) ? payload.payments : [];
@@ -67,6 +79,17 @@ export function describeQueuedOperation(op: QueuedOfflineOperation): QueuedOpera
       titleKey: "mobile.pendingOp.cashMovement",
       titleDefault: label,
       detail: [amount, category].filter(Boolean).join(" · "),
+      occurredAt,
+    };
+  }
+
+  if (op.operationType === "reservation.create") {
+    const name = String(payload.customerName ?? "").trim();
+    const code = String(payload.clientLocalRef ?? "").trim();
+    return {
+      titleKey: "mobile.pendingOp.createReservation",
+      titleDefault: "Create reservation",
+      detail: [name || "Reservation", code].filter(Boolean).join(" · "),
       occurredAt,
     };
   }

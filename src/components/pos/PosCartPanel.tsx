@@ -111,6 +111,8 @@ export type PosCartPanelProps = {
   handlePrintCustomerBill: () => Promise<void>;
   printingBill: boolean;
   setShowKitchenReprint: (v: boolean) => void;
+  /** False when bridge + Bluetooth/Sunmi are all unavailable — disables Print bill / Reprint. */
+  canPrint?: boolean;
   /** `sheet` hides duplicate title (Sheet already has one) and collapses order details by default. */
   layout?: "sidebar" | "sheet";
 };
@@ -194,6 +196,7 @@ export function PosCartPanel(props: PosCartPanelProps) {
     handlePrintCustomerBill,
     printingBill,
     setShowKitchenReprint,
+    canPrint = true,
     layout = "sidebar",
   } = props;
 
@@ -613,7 +616,14 @@ export function PosCartPanel(props: PosCartPanelProps) {
               </button>
               <button
                 onClick={() => void handlePayNow()}
-                disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
+                disabled={
+                  (cart.length === 0 && !(currentOrderId && currentOpenOrder?.paymentStatus !== "paid"))
+                  || submitting
+                  || paymentAckRequired
+                  || menuLoading
+                  || !!menuError
+                  || !checkoutReady
+                }
                 className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2 min-h-11"
               >
                 <CreditCard className="h-4 w-4" /> {t("pos.payNow")}
@@ -622,7 +632,14 @@ export function PosCartPanel(props: PosCartPanelProps) {
           ) : (
             <button
               onClick={() => void handlePayNow()}
-              disabled={cart.length === 0 || submitting || paymentAckRequired || menuLoading || !!menuError || !checkoutReady}
+              disabled={
+                (cart.length === 0 && !(currentOrderId && currentOpenOrder?.paymentStatus !== "paid"))
+                || submitting
+                || paymentAckRequired
+                || menuLoading
+                || !!menuError
+                || !checkoutReady
+              }
               className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity min-h-11"
             >
               {t("pos.payAmount", { amount: formatRp(total) })}
@@ -634,7 +651,8 @@ export function PosCartPanel(props: PosCartPanelProps) {
             <button
               type="button"
               onClick={() => void handlePrintCustomerBill()}
-              disabled={printingBill || submitting}
+              disabled={!canPrint || printingBill || submitting}
+              title={!canPrint ? t("pos.printerUnavailable", { defaultValue: "No printer configured" }) : undefined}
               className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold disabled:opacity-40 hover:bg-muted min-h-11"
             >
               {printingBill ? "…" : t("pos.printBill")}
@@ -643,7 +661,9 @@ export function PosCartPanel(props: PosCartPanelProps) {
               <button
                 type="button"
                 onClick={() => setShowKitchenReprint(true)}
-                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted min-h-11"
+                disabled={!canPrint}
+                title={!canPrint ? t("pos.printerUnavailable", { defaultValue: "No printer configured" }) : undefined}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold disabled:opacity-40 hover:bg-muted min-h-11"
               >
                 {t("pos.reprintKitchen")}
               </button>

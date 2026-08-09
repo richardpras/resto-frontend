@@ -12,6 +12,7 @@ export function normalizePrinterForForm(printer: Printer): Printer {
   const normalized: Printer = {
     ...printer,
     thermalPaperWidth: printer.thermalPaperWidth ?? "58mm",
+    autoCut: printer.autoCut ?? true,
   };
 
   if (printer.connection === "shared") {
@@ -60,6 +61,7 @@ export function buildPrinterPayload(form: Printer): Printer {
     printerType: form.printerType,
     connection: form.connection,
     thermalPaperWidth: form.thermalPaperWidth ?? "58mm",
+    autoCut: form.autoCut ?? true,
     outletId: form.outletId,
     printerProfileId: form.printerProfileId,
   };
