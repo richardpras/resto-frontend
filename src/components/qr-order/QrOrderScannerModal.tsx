@@ -10,45 +10,96 @@ type Props = {
   onScan: (code: string) => void;
 };
 
+async function resolveCameraId(): Promise<string | { facingMode: string }> {
+  try {
+    const cameras = await Html5Qrcode.getCameras();
+    if (cameras.length === 0) {
+      return { facingMode: "environment" };
+    }
+    const back = cameras.find((c) => /back|rear|environment|world/i.test(c.label));
+    return (back ?? cameras[cameras.length - 1]).id;
+  } catch {
+    return { facingMode: "environment" };
+  }
+}
+
 export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
   const { t } = useOpsTranslation();
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const onCloseRef = useRef(onClose);
+  const onScanRef = useRef(onScan);
+  const tRef = useRef(t);
   const [error, setError] = useState<string | null>(null);
 
+  onCloseRef.current = onClose;
+  onScanRef.current = onScan;
+  tRef.current = t;
+
+  // Only restart camera when `open` flips — parent inline callbacks / i18n must not remount scanner.
   useEffect(() => {
     if (!open) return;
 
-    let active = true;
-    const scanner = new Html5Qrcode("qr-order-scanner-region");
-    scannerRef.current = scanner;
-    setError(null);
+    let cancelled = false;
+    let scanner: Html5Qrcode | null = null;
 
-    void scanner
-      .start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
-        (decoded) => {
-          const code = parseQrOrderCode(decoded);
-          if (!code || !active) return;
-          void scanner.stop().finally(() => {
-            onScan(code);
-            onClose();
-          });
-        },
-        () => undefined,
-      )
-      .catch(() => {
-        if (active) setError(t("qrStaff.scanner.cameraFailed"));
-      });
+    const start = async () => {
+      setError(null);
+      // Wait one frame so #qr-order-scanner-region is mounted.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (cancelled || !document.getElementById("qr-order-scanner-region")) return;
+
+      try {
+        const cameraConfig = await resolveCameraId();
+        if (cancelled) return;
+
+        scanner = new Html5Qrcode("qr-order-scanner-region");
+        scannerRef.current = scanner;
+
+        await scanner.start(
+          cameraConfig,
+          { fps: 8, qrbox: { width: 240, height: 240 } },
+          (decoded) => {
+            const code = parseQrOrderCode(decoded);
+            if (!code || cancelled || !scanner) return;
+            cancelled = true;
+            void scanner
+              .stop()
+              .catch(() => undefined)
+              .finally(() => {
+                scannerRef.current = null;
+                onScanRef.current(code);
+                onCloseRef.current();
+              });
+          },
+          () => undefined,
+        );
+      } catch {
+        if (!cancelled) {
+          setError(tRef.current("qrStaff.scanner.cameraFailed"));
+        }
+      }
+    };
+
+    void start();
 
     return () => {
-      active = false;
-      if (scannerRef.current?.isScanning) {
-        void scannerRef.current.stop().catch(() => undefined);
-      }
+      cancelled = true;
+      const current = scannerRef.current;
       scannerRef.current = null;
+      if (current) {
+        void current
+          .stop()
+          .catch(() => undefined)
+          .finally(() => {
+            try {
+              current.clear();
+            } catch {
+              // region may already be unmounted
+            }
+          });
+      }
     };
-  }, [open, onClose, onScan, t]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -62,7 +113,7 @@ export function QrOrderScannerModal({ open, onClose, onScan }: Props) {
           </button>
         </div>
         <div className="p-4">
-          <div id="qr-order-scanner-region" className="w-full overflow-hidden rounded-xl" />
+          <div id="qr-order-scanner-region" className="w-full min-h-[240px] overflow-hidden rounded-xl bg-black/80" />
           {error && <p className="text-sm text-destructive mt-3">{error}</p>}
           <p className="text-xs text-muted-foreground mt-3">{t("qrStaff.scanner.hint")}</p>
         </div>
